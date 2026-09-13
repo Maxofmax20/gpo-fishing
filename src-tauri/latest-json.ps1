@@ -4,7 +4,10 @@ $root = Split-Path -Parent $PSScriptRoot
 $conf = Get-Content (Join-Path $PSScriptRoot "tauri.conf.json") -Raw | ConvertFrom-Json
 $version = $conf.version
 $repo = $conf.plugins.updater.endpoints[0] -replace "^https://github\.com/", "" -replace "/releases/.*$", ""
-$exe = Get-ChildItem -Path $Out -Filter "*-setup.exe" | Select-Object -First 1
+$exe = Get-ChildItem -Path $Out -Filter "*$version*-setup.exe" | Select-Object -First 1
+if (-not $exe) {
+  $exe = Get-ChildItem -Path $Out -Filter "*-setup.exe" | Select-Object -First 1
+}
 if (-not $exe) { exit 1 }
 $sigPath = $exe.FullName + ".sig"
 if (-not (Test-Path $sigPath)) { exit 1 }
@@ -16,6 +19,10 @@ $json = [ordered]@{
   pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   platforms = [ordered]@{
     "windows-x86_64" = [ordered]@{
+      signature = $sig
+      url       = "https://github.com/$repo/releases/download/v$version/$asset"
+    }
+    "windows-x86_64-nsis" = [ordered]@{
       signature = $sig
       url       = "https://github.com/$repo/releases/download/v$version/$asset"
     }
