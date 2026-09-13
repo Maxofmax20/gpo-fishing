@@ -54,8 +54,9 @@ impl Session {
     }
 
     pub fn lifetime(&self) -> Lifetime {
+        let total_fish = self.base.fish + self.fish;
         Lifetime {
-            fish: self.base.fish + self.fish,
+            fish: total_fish,
             failed: self.base.failed + self.failed,
             fruits: self.base.fruits + self.fruits,
             bait_purchased: self.base.bait_purchased + self.bait_purchased,
@@ -66,6 +67,7 @@ impl Session {
             last_fish: self.last_fish.clone().or_else(|| self.base.last_fish.clone()),
             pity_fruit: self.pity_fruit,
             pity_legendary: self.pity_legendary,
+            estimated_peli: (total_fish as u64) * 95,
         }
     }
 
@@ -130,19 +132,29 @@ impl Session {
     }
 
     pub fn stats(&self) -> Stats {
+        let runtime_s = self.runtime().as_secs();
+        let fish_per_hour = if runtime_s >= 30 {
+            (self.fish as f32 / runtime_s as f32) * 3600.0
+        } else {
+            0.0
+        };
+        let estimated_peli = (self.fish as u64) * 95;
+
         Stats {
             fish: self.fish,
             failed: self.failed,
             fruits: self.fruits,
             bait_purchased: self.bait_purchased,
             success_rate: self.success_rate(),
-            runtime_s: self.runtime().as_secs(),
+            runtime_s,
             restarts: self.restarts,
             last_fruit: self.last_fruit.clone(),
             last_spawn: self.last_spawn.clone(),
             last_fish: self.last_fish.clone(),
             pity_fruit: self.pity_fruit,
             pity_legendary: self.pity_legendary,
+            fish_per_hour,
+            estimated_peli,
             total: self.lifetime(),
         }
     }

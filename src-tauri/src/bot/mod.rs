@@ -118,6 +118,13 @@ impl Bot {
         }
     }
 
+    pub fn recast(self: &Arc<Self>) {
+        self.stop();
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        self.start();
+        self.ctx.log_info("Remotely recasting rod");
+    }
+
     fn halt(&self) {
         self.ctx.running.store(false, Ordering::SeqCst);
         if let Some(h) = self.watchdog.lock().take() {

@@ -31,6 +31,7 @@ export type Lifetime = {
   last_spawn: string | null;
   pity_fruit: number;
   pity_legendary: number;
+  estimated_peli: number;
 };
 
 export type Stats = {
@@ -46,6 +47,8 @@ export type Stats = {
   last_spawn: string | null;
   pity_fruit: number;
   pity_legendary: number;
+  fish_per_hour: number;
+  estimated_peli: number;
   total: Lifetime;
 };
 
@@ -119,6 +122,7 @@ export type Settings = {
     auto_purchase: boolean;
     zero_bait_failsafe: boolean;
     telegram_remote: boolean;
+    discord_rpc: boolean;
   };
   purchase: {
     amount: number;

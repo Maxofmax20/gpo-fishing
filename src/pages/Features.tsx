@@ -174,7 +174,17 @@ export default function Features() {
         </Row>
       </Section>
 
-      <Section title="Notifications">
+      <Section title="Notifications & Integrations">
+        <Row
+          title="Discord Rich Presence (RPC)"
+          sub="Displays live GPO fishing activity, fish count, devil fruits, pity counter, and runtime on your Discord profile."
+          right={
+            <Toggle
+              value={s.features.discord_rpc ?? true}
+              onChange={(v) => update((x) => void (x.features.discord_rpc = v))}
+            />
+          }
+        />
         <Row
           title="Alerts (Telegram & Discord)"
           sub="Sends real-time alerts to Telegram or Discord for caught fruits, world spawns, and progress."
@@ -228,7 +238,7 @@ export default function Features() {
               <div className="mt-2 pt-2 border-t border-line flex items-center justify-between">
                 <div>
                   <div className="text-[12px] font-medium text-fg">Two-way remote control</div>
-                  <div className="text-[11px] text-fg-mute">Control the macro via Telegram (/status with photo, /stop, /start).</div>
+                  <div className="text-[11px] text-fg-mute">Control via Telegram (/status, /screenshot, /pity, /recast, /update, /stop, /start).</div>
                 </div>
                 <Toggle
                   value={s.features.telegram_remote ?? true}

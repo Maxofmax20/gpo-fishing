@@ -83,6 +83,20 @@ export default function Dashboard() {
         {total.last_spawn && <Stat label="Last spawn" value={total.last_spawn} />}
       </Section>
 
+      <Section title="Economy & Efficiency">
+        <Stat
+          label="Catch rate"
+          value={`${Math.round(stats.fish_per_hour ?? 0)} fish / hr`}
+          extra={<Pill tone="accent">⚡ Hourly pace</Pill>}
+        />
+        <Stat
+          label="Estimated earnings"
+          value={`~${(total.estimated_peli ?? (total.fish * 95)).toLocaleString()} Peli`}
+          sub={sessionNote(stats.estimated_peli ?? (stats.fish * 95))}
+          extra={<Pill tone="warn">💰 Fish market value</Pill>}
+        />
+      </Section>
+
       <Section title="Live">
         <LiveAreas />
       </Section>

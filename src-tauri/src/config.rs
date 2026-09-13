@@ -109,6 +109,7 @@ pub struct Features {
     pub auto_purchase: bool,
     pub zero_bait_failsafe: bool,
     pub telegram_remote: bool,
+    pub discord_rpc: bool,
 }
 
 impl Default for Features {
@@ -121,6 +122,7 @@ impl Default for Features {
             auto_purchase: false,
             zero_bait_failsafe: true,
             telegram_remote: true,
+            discord_rpc: true,
         }
     }
 }

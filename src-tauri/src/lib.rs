@@ -8,6 +8,7 @@ pub mod hotkeys;
 pub mod tray;
 pub mod webhook;
 pub mod windows;
+pub mod discord_rpc;
 
 use tauri::Manager;
 

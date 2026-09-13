@@ -50,6 +50,7 @@ pub struct Lifetime {
     pub last_fish: Option<String>,
     pub pity_fruit: u32,
     pub pity_legendary: u32,
+    pub estimated_peli: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -66,6 +67,8 @@ pub struct Stats {
     pub last_fish: Option<String>,
     pub pity_fruit: u32,
     pub pity_legendary: u32,
+    pub fish_per_hour: f32,
+    pub estimated_peli: u64,
     pub total: Lifetime,
 }
 

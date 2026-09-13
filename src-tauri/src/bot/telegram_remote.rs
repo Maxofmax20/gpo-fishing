@@ -1,4 +1,4 @@
-﻿use std::sync::Arc;
+use std::sync::Arc;
 use std::time::Duration;
 use parking_lot::RwLock;
 use serde_json::Value;
@@ -165,6 +165,57 @@ fn handle_command(bot: &Arc<Bot>, token: &str, chat_id: &str, text: &str) {
                 let _ = post_telegram(token, chat_id, &caption);
             }
         }
+        "/screenshot" | "screenshot" => {
+            let screenshot = bot
+                .ctx()
+                .roblox_rect()
+                .and_then(|r| bot.ctx().platform.capture.grab(r).ok())
+                .map(|f| f.downscale(1280))
+                .and_then(|f| f.to_png_bytes().ok());
+
+            if let Some(bytes) = screenshot {
+                let _ = post_telegram_photo(token, chat_id, &bytes, "📸 <b>Current Roblox Screen</b>");
+            } else {
+                let _ = post_telegram(
+                    token,
+                    chat_id,
+                    "⚠️ <b>Roblox window not detected or capture failed.</b>",
+                );
+            }
+        }
+        "/pity" | "pity" => {
+            let stats = bot.ctx().session.lock().stats();
+            let text = format!(
+                "⚡ <b>GPO Pity Status</b>\n\n\
+                 • <b>Fruit Pity</b>: <b>{}</b> fish (since last fruit)\n\
+                 • <b>Legendary Pity</b>: <b>{}</b> fish\n\
+                 • <b>Fruits Caught</b>: <b>{}</b>\n\
+                 • <b>Total Fish</b>: <b>{}</b>\n\
+                 • <b>Last Fruit</b>: {}",
+                stats.pity_fruit,
+                stats.pity_legendary,
+                stats.fruits,
+                stats.fish,
+                stats.last_fruit.as_deref().unwrap_or("None yet")
+            );
+            let _ = post_telegram(token, chat_id, &text);
+        }
+        "/recast" | "recast" => {
+            bot.recast();
+            let _ = post_telegram(token, chat_id, "🔄 <b>Rod recast triggered remotely!</b>");
+        }
+        "/update" | "update" => {
+            let _ = post_telegram(token, chat_id, "🔍 <b>Checking for GPO Autofish updates...</b>");
+            let cur_ver = env!("CARGO_PKG_VERSION");
+            match check_and_apply_update(token, chat_id, cur_ver) {
+                Ok(msg) => {
+                    let _ = post_telegram(token, chat_id, &msg);
+                }
+                Err(e) => {
+                    let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Update check failed:</b> {e}"));
+                }
+            }
+        }
         "/stop" | "/pause" | "stop" | "pause" => {
             if bot.is_running() {
                 bot.pause();
@@ -192,6 +243,10 @@ fn handle_command(bot: &Arc<Bot>, token: &str, chat_id: &str, text: &str) {
         "/help" | "help" => {
             let help_text = "🎮 <b>GPO Autofish Remote Controls</b>\n\n\
                 /status - View live stats & Roblox screenshot\n\
+                /screenshot - Instant Roblox screenshot on demand\n\
+                /pity - Quick Devil Fruit pity counter\n\
+                /recast - Reset rod & recast immediately\n\
+                /update - Check & apply new app updates\n\
                 /stop - Pause the macro\n\
                 /start - Start or resume the macro\n\
                 /help - Show this commands list";
@@ -199,4 +254,73 @@ fn handle_command(bot: &Arc<Bot>, token: &str, chat_id: &str, text: &str) {
         }
         _ => {}
     }
+}
+
+fn check_and_apply_update(
+    token: &str,
+    chat_id: &str,
+    cur_ver: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()?;
+    let url = "https://github.com/Maxofmax20/gpo-fishing/releases/latest/download/latest.json";
+    let resp: Value = client
+        .get(url)
+        .header("User-Agent", "gpo-autofish")
+        .send()?
+        .json()?;
+
+    let remote_ver = resp
+        .get("version")
+        .and_then(|v| v.as_str())
+        .ok_or("Invalid latest.json manifest")?
+        .trim_start_matches('v');
+
+    if remote_ver == cur_ver {
+        return Ok(format!(
+            "✅ <b>You're already running the latest version!</b> (v{cur_ver})"
+        ));
+    }
+
+    let download_url = resp
+        .get("platforms")
+        .and_then(|p| p.get("windows-x86_64"))
+        .and_then(|w| w.get("url"))
+        .and_then(|u| u.as_str())
+        .ok_or("No download URL for windows-x86_64")?;
+
+    let notes = resp.get("notes").and_then(|n| n.as_str()).unwrap_or("");
+    let _ = post_telegram(
+        token,
+        chat_id,
+        &format!(
+            "🚀 <b>New Version Found: v{remote_ver}!</b>\n\n<i>{notes}</i>\n\n⬇️ Downloading installer in the background..."
+        ),
+    );
+
+    let temp_dir = std::env::temp_dir();
+    let installer_path = temp_dir.join(format!("GPO.Autofish_{remote_ver}_setup.exe"));
+
+    let mut exe_resp = client
+        .get(download_url)
+        .header("User-Agent", "gpo-autofish")
+        .send()?;
+    let mut file = std::fs::File::create(&installer_path)?;
+    std::io::copy(&mut exe_resp, &mut file)?;
+    drop(file);
+
+    let _ = post_telegram(
+        token,
+        chat_id,
+        "📦 <b>Update downloaded successfully!</b>\nLaunching installer and restarting GPO Autofish...",
+    );
+
+    // Launch installer and exit current process so file is replaced cleanly
+    std::process::Command::new(&installer_path)
+        .args(["/S"])
+        .spawn()?;
+
+    std::thread::sleep(Duration::from_millis(600));
+    std::process::exit(0);
 }
