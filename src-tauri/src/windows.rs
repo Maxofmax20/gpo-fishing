@@ -208,10 +208,12 @@ fn position_panel(app: &AppHandle, client: PxRect) {
     };
     let scale = panel.scale_factor().unwrap_or(1.0);
     let margin = (MARGIN * scale) as i32;
-    let max_w = (client.w - margin * 2).max((PANEL_MIN_W * scale) as i32);
-    let max_h = (client.h - margin * 2).max((PANEL_MIN_H * scale) as i32);
-    let w = ((size[0] as f64 * scale) as i32).min(max_w);
-    let h = ((size[1] as f64 * scale) as i32).min(max_h);
+    let min_w = (PANEL_MIN_W * scale) as i32;
+    let min_h = (PANEL_MIN_H * scale) as i32;
+    let max_w = (client.w - margin * 2).max(min_w);
+    let max_h = (client.h - margin * 2).max(min_h);
+    let w = ((size[0] as f64 * scale) as i32).clamp(min_w, max_w);
+    let h = ((size[1] as f64 * scale) as i32).clamp(min_h, max_h);
     let _ = panel.set_size(PhysicalSize::new(w as u32, h as u32));
     let x = client.x + (offset.x * client.w as f32) as i32 - w;
     let y = client.y + (offset.y * client.h as f32) as i32 - h / 2;
@@ -240,16 +242,24 @@ fn position_guide(app: &AppHandle, client: PxRect) {
 
 pub fn save_panel_placement(app: &AppHandle) {
     let Some(panel) = panel(app) else { return };
+    if panel.is_minimized().unwrap_or(false) {
+        return;
+    }
     let st = app.state::<AppState>();
     let Some(client) = st.roblox.read().map(|w| w.client) else { return };
     let (Ok(pos), Ok(size)) = (panel.outer_position(), panel.inner_size()) else { return };
     let scale = panel.scale_factor().unwrap_or(1.0);
+    let w_unscaled = (size.width as f64 / scale) as u32;
+    let h_unscaled = (size.height as f64 / scale) as u32;
+    if w_unscaled < 350 || h_unscaled < 450 {
+        return;
+    }
     let mut s = st.settings.read().clone();
     s.ui.panel_offset = RelPoint {
         x: ((pos.x + size.width as i32 - client.x) as f32 / client.w.max(1) as f32).clamp(0.0, 1.0),
         y: ((pos.y + size.height as i32 / 2 - client.y) as f32 / client.h.max(1) as f32).clamp(0.0, 1.0),
     };
-    s.ui.panel_size = [(size.width as f64 / scale) as u32, (size.height as f64 / scale) as u32];
+    s.ui.panel_size = [w_unscaled, h_unscaled];
     *st.settings.write() = s.clone();
     let _ = st.store.save(&s);
 }
@@ -289,7 +299,13 @@ pub fn show_panel(app: &AppHandle) {
     let info = *app.state::<AppState>().roblox.read();
     if let Some(client) = roblox_active(info) {
         position_panel(app, client);
-    } else if info.is_none() {
+    } else {
+        let scale = p.scale_factor().unwrap_or(1.0);
+        let st = app.state::<AppState>();
+        let size = st.settings.read().ui.panel_size;
+        let w = ((size[0] as f64 * scale) as u32).max((PANEL_MIN_W * scale) as u32);
+        let h = ((size[1] as f64 * scale) as u32).max((PANEL_MIN_H * scale) as u32);
+        let _ = p.set_size(PhysicalSize::new(w, h));
         let _ = p.show();
     }
     let _ = p.show();

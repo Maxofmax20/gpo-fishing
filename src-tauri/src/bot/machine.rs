@@ -22,6 +22,7 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
     let mut tracker = Tracker::default();
     let mut last_hash: u64 = 0;
     let mut spawn_checked_at = Instant::now() - Duration::from_secs(3600);
+    let mut rod_equipped = false;
 
     if !wait_for_roblox(ctx) {
         return;
@@ -29,7 +30,7 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
     if !ensure_front(ctx) {
         return;
     }
-    if !skip_setup && !actions::initial_setup(ctx) {
+    if !skip_setup && !actions::initial_setup(ctx, &mut rod_equipped) {
         return;
     }
 
@@ -39,6 +40,9 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
             return;
         }
         if !ensure_front(ctx) {
+            return;
+        }
+        if !actions::ensure_rod_equipped(ctx, &mut rod_equipped) {
             return;
         }
         if ctx.settings.read().features.auto_bait && !actions::select_bait(ctx) {
@@ -64,15 +68,23 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
                         ctx.log_warn(&format!("Reel failed: {}", text.trim()));
                     }
                     verdict => {
+                        let (kind, item_name) = fruit::parse_catch_item(&ctx.settings.read().lexicon, &text);
                         {
                             let mut s = ctx.session.lock();
                             s.record(true);
+                            if kind == "fruit" {
+                                s.fruits += 1;
+                                s.last_fruit = Some(item_name.clone());
+                            } else {
+                                s.last_fish = Some(item_name.clone());
+                            }
                             let n = s.fish;
                             let tag = if verdict == fruit::CatchVerdict::Caught { "" } else { " (unverified)" };
-                            ctx.log_info(&format!("Fish caught (#{n}){tag}"));
+                            ctx.log_info(&format!("Caught {kind}: {item_name} (#{n}){tag}"));
                         }
+                        ctx.record_catch(&kind, &item_name, &text);
                         ctx.emit_stats();
-                        if !post_catch(ctx, &text) {
+                        if !post_catch(ctx, &text, &mut rod_equipped) {
                             return;
                         }
                     }
@@ -395,7 +407,7 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String) {
     (fruit::CatchVerdict::Unknown, last)
 }
 
-fn post_catch(ctx: &Ctx, first_text: &str) -> bool {
+fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
     ctx.set_state(BotState::PostCatch, None);
     let s = ctx.settings();
     let wants_ocr = s.features.fruit_storage || (s.webhook.enabled && s.webhook.fruit_drop);
@@ -421,19 +433,44 @@ fn post_catch(ctx: &Ctx, first_text: &str) -> bool {
             }
         }
         if let Some(d) = drop {
-            let label = if d.is_legendary { "Legendary devil fruit" } else { "Devil fruit" };
+            let fruit_name = d.name.clone().unwrap_or_else(|| {
+                fruit::parse_catch_item(&s.lexicon, &d.text).1
+            });
+            let rarity = fruit::fruit_rarity(&fruit_name);
+            let is_high_tier = d.is_legendary || rarity.is_high_tier();
+            let is_protected = s.fruit_storage.never_drop_legendary_or_mythical && is_high_tier;
+
+            let label = if rarity == fruit::FruitRarity::Mythical {
+                format!("Mythical devil fruit ({fruit_name})")
+            } else if d.is_legendary || rarity == fruit::FruitRarity::Legendary {
+                format!("Legendary devil fruit ({fruit_name})")
+            } else if rarity != fruit::FruitRarity::Unknown {
+                format!("{} devil fruit ({fruit_name})", rarity.as_str())
+            } else {
+                format!("Devil fruit ({fruit_name})")
+            };
             ctx.log_info(&format!("{label} dropped"));
             {
                 let mut sess = ctx.session.lock();
                 sess.fruits += 1;
-                sess.last_fruit = Some(label.into());
+                sess.last_fruit = Some(fruit_name.clone());
             }
+            ctx.record_catch("fruit", &fruit_name, &d.text);
             ctx.emit_stats();
             ctx.emit(BotEvent::FruitDrop(d.clone()));
-            if s.webhook.fruit_drop && (d.is_legendary || !s.webhook.legendary_only) {
+            if s.webhook.fruit_drop && (is_high_tier || !s.webhook.legendary_only) {
                 ctx.webhook.fruit_drop(&d);
             }
-            if !actions::store_fruit(ctx) {
+            if is_protected {
+                ctx.log_info(&format!("🛡️ Protected {label} - preventing drop"));
+            }
+            if !actions::store_fruit(ctx, is_protected) {
+                return false;
+            }
+            *rod_equipped = true;
+
+            if s.fruit_storage.pause_on_protected_fruit && is_protected {
+                ctx.log_info(&format!("🚨 Macro paused: Protected {label} caught! Safely inspect your inventory."));
                 return false;
             }
         }
@@ -448,8 +485,11 @@ fn post_catch(ctx: &Ctx, first_text: &str) -> bool {
         ctx.webhook.progress(ctx.session.lock().stats());
         let _ = fish;
     }
-    if s.features.auto_purchase && since_buy >= s.purchase.every_n_catches.max(1) && !actions::purchase(ctx) {
-        return false;
+    if s.features.auto_purchase && since_buy >= s.purchase.every_n_catches.max(1) {
+        *rod_equipped = false;
+        if !actions::purchase(ctx) {
+            return false;
+        }
     }
     true
 }

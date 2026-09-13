@@ -12,6 +12,7 @@ pub struct Session {
     pub restarts: u32,
     pub last_fruit: Option<String>,
     pub last_spawn: Option<String>,
+    pub last_fish: Option<String>,
     pub since_progress_webhook: u32,
     pub since_purchase: u32,
     pub last_spawn_alert: Option<Instant>,
@@ -36,6 +37,7 @@ impl Session {
             restarts: 0,
             last_fruit: None,
             last_spawn: None,
+            last_fish: None,
             since_progress_webhook: 0,
             since_purchase: 0,
             last_spawn_alert: None,
@@ -57,6 +59,7 @@ impl Session {
             sessions: self.base.sessions,
             last_fruit: self.last_fruit.clone().or_else(|| self.base.last_fruit.clone()),
             last_spawn: self.last_spawn.clone().or_else(|| self.base.last_spawn.clone()),
+            last_fish: self.last_fish.clone().or_else(|| self.base.last_fish.clone()),
         }
     }
 
@@ -129,6 +132,7 @@ impl Session {
             restarts: self.restarts,
             last_fruit: self.last_fruit.clone(),
             last_spawn: self.last_spawn.clone(),
+            last_fish: self.last_fish.clone(),
             total: self.lifetime(),
         }
     }

@@ -26,6 +26,7 @@ export type Lifetime = {
   bait_purchased: number;
   runtime_s: number;
   sessions: number;
+  last_fish: string | null;
   last_fruit: string | null;
   last_spawn: string | null;
 };
@@ -38,6 +39,7 @@ export type Stats = {
   success_rate: number;
   runtime_s: number;
   restarts: number;
+  last_fish: string | null;
   last_fruit: string | null;
   last_spawn: string | null;
   total: Lifetime;
@@ -66,6 +68,13 @@ export type Confidence = { bar: number; fish: number; marker: number; score: num
 export type DropInfo = { text: string; is_legendary: boolean };
 export type SpawnInfo = { text: string; name: string | null; location: string | null };
 
+export type CatchRecord = {
+  timestamp: string;
+  kind: "fish" | "fruit" | string;
+  name: string;
+  raw: string;
+};
+
 export type Settings = {
   version: number;
   regions: { bar: RelRect; drop: RelRect };
@@ -74,6 +83,7 @@ export type Settings = {
     purchase: [RelPoint | null, RelPoint | null, RelPoint | null];
     fruit: [RelPoint | null, RelPoint | null];
     bait: [RelPoint | null, RelPoint | null];
+    rod_slot: RelPoint | null;
   };
   keys: { rod: string; fruit_slot_1: string; fruit_slot_2: string; shop: string };
   fishing: {
@@ -113,11 +123,14 @@ export type Settings = {
     after_type_ms: number;
   };
   zoom: { out_steps: number; in_steps: number; step_delay_ms: number; sequence_delay_ms: number };
-  fruit_storage: { key_settle_ms: number; click_settle_ms: number; dialog_wait_ms: number; after_drop_ms: number };
+  fruit_storage: { key_settle_ms: number; click_settle_ms: number; dialog_wait_ms: number; after_drop_ms: number; never_drop_legendary_or_mythical: boolean; pause_on_protected_fruit: boolean };
   ocr: { spawn_check_interval_s: number; spawn_cooldown_s: number; post_catch_reads: number; post_catch_read_gap_ms: number };
   lexicon: { fruits: string[]; drop_phrases: string[]; drop_keywords: string[]; spawn_keywords: string[]; catch_phrases: string[]; fail_phrases: string[]; fuzzy_threshold: number };
   webhook: {
+    provider: "telegram" | "discord" | "both";
     url: string;
+    telegram_bot_token: string;
+    telegram_chat_id: string;
     enabled: boolean;
     progress_every_n: number;
     progress: boolean;
@@ -153,7 +166,8 @@ export type OverlayTarget =
   | "fruit1"
   | "fruit2"
   | "bait1"
-  | "bait2";
+  | "bait2"
+  | "rod_slot";
 
 export type OverlaySession = {
   target: OverlayTarget;
@@ -202,4 +216,5 @@ export const TARGET_LABEL: Record<OverlayTarget, string> = {
   fruit2: "Fruit slot (backup)",
   bait1: "Bait slot",
   bait2: "Bait slot (backup)",
+  rod_slot: "Rod slot indicator (optional)",
 };

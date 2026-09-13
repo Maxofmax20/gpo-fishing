@@ -102,8 +102,8 @@
   },
   "plugins": {
     "updater": {
-      "endpoints": ["https://github.com/arielldev/gpo-fishing/releases/latest/download/latest.json"],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENBMTE0OUE4RjBENTBEN0IKUldSN0RkWHdxRWtSeXJuSncxOHhWdzRBclNGT0R4UUlra205MkpYVUp6RXpDMFU3bUtCVmNaV20K"
+      "endpoints": ["https://github.com/Maxofmax20/gpo-fishing/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZGNjk3NUY5RDg1N0M0QzkKUldUSnhGZlkrWFZwL3dXYXcxYzBKNC94L2taOGkzKzc4T2w3MVQ3UGQ5OFkvRnFtbjkrbU5YS2cK"
     }
   }
 }

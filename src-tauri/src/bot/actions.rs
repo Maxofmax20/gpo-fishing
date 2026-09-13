@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::core::types::{Key, MouseButton, PxPoint, RelPoint};
+use crate::core::types::{Key, MouseButton, PxPoint, PxRect, RelPoint};
 use crate::events::BotState;
 
 use super::ctx::Ctx;
@@ -88,6 +88,97 @@ fn click_pair(ctx: &Ctx, primary: RelPoint, backup: Option<RelPoint>, settle_ms:
     true
 }
 
+pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
+    let s = ctx.settings();
+    let rect = ctx.roblox_rect()?;
+
+    // 1. If custom rod slot indicator point is set, inspect around it:
+    if let Some(rel) = s.points.rod_slot {
+        let px = rel.to_px(&rect);
+        let patch = PxRect {
+            x: (px.x - 2).max(rect.x),
+            y: (px.y - 2).max(rect.y),
+            w: 5,
+            h: 5,
+        };
+        if let Ok(frame) = ctx.platform.capture.grab(patch) {
+            let mut bright = 0;
+            for y in 0..frame.h {
+                for x in 0..frame.w {
+                    let (r, g, b) = frame.px(x, y);
+                    if r > 180 && g > 180 && b > 180 {
+                        bright += 1;
+                    }
+                }
+            }
+            return Some(bright >= 3);
+        }
+    }
+
+    // 2. Auto-detect on standard Roblox bottom hotbar slot 1:
+    if rect.h > 100 && rect.w > 200 {
+        let scan_h = 50.min(rect.h - 10);
+        let scan_w = 260.min(rect.w);
+        let scan_y = rect.y + rect.h - scan_h - 5;
+        let scan_x = rect.x + (rect.w / 2).saturating_sub(260);
+        let scan_rect = PxRect {
+            x: scan_x.max(rect.x),
+            y: scan_y.max(rect.y),
+            w: scan_w,
+            h: scan_h,
+        };
+        if let Ok(frame) = ctx.platform.capture.grab(scan_rect) {
+            for y in 0..frame.h {
+                let mut run = 0;
+                for x in 0..frame.w {
+                    let (r, g, b) = frame.px(x, y);
+                    if r > 210 && g > 210 && b > 210 {
+                        run += 1;
+                        if run >= 15 {
+                            return Some(true);
+                        }
+                    } else {
+                        run = 0;
+                    }
+                }
+            }
+        }
+    }
+
+    None
+}
+
+pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
+    let s = ctx.settings();
+
+    // Check visual detection
+    if let Some(visual) = is_rod_equipped(ctx) {
+        if visual {
+            ctx.log_debug("Fishing rod already equipped (visual check confirmed)");
+            *rod_equipped = true;
+            return true;
+        } else if *rod_equipped {
+            ctx.log_debug("Visual check detected rod is unequipped");
+            *rod_equipped = false;
+        }
+    } else if *rod_equipped {
+        ctx.log_debug("Fishing rod already equipped (state tracking)");
+        return true;
+    }
+
+    ctx.log_info(&format!("Equipping rod ({})", s.keys.rod));
+    if !key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(400) {
+        return false;
+    }
+    *rod_equipped = true;
+    true
+}
+
+pub fn equip_rod(ctx: &Ctx) -> bool {
+    let mut dummy = false;
+    ensure_rod_equipped(ctx, &mut dummy)
+}
+
 pub fn select_bait(ctx: &Ctx) -> bool {
     let s = ctx.settings();
     if !s.features.auto_bait {
@@ -116,10 +207,13 @@ pub fn zoom_reset(ctx: &Ctx) -> bool {
     if !ctx.sleep_ms(z.sequence_delay_ms) {
         return false;
     }
-    wheel_steps(ctx, z.in_steps, 1, z.step_delay_ms)
+    if !wheel_steps(ctx, z.in_steps, 1, z.step_delay_ms) {
+        return false;
+    }
+    ctx.sleep_ms(z.sequence_delay_ms)
 }
 
-pub fn initial_setup(ctx: &Ctx) -> bool {
+pub fn initial_setup(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
     ctx.set_state(BotState::InitialSetup, None);
     let s = ctx.settings();
     if s.features.auto_zoom && (!zoom_reset(ctx) || !ctx.sleep_ms(800)) {
@@ -128,13 +222,11 @@ pub fn initial_setup(ctx: &Ctx) -> bool {
     if s.features.auto_purchase && !purchase(ctx) {
         return false;
     }
-    if s.features.auto_bait {
-        if !key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(500) {
-            return false;
-        }
-        if !select_bait(ctx) {
-            return false;
-        }
+    if !ensure_rod_equipped(ctx, rod_equipped) {
+        return false;
+    }
+    if s.features.auto_bait && !select_bait(ctx) {
+        return false;
     }
     ctx.sleep_ms(1000)
 }
@@ -230,7 +322,7 @@ pub fn purchase(ctx: &Ctx) -> bool {
     true
 }
 
-pub fn store_fruit(ctx: &Ctx) -> bool {
+pub fn store_fruit(ctx: &Ctx, protect_drop: bool) -> bool {
     let s = ctx.settings();
     if !s.features.fruit_storage {
         return true;
@@ -240,7 +332,11 @@ pub fn store_fruit(ctx: &Ctx) -> bool {
         return true;
     };
     ctx.set_state(BotState::StoringFruit, None);
-    ctx.log_info("Storing fruit");
+    if protect_drop {
+        ctx.log_info("🛡️ Storing protected fruit (drop/backspace disabled)");
+    } else {
+        ctx.log_info("Storing fruit");
+    }
     let fs = &s.fruit_storage;
 
     if let Some(fp) = fishing_point(ctx) {
@@ -262,11 +358,15 @@ pub fn store_fruit(ctx: &Ctx) -> bool {
         if !ctx.sleep_ms(fs.dialog_wait_ms) {
             return false;
         }
-        if !key_hold(ctx, Key::Backspace, Duration::from_millis(100)) {
-            return false;
-        }
-        if !ctx.sleep_ms(fs.after_drop_ms) {
-            return false;
+        if !protect_drop {
+            if !key_hold(ctx, Key::Backspace, Duration::from_millis(100)) {
+                return false;
+            }
+            if !ctx.sleep_ms(fs.after_drop_ms) {
+                return false;
+            }
+        } else {
+            ctx.log_info("🛡️ Protected fruit kept in slot (drop prevented)");
         }
     }
 

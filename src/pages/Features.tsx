@@ -3,7 +3,7 @@ import { Send } from "lucide-react";
 import { api } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { PointField } from "../components/PointField";
-import { Button, Kbd, KeyCapture, Pill, Row, Section, Slider, Step, Steps, Stepper, TextField, Toggle } from "../components/primitives";
+import { Button, cx, Kbd, KeyCapture, Pill, Row, Section, Segmented, Slider, Step, Steps, Stepper, TextField, Toggle } from "../components/primitives";
 
 export default function Features() {
   const s = useStore((st) => st.settings);
@@ -135,7 +135,25 @@ export default function Features() {
             </Step>
             <Step n={4} title={<>Press <Kbd>{s.keys.rod.toUpperCase()}</Kbd> to re-equip the rod</>} sub="The rod key is set in Setup." done last />
           </Steps>
-          <div className="mt-4 pt-3 border-t border-line">
+          <div className="mt-4 pt-3 border-t border-line space-y-1">
+            <Field wide label="Never drop Legendary / Mythical">
+              <Toggle
+                value={s.fruit_storage.never_drop_legendary_or_mythical ?? true}
+                onChange={(v) => update((x) => void (x.fruit_storage.never_drop_legendary_or_mythical = v))}
+              />
+            </Field>
+            <div className="text-[11px] text-fg-dim pb-1.5 leading-normal">
+              🛡️ Never presses Backspace on high-tier fruits (Tori, Mochi, Ope, Venom, Buddha, Dragon, Pika, Magu, Goro, etc.). Keeps them safely in your hotbar/inventory if storage fails or backpack is full.
+            </div>
+            <Field wide label="Pause macro on Legendary / Mythical">
+              <Toggle
+                value={s.fruit_storage.pause_on_protected_fruit ?? false}
+                onChange={(v) => update((x) => void (x.fruit_storage.pause_on_protected_fruit = v))}
+              />
+            </Field>
+            <div className="text-[11px] text-fg-dim pb-1.5 leading-normal">
+              🚨 Automatically pauses fishing immediately after catching a protected fruit so you can safely inspect and store it.
+            </div>
             <Field label="Dialog wait">
               <Slider value={s.fruit_storage.dialog_wait_ms} min={200} max={3000} step={50} format={(v) => `${v} ms`} onChange={(v) => update((x) => void (x.fruit_storage.dialog_wait_ms = v))} />
             </Field>
@@ -146,29 +164,82 @@ export default function Features() {
         </Row>
       </Section>
 
-      <Section title="Discord">
+      <Section title="Notifications">
         <Row
-          title="Webhook"
-          sub={s.webhook.url ? "Sends progress, fruit drops and world spawns to your channel." : "Paste a channel webhook URL to enable."}
+          title="Alerts (Telegram & Discord)"
+          sub="Sends real-time alerts to Telegram or Discord for caught fruits, world spawns, and progress."
           right={<Toggle value={s.webhook.enabled} onChange={(v) => { update((x) => void (x.webhook.enabled = v)); if (v) setOpen("wh"); }} />}
           open={open === "wh"}
           onToggle={() => toggle("wh")}
         >
-          <div className="flex gap-2 mb-3">
-            <TextField
-              type="url"
-              mono
-              placeholder="https://discord.com/api/webhooks/…"
-              value={s.webhook.url}
-              onChange={(v) => update((x) => void (x.webhook.url = v.trim()))}
+          <div className="mb-3">
+            <div className="text-[12px] text-fg-dim mb-1.5 font-medium">Notification Provider</div>
+            <Segmented
+              value={s.webhook.provider || "telegram"}
+              options={[
+                { value: "telegram", label: "Telegram" },
+                { value: "discord", label: "Discord" },
+                { value: "both", label: "Both" },
+              ]}
+              onChange={(v) => update((x) => void (x.webhook.provider = v as any))}
             />
-            <Button size="md" onClick={testWebhook} disabled={!s.webhook.url} icon={<Send size={13} />}>
-              Test
-            </Button>
           </div>
-          {whTest !== "idle" && (
-            <div className="mb-3">{whTest === "ok" ? <Pill tone="ok">message delivered</Pill> : <Pill tone="bad">{whTest}</Pill>}</div>
+
+          {(s.webhook.provider === "telegram" || s.webhook.provider === "both" || !s.webhook.provider) && (
+            <div className="mb-3 p-3 rounded-xl bg-black/20 border border-line flex flex-col gap-2.5">
+              <div className="text-[12px] font-semibold text-fg flex items-center gap-1.5">
+                Telegram Bot Settings
+              </div>
+              <div>
+                <div className="text-[11px] text-fg-dim mb-1">Bot Token</div>
+                <TextField
+                  type="text"
+                  mono
+                  placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+                  value={s.webhook.telegram_bot_token || ""}
+                  onChange={(v) => update((x) => void (x.webhook.telegram_bot_token = v.trim()))}
+                />
+              </div>
+              <div>
+                <div className="text-[11px] text-fg-dim mb-1">Chat ID</div>
+                <TextField
+                  type="text"
+                  mono
+                  placeholder="123456789 or @channel"
+                  value={s.webhook.telegram_chat_id || ""}
+                  onChange={(v) => update((x) => void (x.webhook.telegram_chat_id = v.trim()))}
+                />
+              </div>
+              <div className="text-[11px] text-fg-mute bg-white/[0.03] p-2.5 rounded-lg leading-relaxed">
+                💡 <b>How to set up Telegram notifications:</b>
+                <br />1. Message <b>@BotFather</b> on Telegram, send <span className="font-mono text-fg-dim">/newbot</span> and copy the <b>HTTP API Token</b>.
+                <br />2. Message <b>@userinfobot</b> to get your numeric <b>Id</b>, then send <span className="font-mono text-fg-dim">/start</span> to your bot.
+              </div>
+            </div>
           )}
+
+          {(s.webhook.provider === "discord" || s.webhook.provider === "both") && (
+            <div className="mb-3 p-3 rounded-xl bg-black/20 border border-line flex flex-col gap-2.5">
+              <div className="text-[12px] font-semibold text-fg">Discord Webhook</div>
+              <TextField
+                type="url"
+                mono
+                placeholder="https://discord.com/api/webhooks/…"
+                value={s.webhook.url || ""}
+                onChange={(v) => update((x) => void (x.webhook.url = v.trim()))}
+              />
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 mb-3">
+            <Button size="md" onClick={testWebhook} icon={<Send size={13} />}>
+              Test delivery
+            </Button>
+            {whTest !== "idle" && (
+              <div>{whTest === "ok" ? <Pill tone="ok">message delivered</Pill> : <Pill tone="bad">{whTest}</Pill>}</div>
+            )}
+          </div>
+
           <Field label="Progress every">
             <Stepper value={s.webhook.progress_every_n} min={1} max={500} suffix="fish" onChange={(v) => update((x) => void (x.webhook.progress_every_n = v))} />
           </Field>
@@ -214,11 +285,11 @@ export default function Features() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return (
     <div className="flex items-center min-h-10 py-1">
-      <div className="text-fg-dim w-32 shrink-0">{label}</div>
-      <div className="ml-auto">{children}</div>
+      <div className={cx("text-fg-dim shrink-0", wide ? "flex-1 pr-3" : "w-32")}>{label}</div>
+      <div className="ml-auto shrink-0">{children}</div>
     </div>
   );
 }

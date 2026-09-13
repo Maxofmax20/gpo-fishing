@@ -75,6 +75,9 @@ pub fn run() {
             commands::app_quit,
             commands::open_url,
             commands::data_dir,
+            commands::catches_list,
+            commands::catches_clear,
+            commands::catches_open,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

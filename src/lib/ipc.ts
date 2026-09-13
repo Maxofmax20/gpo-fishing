@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   BotState,
+  CatchRecord,
   DropInfo, SpawnInfo,
   LogLine,
   OcrTest,
@@ -56,6 +57,9 @@ export const api = {
   quit: () => invoke<void>("app_quit"),
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   dataDir: () => invoke<string>("data_dir"),
+  getCatches: () => invoke<CatchRecord[]>("catches_list"),
+  clearCatches: () => invoke<void>("catches_clear"),
+  openCatches: () => invoke<void>("catches_open"),
 };
 
 type Events = {

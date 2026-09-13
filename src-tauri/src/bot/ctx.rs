@@ -176,4 +176,8 @@ impl Ctx {
             self.platform.input.button(MouseButton::Left, false);
         }
     }
+
+    pub fn record_catch(&self, kind: &str, name: &str, raw: &str) {
+        self.store.record_catch(kind, name, raw);
+    }
 }

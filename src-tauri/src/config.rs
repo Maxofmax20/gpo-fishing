@@ -33,6 +33,7 @@ pub struct Points {
     pub purchase: [Option<RelPoint>; 3],
     pub fruit: [Option<RelPoint>; 2],
     pub bait: [Option<RelPoint>; 2],
+    pub rod_slot: Option<RelPoint>,
 }
 
 impl Default for Points {
@@ -42,6 +43,7 @@ impl Default for Points {
             purchase: [None, None, None],
             fruit: [None, None],
             bait: [None, None],
+            rod_slot: None,
         }
     }
 }
@@ -153,11 +155,20 @@ pub struct FruitStorage {
     pub click_settle_ms: u32,
     pub dialog_wait_ms: u32,
     pub after_drop_ms: u32,
+    pub never_drop_legendary_or_mythical: bool,
+    pub pause_on_protected_fruit: bool,
 }
 
 impl Default for FruitStorage {
     fn default() -> Self {
-        Self { key_settle_ms: 500, click_settle_ms: 500, dialog_wait_ms: 800, after_drop_ms: 1200 }
+        Self {
+            key_settle_ms: 500,
+            click_settle_ms: 500,
+            dialog_wait_ms: 800,
+            after_drop_ms: 1200,
+            never_drop_legendary_or_mythical: true,
+            pause_on_protected_fruit: false,
+        }
     }
 }
 
@@ -184,7 +195,10 @@ impl Default for OcrSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Webhook {
+    pub provider: String,
     pub url: String,
+    pub telegram_bot_token: String,
+    pub telegram_chat_id: String,
     pub enabled: bool,
     pub progress_every_n: u32,
     pub progress: bool,
@@ -198,7 +212,10 @@ pub struct Webhook {
 impl Default for Webhook {
     fn default() -> Self {
         Self {
+            provider: "telegram".into(),
             url: String::new(),
+            telegram_bot_token: String::new(),
+            telegram_chat_id: String::new(),
             enabled: false,
             progress_every_n: 10,
             progress: true,
@@ -382,6 +399,94 @@ impl Store {
         write_atomic(&self.stats_path(), &serde_json::to_vec_pretty(l)?)
     }
 
+    pub fn record_catch(&self, kind: &str, name: &str, raw: &str) {
+        use std::io::Write;
+        let ts = current_time_str();
+        let safe_name = name.replace('"', "\"\"");
+        let safe_raw = raw.replace('"', "\"\"").replace(['\r', '\n'], " ");
+        let line = format!("{ts},{kind},\"{safe_name}\",\"{safe_raw}\"\n");
+
+        // 1. In app data directory: catches.csv
+        let _ = fs::create_dir_all(&self.dir);
+        let csv_path = self.dir.join("catches.csv");
+        let write_header = !csv_path.exists();
+        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&csv_path) {
+            if write_header {
+                let _ = f.write_all(b"Timestamp,Type,Name,RawText\n");
+            }
+            let _ = f.write_all(line.as_bytes());
+        }
+
+        // 2. Also append to current directory catches.csv if running from a local folder
+        let local_csv = PathBuf::from("catches.csv");
+        let local_header = !local_csv.exists();
+        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&local_csv) {
+            if local_header {
+                let _ = f.write_all(b"Timestamp,Type,Name,RawText\n");
+            }
+            let _ = f.write_all(line.as_bytes());
+        }
+    }
+
+    pub fn get_catches(&self) -> Vec<CatchRecord> {
+        let mut list = Vec::new();
+        let csv_path = self.dir.join("catches.csv");
+        let path = if csv_path.exists() {
+            csv_path
+        } else if Path::new("catches.csv").exists() {
+            PathBuf::from("catches.csv")
+        } else {
+            return list;
+        };
+
+        if let Ok(content) = fs::read_to_string(path) {
+            for (i, line) in content.lines().enumerate() {
+                if i == 0 && line.starts_with("Timestamp") {
+                    continue;
+                }
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let cols = parse_csv_line(trimmed);
+                if cols.len() >= 3 {
+                    list.push(CatchRecord {
+                        timestamp: cols[0].clone(),
+                        kind: cols[1].clone(),
+                        name: cols[2].clone(),
+                        raw: cols.get(3).cloned().unwrap_or_default(),
+                    });
+                }
+            }
+        }
+        list.reverse();
+        list
+    }
+
+    pub fn clear_catches(&self) -> Result<(), String> {
+        let csv_path = self.dir.join("catches.csv");
+        if csv_path.exists() {
+            let _ = fs::remove_file(csv_path);
+        }
+        if Path::new("catches.csv").exists() {
+            let _ = fs::remove_file("catches.csv");
+        }
+        Ok(())
+    }
+
+    pub fn open_catches_file(&self) -> Result<(), String> {
+        let csv_path = self.dir.join("catches.csv");
+        if !csv_path.exists() {
+            let _ = fs::create_dir_all(&self.dir);
+            let _ = fs::write(&csv_path, "Timestamp,Type,Name,RawText\n");
+        }
+        std::process::Command::new("explorer")
+            .arg(&csv_path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn load(&self) -> Settings {
         let mut settings = match fs::read_to_string(self.settings_path()) {
             Ok(s) => serde_json::from_str::<Settings>(&s).unwrap_or_else(|e| {
@@ -402,6 +507,13 @@ impl Store {
                 settings.fishing.trace = false;
             }
             settings.version = SETTINGS_VERSION;
+            let _ = self.save(&settings);
+        }
+        if settings.ui.panel_size[0] < 400 || settings.ui.panel_size[1] < 520 {
+            settings.ui.panel_size = [
+                settings.ui.panel_size[0].max(400),
+                settings.ui.panel_size[1].max(520),
+            ];
             let _ = self.save(&settings);
         }
         settings
@@ -459,6 +571,70 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
     fs::write(&tmp, bytes)?;
     fs::rename(&tmp, path)?;
     Ok(())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatchRecord {
+    pub timestamp: String,
+    pub kind: String,
+    pub name: String,
+    pub raw: String,
+}
+
+fn parse_csv_line(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '"' {
+            if in_quotes && chars.peek() == Some(&'"') {
+                chars.next();
+                current.push('"');
+            } else {
+                in_quotes = !in_quotes;
+            }
+        } else if c == ',' && !in_quotes {
+            fields.push(current.trim().to_string());
+            current = String::new();
+        } else {
+            current.push(c);
+        }
+    }
+    fields.push(current.trim().to_string());
+    fields
+}
+
+fn current_time_str() -> String {
+    let now = std::time::SystemTime::now();
+    let secs = now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+    let s = secs % 60;
+    let m = (secs / 60) % 60;
+    let h = (secs / 3600) % 24;
+    let mut days = (secs / 86400) as i64;
+    let mut y = 1970;
+    loop {
+        let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+        let d_in_y = if leap { 366 } else { 365 };
+        if days < d_in_y {
+            break;
+        }
+        days -= d_in_y;
+        y += 1;
+    }
+    let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+    let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let mut mon = 1;
+    for &md in &month_days {
+        if days < md {
+            break;
+        }
+        days -= md;
+        mon += 1;
+    }
+    let day = days + 1;
+    format!("{y:04}-{mon:02}-{day:02} {h:02}:{m:02}:{s:02}")
 }
 
 #[derive(Debug, Deserialize)]

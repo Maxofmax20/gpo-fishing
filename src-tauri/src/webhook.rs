@@ -15,8 +15,16 @@ const COLOR_GOLD: u32 = 0xF59E0B;
 const COLOR_GREEN: u32 = 0x22C55E;
 const COLOR_RED: u32 = 0xEF4444;
 
+#[derive(Debug, Clone)]
+pub struct Notification {
+    pub title: String,
+    pub desc: String,
+    pub color: u32,
+    pub fields: Vec<(String, String)>,
+}
+
 pub struct WebhookQueue {
-    tx: Option<Sender<Value>>,
+    tx: Option<Sender<Notification>>,
     settings: Option<Arc<RwLock<Settings>>>,
 }
 
@@ -26,7 +34,7 @@ impl WebhookQueue {
     }
 
     pub fn start(settings: Arc<RwLock<Settings>>) -> Arc<Self> {
-        let (tx, rx) = unbounded::<Value>();
+        let (tx, rx) = unbounded::<Notification>();
         let s2 = Arc::clone(&settings);
         std::thread::Builder::new()
             .name("webhook".into())
@@ -40,73 +48,133 @@ impl WebhookQueue {
             .as_ref()
             .map(|s| {
                 let s = s.read();
-                s.webhook.enabled && !s.webhook.url.trim().is_empty()
+                if !s.webhook.enabled {
+                    return false;
+                }
+                let provider = s.webhook.provider.as_str();
+                let has_discord = !s.webhook.url.trim().is_empty();
+                let has_telegram = !s.webhook.telegram_bot_token.trim().is_empty()
+                    && !s.webhook.telegram_chat_id.trim().is_empty();
+                match provider {
+                    "discord" => has_discord,
+                    "telegram" => has_telegram,
+                    _ => has_discord || has_telegram,
+                }
             })
             .unwrap_or(false)
     }
 
-    fn send(&self, embed: Value) {
+    fn send(&self, notif: Notification) {
         if !self.enabled() {
             return;
         }
         if let Some(tx) = &self.tx {
-            let _ = tx.send(json!({ "embeds": [embed] }));
+            let _ = tx.send(notif);
         }
-    }
-
-    pub fn send_raw_now(url: &str, embed: Value) -> Result<(), String> {
-        post(url, &json!({ "embeds": [embed] })).map(|_| ())
     }
 
     pub fn test(&self) -> Result<(), String> {
-        let url = self
+        let (provider, url, tg_token, tg_chat) = self
             .settings
             .as_ref()
-            .map(|s| s.read().webhook.url.clone())
+            .map(|s| {
+                let s = s.read();
+                (
+                    s.webhook.provider.clone(),
+                    s.webhook.url.clone(),
+                    s.webhook.telegram_bot_token.clone(),
+                    s.webhook.telegram_chat_id.clone(),
+                )
+            })
             .unwrap_or_default();
-        if url.trim().is_empty() {
-            return Err("Webhook URL is empty".into());
+
+        let mut sent_any = false;
+        let mut errors = Vec::new();
+
+        if (provider == "discord" || provider == "both") && !url.trim().is_empty() {
+            let body = json!({
+                "embeds": [embed("Webhook connected", "GPO Autofish can reach this Discord channel.", COLOR_GREEN, vec![])]
+            });
+            match post_discord(&url, &body) {
+                Ok(_) => sent_any = true,
+                Err(e) => errors.push(format!("Discord: {e}")),
+            }
         }
-        Self::send_raw_now(
-            &url,
-            embed("Webhook connected", "GPO Autofish can reach this channel.", COLOR_GREEN, vec![]),
-        )
+
+        if (provider == "telegram" || provider == "both") && !tg_token.trim().is_empty() && !tg_chat.trim().is_empty() {
+            let text = "✅ <b>GPO Autofish</b>\nTelegram notifications connected successfully! You will receive alerts here.";
+            match post_telegram(&tg_token, &tg_chat, text) {
+                Ok(_) => sent_any = true,
+                Err(e) => errors.push(format!("Telegram: {e}")),
+            }
+        }
+
+        if !sent_any && errors.is_empty() {
+            return Err("Please configure your Telegram Bot Token & Chat ID (or Discord Webhook URL)".into());
+        }
+
+        if !errors.is_empty() {
+            return Err(errors.join("; "));
+        }
+
+        Ok(())
     }
 
     pub fn progress(&self, st: Stats) {
-        self.send(embed(
-            "Fishing progress",
-            "",
-            COLOR_BLUE,
-            vec![
-                field("Fish", &st.fish.to_string()),
-                field("Fruits", &st.fruits.to_string()),
-                field("Runtime", &fmt_runtime(st.runtime_s)),
-                field("Success", &format!("{:.0}%", st.success_rate * 100.0)),
+        self.send(Notification {
+            title: "Fishing Progress".into(),
+            desc: String::new(),
+            color: COLOR_BLUE,
+            fields: vec![
+                ("Fish".into(), st.fish.to_string()),
+                ("Fruits".into(), st.fruits.to_string()),
+                ("Runtime".into(), fmt_runtime(st.runtime_s)),
+                ("Success".into(), format!("{:.0}%", st.success_rate * 100.0)),
             ],
-        ));
+        });
     }
 
     pub fn fruit_drop(&self, d: &DropInfo) {
-        let (title, desc, color) = if d.is_legendary {
-            ("Legendary devil fruit dropped", "Pity reset to 0. You got a **legendary** devil fruit!", COLOR_GOLD)
+        let fruit_name = d.name.as_deref().unwrap_or("Devil Fruit");
+        let rarity = crate::core::fruit::fruit_rarity(fruit_name);
+        let (title, desc, color) = if rarity == crate::core::fruit::FruitRarity::Mythical {
+            ("🔥 MYTHICAL DEVIL FRUIT DROPPED!", format!("🎉 Extraordinary luck! You got a Mythical Devil Fruit: {fruit_name}!"), COLOR_GOLD)
+        } else if d.is_legendary || rarity == crate::core::fruit::FruitRarity::Legendary {
+            ("🌟 Legendary devil fruit dropped", format!("Pity reset to 0. You got a legendary devil fruit: {fruit_name}!"), COLOR_GOLD)
+        } else if rarity != crate::core::fruit::FruitRarity::Unknown {
+            ("🍇 Devil fruit dropped", format!("You got a {} devil fruit: {fruit_name}.", rarity.as_str()), COLOR_PURPLE)
         } else {
-            ("Devil fruit dropped", "You got a devil fruit.", COLOR_PURPLE)
+            ("🍇 Devil fruit dropped", format!("You got a devil fruit: {fruit_name}."), COLOR_PURPLE)
         };
-        self.send(embed(title, desc, color, vec![]));
+        self.send(Notification {
+            title: title.into(),
+            desc,
+            color,
+            fields: vec![("Raw OCR".into(), d.text.clone())],
+        });
     }
 
     pub fn spawn(&self, info: &SpawnInfo) {
-        let at = info.location.as_deref().map(|l| format!(" at **{l}**")).unwrap_or_default();
+        let at = info.location.as_deref().map(|l| format!(" at {l}")).unwrap_or_default();
         let (title, desc, color) = match &info.name {
-            Some(n) => ("Devil fruit spawned", format!("**{n}** has spawned{at}."), COLOR_PURPLE),
-            None => ("Devil fruit spawned", format!("A devil fruit has spawned{at}!"), COLOR_BLUE),
+            Some(n) => ("🌀 Devil fruit spawned", format!("{n} has spawned{at}."), COLOR_PURPLE),
+            None => ("🌀 Devil fruit spawned", format!("A devil fruit has spawned{at}!"), COLOR_BLUE),
         };
-        self.send(embed(title, &desc, color, vec![]));
+        self.send(Notification {
+            title: title.into(),
+            desc,
+            color,
+            fields: vec![],
+        });
     }
 
     pub fn purchase(&self, amount: u32) {
-        self.send(embed("Bait purchased", &format!("Bought {amount} bait."), COLOR_GREEN, vec![]));
+        self.send(Notification {
+            title: "🛒 Bait purchased".into(),
+            desc: format!("Bought {amount} bait."),
+            color: COLOR_GREEN,
+            fields: vec![],
+        });
     }
 
     pub fn recovery(&self, attempt: u32, reason: &str) {
@@ -114,7 +182,12 @@ impl WebhookQueue {
         if !flag {
             return;
         }
-        self.send(embed("Recovery", reason, COLOR_RED, vec![field("Attempt", &attempt.to_string())]));
+        self.send(Notification {
+            title: "⚠️ Macro Recovery".into(),
+            desc: reason.into(),
+            color: COLOR_RED,
+            fields: vec![("Attempt".into(), attempt.to_string())],
+        });
     }
 }
 
@@ -161,7 +234,13 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
-fn post(url: &str, body: &Value) -> Result<u16, String> {
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn post_discord(url: &str, body: &Value) -> Result<u16, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
@@ -175,20 +254,81 @@ fn post(url: &str, body: &Value) -> Result<u16, String> {
     }
 }
 
-fn worker(rx: Receiver<Value>, settings: Arc<RwLock<Settings>>) {
-    for body in rx.iter() {
-        let url = settings.read().webhook.url.clone();
-        if url.trim().is_empty() {
-            continue;
+fn post_telegram(token: &str, chat_id: &str, html: &str) -> Result<u16, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("https://api.telegram.org/bot{token}/sendMessage");
+    let body = json!({
+        "chat_id": chat_id,
+        "text": html,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": true,
+    });
+    let resp = client.post(&url).json(&body).send().map_err(|e| e.to_string())?;
+    let status = resp.status();
+    if status.is_success() {
+        Ok(status.as_u16())
+    } else {
+        let err_body = resp.text().unwrap_or_default();
+        Err(format!("Telegram error {}: {}", status.as_u16(), err_body))
+    }
+}
+
+fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>) {
+    for notif in rx.iter() {
+        let (provider, url, tg_token, tg_chat) = {
+            let s = settings.read();
+            (
+                s.webhook.provider.clone(),
+                s.webhook.url.clone(),
+                s.webhook.telegram_bot_token.clone(),
+                s.webhook.telegram_chat_id.clone(),
+            )
+        };
+
+        // 1. Discord delivery
+        if (provider == "discord" || provider == "both") && !url.trim().is_empty() {
+            let discord_fields: Vec<Value> = notif.fields.iter().map(|(k, v)| field(k, v)).collect();
+            let body = json!({
+                "embeds": [embed(&notif.title, &notif.desc, notif.color, discord_fields)]
+            });
+            let mut delay = Duration::from_secs(1);
+            for attempt in 0..3 {
+                match post_discord(&url, &body) {
+                    Ok(_) => break,
+                    Err(e) => {
+                        tracing::warn!("discord webhook attempt {} failed: {e}", attempt + 1);
+                        std::thread::sleep(delay);
+                        delay *= 2;
+                    }
+                }
+            }
         }
-        let mut delay = Duration::from_secs(1);
-        for attempt in 0..3 {
-            match post(&url, &body) {
-                Ok(_) => break,
-                Err(e) => {
-                    tracing::warn!("webhook attempt {} failed: {e}", attempt + 1);
-                    std::thread::sleep(delay);
-                    delay *= 2;
+
+        // 2. Telegram delivery
+        if (provider == "telegram" || provider == "both") && !tg_token.trim().is_empty() && !tg_chat.trim().is_empty() {
+            let mut tg_text = if notif.desc.is_empty() {
+                format!("<b>{}</b>", escape_html(&notif.title))
+            } else {
+                format!("<b>{}</b>\n{}", escape_html(&notif.title), escape_html(&notif.desc))
+            };
+            if !notif.fields.is_empty() {
+                tg_text.push_str("\n\n");
+                for (k, v) in &notif.fields {
+                    tg_text.push_str(&format!("• <b>{}</b>: {}\n", escape_html(k), escape_html(v)));
+                }
+            }
+            let mut delay = Duration::from_secs(1);
+            for attempt in 0..3 {
+                match post_telegram(&tg_token, &tg_chat, &tg_text) {
+                    Ok(_) => break,
+                    Err(e) => {
+                        tracing::warn!("telegram attempt {} failed: {e}", attempt + 1);
+                        std::thread::sleep(delay);
+                        delay *= 2;
+                    }
                 }
             }
         }

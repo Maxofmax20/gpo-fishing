@@ -5,7 +5,99 @@ pub const DEFAULT_FRUITS: &[&str] = &[
     "Tori", "Mochi", "Ope", "Venom", "Buddha", "Pteranodon", "Smoke", "Goru", "Yuki", "Yami",
     "Pika", "Magu", "Kage", "Mera", "Paw", "Goro", "Ito", "Hie", "Suna", "Gura", "Zushi", "Kira",
     "Spring", "Yomi", "Bomb", "Gomu", "Horo", "Mero", "Bari", "Heal", "Spin", "Suke", "Kilo",
+    "Dragon", "Uo", "Phoenix", "Light", "Dark", "Magma", "Flame", "Ice", "Shadow", "String",
+    "Sand", "Gravity", "Tremor", "Rumble", "Clear", "Barrier", "Love", "Rubber", "Bomu",
+    "Revive", "Chiyu", "Guru", "Glint", "Soru", "Soul", "Leopard", "Neko", "Lucci", "Bisu",
+    "Biscuit", "Moku", "Plume", "Bane", "Doku", "Daibutsu", "Hito", "Seiryu", "Nikyu", "Kaido",
 ];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FruitRarity {
+    Common,
+    Rare,
+    Epic,
+    Legendary,
+    Mythical,
+    Unknown,
+}
+
+impl FruitRarity {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Common => "Common",
+            Self::Rare => "Rare",
+            Self::Epic => "Epic",
+            Self::Legendary => "Legendary",
+            Self::Mythical => "Mythical",
+            Self::Unknown => "Unknown",
+        }
+    }
+
+    pub fn is_high_tier(&self) -> bool {
+        matches!(self, Self::Legendary | Self::Mythical)
+    }
+}
+
+pub fn fruit_rarity(name: &str) -> FruitRarity {
+    let lower = name.trim().to_lowercase();
+    match lower.as_str() {
+        // Mythical (9)
+        "tori" | "phoenix" | "mochi" | "ope" | "venom" | "doku" | "buddha" | "daibutsu" | "hito"
+        | "pteranodon" | "ryu" | "ptera" | "dragon" | "seiryu" | "uo" | "kaido" | "soru" | "soul"
+        | "leopard" | "neko" | "lucci" => FruitRarity::Mythical,
+
+        // Legendary (16)
+        "pika" | "glint" | "magu" | "magma" | "hie" | "ice" | "goro" | "rumble" | "lightning"
+        | "mera" | "flame" | "fire" | "suna" | "sand" | "yami" | "dark" | "darkness" | "yuki"
+        | "snow" | "moku" | "smoke" | "plume" | "gura" | "tremor" | "quake" | "zushi" | "gravity"
+        | "paw" | "nikyu" | "ito" | "string" | "kage" | "shadow" | "goru" | "gold" | "bisu"
+        | "biscuit" => FruitRarity::Legendary,
+
+        // Epic (3)
+        "yomi" | "revive" | "skeleton" | "spring" | "bane" | "kira" | "diamond" => FruitRarity::Epic,
+
+        // Rare (5)
+        "gomu" | "rubber" | "bomb" | "bomu" | "bari" | "barrier" | "mero" | "love" | "horo"
+        | "hollow" | "ghost" => FruitRarity::Rare,
+
+        // Common (4)
+        "kilo" | "weight" | "suke" | "clear" | "invisible" | "spin" | "guru" | "heal" | "chiyu" => {
+            FruitRarity::Common
+        }
+
+        _ => {
+            if lower.contains("phoenix") || lower.contains("tori") || lower.contains("mochi")
+                || lower.contains("ope") || lower.contains("venom") || lower.contains("doku")
+                || lower.contains("buddha") || lower.contains("daibutsu") || lower.contains("pteranodon")
+                || lower.contains("dragon") || lower.contains("seiryu") || lower.contains("soru")
+                || lower.contains("leopard") {
+                FruitRarity::Mythical
+            } else if lower.contains("pika") || lower.contains("magu") || lower.contains("hie")
+                || lower.contains("goro") || lower.contains("mera") || lower.contains("suna")
+                || lower.contains("yami") || lower.contains("yuki") || lower.contains("smoke")
+                || lower.contains("moku") || lower.contains("gura") || lower.contains("zushi")
+                || lower.contains("nikyu") || lower.contains("paw") || lower.contains("ito")
+                || lower.contains("kage") || lower.contains("goru") || lower.contains("bisu") {
+                FruitRarity::Legendary
+            } else if lower.contains("yomi") || lower.contains("bane") || lower.contains("kira") {
+                FruitRarity::Epic
+            } else if lower.contains("gomu") || lower.contains("bomu") || lower.contains("bomb")
+                || lower.contains("bari") || lower.contains("mero") || lower.contains("horo") {
+                FruitRarity::Rare
+            } else if lower.contains("kilo") || lower.contains("suke") || lower.contains("spin")
+                || lower.contains("chiyu") {
+                FruitRarity::Common
+            } else {
+                FruitRarity::Unknown
+            }
+        }
+    }
+}
+
+pub fn is_legendary_or_mythical(name: &str) -> bool {
+    fruit_rarity(name).is_high_tier()
+}
 
 pub const DEFAULT_DROP_PHRASES: &[&str] = &[
     "devil fruit",
@@ -56,6 +148,7 @@ impl Default for Lexicon {
 pub struct DropInfo {
     pub text: String,
     pub is_legendary: bool,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -156,8 +249,8 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
         return None;
     }
     if let Some(i) = word_at(&words, "item", thr) {
-        first_fruit(lex, words[i + 1..].iter().copied()).or_else(|| first_fruit(lex, words.iter().copied()))?;
-        return Some(DropInfo { is_legendary: is_legendary(&words), text });
+        let fruit_name = first_fruit(lex, words[i + 1..].iter().copied()).or_else(|| first_fruit(lex, words.iter().copied()))?;
+        return Some(DropInfo { is_legendary: is_legendary(&words), text, name: Some(fruit_name) });
     }
 
     let by_phrase = lex.drop_phrases.iter().any(|p| text.contains(p.as_str()));
@@ -165,7 +258,8 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
     if !(by_phrase || by_keywords) {
         return None;
     }
-    Some(DropInfo { is_legendary: is_legendary(&words), text })
+    let fruit_name = first_fruit(lex, words.iter().copied());
+    Some(DropInfo { is_legendary: is_legendary(&words), text, name: fruit_name })
 }
 
 fn mentions_spawn(lex: &Lexicon, words: &[&str], thr: f64) -> bool {
@@ -213,6 +307,68 @@ pub fn detect_catch(lex: &Lexicon, raw: &str) -> CatchVerdict {
         return CatchVerdict::Caught;
     }
     CatchVerdict::Unknown
+}
+
+/// Extracts the category ("fish" | "fruit") and specific item name from catch OCR text.
+pub fn parse_catch_item(lex: &Lexicon, raw: &str) -> (String, String) {
+    let clean = raw.trim();
+    if clean.is_empty() {
+        return ("fish".into(), "Fish".into());
+    }
+
+    // 1. Check if it is a devil fruit
+    if let Some(drop) = detect_drop(lex, raw) {
+        let name = drop.name.unwrap_or_else(|| {
+            if drop.is_legendary {
+                "Legendary Devil Fruit".into()
+            } else {
+                "Devil Fruit".into()
+            }
+        });
+        return ("fruit".into(), name);
+    }
+
+    // Check if any known fruit name appears in raw text
+    let norm = normalize(raw);
+    let words: Vec<&str> = norm.split_whitespace().collect();
+    if let Some(fruit_name) = first_fruit(lex, words.iter().copied()) {
+        return ("fruit".into(), fruit_name);
+    }
+
+    // 2. Extract item between < > or ( ) or [ ]
+    if let Some(start) = clean.find('<').or_else(|| clean.find('(')).or_else(|| clean.find('[')) {
+        if let Some(end) = clean[start + 1..].find('>').or_else(|| clean[start + 1..].find(')')).or_else(|| clean[start + 1..].find(']')) {
+            let inside = clean[start + 1..start + 1 + end].trim();
+            if !inside.is_empty() {
+                let in_norm = normalize(inside);
+                let in_words: Vec<&str> = in_norm.split_whitespace().collect();
+                if let Some(fn_name) = first_fruit(lex, in_words.iter().copied()) {
+                    return ("fruit".into(), fn_name);
+                }
+                return ("fish".into(), title_case(&inside.split_whitespace().collect::<Vec<_>>()));
+            }
+        }
+    }
+
+    // 3. Extract after "caught a", "caught an", "fished up a", "got a", "found a", etc.
+    let lower = clean.to_lowercase();
+    for prefix in &[
+        "caught a ", "caught an ", "caught ",
+        "fished up a ", "fished up an ", "fished up ",
+        "got a ", "got an ", "found a ", "found an "
+    ] {
+        if let Some(idx) = lower.find(prefix) {
+            let after = &clean[idx + prefix.len()..];
+            let end_idx = after.find(|c| c == '.' || c == '!' || c == '?' || c == '\n').unwrap_or(after.len());
+            let name = after[..end_idx].trim();
+            if !name.is_empty() {
+                let w: Vec<&str> = name.split_whitespace().collect();
+                return ("fish".into(), title_case(&w));
+            }
+        }
+    }
+
+    ("fish".into(), "Fish".into())
 }
 
 pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
@@ -371,5 +527,38 @@ mod tests {
         assert!(detect_spawn(&lex(), "New Item <Buddha>").is_none());
         assert!(detect_spawn(&lex(), "You fished up a Devil Fruit").is_none());
         assert!(detect_spawn(&lex(), "").is_none());
+    }
+
+    #[test]
+    fn parse_catch_items() {
+        let l = lex();
+        assert_eq!(parse_catch_item(&l, "New Item <Tuna>"), ("fish".into(), "Tuna".into()));
+        assert_eq!(parse_catch_item(&l, "New Item <Buddha>"), ("fruit".into(), "Buddha".into()));
+        assert_eq!(parse_catch_item(&l, "You caught a Tuna!"), ("fish".into(), "Tuna".into()));
+        assert_eq!(parse_catch_item(&l, "You caught a Golden Fish!"), ("fish".into(), "Golden Fish".into()));
+        assert_eq!(parse_catch_item(&l, "New Item <Colossal Shark>"), ("fish".into(), "Colossal Shark".into()));
+        assert_eq!(parse_catch_item(&l, "You fished up a Devil Fruit! Check your backpack"), ("fruit".into(), "Devil Fruit".into()));
+        assert_eq!(parse_catch_item(&l, "New Item <Mochi>"), ("fruit".into(), "Mochi".into()));
+    }
+
+    #[test]
+    fn fruit_rarity_classification() {
+        assert_eq!(fruit_rarity("Tori"), FruitRarity::Mythical);
+        assert_eq!(fruit_rarity("Mochi"), FruitRarity::Mythical);
+        assert_eq!(fruit_rarity("Ope"), FruitRarity::Mythical);
+        assert_eq!(fruit_rarity("Pika"), FruitRarity::Legendary);
+        assert_eq!(fruit_rarity("Magu"), FruitRarity::Legendary);
+        assert_eq!(fruit_rarity("Goro"), FruitRarity::Legendary);
+        assert_eq!(fruit_rarity("Yomi"), FruitRarity::Epic);
+        assert_eq!(fruit_rarity("Gomu"), FruitRarity::Rare);
+        assert_eq!(fruit_rarity("Kilo"), FruitRarity::Common);
+
+        assert!(is_legendary_or_mythical("Tori"));
+        assert!(is_legendary_or_mythical("Mochi"));
+        assert!(is_legendary_or_mythical("Pika"));
+        assert!(is_legendary_or_mythical("Zushi"));
+        assert!(!is_legendary_or_mythical("Yomi"));
+        assert!(!is_legendary_or_mythical("Gomu"));
+        assert!(!is_legendary_or_mythical("Kilo"));
     }
 }

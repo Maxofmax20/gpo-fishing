@@ -93,6 +93,18 @@ export default function Setup() {
           onToggle={() => toggle("keys")}
         >
           <KeyRow label="Rod" value={s.keys.rod} onChange={(v) => update((x) => void (x.keys.rod = v))} />
+          <div className="mt-3 pt-3 border-t border-line/60">
+            <div className="text-[12px] text-fg-dim mb-1 flex items-center justify-between">
+              <span>Rod slot indicator</span>
+              <span className="text-[11px] text-fg-mute">Auto-detected if unset</span>
+            </div>
+            <PointField
+              target="rod_slot"
+              value={s.points.rod_slot}
+              clearable
+              onCleared={() => update((x) => void (x.points.rod_slot = null))}
+            />
+          </div>
         </Row>
       </Section>
 

@@ -47,6 +47,7 @@ pub struct Lifetime {
     pub sessions: u32,
     pub last_fruit: Option<String>,
     pub last_spawn: Option<String>,
+    pub last_fish: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -60,6 +61,7 @@ pub struct Stats {
     pub restarts: u32,
     pub last_fruit: Option<String>,
     pub last_spawn: Option<String>,
+    pub last_fish: Option<String>,
     pub total: Lifetime,
 }
 

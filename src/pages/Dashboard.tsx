@@ -52,7 +52,12 @@ export default function Dashboard() {
       </div>
 
       <Section title="All time">
-        <Stat label="Fish caught" value={total.fish} sub={sessionNote(stats.fish)} />
+        <Stat
+          label="Fish caught"
+          value={total.fish}
+          sub={sessionNote(stats.fish)}
+          extra={total.last_fish ? <Pill tone="accent">{total.last_fish.slice(0, 40)}</Pill> : undefined}
+        />
         <Stat label="Failed reels" value={total.failed} sub={sessionNote(stats.failed)} />
         <Stat
           label="Devil fruits"

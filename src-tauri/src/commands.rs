@@ -133,6 +133,7 @@ pub enum OverlayTarget {
     Fruit2,
     Bait1,
     Bait2,
+    RodSlot,
 }
 
 impl OverlayTarget {
@@ -166,6 +167,7 @@ pub fn overlay_open(app: AppHandle, st: State<'_, AppState>, target: OverlayTarg
         OverlayTarget::Fruit2 => (None, s.points.fruit[1]),
         OverlayTarget::Bait1 => (None, s.points.bait[0]),
         OverlayTarget::Bait2 => (None, s.points.bait[1]),
+        OverlayTarget::RodSlot => (None, s.points.rod_slot),
     };
     let session = OverlaySession { target, roblox, overlay_origin: origin, region, point };
     *st.overlay_session.lock() = Some(serde_json::json!({ "kind": "single", "session": session }));
@@ -196,6 +198,7 @@ pub fn overlay_commit(app: AppHandle, st: State<'_, AppState>, commit: OverlayCo
         OverlayTarget::Fruit2 => s.points.fruit[1] = commit.point,
         OverlayTarget::Bait1 => s.points.bait[0] = commit.point,
         OverlayTarget::Bait2 => s.points.bait[1] = commit.point,
+        OverlayTarget::RodSlot => s.points.rod_slot = commit.point,
     }
     windows::hide_overlay(&app);
     settings_set(app, st, s.clone())?;
@@ -404,6 +407,21 @@ pub fn open_url(app: AppHandle, url: String) -> Result<(), String> {
 #[tauri::command]
 pub fn data_dir(st: State<'_, AppState>) -> String {
     st.store.dir().display().to_string()
+}
+
+#[tauri::command]
+pub fn catches_list(st: State<'_, AppState>) -> Vec<crate::config::CatchRecord> {
+    st.store.get_catches()
+}
+
+#[tauri::command]
+pub fn catches_clear(st: State<'_, AppState>) -> Result<(), String> {
+    st.store.clear_catches()
+}
+
+#[tauri::command]
+pub fn catches_open(st: State<'_, AppState>) -> Result<(), String> {
+    st.store.open_catches_file()
 }
 
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {

@@ -11,3 +11,6 @@ docs/
 legacy/
 *.key
 *.key.pub
+.tauri/
+release/
+catches.csv
