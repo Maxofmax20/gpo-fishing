@@ -49,6 +49,8 @@ export type Stats = {
   pity_legendary: number;
   fish_per_hour: number;
   estimated_peli: number;
+  since_purchase: number;
+  since_progress: number;
   total: Lifetime;
 };
 
@@ -72,7 +74,7 @@ export type Reading = {
 };
 export type Confidence = { bar: number; fish: number; marker: number; score: number };
 
-export type DropInfo = { text: string; is_legendary: boolean };
+export type DropInfo = { text: string; is_legendary: boolean; name?: string | null; pity?: string | null };
 export type SpawnInfo = { text: string; name: string | null; location: string | null };
 
 export type CatchRecord = {

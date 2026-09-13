@@ -69,6 +69,8 @@ pub struct Stats {
     pub pity_legendary: u32,
     pub fish_per_hour: f32,
     pub estimated_peli: u64,
+    pub since_purchase: u32,
+    pub since_progress: u32,
     pub total: Lifetime,
 }
 

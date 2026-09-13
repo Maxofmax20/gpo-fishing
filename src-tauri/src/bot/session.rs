@@ -155,6 +155,8 @@ impl Session {
             pity_legendary: self.pity_legendary,
             fish_per_hour,
             estimated_peli,
+            since_purchase: self.since_purchase,
+            since_progress: self.since_progress_webhook,
             total: self.lifetime(),
         }
     }

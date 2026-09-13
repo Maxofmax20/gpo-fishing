@@ -149,6 +149,7 @@ pub struct DropInfo {
     pub text: String,
     pub is_legendary: bool,
     pub name: Option<String>,
+    pub pity: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -219,8 +220,23 @@ fn match_fruit(lex: &Lexicon, word: &str) -> Option<String> {
     }
 }
 
-fn first_fruit<'a>(lex: &Lexicon, words: impl Iterator<Item = &'a str>) -> Option<String> {
+pub fn first_fruit<'a>(lex: &Lexicon, words: impl Iterator<Item = &'a str>) -> Option<String> {
     words.filter_map(|w| match_fruit(lex, w)).next()
+}
+
+pub fn extract_pity_text(raw: &str) -> Option<String> {
+    let lower = raw.to_lowercase();
+    for word in lower.split_whitespace() {
+        if word.contains('/') {
+            let clean: String = word.chars().filter(|c| c.is_ascii_digit() || *c == '/').collect();
+            if let Some((curr, total)) = clean.split_once('/') {
+                if !curr.is_empty() && !total.is_empty() && total.parse::<u32>().is_ok() {
+                    return Some(clean);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn title_case(words: &[&str]) -> String {
@@ -248,9 +264,17 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
     if mentions_spawn(lex, &words, thr) {
         return None;
     }
+    let pity = extract_pity_text(raw);
+    let is_pity_zero = pity.as_deref().map(|p| p.starts_with("0/")).unwrap_or(false);
+
     if let Some(i) = word_at(&words, "item", thr) {
         let fruit_name = first_fruit(lex, words[i + 1..].iter().copied()).or_else(|| first_fruit(lex, words.iter().copied()))?;
-        return Some(DropInfo { is_legendary: is_legendary(&words), text, name: Some(fruit_name) });
+        return Some(DropInfo {
+            is_legendary: is_legendary(&words) || is_pity_zero,
+            text,
+            name: Some(fruit_name),
+            pity,
+        });
     }
 
     let by_phrase = lex.drop_phrases.iter().any(|p| text.contains(p.as_str()));
@@ -259,7 +283,12 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
         return None;
     }
     let fruit_name = first_fruit(lex, words.iter().copied());
-    Some(DropInfo { is_legendary: is_legendary(&words), text, name: fruit_name })
+    Some(DropInfo {
+        is_legendary: is_legendary(&words) || is_pity_zero,
+        text,
+        name: fruit_name,
+        pity,
+    })
 }
 
 fn mentions_spawn(lex: &Lexicon, words: &[&str], thr: f64) -> bool {
@@ -407,12 +436,73 @@ pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
     Some(SpawnInfo { text, name, location })
 }
 
+/// Detects if an on-screen dialog indicates a Roblox disconnection or kick.
+pub fn parse_disconnect_text(raw: &str) -> Option<String> {
+    let lower = raw.to_lowercase();
+
+    let is_disconnect = lower.contains("disconnect")
+        || lower.contains("error code")
+        || lower.contains("check your internet")
+        || lower.contains("connection lost")
+        || lower.contains("lost connection")
+        || lower.contains("connection timed out")
+        || lower.contains("kicked from this");
+
+    if !is_disconnect {
+        return None;
+    }
+
+    let error_code = if let Some(idx) = lower.find("error code") {
+        let snippet = &raw[idx..];
+        let end = snippet
+            .find(')')
+            .or_else(|| snippet.find('\n'))
+            .unwrap_or_else(|| snippet.len().min(25));
+        Some(snippet[..end].trim().to_string())
+    } else {
+        None
+    };
+
+    if let Some(ec) = error_code {
+        Some(format!("Disconnected ({ec})"))
+    } else if lower.contains("check your internet") {
+        Some("Disconnected (Please check your internet connection)".to_string())
+    } else if lower.contains("same account") {
+        Some("Disconnected (Account launched from another device)".to_string())
+    } else if lower.contains("kicked") {
+        Some("Disconnected (Kicked from game)".to_string())
+    } else {
+        Some("Disconnected from Roblox server".to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn lex() -> Lexicon {
         Lexicon::default()
+    }
+
+    #[test]
+    fn parse_disconnect_dialog() {
+        let raw = "Disconnected\n\nPlease check your internet connection and try again.\n(Error Code: 277)\n\nLeave Reconnect";
+        assert_eq!(parse_disconnect_text(raw), Some("Disconnected (Error Code: 277)".into()));
+
+        let raw2 = "Please check your internet connection and try again.";
+        assert_eq!(parse_disconnect_text(raw2), Some("Disconnected (Please check your internet connection)".into()));
+
+        let raw3 = "You have been kicked from this experience (Error Code: 267)";
+        assert_eq!(parse_disconnect_text(raw3), Some("Disconnected (Error Code: 267)".into()));
+
+        let raw4 = "This game session has ended (Error Code: 279)";
+        assert_eq!(parse_disconnect_text(raw4), Some("Disconnected (Error Code: 279)".into()));
+
+        let raw5 = "Leave Reconnect";
+        assert!(parse_disconnect_text(raw5).is_none());
+
+        let fish_text = "You caught a Tuna! Legendary Pity: 4/100";
+        assert!(parse_disconnect_text(fish_text).is_none());
     }
 
     #[test]

@@ -83,6 +83,37 @@ export default function Dashboard() {
         {total.last_spawn && <Stat label="Last spawn" value={total.last_spawn} />}
       </Section>
 
+      <Section title="Schedules & Automation">
+        <Stat
+          label="Bait restock"
+          value={
+            settings?.features.auto_purchase
+              ? `${Math.max(0, (settings?.purchase.every_n_catches ?? 10) - (stats.since_purchase ?? 0))} fish left`
+              : "Disabled"
+          }
+          sub={settings?.features.auto_purchase ? `every ${settings?.purchase.every_n_catches ?? 10} fish` : undefined}
+          extra={
+            settings?.features.auto_purchase ? (
+              <Pill tone="accent">🛒 {stats.since_purchase ?? 0} / {settings?.purchase.every_n_catches ?? 10}</Pill>
+            ) : undefined
+          }
+        />
+        <Stat
+          label="Progress notification"
+          value={
+            settings?.webhook.progress
+              ? `${Math.max(0, (settings?.webhook.progress_every_n ?? 50) - (stats.since_progress ?? 0))} fish left`
+              : "Disabled"
+          }
+          sub={settings?.webhook.progress ? `every ${settings?.webhook.progress_every_n ?? 50} fish` : undefined}
+          extra={
+            settings?.webhook.progress ? (
+              <Pill tone="warn">📱 {stats.since_progress ?? 0} / {settings?.webhook.progress_every_n ?? 50}</Pill>
+            ) : undefined
+          }
+        />
+      </Section>
+
       <Section title="Economy & Efficiency">
         <Stat
           label="Catch rate"

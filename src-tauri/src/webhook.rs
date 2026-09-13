@@ -139,25 +139,68 @@ impl WebhookQueue {
     pub fn fruit_drop(&self, d: &DropInfo, photo: Option<Vec<u8>>) {
         let fruit_name = d.name.as_deref().unwrap_or("Devil Fruit");
         let rarity = crate::core::fruit::fruit_rarity(fruit_name);
-        let (title, desc, color) = if rarity == crate::core::fruit::FruitRarity::Mythical {
-            ("🔥 MYTHICAL DEVIL FRUIT DROPPED!", format!("🎉 Extraordinary luck! You got a Mythical Devil Fruit: {fruit_name}!"), COLOR_GOLD)
-        } else if d.is_legendary || rarity == crate::core::fruit::FruitRarity::Legendary {
-            ("🌟 Legendary devil fruit dropped", format!("Pity reset to 0. You got a legendary devil fruit: {fruit_name}!"), COLOR_GOLD)
-        } else if rarity != crate::core::fruit::FruitRarity::Unknown {
-            ("🍇 Devil fruit dropped", format!("You got a {} devil fruit: {fruit_name}.", rarity.as_str()), COLOR_PURPLE)
+        let pity_info = if let Some(p) = &d.pity {
+            if p.starts_with("0/") || d.is_legendary {
+                format!("🌟 Legendary Pity: {p} (HIT! Guaranteed Legendary/Mythical!)")
+            } else {
+                format!("⚡ Legendary Pity: {p}")
+            }
+        } else if d.is_legendary {
+            "🌟 Legendary Pity: 0/100 (HIT! Guaranteed Legendary/Mythical!)".into()
         } else {
-            ("🍇 Devil fruit dropped", format!("You got a devil fruit: {fruit_name}."), COLOR_PURPLE)
+            "⚡ Check backpack".into()
+        };
+
+        let (title, desc, color) = if rarity == crate::core::fruit::FruitRarity::Mythical {
+            ("🔥 MYTHICAL DEVIL FRUIT DROPPED!", format!("🎉 Extraordinary luck! You got a Mythical Devil Fruit: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
+        } else if d.is_legendary || rarity == crate::core::fruit::FruitRarity::Legendary {
+            ("🌟 Legendary Devil Fruit Dropped!", format!("Pity reset to 0! You got a legendary devil fruit: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
+        } else if rarity != crate::core::fruit::FruitRarity::Unknown {
+            ("🍇 Devil Fruit Dropped!", format!("You got a {} devil fruit: {fruit_name}.\n\n{pity_info}", rarity.as_str()), COLOR_PURPLE)
+        } else {
+            ("🍇 Devil Fruit Dropped!", format!("You got a devil fruit drop!\n\n{pity_info}"), COLOR_PURPLE)
         };
         self.send(Notification {
             title: title.into(),
             desc,
             color,
-            fields: vec![("Raw OCR".into(), d.text.clone())],
+            fields: vec![
+                ("Fruit Name".into(), fruit_name.to_string()),
+                ("Pity Status".into(), pity_info),
+                ("Raw OCR".into(), d.text.clone()),
+            ],
             photo,
         });
     }
 
-    pub fn disconnect(&self, reason: &str) {
+    pub fn fruit_stored(&self, fruit_name: &str, photo: Option<Vec<u8>>) {
+        let rarity = crate::core::fruit::fruit_rarity(fruit_name);
+        let title = if rarity == crate::core::fruit::FruitRarity::Mythical {
+            "🔥 Mythical Devil Fruit Stored!"
+        } else if rarity == crate::core::fruit::FruitRarity::Legendary {
+            "🌟 Legendary Devil Fruit Stored!"
+        } else {
+            "📦 Devil Fruit Stored!"
+        };
+        let desc = if rarity != crate::core::fruit::FruitRarity::Unknown {
+            format!("Successfully stored <b>{fruit_name}</b> ({}) into your inventory/bag.", rarity.as_str())
+        } else {
+            format!("Successfully stored <b>{fruit_name}</b> into your inventory/bag.")
+        };
+        self.send(Notification {
+            title: title.into(),
+            desc,
+            color: COLOR_GREEN,
+            fields: vec![
+                ("Fruit Name".into(), fruit_name.to_string()),
+                ("Rarity".into(), rarity.as_str().to_string()),
+                ("Status".into(), "Stored safely in inventory".into()),
+            ],
+            photo,
+        });
+    }
+
+    pub fn disconnect(&self, reason: &str, photo: Option<Vec<u8>>) {
         let flag = self.settings.as_ref().map(|s| s.read().webhook.disconnect_alert).unwrap_or(true);
         if !flag {
             return;
@@ -167,7 +210,7 @@ impl WebhookQueue {
             desc: format!("{reason}. Macro is safely paused."),
             color: COLOR_RED,
             fields: vec![("Status".into(), "Paused".into())],
-            photo: None,
+            photo,
         });
     }
 

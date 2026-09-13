@@ -111,6 +111,9 @@ export default function Features() {
             <Field label="Buy every">
               <Stepper value={s.purchase.every_n_catches} min={1} max={500} suffix="fish" onChange={(v) => update((x) => void (x.purchase.every_n_catches = v))} />
             </Field>
+            <div className="text-[11px] text-fg-mute pb-2">
+              🛒 Restocks bait from merchant every {s.purchase.every_n_catches} fish. (Separated from Telegram alerts)
+            </div>
             <Field label="Pause between clicks">
               <Slider value={s.purchase.click_delay_ms} min={200} max={3000} step={50} format={(v) => `${v} ms`} onChange={(v) => update((x) => void (x.purchase.click_delay_ms = v))} />
             </Field>
@@ -273,6 +276,9 @@ export default function Features() {
           <Field label="Progress every">
             <Stepper value={s.webhook.progress_every_n} min={1} max={500} suffix="fish" onChange={(v) => update((x) => void (x.webhook.progress_every_n = v))} />
           </Field>
+          <div className="text-[11px] text-fg-mute pb-2">
+            📱 Sends Telegram / Discord catch statistics update every {s.webhook.progress_every_n} fish. (Separated from bait restocking)
+          </div>
           <div className="mt-2 border-t border-line">
             {(
               [

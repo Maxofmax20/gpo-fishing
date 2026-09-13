@@ -355,7 +355,7 @@ pub fn purchase(ctx: &Ctx) -> bool {
     true
 }
 
-pub fn store_fruit(ctx: &Ctx, protect_drop: bool) -> bool {
+pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
     let s = ctx.settings();
     if !s.features.fruit_storage {
         return true;
@@ -366,9 +366,9 @@ pub fn store_fruit(ctx: &Ctx, protect_drop: bool) -> bool {
     };
     ctx.set_state(BotState::StoringFruit, None);
     if protect_drop {
-        ctx.log_info("🛡️ Storing protected fruit (drop/backspace disabled)");
+        ctx.log_info(&format!("🛡️ Storing protected {fruit_name} (drop/backspace disabled)"));
     } else {
-        ctx.log_info("Storing fruit");
+        ctx.log_info(&format!("Storing {fruit_name} in inventory"));
     }
     let fs = &s.fruit_storage;
 
@@ -402,6 +402,16 @@ pub fn store_fruit(ctx: &Ctx, protect_drop: bool) -> bool {
             ctx.log_info("🛡️ Protected fruit kept in slot (drop prevented)");
         }
     }
+
+    let photo = if s.webhook.send_screenshot {
+        ctx.roblox_rect()
+            .and_then(|r| ctx.platform.capture.grab(r).ok())
+            .map(|f| f.downscale(1280))
+            .and_then(|f| f.to_png_bytes().ok())
+    } else {
+        None
+    };
+    ctx.webhook.fruit_stored(fruit_name, photo);
 
     if let Some(fp) = fishing_point(ctx) {
         ctx.platform.input.move_to(fp);

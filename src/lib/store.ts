@@ -38,6 +38,8 @@ const EMPTY_STATS: Stats = {
   pity_legendary: 0,
   fish_per_hour: 0,
   estimated_peli: 0,
+  since_purchase: 0,
+  since_progress: 0,
   total: { fish: 0, failed: 0, fruits: 0, bait_purchased: 0, runtime_s: 0, sessions: 0, last_fish: null, last_fruit: null, last_spawn: null, pity_fruit: 0, pity_legendary: 0, estimated_peli: 0 },
 };
 

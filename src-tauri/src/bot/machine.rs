@@ -15,6 +15,7 @@ enum Outcome {
     Timeout,
     Lost,
     Stopped,
+    Disconnected(String),
 }
 
 pub fn run(ctx: &Ctx, skip_setup: bool) {
@@ -39,6 +40,13 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
         if ctx.roblox_rect().is_none() && !wait_for_roblox(ctx, true) {
             return;
         }
+        if let Some(reason) = check_disconnect(ctx) {
+            ctx.set_state(BotState::Paused, Some(format!("Roblox disconnected: {reason}")));
+            ctx.log_warn(&format!("⚠️ Roblox disconnect detected: {reason}"));
+            let photo = capture_screenshot_bytes(ctx);
+            ctx.webhook.disconnect(&reason, photo);
+            return;
+        }
         if !ensure_front(ctx) {
             return;
         }
@@ -51,7 +59,7 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
         if !actions::cast(ctx) {
             return;
         }
-        if !ctx.sleep_ms(400) {
+        if !ctx.sleep_ms(150) {
             return;
         }
         tracker.reset();
@@ -59,6 +67,13 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
         ctx.release_mouse();
         match outcome {
             Outcome::Stopped => return,
+            Outcome::Disconnected(reason) => {
+                ctx.set_state(BotState::Paused, Some(format!("Roblox disconnected: {reason}")));
+                ctx.log_warn(&format!("⚠️ Roblox disconnect detected: {reason}"));
+                let photo = capture_screenshot_bytes(ctx);
+                ctx.webhook.disconnect(&reason, photo);
+                return;
+            }
             Outcome::Ended => {
                 let (verdict, text) = verify_catch(ctx);
                 match verdict {
@@ -69,10 +84,11 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
                     }
                     verdict => {
                         let (kind, item_name) = fruit::parse_catch_item(&ctx.settings.read().lexicon, &text);
+                        let is_fruit = kind == "fruit";
                         {
                             let mut s = ctx.session.lock();
                             s.record(true);
-                            if kind == "fruit" {
+                            if is_fruit {
                                 s.fruits += 1;
                                 s.last_fruit = Some(item_name.clone());
                             } else {
@@ -87,15 +103,36 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
                         if !post_catch(ctx, &text, &mut rod_equipped) {
                             return;
                         }
+                        // Fast recast: If a normal fish was caught, immediately recast without long post-catch wait
+                        if !is_fruit {
+                            if !ctx.sleep_ms(100) {
+                                return;
+                            }
+                            continue;
+                        }
                     }
                 }
             }
             Outcome::Timeout => {
+                if let Some(reason) = check_disconnect(ctx) {
+                    ctx.set_state(BotState::Paused, Some(format!("Roblox disconnected: {reason}")));
+                    ctx.log_warn(&format!("⚠️ Roblox disconnect detected: {reason}"));
+                    let photo = capture_screenshot_bytes(ctx);
+                    ctx.webhook.disconnect(&reason, photo);
+                    return;
+                }
                 ctx.session.lock().record(false);
                 ctx.emit_stats();
                 ctx.log_debug("No bite; recasting");
             }
             Outcome::Lost => {
+                if let Some(reason) = check_disconnect(ctx) {
+                    ctx.set_state(BotState::Paused, Some(format!("Roblox disconnected: {reason}")));
+                    ctx.log_warn(&format!("⚠️ Roblox disconnect detected: {reason}"));
+                    let photo = capture_screenshot_bytes(ctx);
+                    ctx.webhook.disconnect(&reason, photo);
+                    return;
+                }
                 ctx.session.lock().record(false);
                 ctx.emit_stats();
                 ctx.log_debug("Bar lost during tracking; recasting");
@@ -115,7 +152,8 @@ fn wait_for_roblox(ctx: &Ctx, notify_disconnect: bool) -> bool {
     ctx.set_state(BotState::WaitingForRoblox, None);
     ctx.log_warn("Waiting for Roblox window");
     if notify_disconnect {
-        ctx.webhook.disconnect("Roblox disconnected or window closed");
+        let photo = capture_screenshot_bytes(ctx);
+        ctx.webhook.disconnect("Roblox disconnected or window closed", photo);
     }
     while ctx.alive() {
         if ctx.roblox_rect().is_some() {
@@ -138,6 +176,13 @@ fn ensure_front(ctx: &Ctx) -> bool {
     while ctx.alive() {
         if ctx.roblox_rect().is_none() {
             return wait_for_roblox(ctx, true);
+        }
+        if let Some(reason) = check_disconnect(ctx) {
+            ctx.set_state(BotState::Paused, Some(format!("Roblox disconnected: {reason}")));
+            ctx.log_warn(&format!("⚠️ Roblox disconnect detected: {reason}"));
+            let photo = capture_screenshot_bytes(ctx);
+            ctx.webhook.disconnect(&reason, photo);
+            return false;
         }
         if ctx.ensure_roblox_focus() {
             ctx.log_info("Roblox is back in front");
@@ -181,9 +226,35 @@ fn grab_rect(ctx: &Ctx, rect: PxRect) -> Option<Frame> {
     }
 }
 
+pub(super) fn check_disconnect(ctx: &Ctx) -> Option<String> {
+    if !ctx.platform.ocr.available() {
+        return None;
+    }
+    let client = ctx.roblox_rect()?;
+    // The Roblox disconnect modal is centered in the client area
+    let center_region = RelRect {
+        x: 0.20,
+        y: 0.20,
+        w: 0.60,
+        h: 0.60,
+    };
+    let px_rect = center_region.to_px(&client);
+    let frame = grab_rect(ctx, px_rect)?;
+    let text = ctx.platform.ocr.read(&frame).ok()?;
+    fruit::parse_disconnect_text(&text)
+}
+
+pub(super) fn capture_screenshot_bytes(ctx: &Ctx) -> Option<Vec<u8>> {
+    ctx.roblox_rect()
+        .and_then(|r| ctx.platform.capture.grab(r).ok())
+        .map(|f| f.downscale(1280))
+        .and_then(|f| f.to_png_bytes().ok())
+}
+
 fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_checked_at: &mut Instant) -> Outcome {
     ctx.set_state(BotState::WaitingForBite, None);
     let started = Instant::now();
+    let mut disconnect_checked_at = Instant::now() - Duration::from_secs(3600);
     let mut tracking_since: Option<Instant> = None;
     let mut confirm = 0u32;
     let mut misses = 0u32;
@@ -226,6 +297,13 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_check
             if started.elapsed().as_secs_f32() > scan_timeout {
                 finish_trace(trace.take(), "timeout", ctx);
                 return Outcome::Timeout;
+            }
+            if disconnect_checked_at.elapsed() > Duration::from_secs(3) {
+                disconnect_checked_at = Instant::now();
+                if let Some(reason) = check_disconnect(ctx) {
+                    finish_trace(trace.take(), "disconnect", ctx);
+                    return Outcome::Disconnected(reason);
+                }
             }
             if alerts && spawn_checked_at.elapsed() > spawn_interval {
                 *spawn_checked_at = Instant::now();
@@ -416,7 +494,8 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
     let wants_ocr = s.features.fruit_storage || (s.webhook.enabled && s.webhook.fruit_drop);
     if wants_ocr && ctx.platform.ocr.available() {
         let mut drop = fruit::detect_drop(&s.lexicon, first_text);
-        for _ in 0..s.ocr.post_catch_reads.max(1) {
+        if drop.is_none() && first_text.trim().is_empty() {
+            for _ in 0..s.ocr.post_catch_reads.max(1) {
             if drop.is_some() {
                 break;
             }
@@ -435,7 +514,8 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
                 return false;
             }
         }
-        if let Some(d) = drop {
+    }
+    if let Some(d) = drop {
             let fruit_name = d.name.clone().unwrap_or_else(|| {
                 fruit::parse_catch_item(&s.lexicon, &d.text).1
             });
@@ -479,7 +559,7 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
             if is_protected {
                 ctx.log_info(&format!("🛡️ Protected {label} - preventing drop"));
             }
-            if !actions::store_fruit(ctx, is_protected) {
+            if !actions::store_fruit(ctx, &fruit_name, is_protected) {
                 return false;
             }
             *rod_equipped = false;

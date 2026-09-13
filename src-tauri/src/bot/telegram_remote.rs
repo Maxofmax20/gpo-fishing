@@ -27,6 +27,8 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
         }
     };
 
+    let mut registered_token = String::new();
+
     loop {
         let (token, expected_chat, remote_enabled) = {
             let s = settings.read();
@@ -40,6 +42,11 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
         if !remote_enabled || token.is_empty() || expected_chat.is_empty() {
             std::thread::sleep(Duration::from_secs(4));
             continue;
+        }
+
+        if registered_token != token {
+            register_bot_commands(&client, &token);
+            registered_token = token.clone();
         }
 
         let url = format!(
@@ -91,7 +98,7 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
                     .unwrap_or_default()
                     .trim();
 
-                handle_command(&bot, &token, &chat_id_clean, text);
+                handle_command(&bot, &settings, &token, &chat_id_clean, text);
             }
         }
 
@@ -99,7 +106,13 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
     }
 }
 
-fn handle_command(bot: &Arc<Bot>, token: &str, chat_id: &str, text: &str) {
+fn handle_command(
+    bot: &Arc<Bot>,
+    settings: &Arc<RwLock<Settings>>,
+    token: &str,
+    chat_id: &str,
+    text: &str,
+) {
     let lower = text.to_lowercase();
     let cmd = lower.split_whitespace().next().unwrap_or("");
     let cmd_clean = cmd.split('@').next().unwrap_or(""); // Handle e.g. /status@bot_name
@@ -240,19 +253,111 @@ fn handle_command(bot: &Arc<Bot>, token: &str, chat_id: &str, text: &str) {
                 "▶️ <b>GPO Autofish started remotely!</b>\nSend /status to check live progress.",
             );
         }
+        "/buybait" | "/buy" | "buybait" | "buy" => {
+            let _ = post_telegram(token, chat_id, "🛒 <b>Triggering merchant bait purchase...</b>");
+            if crate::bot::actions::purchase(&bot.ctx()) {
+                let _ = post_telegram(token, chat_id, "✅ <b>Bait purchased successfully!</b> Resuming fishing.");
+            } else {
+                let _ = post_telegram(
+                    token,
+                    chat_id,
+                    "⚠️ <b>Bait purchase failed.</b> Make sure Auto Purchase is enabled and merchant points are set in Setup.",
+                );
+            }
+        }
+        cmd if cmd.starts_with("/setbuy") || cmd.starts_with("setbuy") => {
+            let parts: Vec<&str> = text.split_whitespace().collect();
+            if let Some(num_str) = parts.get(1) {
+                if let Ok(n) = num_str.parse::<u32>() {
+                    if (1..=5000).contains(&n) {
+                        {
+                            let mut s = settings.write();
+                            s.purchase.every_n_catches = n;
+                            let _ = bot.ctx().store.save(&s);
+                        }
+                        let _ = post_telegram(
+                            token,
+                            chat_id,
+                            &format!("⚙️ <b>Bait Purchase Interval updated!</b>\nMacro will now buy bait every <b>{n}</b> fish."),
+                        );
+                    } else {
+                        let _ = post_telegram(token, chat_id, "⚠️ Number must be between 1 and 5000. Usage: <code>/setbuy 50</code>");
+                    }
+                } else {
+                    let _ = post_telegram(token, chat_id, "⚠️ Invalid number. Usage: <code>/setbuy 50</code>");
+                }
+            } else {
+                let current = settings.read().purchase.every_n_catches;
+                let _ = post_telegram(token, chat_id, &format!("ℹ️ Current bait purchase interval: every <b>{current}</b> fish.\nTo change it, send e.g.: <code>/setbuy 50</code>"));
+            }
+        }
+        cmd if cmd.starts_with("/setprogress") || cmd.starts_with("setprogress") => {
+            let parts: Vec<&str> = text.split_whitespace().collect();
+            if let Some(num_str) = parts.get(1) {
+                if let Ok(n) = num_str.parse::<u32>() {
+                    if (1..=5000).contains(&n) {
+                        {
+                            let mut s = settings.write();
+                            s.webhook.progress_every_n = n;
+                            let _ = bot.ctx().store.save(&s);
+                        }
+                        let _ = post_telegram(
+                            token,
+                            chat_id,
+                            &format!("📱 <b>Telegram Progress Interval updated!</b>\nBot will now send updates every <b>{n}</b> fish."),
+                        );
+                    } else {
+                        let _ = post_telegram(token, chat_id, "⚠️ Number must be between 1 and 5000. Usage: <code>/setprogress 100</code>");
+                    }
+                } else {
+                    let _ = post_telegram(token, chat_id, "⚠️ Invalid number. Usage: <code>/setprogress 100</code>");
+                }
+            } else {
+                let current = settings.read().webhook.progress_every_n;
+                let _ = post_telegram(token, chat_id, &format!("ℹ️ Current progress update interval: every <b>{current}</b> fish.\nTo change it, send e.g.: <code>/setprogress 100</code>"));
+            }
+        }
         "/help" | "help" => {
             let help_text = "🎮 <b>GPO Autofish Remote Controls</b>\n\n\
-                /status - View live stats & Roblox screenshot\n\
-                /screenshot - Instant Roblox screenshot on demand\n\
-                /pity - Quick Devil Fruit pity counter\n\
-                /recast - Reset rod & recast immediately\n\
-                /update - Check & apply new app updates\n\
-                /stop - Pause the macro\n\
-                /start - Start or resume the macro\n\
-                /help - Show this commands list";
+                📊 /status - View live stats & screenshot\n\
+                📸 /screenshot - Instant Roblox screenshot on demand\n\
+                ⚡ /pity - Quick Devil Fruit pity counter\n\
+                🔄 /recast - Reset rod & recast immediately\n\
+                🛒 /buybait - Force merchant bait purchase now\n\
+                ⚙️ /setbuy &lt;N&gt; - Set catches between bait purchases (e.g. /setbuy 50)\n\
+                📱 /setprogress &lt;N&gt; - Set catches between progress pings (e.g. /setprogress 100)\n\
+                ▶️ /start - Start or resume macro\n\
+                🛑 /stop - Pause macro\n\
+                🚀 /update - Check & apply new app update\n\
+                ❓ /help - Show this commands list\n\n\
+                <i>💡 Tip: Tap the <b>[/] Menu</b> button next to the input box for one-tap commands!</i>";
             let _ = post_telegram(token, chat_id, help_text);
         }
         _ => {}
+    }
+}
+
+fn register_bot_commands(client: &reqwest::blocking::Client, token: &str) {
+    let url = format!("https://api.telegram.org/bot{token}/setMyCommands");
+    let payload = serde_json::json!({
+        "commands": [
+            { "command": "status", "description": "📊 Live stats & Roblox screenshot" },
+            { "command": "screenshot", "description": "📸 Instant Roblox screen capture" },
+            { "command": "pity", "description": "⚡ Devil fruit pity status" },
+            { "command": "recast", "description": "🔄 Reset rod & recast immediately" },
+            { "command": "buybait", "description": "🛒 Buy bait at merchant right now" },
+            { "command": "setbuy", "description": "⚙️ Set catches between bait buys (/setbuy N)" },
+            { "command": "setprogress", "description": "📱 Set catches between progress pings (/setprogress N)" },
+            { "command": "start", "description": "▶️ Start or resume fishing macro" },
+            { "command": "stop", "description": "🛑 Pause fishing macro" },
+            { "command": "update", "description": "🚀 Check and apply latest app update" },
+            { "command": "help", "description": "❓ Show all commands and controls" }
+        ]
+    });
+    if let Err(e) = client.post(&url).json(&payload).send() {
+        tracing::warn!("Failed to register Telegram bot commands: {e}");
+    } else {
+        tracing::info!("Telegram bot commands menu registered successfully");
     }
 }
 
