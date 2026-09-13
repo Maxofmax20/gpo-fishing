@@ -4,6 +4,7 @@ pub mod machine;
 pub mod session;
 pub mod trace;
 pub mod watchdog;
+pub mod telegram_remote;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};

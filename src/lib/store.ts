@@ -34,7 +34,9 @@ const EMPTY_STATS: Stats = {
   last_fish: null,
   last_fruit: null,
   last_spawn: null,
-  total: { fish: 0, failed: 0, fruits: 0, bait_purchased: 0, runtime_s: 0, sessions: 0, last_fish: null, last_fruit: null, last_spawn: null },
+  pity_fruit: 0,
+  pity_legendary: 0,
+  total: { fish: 0, failed: 0, fruits: 0, bait_purchased: 0, runtime_s: 0, sessions: 0, last_fish: null, last_fruit: null, last_spawn: null, pity_fruit: 0, pity_legendary: 0 },
 };
 
 let subscribed = false;

@@ -21,6 +21,7 @@ pub struct Notification {
     pub desc: String,
     pub color: u32,
     pub fields: Vec<(String, String)>,
+    pub photo: Option<Vec<u8>>,
 }
 
 pub struct WebhookQueue {
@@ -131,10 +132,11 @@ impl WebhookQueue {
                 ("Runtime".into(), fmt_runtime(st.runtime_s)),
                 ("Success".into(), format!("{:.0}%", st.success_rate * 100.0)),
             ],
+            photo: None,
         });
     }
 
-    pub fn fruit_drop(&self, d: &DropInfo) {
+    pub fn fruit_drop(&self, d: &DropInfo, photo: Option<Vec<u8>>) {
         let fruit_name = d.name.as_deref().unwrap_or("Devil Fruit");
         let rarity = crate::core::fruit::fruit_rarity(fruit_name);
         let (title, desc, color) = if rarity == crate::core::fruit::FruitRarity::Mythical {
@@ -151,6 +153,35 @@ impl WebhookQueue {
             desc,
             color,
             fields: vec![("Raw OCR".into(), d.text.clone())],
+            photo,
+        });
+    }
+
+    pub fn disconnect(&self, reason: &str) {
+        let flag = self.settings.as_ref().map(|s| s.read().webhook.disconnect_alert).unwrap_or(true);
+        if !flag {
+            return;
+        }
+        self.send(Notification {
+            title: "⚠️ Roblox Disconnected".into(),
+            desc: format!("{reason}. Macro is safely paused."),
+            color: COLOR_RED,
+            fields: vec![("Status".into(), "Paused".into())],
+            photo: None,
+        });
+    }
+
+    pub fn bait_depleted(&self) {
+        let flag = self.settings.as_ref().map(|s| s.read().webhook.bait_alert).unwrap_or(true);
+        if !flag {
+            return;
+        }
+        self.send(Notification {
+            title: "🎣 Bait Depleted".into(),
+            desc: "Your fishing bait has run out. Macro has stopped safely to avoid wasting casts.".into(),
+            color: COLOR_GOLD,
+            fields: vec![("Action".into(), "Restock bait to continue".into())],
+            photo: None,
         });
     }
 
@@ -165,6 +196,7 @@ impl WebhookQueue {
             desc,
             color,
             fields: vec![],
+            photo: None,
         });
     }
 
@@ -174,6 +206,7 @@ impl WebhookQueue {
             desc: format!("Bought {amount} bait."),
             color: COLOR_GREEN,
             fields: vec![],
+            photo: None,
         });
     }
 
@@ -187,6 +220,7 @@ impl WebhookQueue {
             desc: reason.into(),
             color: COLOR_RED,
             fields: vec![("Attempt".into(), attempt.to_string())],
+            photo: None,
         });
     }
 }
@@ -254,7 +288,28 @@ fn post_discord(url: &str, body: &Value) -> Result<u16, String> {
     }
 }
 
-fn post_telegram(token: &str, chat_id: &str, html: &str) -> Result<u16, String> {
+fn post_discord_photo(url: &str, body: &Value, photo: &[u8]) -> Result<u16, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let part = reqwest::blocking::multipart::Part::bytes(photo.to_vec())
+        .file_name("catch.png")
+        .mime_str("image/png")
+        .map_err(|e| e.to_string())?;
+    let form = reqwest::blocking::multipart::Form::new()
+        .text("payload_json", body.to_string())
+        .part("files[0]", part);
+    let resp = client.post(url).multipart(form).send().map_err(|e| e.to_string())?;
+    let status = resp.status();
+    if status.is_success() {
+        Ok(status.as_u16())
+    } else {
+        Err(format!("Discord returned {}", status.as_u16()))
+    }
+}
+
+pub fn post_telegram(token: &str, chat_id: &str, html: &str) -> Result<u16, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
@@ -276,6 +331,31 @@ fn post_telegram(token: &str, chat_id: &str, html: &str) -> Result<u16, String> 
     }
 }
 
+pub fn post_telegram_photo(token: &str, chat_id: &str, photo: &[u8], caption: &str) -> Result<u16, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("https://api.telegram.org/bot{token}/sendPhoto");
+    let part = reqwest::blocking::multipart::Part::bytes(photo.to_vec())
+        .file_name("catch.png")
+        .mime_str("image/png")
+        .map_err(|e| e.to_string())?;
+    let form = reqwest::blocking::multipart::Form::new()
+        .text("chat_id", chat_id.to_string())
+        .text("caption", caption.to_string())
+        .text("parse_mode", "HTML".to_string())
+        .part("photo", part);
+    let resp = client.post(&url).multipart(form).send().map_err(|e| e.to_string())?;
+    let status = resp.status();
+    if status.is_success() {
+        Ok(status.as_u16())
+    } else {
+        let err_body = resp.text().unwrap_or_default();
+        Err(format!("Telegram photo error {}: {}", status.as_u16(), err_body))
+    }
+}
+
 fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>) {
     for notif in rx.iter() {
         let (provider, url, tg_token, tg_chat) = {
@@ -291,12 +371,19 @@ fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>) {
         // 1. Discord delivery
         if (provider == "discord" || provider == "both") && !url.trim().is_empty() {
             let discord_fields: Vec<Value> = notif.fields.iter().map(|(k, v)| field(k, v)).collect();
-            let body = json!({
-                "embeds": [embed(&notif.title, &notif.desc, notif.color, discord_fields)]
-            });
+            let mut emb = embed(&notif.title, &notif.desc, notif.color, discord_fields);
+            if notif.photo.is_some() {
+                emb["image"] = json!({ "url": "attachment://catch.png" });
+            }
+            let body = json!({ "embeds": [emb] });
             let mut delay = Duration::from_secs(1);
             for attempt in 0..3 {
-                match post_discord(&url, &body) {
+                let res = if let Some(ref bytes) = notif.photo {
+                    post_discord_photo(&url, &body, bytes)
+                } else {
+                    post_discord(&url, &body)
+                };
+                match res {
                     Ok(_) => break,
                     Err(e) => {
                         tracing::warn!("discord webhook attempt {} failed: {e}", attempt + 1);
@@ -322,7 +409,12 @@ fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>) {
             }
             let mut delay = Duration::from_secs(1);
             for attempt in 0..3 {
-                match post_telegram(&tg_token, &tg_chat, &tg_text) {
+                let res = if let Some(ref bytes) = notif.photo {
+                    post_telegram_photo(&tg_token, &tg_chat, bytes, &tg_text)
+                } else {
+                    post_telegram(&tg_token, &tg_chat, &tg_text)
+                };
+                match res {
                     Ok(_) => break,
                     Err(e) => {
                         tracing::warn!("telegram attempt {} failed: {e}", attempt + 1);

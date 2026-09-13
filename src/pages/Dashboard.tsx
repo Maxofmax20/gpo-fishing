@@ -65,6 +65,16 @@ export default function Dashboard() {
           sub={sessionNote(stats.fruits)}
           extra={total.last_fruit ? <Pill tone="fruit">{total.last_fruit.slice(0, 40)}</Pill> : undefined}
         />
+        <Stat
+          label="Fruit pity (since last fruit)"
+          value={stats.pity_fruit ?? 0}
+          extra={<Pill tone="warn">⚡ {stats.pity_fruit ?? 0} fish</Pill>}
+        />
+        <Stat
+          label="Legendary pity"
+          value={stats.pity_legendary ?? 0}
+          extra={<Pill tone="fruit">🌟 {stats.pity_legendary ?? 0} fish</Pill>}
+        />
         <Stat label="Bait bought" value={total.bait_purchased} sub={sessionNote(stats.bait_purchased)} />
         <Stat label="Time fishing" value={fmtRuntime(totalRuntime)} sub={active || state === "paused" ? `this run ${fmtRuntime(runtime)}` : undefined} />
         <Stat label="Sessions" value={total.sessions} />

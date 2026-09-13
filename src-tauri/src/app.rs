@@ -67,6 +67,7 @@ pub fn setup(app: &AppHandle, st: &AppState) -> Result<(), Box<dyn std::error::E
     }
     spawn_roblox_watcher(st.platform.clone(), Arc::clone(&st.roblox), st.events_tx.clone());
     spawn_panel_fallback(app.clone());
+    crate::bot::telegram_remote::spawn(Arc::clone(&st.bot), Arc::clone(&st.settings));
 
     tray::build(app)?;
     if let Err(e) = hotkeys::register(app, &st.settings.read().hotkeys) {

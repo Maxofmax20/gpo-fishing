@@ -145,6 +145,23 @@ impl Frame {
         Frame { w: nw, h: nh, rgba: out }
     }
 
+    pub fn to_png_bytes(&self) -> Result<Vec<u8>, String> {
+        if self.w == 0 || self.h == 0 {
+            return Err("Empty frame".into());
+        }
+        let mut bytes = Vec::new();
+        let encoder = image::codecs::png::PngEncoder::new(&mut bytes);
+        image::ImageEncoder::write_image(
+            encoder,
+            &self.rgba,
+            self.w as u32,
+            self.h as u32,
+            image::ExtendedColorType::Rgba8,
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(bytes)
+    }
+
     pub fn average_hash(&self) -> u64 {
         if self.w == 0 || self.h == 0 {
             return 0;

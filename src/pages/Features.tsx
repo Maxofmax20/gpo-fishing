@@ -67,6 +67,16 @@ export default function Features() {
               <PointField target="bait2" value={s.points.bait[1]} clearable onCleared={() => update((x) => void (x.points.bait[1] = null))} />
             </Step>
           </Steps>
+          <div className="mt-3 pt-3 border-t border-line flex items-center justify-between">
+            <div>
+              <div className="text-[12px] font-medium text-fg">Zero-bait failsafe</div>
+              <div className="text-[11px] text-fg-mute">Safely pause macro and send Telegram/Discord alert if bait runs out.</div>
+            </div>
+            <Toggle
+              value={s.features.zero_bait_failsafe ?? true}
+              onChange={(v) => update((x) => void (x.features.zero_bait_failsafe = v))}
+            />
+          </div>
         </Row>
         <Row
           title="Auto buy bait"
@@ -215,6 +225,16 @@ export default function Features() {
                 <br />1. Message <b>@BotFather</b> on Telegram, send <span className="font-mono text-fg-dim">/newbot</span> and copy the <b>HTTP API Token</b>.
                 <br />2. Message <b>@userinfobot</b> to get your numeric <b>Id</b>, then send <span className="font-mono text-fg-dim">/start</span> to your bot.
               </div>
+              <div className="mt-2 pt-2 border-t border-line flex items-center justify-between">
+                <div>
+                  <div className="text-[12px] font-medium text-fg">Two-way remote control</div>
+                  <div className="text-[11px] text-fg-mute">Control the macro via Telegram (/status with photo, /stop, /start).</div>
+                </div>
+                <Toggle
+                  value={s.features.telegram_remote ?? true}
+                  onChange={(v) => update((x) => void (x.features.telegram_remote = v))}
+                />
+              </div>
             </div>
           )}
 
@@ -246,8 +266,11 @@ export default function Features() {
           <div className="mt-2 border-t border-line">
             {(
               [
-                ["progress", "Progress updates"],
                 ["fruit_drop", "Devil fruit caught"],
+                ["send_screenshot", "📸 Send catch screenshot photo"],
+                ["disconnect_alert", "⚠️ Roblox disconnected alert"],
+                ["bait_alert", "🎣 Bait depleted alert"],
+                ["progress", "Progress updates"],
                 ["spawn", "World spawn (reads the drop message area)"],
                 ["purchase", "Bait purchased"],
                 ["recovery", "Recovery / stuck"],

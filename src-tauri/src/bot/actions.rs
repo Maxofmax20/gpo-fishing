@@ -142,6 +142,7 @@ pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
                     }
                 }
             }
+            return Some(false);
         }
     }
 
@@ -157,7 +158,7 @@ pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
             ctx.log_debug("Fishing rod already equipped (visual check confirmed)");
             *rod_equipped = true;
             return true;
-        } else if *rod_equipped {
+        } else {
             ctx.log_debug("Visual check detected rod is unequipped");
             *rod_equipped = false;
         }
@@ -179,6 +180,33 @@ pub fn equip_rod(ctx: &Ctx) -> bool {
     ensure_rod_equipped(ctx, &mut dummy)
 }
 
+pub fn is_bait_depleted(ctx: &Ctx) -> bool {
+    let s = ctx.settings();
+    let Some(primary) = s.points.bait[0] else {
+        return false;
+    };
+    let Some(rect) = ctx.roblox_rect() else {
+        return false;
+    };
+    let pt = primary.to_px(&rect);
+    let scan_rect = PxRect {
+        x: (pt.x - 25).max(rect.x),
+        y: (pt.y - 25).max(rect.y),
+        w: 50.min(rect.w),
+        h: 50.min(rect.h),
+    };
+    if ctx.platform.ocr.available() {
+        if let Ok(frame) = ctx.platform.capture.grab(scan_rect) {
+            let text = ctx.platform.ocr.read(&frame).unwrap_or_default().to_lowercase();
+            let trimmed = text.trim();
+            if trimmed == "x0" || trimmed == "0" || trimmed == "x 0" || trimmed.ends_with(" 0") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 pub fn select_bait(ctx: &Ctx) -> bool {
     let s = ctx.settings();
     if !s.features.auto_bait {
@@ -188,6 +216,11 @@ pub fn select_bait(ctx: &Ctx) -> bool {
         ctx.log_warn("Auto bait enabled but bait point not set");
         return true;
     };
+    if s.features.zero_bait_failsafe && is_bait_depleted(ctx) {
+        ctx.log_warn("🎣 Bait depleted (zero bait detected)! Safely pausing macro.");
+        ctx.webhook.bait_depleted();
+        return false;
+    }
     ctx.log_debug("Selecting bait");
     click_pair(ctx, primary, s.points.bait[1], 300)
 }
@@ -370,15 +403,6 @@ pub fn store_fruit(ctx: &Ctx, protect_drop: bool) -> bool {
         }
     }
 
-    if !ctx.sleep_ms(1000) {
-        return false;
-    }
-    if !key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(800) {
-        return false;
-    }
-    if !select_bait(ctx) {
-        return false;
-    }
     if let Some(fp) = fishing_point(ctx) {
         ctx.platform.input.move_to(fp);
     }

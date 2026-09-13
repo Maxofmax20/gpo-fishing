@@ -61,9 +61,10 @@ export default function Hud() {
         <StateBadge state={state} size={28} icon={14} className="-ml-1" />
         <div className="min-w-0 flex-1 leading-tight">
           <div className="text-[12px] font-semibold truncate">{flash ? flash.text : STATE_LABEL[state]}</div>
-          <div className="text-[10.5px] text-fg-dim font-mono tabular-nums flex gap-2">
+          <div className="text-[10.5px] text-fg-dim font-mono tabular-nums flex gap-2 items-center">
             <span className="inline-flex items-center gap-0.5"><Fish size={10} />{stats.fish}</span>
             <span className="inline-flex items-center gap-0.5 text-fruit"><Apple size={10} />{stats.fruits}</span>
+            <span className="inline-flex items-center gap-0.5 text-amber-400" title="Fruit Pity (fish caught since last fruit)">⚡{stats.pity_fruit ?? 0}</span>
             <span>{fmtRuntime(runtime)}</span>
           </div>
         </div>

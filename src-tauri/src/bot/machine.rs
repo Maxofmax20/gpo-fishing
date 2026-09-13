@@ -24,7 +24,7 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
     let mut spawn_checked_at = Instant::now() - Duration::from_secs(3600);
     let mut rod_equipped = false;
 
-    if !wait_for_roblox(ctx) {
+    if !wait_for_roblox(ctx, false) {
         return;
     }
     if !ensure_front(ctx) {
@@ -36,7 +36,7 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
 
     while ctx.alive() {
         ctx.touch();
-        if ctx.roblox_rect().is_none() && !wait_for_roblox(ctx) {
+        if ctx.roblox_rect().is_none() && !wait_for_roblox(ctx, true) {
             return;
         }
         if !ensure_front(ctx) {
@@ -108,12 +108,15 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
     }
 }
 
-fn wait_for_roblox(ctx: &Ctx) -> bool {
+fn wait_for_roblox(ctx: &Ctx, notify_disconnect: bool) -> bool {
     if ctx.roblox_rect().is_some() {
         return true;
     }
     ctx.set_state(BotState::WaitingForRoblox, None);
     ctx.log_warn("Waiting for Roblox window");
+    if notify_disconnect {
+        ctx.webhook.disconnect("Roblox disconnected or window closed");
+    }
     while ctx.alive() {
         if ctx.roblox_rect().is_some() {
             ctx.log_info("Roblox found");
@@ -134,7 +137,7 @@ fn ensure_front(ctx: &Ctx) -> bool {
     ctx.log_warn("Roblox is not the active window; waiting");
     while ctx.alive() {
         if ctx.roblox_rect().is_none() {
-            return wait_for_roblox(ctx);
+            return wait_for_roblox(ctx, true);
         }
         if ctx.ensure_roblox_focus() {
             ctx.log_info("Roblox is back in front");
@@ -454,12 +457,24 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
                 let mut sess = ctx.session.lock();
                 sess.fruits += 1;
                 sess.last_fruit = Some(fruit_name.clone());
+                sess.pity_fruit = 0;
+                if is_high_tier {
+                    sess.pity_legendary = 0;
+                }
             }
             ctx.record_catch("fruit", &fruit_name, &d.text);
             ctx.emit_stats();
             ctx.emit(BotEvent::FruitDrop(d.clone()));
+            let photo = if s.webhook.send_screenshot {
+                ctx.roblox_rect()
+                    .and_then(|r| ctx.platform.capture.grab(r).ok())
+                    .map(|f| f.downscale(1280))
+                    .and_then(|f| f.to_png_bytes().ok())
+            } else {
+                None
+            };
             if s.webhook.fruit_drop && (is_high_tier || !s.webhook.legendary_only) {
-                ctx.webhook.fruit_drop(&d);
+                ctx.webhook.fruit_drop(&d, photo);
             }
             if is_protected {
                 ctx.log_info(&format!("🛡️ Protected {label} - preventing drop"));
@@ -467,7 +482,7 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
             if !actions::store_fruit(ctx, is_protected) {
                 return false;
             }
-            *rod_equipped = true;
+            *rod_equipped = false;
 
             if s.fruit_storage.pause_on_protected_fruit && is_protected {
                 ctx.log_info(&format!("🚨 Macro paused: Protected {label} caught! Safely inspect your inventory."));

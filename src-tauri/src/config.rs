@@ -99,7 +99,7 @@ impl Default for Fishing {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Features {
     pub auto_zoom: bool,
@@ -107,6 +107,22 @@ pub struct Features {
     pub auto_bait: bool,
     pub fruit_storage: bool,
     pub auto_purchase: bool,
+    pub zero_bait_failsafe: bool,
+    pub telegram_remote: bool,
+}
+
+impl Default for Features {
+    fn default() -> Self {
+        Self {
+            auto_zoom: false,
+            auto_mouse_position: false,
+            auto_bait: false,
+            fruit_storage: false,
+            auto_purchase: false,
+            zero_bait_failsafe: true,
+            telegram_remote: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -207,6 +223,9 @@ pub struct Webhook {
     pub purchase: bool,
     pub recovery: bool,
     pub legendary_only: bool,
+    pub send_screenshot: bool,
+    pub disconnect_alert: bool,
+    pub bait_alert: bool,
 }
 
 impl Default for Webhook {
@@ -224,6 +243,9 @@ impl Default for Webhook {
             purchase: true,
             recovery: true,
             legendary_only: false,
+            send_screenshot: true,
+            disconnect_alert: true,
+            bait_alert: true,
         }
     }
 }

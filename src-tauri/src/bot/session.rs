@@ -16,6 +16,8 @@ pub struct Session {
     pub since_progress_webhook: u32,
     pub since_purchase: u32,
     pub last_spawn_alert: Option<Instant>,
+    pub pity_fruit: u32,
+    pub pity_legendary: u32,
     outcomes: VecDeque<bool>,
     started: Instant,
     paused_at: Option<Instant>,
@@ -41,6 +43,8 @@ impl Session {
             since_progress_webhook: 0,
             since_purchase: 0,
             last_spawn_alert: None,
+            pity_fruit: base.pity_fruit,
+            pity_legendary: base.pity_legendary,
             outcomes: VecDeque::with_capacity(10),
             started: Instant::now(),
             paused_at: None,
@@ -60,6 +64,8 @@ impl Session {
             last_fruit: self.last_fruit.clone().or_else(|| self.base.last_fruit.clone()),
             last_spawn: self.last_spawn.clone().or_else(|| self.base.last_spawn.clone()),
             last_fish: self.last_fish.clone().or_else(|| self.base.last_fish.clone()),
+            pity_fruit: self.pity_fruit,
+            pity_legendary: self.pity_legendary,
         }
     }
 
@@ -78,6 +84,8 @@ impl Session {
             self.fish += 1;
             self.since_progress_webhook += 1;
             self.since_purchase += 1;
+            self.pity_fruit += 1;
+            self.pity_legendary += 1;
         }
     }
 
@@ -133,6 +141,8 @@ impl Session {
             last_fruit: self.last_fruit.clone(),
             last_spawn: self.last_spawn.clone(),
             last_fish: self.last_fish.clone(),
+            pity_fruit: self.pity_fruit,
+            pity_legendary: self.pity_legendary,
             total: self.lifetime(),
         }
     }

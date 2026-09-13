@@ -29,6 +29,8 @@ export type Lifetime = {
   last_fish: string | null;
   last_fruit: string | null;
   last_spawn: string | null;
+  pity_fruit: number;
+  pity_legendary: number;
 };
 
 export type Stats = {
@@ -42,6 +44,8 @@ export type Stats = {
   last_fish: string | null;
   last_fruit: string | null;
   last_spawn: string | null;
+  pity_fruit: number;
+  pity_legendary: number;
   total: Lifetime;
 };
 
@@ -113,6 +117,8 @@ export type Settings = {
     auto_bait: boolean;
     fruit_storage: boolean;
     auto_purchase: boolean;
+    zero_bait_failsafe: boolean;
+    telegram_remote: boolean;
   };
   purchase: {
     amount: number;
@@ -139,6 +145,9 @@ export type Settings = {
     purchase: boolean;
     recovery: boolean;
     legendary_only: boolean;
+    send_screenshot: boolean;
+    disconnect_alert: boolean;
+    bait_alert: boolean;
   };
   hotkeys: { toggle: string; overlay: string; quit: string; hide_hud: string };
   ui: { theme: string; hud_offset: RelPoint; hud_visible: boolean; panel_offset: RelPoint; panel_size: [number, number]; log_level: string };
