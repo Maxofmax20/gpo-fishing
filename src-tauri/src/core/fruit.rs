@@ -476,6 +476,62 @@ pub fn parse_disconnect_text(raw: &str) -> Option<String> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StorageBannerResult {
+    /// Fruit cannot be stored because player already has one (e.g. "You can only store one of each fruit! Dropped Heal will despawn in 10 minutes.")
+    DuplicateDropped { fruit_name: String },
+    /// Fruit was dropped on the ground (e.g. "Dropped Heal will despawn in 10 minutes.")
+    Dropped { fruit_name: String },
+    /// Generic storage failure
+    Failed { reason: String },
+}
+
+pub fn parse_storage_banner(lex: &Lexicon, raw: &str) -> Option<StorageBannerResult> {
+    let lower = raw.to_lowercase();
+    let norm = normalize(raw);
+    let words: Vec<&str> = norm.split_whitespace().collect();
+
+    let is_duplicate = lower.contains("only store one")
+        || lower.contains("store one of each")
+        || lower.contains("one of each fruit")
+        || lower.contains("already have this")
+        || lower.contains("already in storage");
+
+    let is_dropped = lower.contains("dropped") && (lower.contains("despawn") || lower.contains("minute") || lower.contains("ground"));
+
+    if !is_duplicate && !is_dropped {
+        return None;
+    }
+
+    // 1. Try to extract fruit name specifically after "dropped "
+    let mut detected_fruit: Option<String> = None;
+    if let Some(idx) = lower.find("dropped ") {
+        let after = &lower[idx + "dropped ".len()..];
+        let end_idx = after.find(" will")
+            .or_else(|| after.find(" despawn"))
+            .or_else(|| after.find(" in "))
+            .unwrap_or(after.len().min(20));
+        let candidate = after[..end_idx].trim();
+        if !candidate.is_empty() {
+            let cand_words: Vec<&str> = candidate.split_whitespace().collect();
+            detected_fruit = first_fruit(lex, cand_words.iter().copied());
+        }
+    }
+
+    // 2. Fallback: match any known fruit name in words
+    if detected_fruit.is_none() {
+        detected_fruit = first_fruit(lex, words.iter().copied());
+    }
+
+    let fruit_name = detected_fruit.unwrap_or_else(|| "Devil Fruit".into());
+
+    if is_duplicate {
+        Some(StorageBannerResult::DuplicateDropped { fruit_name })
+    } else {
+        Some(StorageBannerResult::Dropped { fruit_name })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -650,5 +706,36 @@ mod tests {
         assert!(!is_legendary_or_mythical("Yomi"));
         assert!(!is_legendary_or_mythical("Gomu"));
         assert!(!is_legendary_or_mythical("Kilo"));
+    }
+
+    #[test]
+    fn parse_storage_duplicate_banner() {
+        let l = lex();
+        let raw = "You can only store one of each fruit!\nDropped Heal will despawn in 10 minutes.";
+        assert_eq!(
+            parse_storage_banner(&l, raw),
+            Some(StorageBannerResult::DuplicateDropped { fruit_name: "Heal".into() })
+        );
+
+        let raw2 = "You can only store one of each fruit! Dropped Spin will despawn in 10 minutes.";
+        assert_eq!(
+            parse_storage_banner(&l, raw2),
+            Some(StorageBannerResult::DuplicateDropped { fruit_name: "Spin".into() })
+        );
+
+        let raw3 = "Dropped Mochi will despawn in 10 minutes.";
+        assert_eq!(
+            parse_storage_banner(&l, raw3),
+            Some(StorageBannerResult::Dropped { fruit_name: "Mochi".into() })
+        );
+
+        let raw4 = "You can only store one of each fruit!";
+        assert_eq!(
+            parse_storage_banner(&l, raw4),
+            Some(StorageBannerResult::DuplicateDropped { fruit_name: "Devil Fruit".into() })
+        );
+
+        let fish_text = "You caught a Tuna!";
+        assert_eq!(parse_storage_banner(&l, fish_text), None);
     }
 }

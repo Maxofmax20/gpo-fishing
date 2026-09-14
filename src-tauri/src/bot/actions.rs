@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::core::types::{Key, MouseButton, PxPoint, PxRect, RelPoint};
+use crate::core::types::{Key, MouseButton, PxPoint, PxRect, RelPoint, RelRect};
 use crate::events::BotState;
 
 use super::ctx::Ctx;
@@ -381,6 +381,9 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
         }
     }
 
+    let mut detected_banner: Option<crate::core::fruit::StorageBannerResult> = None;
+    let banner_rect = RelRect { x: 0.25, y: 0.04, w: 0.50, h: 0.22 };
+
     for slot in [s.keys.fruit_slot_1, s.keys.fruit_slot_2] {
         if !key_tap(ctx, Key::Char(slot)) || !ctx.sleep_ms(fs.key_settle_ms) {
             return false;
@@ -391,12 +394,49 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
         if !ctx.sleep_ms(fs.dialog_wait_ms) {
             return false;
         }
+
+        // Check if storage duplicate/error banner appeared right after clicking store
+        if detected_banner.is_none() && ctx.platform.ocr.available() {
+            if let Some(r) = ctx.roblox_rect() {
+                let px_box = banner_rect.to_px(&r);
+                if let Ok(frame) = ctx.platform.capture.grab(px_box) {
+                    if let Ok(text) = ctx.platform.ocr.read(&frame) {
+                        if !text.trim().is_empty() {
+                            ctx.log_debug(&format!("Storage check OCR: {}", text.trim()));
+                            if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
+                                ctx.log_info(&format!("Storage banner detected: {res:?}"));
+                                detected_banner = Some(res);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         if !protect_drop {
             if !key_hold(ctx, Key::Backspace, Duration::from_millis(100)) {
                 return false;
             }
             if !ctx.sleep_ms(fs.after_drop_ms) {
                 return false;
+            }
+
+            // Check if drop banner appeared right after Backspace
+            if detected_banner.is_none() && ctx.platform.ocr.available() {
+                if let Some(r) = ctx.roblox_rect() {
+                    let px_box = banner_rect.to_px(&r);
+                    if let Ok(frame) = ctx.platform.capture.grab(px_box) {
+                        if let Ok(text) = ctx.platform.ocr.read(&frame) {
+                            if !text.trim().is_empty() {
+                                ctx.log_debug(&format!("Post-drop OCR: {}", text.trim()));
+                                if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
+                                    ctx.log_info(&format!("Drop banner detected: {res:?}"));
+                                    detected_banner = Some(res);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         } else {
             ctx.log_info("🛡️ Protected fruit kept in slot (drop prevented)");
@@ -411,7 +451,61 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
     } else {
         None
     };
-    ctx.webhook.fruit_stored(fruit_name, photo);
+
+    if let Some(banner) = detected_banner {
+        match banner {
+            crate::core::fruit::StorageBannerResult::DuplicateDropped { fruit_name: detected_name } => {
+                let name = if detected_name != "Devil Fruit" {
+                    detected_name
+                } else if fruit_name != "Devil Fruit" {
+                    fruit_name.to_string()
+                } else {
+                    "Devil Fruit".to_string()
+                };
+                ctx.log_warn(&format!("⚠️ Could not store {name}: duplicate fruit already in inventory (dropped)"));
+                {
+                    let mut sess = ctx.session.lock();
+                    sess.last_fruit = Some(name.clone());
+                }
+                ctx.emit_stats();
+                ctx.webhook.fruit_storage_failed(
+                    &name,
+                    "You can only store one of each fruit (inventory limit reached) - dropped on ground.",
+                    photo,
+                );
+            }
+            crate::core::fruit::StorageBannerResult::Dropped { fruit_name: detected_name } => {
+                let name = if detected_name != "Devil Fruit" {
+                    detected_name
+                } else if fruit_name != "Devil Fruit" {
+                    fruit_name.to_string()
+                } else {
+                    "Devil Fruit".to_string()
+                };
+                ctx.log_warn(&format!("⚠️ Fruit dropped on ground: {name}"));
+                {
+                    let mut sess = ctx.session.lock();
+                    sess.last_fruit = Some(name.clone());
+                }
+                ctx.emit_stats();
+                ctx.webhook.fruit_storage_failed(
+                    &name,
+                    "Fruit was dropped on the ground.",
+                    photo,
+                );
+            }
+            crate::core::fruit::StorageBannerResult::Failed { reason } => {
+                ctx.log_warn(&format!("⚠️ Fruit storage failed: {reason}"));
+                ctx.webhook.fruit_storage_failed(
+                    fruit_name,
+                    &reason,
+                    photo,
+                );
+            }
+        }
+    } else {
+        ctx.webhook.fruit_stored(fruit_name, photo);
+    }
 
     if let Some(fp) = fishing_point(ctx) {
         ctx.platform.input.move_to(fp);

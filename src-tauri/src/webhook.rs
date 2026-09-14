@@ -200,6 +200,27 @@ impl WebhookQueue {
         });
     }
 
+    pub fn fruit_storage_failed(&self, fruit_name: &str, reason: &str, photo: Option<Vec<u8>>) {
+        let rarity = crate::core::fruit::fruit_rarity(fruit_name);
+        let title = "⚠️ Devil Fruit Storage Full / Dropped!";
+        let desc = if rarity != crate::core::fruit::FruitRarity::Unknown {
+            format!("Could not store <b>{fruit_name}</b> ({})!\n\n<b>Reason:</b> {reason}", rarity.as_str())
+        } else {
+            format!("Could not store <b>{fruit_name}</b>!\n\n<b>Reason:</b> {reason}")
+        };
+        self.send(Notification {
+            title: title.into(),
+            desc,
+            color: COLOR_GOLD,
+            fields: vec![
+                ("Fruit Name".into(), fruit_name.to_string()),
+                ("Rarity".into(), rarity.as_str().to_string()),
+                ("Status".into(), "Dropped on ground / Bag full".into()),
+            ],
+            photo,
+        });
+    }
+
     pub fn disconnect(&self, reason: &str, photo: Option<Vec<u8>>) {
         let flag = self.settings.as_ref().map(|s| s.read().webhook.disconnect_alert).unwrap_or(true);
         if !flag {
