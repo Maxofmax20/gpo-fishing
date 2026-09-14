@@ -196,6 +196,38 @@ fn word_at(words: &[&str], target: &str, thr: f64) -> Option<usize> {
     words.iter().position(|w| similar(w, target, thr))
 }
 
+pub const KNOWN_FISH: &[&str] = &[
+    "snapper", "crimson", "tuna", "bluefin", "shark", "tiger", "colossal", "megalodon",
+    "golden", "boot", "trash", "seaweed", "salmon", "bass", "catfish", "carp", "trout",
+    "swordfish", "marlin", "squid", "octopus", "crab", "lobster", "shrimp", "ray", "manta",
+    "barracuda", "angelfish", "clownfish", "kraken", "beast", "eel", "piranha", "pufferfish",
+    "halibut", "cod", "sailfish", "turtle", "jellyfish", "sunfish", "flying",
+];
+
+pub fn is_known_fish_or_item(raw: &str) -> bool {
+    let lower = raw.to_lowercase();
+    if KNOWN_FISH.iter().any(|&f| lower.contains(f)) {
+        return true;
+    }
+    let norm = normalize(raw);
+    let words: Vec<&str> = norm.split_whitespace().collect();
+    for w in &words {
+        for &f in KNOWN_FISH {
+            if f.len() >= 5 && w.len() >= 5 && jaro_winkler(w, f) >= 0.82 {
+                return true;
+            }
+        }
+    }
+    // Also check merged adjacent words (like "sna pper" -> "snapper")
+    for i in 0..words.len().saturating_sub(1) {
+        let merged = format!("{}{}", words[i], words[i + 1]);
+        if KNOWN_FISH.iter().any(|&f| merged.contains(f) || (merged.len() >= 5 && jaro_winkler(&merged, f) >= 0.85)) {
+            return true;
+        }
+    }
+    false
+}
+
 fn match_fruit(lex: &Lexicon, word: &str) -> Option<String> {
     if word.len() < 3 {
         return None;
@@ -207,6 +239,11 @@ fn match_fruit(lex: &Lexicon, word: &str) -> Option<String> {
     if STOPWORDS.contains(&lower.as_str()) {
         return None;
     }
+    // Short fruit names (<= 4 characters like Suna, Tori, Ope, Paw) MUST be exact matches.
+    // Fuzzy matching a 3-letter OCR fragment (e.g. "sna" from "Snapper") falsely matches "Suna"!
+    if lower.len() <= 4 {
+        return None;
+    }
     let mut best: Option<(f64, &String)> = None;
     for f in &lex.fruits {
         let s = jaro_winkler(&lower, &f.to_lowercase());
@@ -215,7 +252,7 @@ fn match_fruit(lex: &Lexicon, word: &str) -> Option<String> {
         }
     }
     match best {
-        Some((s, f)) if s >= lex.fuzzy_threshold => Some(f.clone()),
+        Some((s, f)) if s >= lex.fuzzy_threshold.max(0.88) => Some(f.clone()),
         _ => None,
     }
 }
@@ -256,6 +293,9 @@ fn title_case(words: &[&str]) -> String {
 pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
     let text = normalize(raw);
     if text.is_empty() {
+        return None;
+    }
+    if is_known_fish_or_item(raw) {
         return None;
     }
     let words: Vec<&str> = text.split_whitespace().collect();
@@ -357,12 +397,8 @@ pub fn parse_catch_item(lex: &Lexicon, raw: &str) -> (String, String) {
         return ("fruit".into(), name);
     }
 
-    // Check if any known fruit name appears in raw text
-    let norm = normalize(raw);
-    let words: Vec<&str> = norm.split_whitespace().collect();
-    if let Some(fruit_name) = first_fruit(lex, words.iter().copied()) {
-        return ("fruit".into(), fruit_name);
-    }
+    // If it's a known fish or item, it's definitely NOT a fruit
+    let is_fish = is_known_fish_or_item(raw);
 
     // 2. Extract item between < > or ( ) or [ ]
     if let Some(start) = clean.find('<').or_else(|| clean.find('(')).or_else(|| clean.find('[')) {
@@ -371,15 +407,26 @@ pub fn parse_catch_item(lex: &Lexicon, raw: &str) -> (String, String) {
             if !inside.is_empty() {
                 let in_norm = normalize(inside);
                 let in_words: Vec<&str> = in_norm.split_whitespace().collect();
-                if let Some(fn_name) = first_fruit(lex, in_words.iter().copied()) {
-                    return ("fruit".into(), fn_name);
+                if !is_fish && !is_known_fish_or_item(inside) {
+                    if let Some(fn_name) = first_fruit(lex, in_words.iter().copied()) {
+                        return ("fruit".into(), fn_name);
+                    }
                 }
                 return ("fish".into(), title_case(&inside.split_whitespace().collect::<Vec<_>>()));
             }
         }
     }
 
-    // 3. Extract after "caught a", "caught an", "fished up a", "got a", "found a", etc.
+    // 3. Check if any known fruit name appears in raw text (only if not a fish/item)
+    let norm = normalize(raw);
+    let words: Vec<&str> = norm.split_whitespace().collect();
+    if !is_fish {
+        if let Some(fruit_name) = first_fruit(lex, words.iter().copied()) {
+            return ("fruit".into(), fruit_name);
+        }
+    }
+
+    // 4. Extract after "caught a", "caught an", "fished up a", "got a", "found a", etc.
     let lower = clean.to_lowercase();
     for prefix in &[
         "caught a ", "caught an ", "caught ",
@@ -394,6 +441,15 @@ pub fn parse_catch_item(lex: &Lexicon, raw: &str) -> (String, String) {
                 let w: Vec<&str> = name.split_whitespace().collect();
                 return ("fish".into(), title_case(&w));
             }
+        }
+    }
+
+    // 5. Fallback for "new item" without brackets (e.g. OCR missed < > like "nev itemv ctimson sna pper")
+    let thr = lex.fuzzy_threshold.min(0.8);
+    if let Some(i) = word_at(&words, "item", thr) {
+        if i + 1 < words.len() {
+            let item_words = &words[i + 1..];
+            return ("fish".into(), title_case(item_words));
         }
     }
 
@@ -603,6 +659,8 @@ mod tests {
         assert!(detect_drop(&lex(), "New Item <Tuna>").is_none());
         assert!(detect_drop(&lex(), "New Item <Shark>").is_none());
         assert!(detect_drop(&lex(), "New Item <Old Boot>").is_none());
+        assert!(detect_drop(&lex(), "New Item <Crimson Snapper>").is_none());
+        assert!(detect_drop(&lex(), "nev itemv ctimson sna pper").is_none());
     }
 
     #[test]
@@ -683,6 +741,8 @@ mod tests {
         assert_eq!(parse_catch_item(&l, "You caught a Tuna!"), ("fish".into(), "Tuna".into()));
         assert_eq!(parse_catch_item(&l, "You caught a Golden Fish!"), ("fish".into(), "Golden Fish".into()));
         assert_eq!(parse_catch_item(&l, "New Item <Colossal Shark>"), ("fish".into(), "Colossal Shark".into()));
+        assert_eq!(parse_catch_item(&l, "New Item <Crimson Snapper>"), ("fish".into(), "Crimson Snapper".into()));
+        assert_eq!(parse_catch_item(&l, "nev itemv ctimson sna pper").0, "fish");
         assert_eq!(parse_catch_item(&l, "You fished up a Devil Fruit! Check your backpack"), ("fruit".into(), "Devil Fruit".into()));
         assert_eq!(parse_catch_item(&l, "New Item <Mochi>"), ("fruit".into(), "Mochi".into()));
     }
