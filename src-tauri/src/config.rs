@@ -308,6 +308,34 @@ impl Default for Watchdog {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+pub struct BossTrackerSettings {
+    pub enabled: bool,
+    pub notify_5m: bool,
+    pub notify_spawn: bool,
+    pub hawkeye_offset: Option<i64>,
+    pub roger_offset: Option<i64>,
+    pub soulking_offset: Option<i64>,
+    pub radiant_admiral_offset: Option<i64>,
+    pub merchant_offset: Option<i64>,
+}
+
+impl Default for BossTrackerSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            notify_5m: true,
+            notify_spawn: true,
+            hawkeye_offset: None,
+            roger_offset: None,
+            soulking_offset: None,
+            radiant_admiral_offset: None,
+            merchant_offset: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub version: u32,
     pub regions: Regions,
@@ -321,6 +349,7 @@ pub struct Settings {
     pub ocr: OcrSettings,
     pub lexicon: Lexicon,
     pub webhook: Webhook,
+    pub boss_tracker: BossTrackerSettings,
     pub hotkeys: Hotkeys,
     pub ui: Ui,
     pub watchdog: Watchdog,
@@ -348,6 +377,7 @@ impl Default for Settings {
             ocr: OcrSettings::default(),
             lexicon: Lexicon::default(),
             webhook: Webhook::default(),
+            boss_tracker: BossTrackerSettings::default(),
             hotkeys: Hotkeys::default(),
             ui: Ui::default(),
             watchdog: Watchdog::default(),

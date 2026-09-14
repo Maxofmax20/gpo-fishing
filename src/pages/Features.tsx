@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Send } from "lucide-react";
+import { Send, RotateCcw } from "lucide-react";
 import { api } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { PointField } from "../components/PointField";
@@ -318,6 +318,123 @@ export default function Features() {
               </Field>
             </div>
           )}
+        </Row>
+      </Section>
+
+      <Section title="Event Bosses & Merchant Tracker">
+        <Row
+          title="Live Boss & Merchant Tracker"
+          sub="Tracks Hawk Eye, Roger, Soul King, Radiant Admiral, and Travelling Merchant with automated 5m & spawn alerts."
+          right={
+            <Toggle
+              value={s.boss_tracker?.enabled ?? true}
+              onChange={(v) => {
+                update((x) => {
+                  if (!x.boss_tracker) {
+                    x.boss_tracker = {
+                      enabled: true,
+                      notify_5m: true,
+                      notify_spawn: true,
+                      hawkeye_offset: null,
+                      roger_offset: null,
+                      soulking_offset: null,
+                      radiant_admiral_offset: null,
+                      merchant_offset: null,
+                    };
+                  }
+                  x.boss_tracker.enabled = v;
+                });
+                if (v) setOpen("bosses");
+              }}
+            />
+          }
+          open={open === "bosses"}
+          onToggle={() => toggle("bosses")}
+        >
+          <div className="space-y-3 pt-1">
+            <div className="p-3 rounded-xl bg-black/20 border border-line flex flex-col gap-2">
+              <div className="text-[12px] font-semibold text-fg flex items-center justify-between">
+                <span>Telegram Notifications</span>
+                <span className="text-[11px] font-normal text-fg-mute">Works 24/7 even when fishing is stopped</span>
+              </div>
+              
+              <div className="flex items-center justify-between py-1 border-b border-line/50">
+                <div>
+                  <div className="text-[12px] text-fg">⏰ 5-Minute Warning</div>
+                  <div className="text-[11px] text-fg-mute">Alerts 5 minutes before boss spawns so you can sail in time.</div>
+                </div>
+                <Toggle
+                  value={s.boss_tracker?.notify_5m ?? true}
+                  onChange={(v) => update((x) => void (x.boss_tracker.notify_5m = v))}
+                />
+              </div>
+
+              <div className="flex items-center justify-between py-1">
+                <div>
+                  <div className="text-[12px] text-fg">🚨 Spawn Moment Alert</div>
+                  <div className="text-[11px] text-fg-mute">Instant alert when the boss appears or merchant restocks.</div>
+                </div>
+                <Toggle
+                  value={s.boss_tracker?.notify_spawn ?? true}
+                  onChange={(v) => update((x) => void (x.boss_tracker.notify_spawn = v))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-2">
+              {[
+                { emoji: "🦅", name: "Hawk Eye (Mihawk)", loc: "Umi Island (Second Sea)", cycle: "Every 2 hours", schedule: "01:00, 03:00, 05:00... (UTC+3)" },
+                { emoji: "👑", name: "Roger", loc: "Umi Island (Second Sea)", cycle: "Every 1.5 hours", schedule: "00:00, 01:30, 03:00... (UTC+3)" },
+                { emoji: "🎺", name: "Soul King (Brook)", loc: "Soul King's Ship (Second Sea)", cycle: "Every 1 hour", schedule: "On the hour (:00)" },
+                { emoji: "⚡", name: "Radiant Admiral (Kizaru)", loc: "Marine Base G-1 (First Sea)", cycle: "Every 30 mins", schedule: ":00 and :30" },
+                { emoji: "🛒", name: "Travelling Merchant", loc: "Random Island (Compass icon)", cycle: "Every 30 mins", schedule: "Stays for 10 minutes" },
+              ].map((b) => (
+                <div key={b.name} className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-line/60">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{b.emoji}</span>
+                    <div>
+                      <div className="text-[12px] font-medium text-fg">{b.name}</div>
+                      <div className="text-[10px] text-fg-mute">{b.loc}</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[11px] font-mono text-fg-dim">{b.cycle}</div>
+                    <div className="text-[10px] text-fg-mute">{b.schedule}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-3 rounded-lg bg-white/[0.03] border border-line/50 text-[11px] text-fg-mute leading-relaxed space-y-1.5">
+              <div className="font-semibold text-fg flex items-center gap-1.5">
+                📱 Telegram Remote Commands:
+              </div>
+              <div>• Send <code className="text-fg-dim font-mono">/bosses</code> to get instant live countdowns for all 5 entities.</div>
+              <div>• Send <code className="text-fg-dim font-mono">/sync hawkeye 1h 13m</code> or <code className="text-fg-dim font-mono">/sync all 1h13m 13m</code> to calibrate timers.</div>
+              <div>• Or simply <b>paste your Discord bot counter message</b> directly into Telegram to auto-sync!</div>
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <Button
+                size="sm"
+                kind="ghost"
+                icon={<RotateCcw size={12} />}
+                onClick={() => {
+                  update((x) => {
+                    if (x.boss_tracker) {
+                      x.boss_tracker.hawkeye_offset = null;
+                      x.boss_tracker.roger_offset = null;
+                      x.boss_tracker.soulking_offset = null;
+                      x.boss_tracker.radiant_admiral_offset = null;
+                      x.boss_tracker.merchant_offset = null;
+                    }
+                  });
+                }}
+              >
+                Reset to Official Wiki Schedule
+              </Button>
+            </div>
+          </div>
         </Row>
       </Section>
     </div>

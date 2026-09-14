@@ -28,6 +28,27 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
     };
 
     let mut registered_token = String::new();
+    let mut boss_tracker = crate::core::boss_tracker::BossTracker::new();
+
+    // Initialize boss tracker offsets from settings
+    {
+        let s = settings.read();
+        if let Some(ts) = s.boss_tracker.hawkeye_offset {
+            boss_tracker.set_offset(crate::core::boss_tracker::BossId::HawkEye, ts);
+        }
+        if let Some(ts) = s.boss_tracker.roger_offset {
+            boss_tracker.set_offset(crate::core::boss_tracker::BossId::Roger, ts);
+        }
+        if let Some(ts) = s.boss_tracker.soulking_offset {
+            boss_tracker.set_offset(crate::core::boss_tracker::BossId::SoulKing, ts);
+        }
+        if let Some(ts) = s.boss_tracker.radiant_admiral_offset {
+            boss_tracker.set_offset(crate::core::boss_tracker::BossId::RadiantAdmiral, ts);
+        }
+        if let Some(ts) = s.boss_tracker.merchant_offset {
+            boss_tracker.set_offset(crate::core::boss_tracker::BossId::TravellingMerchant, ts);
+        }
+    }
 
     loop {
         let (token, expected_chat, remote_enabled) = {
@@ -47,6 +68,44 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
         if registered_token != token {
             register_bot_commands(&client, &token);
             registered_token = token.clone();
+        }
+
+        // Boss Tracker Tick: Runs 24/7 in background even when fishing is stopped
+        let (boss_enabled, notify_5m, notify_spawn) = {
+            let s = settings.read();
+            (
+                s.boss_tracker.enabled,
+                s.boss_tracker.notify_5m,
+                s.boss_tracker.notify_spawn,
+            )
+        };
+
+        if boss_enabled {
+            let now = crate::core::boss_tracker::now_sec();
+            let alerts = boss_tracker.tick(now, notify_5m, notify_spawn);
+            for alert in alerts {
+                let alert_text = match alert.alert_type {
+                    crate::core::boss_tracker::AlertType::Warning5m => {
+                        format!(
+                            "⏰ {} <b>{}</b> will spawn in <b>5 minutes</b>!\n📍 Location: <b>{}</b>\nℹ️ {}",
+                            alert.boss.emoji(),
+                            alert.boss.name(),
+                            alert.boss.location(),
+                            alert.boss.despawn_info(),
+                        )
+                    }
+                    crate::core::boss_tracker::AlertType::Spawned => {
+                        format!(
+                            "🚨 {} <b>{}</b> has <b>SPAWNED</b>!\n📍 Location: <b>{}</b>\nℹ️ {}",
+                            alert.boss.emoji(),
+                            alert.boss.name(),
+                            alert.boss.location(),
+                            alert.boss.despawn_info(),
+                        )
+                    }
+                };
+                let _ = post_telegram(&token, &expected_chat, &alert_text);
+            }
         }
 
         let url = format!(
@@ -98,7 +157,7 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
                     .unwrap_or_default()
                     .trim();
 
-                handle_command(&bot, &settings, &token, &chat_id_clean, text);
+                handle_command(&bot, &settings, &mut boss_tracker, &token, &chat_id_clean, text);
             }
         }
 
@@ -109,6 +168,7 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
 fn handle_command(
     bot: &Arc<Bot>,
     settings: &Arc<RwLock<Settings>>,
+    boss_tracker: &mut crate::core::boss_tracker::BossTracker,
     token: &str,
     chat_id: &str,
     text: &str,
@@ -317,8 +377,35 @@ fn handle_command(
                 let _ = post_telegram(token, chat_id, &format!("ℹ️ Current progress update interval: every <b>{current}</b> fish.\nTo change it, send e.g.: <code>/setprogress 100</code>"));
             }
         }
+        "/bosses" | "/timers" | "/boss" | "bosses" | "timers" | "boss" => {
+            let now = crate::core::boss_tracker::now_sec();
+            let msg = boss_tracker.format_status_message(now);
+            let _ = post_telegram(token, chat_id, &msg);
+        }
+        cmd if cmd.starts_with("/sync") || cmd.starts_with("sync") || text.to_lowercase().contains("live spawn times") || text.to_lowercase().contains("event bosses") => {
+            let now = crate::core::boss_tracker::now_sec();
+            match boss_tracker.parse_sync_text(text, now) {
+                Ok(reply) => {
+                    {
+                        let mut s = settings.write();
+                        s.boss_tracker.hawkeye_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::HawkEye).copied();
+                        s.boss_tracker.roger_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::Roger).copied();
+                        s.boss_tracker.soulking_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::SoulKing).copied();
+                        s.boss_tracker.radiant_admiral_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::RadiantAdmiral).copied();
+                        s.boss_tracker.merchant_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::TravellingMerchant).copied();
+                        let _ = bot.ctx().store.save(&s);
+                    }
+                    let _ = post_telegram(token, chat_id, &reply);
+                }
+                Err(err_msg) => {
+                    let _ = post_telegram(token, chat_id, &err_msg);
+                }
+            }
+        }
         "/help" | "help" => {
             let help_text = "🎮 <b>GPO Autofish Remote Controls</b>\n\n\
+                👑 /bosses - Live Boss & Merchant countdowns\n\
+                🔄 /sync - Calibrate timers (or paste Discord bot text)\n\
                 📊 /status - View live stats & screenshot\n\
                 📸 /screenshot - Instant Roblox screenshot on demand\n\
                 ⚡ /pity - Quick Devil Fruit pity counter\n\
@@ -341,6 +428,8 @@ fn register_bot_commands(client: &reqwest::blocking::Client, token: &str) {
     let url = format!("https://api.telegram.org/bot{token}/setMyCommands");
     let payload = serde_json::json!({
         "commands": [
+            { "command": "bosses", "description": "👑 Live Boss & Merchant timers" },
+            { "command": "sync", "description": "🔄 Calibrate boss timers (/sync)" },
             { "command": "status", "description": "📊 Live stats & Roblox screenshot" },
             { "command": "screenshot", "description": "📸 Instant Roblox screen capture" },
             { "command": "pity", "description": "⚡ Devil fruit pity status" },

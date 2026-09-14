@@ -155,6 +155,16 @@ export type Settings = {
     disconnect_alert: boolean;
     bait_alert: boolean;
   };
+  boss_tracker: {
+    enabled: boolean;
+    notify_5m: boolean;
+    notify_spawn: boolean;
+    hawkeye_offset: number | null;
+    roger_offset: number | null;
+    soulking_offset: number | null;
+    radiant_admiral_offset: number | null;
+    merchant_offset: number | null;
+  };
   hotkeys: { toggle: string; overlay: string; quit: string; hide_hud: string };
   ui: { theme: string; hud_offset: RelPoint; hud_visible: boolean; panel_offset: RelPoint; panel_size: [number, number]; log_level: string };
   watchdog: { enabled: boolean; heartbeat_timeout_s: number; max_restarts: number; restart_backoff_s: number };
