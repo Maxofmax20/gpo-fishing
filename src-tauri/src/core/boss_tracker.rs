@@ -278,19 +278,22 @@ impl BossTracker {
     }
 
     /// Formats an HTML message summarizing all live boss countdowns for Telegram.
-    pub fn format_status_message(&self, now: i64) -> String {
+    pub fn format_status_message(&self, now: i64, is_enabled: impl Fn(BossId) -> bool) -> String {
         let mut msg = String::from("👑 <b>GPO Event Bosses & Merchant Live Timers</b>\n\n");
 
         for &boss in BossId::all() {
             let rem = self.remaining_seconds(boss, now);
             let countdown = format_duration(rem);
             let is_imminent = rem <= 300;
+            let enabled = is_enabled(boss);
+            let badge = if enabled { "🔔" } else { "🔕 <i>(muted)</i>" };
 
             let icon = if is_imminent { "🚨" } else { "⏱" };
             msg.push_str(&format!(
-                "{} <b>{}</b>\n   {} Next spawn: <b>{}</b> (<i>{}</i>)\n   📍 {}\n   ℹ️ {}\n\n",
+                "{} <b>{}</b> {}\n   {} Next spawn: <b>{}</b> (<i>{}</i>)\n   📍 {}\n   ℹ️ {}\n\n",
                 boss.emoji(),
                 boss.name(),
+                badge,
                 icon,
                 countdown,
                 boss.cycle_display(),
@@ -299,7 +302,7 @@ impl BossTracker {
             ));
         }
 
-        msg.push_str("💡 <i>Tip: Send <code>/sync</code> to calibrate with your in-game counter or Discord bot.</i>");
+        msg.push_str("💡 <i>Tip: Send <code>/toggle &lt;boss&gt;</code> to mute/unmute alerts (e.g. <code>/toggle roger</code>).\nSend <code>/sync</code> to calibrate with your in-game counter.</i>");
         msg
     }
 

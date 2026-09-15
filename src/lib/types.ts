@@ -159,6 +159,11 @@ export type Settings = {
     enabled: boolean;
     notify_5m: boolean;
     notify_spawn: boolean;
+    notify_hawkeye: boolean;
+    notify_roger: boolean;
+    notify_soulking: boolean;
+    notify_radiant_admiral: boolean;
+    notify_merchant: boolean;
     hawkeye_offset: number | null;
     roger_offset: number | null;
     soulking_offset: number | null;

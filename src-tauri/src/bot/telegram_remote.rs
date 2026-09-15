@@ -84,6 +84,14 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
             let now = crate::core::boss_tracker::now_sec();
             let alerts = boss_tracker.tick(now, notify_5m, notify_spawn);
             for alert in alerts {
+                let boss_specific_enabled = {
+                    let s = settings.read();
+                    s.boss_tracker.is_boss_enabled(alert.boss)
+                };
+                if !boss_specific_enabled {
+                    continue;
+                }
+
                 let alert_text = match alert.alert_type {
                     crate::core::boss_tracker::AlertType::Warning5m => {
                         format!(
@@ -379,8 +387,80 @@ fn handle_command(
         }
         "/bosses" | "/timers" | "/boss" | "bosses" | "timers" | "boss" => {
             let now = crate::core::boss_tracker::now_sec();
-            let msg = boss_tracker.format_status_message(now);
+            let msg = {
+                let s = settings.read();
+                boss_tracker.format_status_message(now, |b| s.boss_tracker.is_boss_enabled(b))
+            };
             let _ = post_telegram(token, chat_id, &msg);
+        }
+        cmd if cmd.starts_with("/toggle") || cmd.starts_with("toggle") || cmd.starts_with("/mute") || cmd.starts_with("mute") => {
+            let parts: Vec<&str> = text.split_whitespace().collect();
+            if let Some(target) = parts.get(1) {
+                let target_low = target.to_lowercase();
+                let reply = {
+                    let mut s = settings.write();
+                    let res = if target_low.contains("hawk") || target_low.contains("mihawk") {
+                        s.boss_tracker.notify_hawkeye = !s.boss_tracker.notify_hawkeye;
+                        let state = if s.boss_tracker.notify_hawkeye { "ENABLED 🔔" } else { "MUTED 🔕" };
+                        format!("🦅 <b>Hawk Eye (Mihawk) alerts:</b> {state}")
+                    } else if target_low.contains("roger") {
+                        s.boss_tracker.notify_roger = !s.boss_tracker.notify_roger;
+                        let state = if s.boss_tracker.notify_roger { "ENABLED 🔔" } else { "MUTED 🔕" };
+                        format!("👑 <b>Roger alerts:</b> {state}")
+                    } else if target_low.contains("soul") || target_low.contains("brook") {
+                        s.boss_tracker.notify_soulking = !s.boss_tracker.notify_soulking;
+                        let state = if s.boss_tracker.notify_soulking { "ENABLED 🔔" } else { "MUTED 🔕" };
+                        format!("🎺 <b>Soul King (Brook) alerts:</b> {state}")
+                    } else if target_low.contains("radiant") || target_low.contains("admiral") || target_low.contains("kizaru") {
+                        s.boss_tracker.notify_radiant_admiral = !s.boss_tracker.notify_radiant_admiral;
+                        let state = if s.boss_tracker.notify_radiant_admiral { "ENABLED 🔔" } else { "MUTED 🔕" };
+                        format!("⚡ <b>Radiant Admiral (Kizaru) alerts:</b> {state}")
+                    } else if target_low.contains("merchant") || target_low.contains("trader") {
+                        s.boss_tracker.notify_merchant = !s.boss_tracker.notify_merchant;
+                        let state = if s.boss_tracker.notify_merchant { "ENABLED 🔔" } else { "MUTED 🔕" };
+                        format!("🛒 <b>Travelling Merchant alerts:</b> {state}")
+                    } else if target_low == "all" {
+                        let any_on = s.boss_tracker.notify_hawkeye || s.boss_tracker.notify_roger || s.boss_tracker.notify_soulking || s.boss_tracker.notify_radiant_admiral || s.boss_tracker.notify_merchant;
+                        let new_state = !any_on;
+                        s.boss_tracker.notify_hawkeye = new_state;
+                        s.boss_tracker.notify_roger = new_state;
+                        s.boss_tracker.notify_soulking = new_state;
+                        s.boss_tracker.notify_radiant_admiral = new_state;
+                        s.boss_tracker.notify_merchant = new_state;
+                        let text_state = if new_state { "ALL ENABLED 🔔" } else { "ALL MUTED 🔕" };
+                        format!("🔔 <b>Boss Alerts:</b> {text_state}")
+                    } else {
+                        format!("⚠️ Unknown boss <b>{target}</b>.\nValid options: <code>hawkeye</code>, <code>roger</code>, <code>soulking</code>, <code>kizaru</code>, <code>merchant</code>, <code>all</code>")
+                    };
+                    let _ = bot.ctx().store.save(&s);
+                    res
+                };
+                let _ = post_telegram(token, chat_id, &reply);
+            } else {
+                let s = settings.read();
+                let fmt_badge = |en: bool| if en { "ON 🔔" } else { "OFF 🔕" };
+                let msg = format!(
+                    "⚙️ <b>Boss Alert Notification Settings:</b>\n\n\
+                    🦅 Hawk Eye (Mihawk): <b>{}</b>\n\
+                    👑 Roger: <b>{}</b>\n\
+                    🎺 Soul King (Brook): <b>{}</b>\n\
+                    ⚡ Radiant Admiral (Kizaru): <b>{}</b>\n\
+                    🛒 Travelling Merchant: <b>{}</b>\n\n\
+                    <i>To toggle any alert on/off, send e.g.:</i>\n\
+                    <code>/toggle roger</code>\n\
+                    <code>/toggle hawkeye</code>\n\
+                    <code>/toggle brook</code>\n\
+                    <code>/toggle kizaru</code>\n\
+                    <code>/toggle merchant</code>\n\
+                    <code>/toggle all</code>",
+                    fmt_badge(s.boss_tracker.notify_hawkeye),
+                    fmt_badge(s.boss_tracker.notify_roger),
+                    fmt_badge(s.boss_tracker.notify_soulking),
+                    fmt_badge(s.boss_tracker.notify_radiant_admiral),
+                    fmt_badge(s.boss_tracker.notify_merchant),
+                );
+                let _ = post_telegram(token, chat_id, &msg);
+            }
         }
         cmd if cmd.starts_with("/sync") || cmd.starts_with("sync") || text.to_lowercase().contains("live spawn times") || text.to_lowercase().contains("event bosses") => {
             let now = crate::core::boss_tracker::now_sec();
@@ -405,13 +485,14 @@ fn handle_command(
         "/help" | "help" => {
             let help_text = "🎮 <b>GPO Autofish Remote Controls</b>\n\n\
                 👑 /bosses - Live Boss & Merchant countdowns\n\
+                🔔 /toggle &lt;boss&gt; - Mute/unmute alerts (e.g. /toggle roger)\n\
                 🔄 /sync - Calibrate timers (or paste Discord bot text)\n\
                 📊 /status - View live stats & screenshot\n\
                 📸 /screenshot - Instant Roblox screenshot on demand\n\
                 ⚡ /pity - Quick Devil Fruit pity counter\n\
                 🔄 /recast - Reset rod & recast immediately\n\
                 🛒 /buybait - Force merchant bait purchase now\n\
-                ⚙️ /setbuy &lt;N&gt; - Set catches between bait purchases (e.g. /setbuy 50)\n\
+                ⚙️ /setbuy &lt;N&gt; - Set catches between bait buys (e.g. /setbuy 50)\n\
                 📱 /setprogress &lt;N&gt; - Set catches between progress pings (e.g. /setprogress 100)\n\
                 ▶️ /start - Start or resume macro\n\
                 🛑 /stop - Pause macro\n\
@@ -429,6 +510,7 @@ fn register_bot_commands(client: &reqwest::blocking::Client, token: &str) {
     let payload = serde_json::json!({
         "commands": [
             { "command": "bosses", "description": "👑 Live Boss & Merchant timers" },
+            { "command": "toggle", "description": "🔔 Mute/unmute specific boss alerts" },
             { "command": "sync", "description": "🔄 Calibrate boss timers (/sync)" },
             { "command": "status", "description": "📊 Live stats & Roblox screenshot" },
             { "command": "screenshot", "description": "📸 Instant Roblox screen capture" },

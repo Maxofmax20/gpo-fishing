@@ -312,6 +312,11 @@ pub struct BossTrackerSettings {
     pub enabled: bool,
     pub notify_5m: bool,
     pub notify_spawn: bool,
+    pub notify_hawkeye: bool,
+    pub notify_roger: bool,
+    pub notify_soulking: bool,
+    pub notify_radiant_admiral: bool,
+    pub notify_merchant: bool,
     pub hawkeye_offset: Option<i64>,
     pub roger_offset: Option<i64>,
     pub soulking_offset: Option<i64>,
@@ -325,11 +330,28 @@ impl Default for BossTrackerSettings {
             enabled: true,
             notify_5m: true,
             notify_spawn: true,
+            notify_hawkeye: true,
+            notify_roger: true,
+            notify_soulking: true,
+            notify_radiant_admiral: true,
+            notify_merchant: true,
             hawkeye_offset: None,
             roger_offset: None,
             soulking_offset: None,
             radiant_admiral_offset: None,
             merchant_offset: None,
+        }
+    }
+}
+
+impl BossTrackerSettings {
+    pub fn is_boss_enabled(&self, boss: crate::core::boss_tracker::BossId) -> bool {
+        match boss {
+            crate::core::boss_tracker::BossId::HawkEye => self.notify_hawkeye,
+            crate::core::boss_tracker::BossId::Roger => self.notify_roger,
+            crate::core::boss_tracker::BossId::SoulKing => self.notify_soulking,
+            crate::core::boss_tracker::BossId::RadiantAdmiral => self.notify_radiant_admiral,
+            crate::core::boss_tracker::BossId::TravellingMerchant => self.notify_merchant,
         }
     }
 }

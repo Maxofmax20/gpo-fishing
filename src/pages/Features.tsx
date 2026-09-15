@@ -335,6 +335,11 @@ export default function Features() {
                       enabled: true,
                       notify_5m: true,
                       notify_spawn: true,
+                      notify_hawkeye: true,
+                      notify_roger: true,
+                      notify_soulking: true,
+                      notify_radiant_admiral: true,
+                      notify_merchant: true,
                       hawkeye_offset: null,
                       roger_offset: null,
                       soulking_offset: null,
@@ -381,35 +386,52 @@ export default function Features() {
               </div>
             </div>
 
+            <div className="text-[12px] font-medium text-fg-dim px-0.5 pt-1">
+              Select which Bosses & Merchants send alerts:
+            </div>
+
             <div className="grid grid-cols-1 gap-2">
               {[
-                { emoji: "🦅", name: "Hawk Eye (Mihawk)", loc: "Umi Island (Second Sea)", cycle: "Every 2 hours", schedule: "01:00, 03:00, 05:00... (UTC+3)" },
-                { emoji: "👑", name: "Roger", loc: "Umi Island (Second Sea)", cycle: "Every 1.5 hours", schedule: "00:00, 01:30, 03:00... (UTC+3)" },
-                { emoji: "🎺", name: "Soul King (Brook)", loc: "Soul King's Ship (Second Sea)", cycle: "Every 1 hour", schedule: "On the hour (:00)" },
-                { emoji: "⚡", name: "Radiant Admiral (Kizaru)", loc: "Marine Base G-1 (First Sea)", cycle: "Every 30 mins", schedule: ":00 and :30" },
-                { emoji: "🛒", name: "Travelling Merchant", loc: "Random Island (Compass icon)", cycle: "Every 30 mins", schedule: "Stays for 10 minutes" },
-              ].map((b) => (
-                <div key={b.name} className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.02] border border-line/60">
-                  <div className="flex items-center gap-2">
-                    <span className="text-base">{b.emoji}</span>
-                    <div>
-                      <div className="text-[12px] font-medium text-fg">{b.name}</div>
-                      <div className="text-[10px] text-fg-mute">{b.loc}</div>
+                { key: "notify_hawkeye" as const, emoji: "🦅", name: "Hawk Eye (Mihawk)", loc: "Umi Island (Second Sea)", cycle: "Every 2 hours", schedule: "01:00, 03:00, 05:00... (UTC+3)" },
+                { key: "notify_roger" as const, emoji: "👑", name: "Roger", loc: "Umi Island (Second Sea)", cycle: "Every 1.5 hours", schedule: "00:00, 01:30, 03:00... (UTC+3)" },
+                { key: "notify_soulking" as const, emoji: "🎺", name: "Soul King (Brook)", loc: "Soul King's Ship (Second Sea)", cycle: "Every 1 hour", schedule: "On the hour (:00)" },
+                { key: "notify_radiant_admiral" as const, emoji: "⚡", name: "Radiant Admiral (Kizaru)", loc: "Marine Base G-1 (First Sea)", cycle: "Every 30 mins", schedule: ":00 and :30" },
+                { key: "notify_merchant" as const, emoji: "🛒", name: "Travelling Merchant", loc: "Random Island (Compass icon)", cycle: "Every 30 mins", schedule: "Stays for 10 minutes" },
+              ].map((b) => {
+                const isEnabled = s.boss_tracker?.[b.key] ?? true;
+                return (
+                  <div key={b.name} className={cx("flex items-center justify-between p-2.5 rounded-lg border transition-colors", isEnabled ? "bg-white/[0.02] border-line/60" : "bg-black/10 border-line/30 opacity-70")}>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-base">{b.emoji}</span>
+                      <div>
+                        <div className="text-[12px] font-medium text-fg flex items-center gap-1.5">
+                          <span>{b.name}</span>
+                          {!isEnabled && <span className="text-[10px] text-fg-mute font-normal">(muted)</span>}
+                        </div>
+                        <div className="text-[10px] text-fg-mute">{b.loc}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-right hidden sm:block">
+                        <div className="text-[11px] font-mono text-fg-dim">{b.cycle}</div>
+                        <div className="text-[10px] text-fg-mute">{b.schedule}</div>
+                      </div>
+                      <Toggle
+                        value={isEnabled}
+                        onChange={(v) => update((x) => void ((x.boss_tracker as any)[b.key] = v))}
+                      />
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-[11px] font-mono text-fg-dim">{b.cycle}</div>
-                    <div className="text-[10px] text-fg-mute">{b.schedule}</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             <div className="p-3 rounded-lg bg-white/[0.03] border border-line/50 text-[11px] text-fg-mute leading-relaxed space-y-1.5">
               <div className="font-semibold text-fg flex items-center gap-1.5">
                 📱 Telegram Remote Commands:
               </div>
-              <div>• Send <code className="text-fg-dim font-mono">/bosses</code> to get instant live countdowns for all 5 entities.</div>
+              <div>• Send <code className="text-fg-dim font-mono">/bosses</code> to get live countdowns with notification badges.</div>
+              <div>• Send <code className="text-fg-dim font-mono">/toggle &lt;boss&gt;</code> (e.g. <code className="text-fg-dim font-mono">/toggle roger</code> or <code className="text-fg-dim font-mono">/toggle all</code>) to mute/unmute alerts.</div>
               <div>• Send <code className="text-fg-dim font-mono">/sync hawkeye 1h 13m</code> or <code className="text-fg-dim font-mono">/sync all 1h13m 13m</code> to calibrate timers.</div>
               <div>• Or simply <b>paste your Discord bot counter message</b> directly into Telegram to auto-sync!</div>
             </div>
