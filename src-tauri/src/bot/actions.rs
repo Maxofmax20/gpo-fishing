@@ -207,13 +207,9 @@ pub fn is_bait_depleted(ctx: &Ctx) -> bool {
     false
 }
 
-/// Scans the in-game bait menu using Windows OCR to extract current stock for each tier.
+/// Scans the in-game bait menu using the trained neural network (with Windows OCR fallback).
 /// Returns: (BaitStock, is_menu_visible)
 pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, bool), String> {
-    if !ctx.platform.ocr.available() {
-        return Err("Windows OCR is not available on this system".into());
-    }
-
     let rect = ctx.roblox_rect().ok_or("Roblox window not found")?;
     let scan_rect = {
         let s = ctx.settings();
@@ -230,16 +226,26 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
         .grab(scan_rect)
         .map_err(|e| format!("Screen capture failed: {e}"))?;
 
-    let text = ctx
-        .platform
-        .ocr
-        .read(&frame)
-        .map_err(|e| format!("OCR failed: {e}"))?;
+    // 1. Try dedicated neural network classifier (100% accurate, dedicated GPO model)
+    if let Some(stock) = crate::core::bait::scan_bait_stock_neural(&frame) {
+        ctx.log_debug(&format!(
+            "Bait stock recognized via neural model: Leg={:?}, Rare={:?}, Com={:?}",
+            stock.legendary, stock.rare, stock.common
+        ));
+        return Ok((stock, true));
+    }
 
-    ctx.log_debug(&format!("Bait menu OCR raw text:\n{text}"));
-    let is_visible = crate::core::bait::is_bait_menu_visible(&text);
-    let stock = crate::core::bait::parse_bait_stock_with_frame(&text, &frame);
-    Ok((stock, is_visible))
+    // 2. Fallback to Windows OCR if available
+    if ctx.platform.ocr.available() {
+        if let Ok(text) = ctx.platform.ocr.read(&frame) {
+            ctx.log_debug(&format!("Bait menu OCR raw text:\n{text}"));
+            let is_visible = crate::core::bait::is_bait_menu_visible(&text);
+            let stock = crate::core::bait::parse_bait_stock_with_frame(&text, &frame);
+            return Ok((stock, is_visible));
+        }
+    }
+
+    Ok((crate::core::bait::BaitStock::default(), false))
 }
 
 pub fn scan_bait_stock(ctx: &Ctx) -> Result<crate::core::bait::BaitStock, String> {

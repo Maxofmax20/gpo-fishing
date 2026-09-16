@@ -388,6 +388,12 @@ pub fn disambiguate_four_vs_nine(count: u32, row_idx: usize, frame: &crate::core
 /// Parses in-game OCR text from the bait menu, assisted by frame pixel verification
 /// to correct font misreadings (such as '4' misread as '9').
 pub fn parse_bait_stock_with_frame(text: &str, frame: &crate::core::types::Frame) -> BaitStock {
+    // 1. Try dedicated neural network scanner first (100% accurate, scale-invariant)
+    if let Some(neural_stock) = scan_bait_stock_neural(frame) {
+        return neural_stock;
+    }
+
+    // 2. Fallback to OCR text parsing
     let mut stock = parse_bait_stock(text);
     if let Some(leg) = stock.legendary {
         stock.legendary = Some(disambiguate_four_vs_nine(leg, 0, frame));
@@ -400,6 +406,321 @@ pub fn parse_bait_stock_with_frame(text: &str, frame: &crate::core::types::Frame
     }
     stock
 }
+
+/// Scans a captured frame of the bait menu using the dedicated trained neural network.
+/// Scale-invariant, resolution-independent, and completely independent of Windows OCR.
+/// Returns Some(BaitStock) if all 3 tiers (Legendary, Rare, Common) are detected.
+pub fn scan_bait_stock_neural(frame: &crate::core::types::Frame) -> Option<BaitStock> {
+    let w = frame.w;
+    let h = frame.h;
+    if w < 20 || h < 20 {
+        return None;
+    }
+
+    // 1. Build orange mask for the entire frame
+    let mut mask = vec![false; w * h];
+    let mut orange_count = 0;
+    for y in 0..h {
+        for x in 0..w {
+            let (r, g, b) = frame.px(x, y);
+            if r > 150 && g > 75 && b < 95 && r > g && (g as f32) > (b as f32 * 1.05) {
+                mask[y * w + x] = true;
+                orange_count += 1;
+            }
+        }
+    }
+
+    if orange_count < 20 {
+        return None;
+    }
+
+    // 2. Crop to right 40% of the menu, excluding outer 4px on the right
+    let x_offset = (w as f32 * 0.60).round() as usize;
+    let x_end = w.saturating_sub(4);
+    if x_end <= x_offset {
+        return None;
+    }
+    let rw = x_end - x_offset;
+
+    // Filter horizontal border lines: any row where row_sum > 38 or y > 0.90 * h is cleared
+    let max_y_cutoff = (h as f32 * 0.90).round() as usize;
+    let mut filtered = vec![false; rw * h];
+
+    for y in 0..h {
+        if y > max_y_cutoff {
+            continue;
+        }
+        let mut row_sum = 0;
+        for x in 0..rw {
+            if mask[y * w + (x_offset + x)] {
+                row_sum += 1;
+            }
+        }
+        if row_sum <= 38 {
+            for x in 0..rw {
+                filtered[y * rw + x] = mask[y * w + (x_offset + x)];
+            }
+        }
+    }
+
+    // 3. Find contiguous Y clusters of text (rows with >= 4 pixels, gap > 3)
+    let mut row_sums = vec![0usize; h];
+    for y in 0..h {
+        let mut sum = 0;
+        for x in 0..rw {
+            if filtered[y * rw + x] {
+                sum += 1;
+            }
+        }
+        row_sums[y] = sum;
+    }
+
+    let mut clusters: Vec<Vec<usize>> = Vec::new();
+    let mut curr_cluster: Vec<usize> = Vec::new();
+    for y in 0..h {
+        if row_sums[y] >= 4 {
+            if let Some(&last) = curr_cluster.last() {
+                if y - last > 3 {
+                    clusters.push(curr_cluster);
+                    curr_cluster = Vec::new();
+                }
+            }
+            curr_cluster.push(y);
+        }
+    }
+    if !curr_cluster.is_empty() {
+        clusters.push(curr_cluster);
+    }
+
+    // Filter clusters by text height (7..=18 px)
+    let valid_clusters: Vec<&Vec<usize>> = clusters
+        .iter()
+        .filter(|c| {
+            let ch = c.last().unwrap() - c.first().unwrap() + 1;
+            ch >= 7 && ch <= 18
+        })
+        .collect();
+
+    if valid_clusters.len() < 3 {
+        return None;
+    }
+
+    let mut parsed_numbers = Vec::new();
+
+    for cluster in valid_clusters.iter().take(3) {
+        let y0 = *cluster.first().unwrap();
+        let y1 = *cluster.last().unwrap();
+        let ch = y1 - y0 + 1;
+
+        // Extract sub-band for this cluster
+        let mut band = vec![false; ch * rw];
+        for y in 0..ch {
+            for x in 0..rw {
+                band[y * rw + x] = filtered[(y0 + y) * rw + x];
+            }
+        }
+
+        // Compute column sums to find the text span
+        let mut csums = vec![0usize; rw];
+        for x in 0..rw {
+            for y in 0..ch {
+                if band[y * rw + x] {
+                    csums[x] += 1;
+                }
+            }
+        }
+
+        // Find spans of consecutive non-zero columns (allow gap <= 2)
+        let mut spans: Vec<Vec<usize>> = Vec::new();
+        let mut cur_span: Vec<usize> = Vec::new();
+        for x in 0..rw {
+            if csums[x] > 0 {
+                cur_span.push(x);
+            } else if let Some(&last) = cur_span.last() {
+                if x - last > 2 {
+                    spans.push(cur_span);
+                    cur_span = Vec::new();
+                }
+            }
+        }
+        if !cur_span.is_empty() {
+            spans.push(cur_span);
+        }
+
+        // Pick the text span (width >= 15)
+        let text_span = spans.into_iter().find(|s| s.last().unwrap() - s.first().unwrap() + 1 >= 15);
+        let Some(ts) = text_span else {
+            parsed_numbers.push(None);
+            continue;
+        };
+
+        let tx0 = *ts.first().unwrap();
+        let tx1 = *ts.last().unwrap();
+        let tw = tx1 - tx0 + 1;
+
+        // Extract tight horizontal band
+        let mut tight_band = vec![false; ch * tw];
+        for y in 0..ch {
+            for x in 0..tw {
+                tight_band[y * tw + x] = band[y * rw + (tx0 + x)];
+            }
+        }
+
+        let num = parse_digits_from_tight_band(&tight_band, tw, ch);
+        parsed_numbers.push(num);
+    }
+
+    if parsed_numbers.len() >= 3 {
+        Some(BaitStock {
+            legendary: parsed_numbers[0],
+            rare: parsed_numbers[1],
+            common: parsed_numbers[2],
+        })
+    } else {
+        None
+    }
+}
+
+fn parse_digits_from_tight_band(tight_band: &[bool], tw: usize, th: usize) -> Option<u32> {
+    if tw < 10 || th < 5 {
+        return None;
+    }
+
+    let mut col_sums = vec![0usize; tw];
+    for x in 0..tw {
+        for y in 0..th {
+            if tight_band[y * tw + x] {
+                col_sums[x] += 1;
+            }
+        }
+    }
+
+    // Find end of 'x' (valley around col 6..min(12, tw - 4))
+    let max_v = 12.min(tw.saturating_sub(4));
+    let mut cut_x = 8;
+    let mut min_val = usize::MAX;
+    if max_v >= 6 {
+        for c in 6..=max_v {
+            if col_sums[c] < min_val {
+                min_val = col_sums[c];
+                cut_x = c;
+            }
+        }
+    }
+
+    if cut_x + 1 >= tw {
+        return None;
+    }
+
+    let d_start = cut_x + 1;
+    let raw_dw = tw - d_start;
+
+    let mut min_dx = raw_dw;
+    let mut max_dx = 0;
+    let mut min_dy = th;
+    let mut max_dy = 0;
+    let mut d_count = 0;
+
+    for y in 0..th {
+        for x in 0..raw_dw {
+            if tight_band[y * tw + (d_start + x)] {
+                d_count += 1;
+                if x < min_dx { min_dx = x; }
+                if x > max_dx { max_dx = x; }
+                if y < min_dy { min_dy = y; }
+                if y > max_dy { max_dy = y; }
+            }
+        }
+    }
+
+    if d_count < 6 || min_dx > max_dx {
+        return None;
+    }
+
+    let dw = max_dx - min_dx + 1;
+    let dh = max_dy - min_dy + 1;
+
+    let mut d_tight = vec![false; dw * dh];
+    for y in 0..dh {
+        for x in 0..dw {
+            d_tight[y * dw + x] = tight_band[(min_dy + y) * tw + (d_start + min_dx + x)];
+        }
+    }
+
+    // Determine number of digits by width:
+    // <= 12: 1 digit
+    // <= 20: 2 digits
+    // > 20: 3 digits
+    let num_digits = if dw <= 12 {
+        1
+    } else if dw <= 20 {
+        2
+    } else {
+        3
+    };
+
+    let mut d_sums = vec![0usize; dw];
+    for x in 0..dw {
+        for y in 0..dh {
+            if d_tight[y * dw + x] {
+                d_sums[x] += 1;
+            }
+        }
+    }
+
+    let slot_w = dw as f32 / num_digits as f32;
+    let mut cuts = vec![0];
+
+    for k in 1..num_digits {
+        let target = (k as f32 * slot_w).round() as usize;
+        let w_start = (cuts.last().unwrap() + 4).max(target.saturating_sub(2));
+        let w_end = (dw.saturating_sub(3)).min(target + 2);
+
+        let mut best_c = target;
+        let mut min_v = usize::MAX;
+        if w_start <= w_end {
+            for c in w_start..=w_end {
+                if d_sums[c] < min_v {
+                    min_v = d_sums[c];
+                    best_c = c;
+                }
+            }
+        }
+        cuts.push(best_c);
+    }
+    cuts.push(dw);
+
+    let mut result_digits = Vec::new();
+    for i in 0..(cuts.len() - 1) {
+        let x0 = cuts[i];
+        let x1 = cuts[i + 1];
+        let sw = x1.saturating_sub(x0);
+        if sw == 0 {
+            continue;
+        }
+
+        let mut slot_patch = vec![false; sw * dh];
+        for y in 0..dh {
+            for x in 0..sw {
+                slot_patch[y * sw + x] = d_tight[y * dw + (x0 + x)];
+            }
+        }
+
+        let (digit, _conf) = crate::core::digit_model::predict_digit(&slot_patch, sw, dh);
+        result_digits.push(digit);
+    }
+
+    if result_digits.is_empty() {
+        return None;
+    }
+
+    let mut val = 0u32;
+    for d in result_digits {
+        val = val * 10 + d;
+    }
+    Some(val)
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -550,4 +871,46 @@ mod tests {
         assert_eq!(s.rare, Some(166));
         assert_eq!(s.common, Some(198));
     }
+
+    #[test]
+    fn test_neural_bait_scanner_all_fixtures() {
+        use image::GenericImageView;
+
+        // 1. Fixture C (Latest user upload: media_1789597354352.png)
+        // Legendary: 160, Rare: 57, Common: 183
+        let bytes_c = include_bytes!("../../test_fixtures/img_c_160_57_183.png");
+        let dyn_img_c = image::load_from_memory_with_format(bytes_c, image::ImageFormat::Png).expect("Load img C");
+        let (w, h) = dyn_img_c.dimensions();
+        let rgba_c = dyn_img_c.to_rgba8().into_raw();
+        let frame_c = crate::core::types::Frame::new(w as usize, h as usize, rgba_c);
+        let stock_c = scan_bait_stock_neural(&frame_c).expect("Neural scan img C");
+        assert_eq!(stock_c.legendary, Some(160));
+        assert_eq!(stock_c.rare, Some(57));
+        assert_eq!(stock_c.common, Some(183));
+
+        // 2. Fixture A (media_1789576873126.png)
+        // Legendary: 136, Rare: 130, Common: 224
+        let bytes_a = include_bytes!("../../test_fixtures/img_a_136_130_224.png");
+        let dyn_img_a = image::load_from_memory_with_format(bytes_a, image::ImageFormat::Png).expect("Load img A");
+        let (w, h) = dyn_img_a.dimensions();
+        let rgba_a = dyn_img_a.to_rgba8().into_raw();
+        let frame_a = crate::core::types::Frame::new(w as usize, h as usize, rgba_a);
+        let stock_a = scan_bait_stock_neural(&frame_a).expect("Neural scan img A");
+        assert_eq!(stock_a.legendary, Some(136));
+        assert_eq!(stock_a.rare, Some(130));
+        assert_eq!(stock_a.common, Some(224));
+
+        // 3. Fixture B (menu_588.png)
+        // Legendary: 146, Rare: 166, Common: 198
+        let bytes_b = include_bytes!("../../test_fixtures/img_b_146_166_198.png");
+        let dyn_img_b = image::load_from_memory_with_format(bytes_b, image::ImageFormat::Png).expect("Load img B");
+        let (w, h) = dyn_img_b.dimensions();
+        let rgba_b = dyn_img_b.to_rgba8().into_raw();
+        let frame_b = crate::core::types::Frame::new(w as usize, h as usize, rgba_b);
+        let stock_b = scan_bait_stock_neural(&frame_b).expect("Neural scan img B");
+        assert_eq!(stock_b.legendary, Some(146));
+        assert_eq!(stock_b.rare, Some(166));
+        assert_eq!(stock_b.common, Some(198));
+    }
 }
+

@@ -1,6 +1,7 @@
 pub mod bait;
 pub mod boss_tracker;
 pub mod controller;
+pub mod digit_model;
 pub mod fruit;
 pub mod platform;
 pub mod types;
