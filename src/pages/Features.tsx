@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Send, RotateCcw, Camera, Check, AlertCircle, PencilRuler } from "lucide-react";
+import { Send, Camera, PencilRuler } from "lucide-react";
 import { api } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { PointField } from "../components/PointField";
@@ -12,58 +12,11 @@ export default function Features() {
   const ocrAvailable = useStore((st) => st.ocrAvailable);
   const [open, setOpen] = useState<string | null>(null);
   const [whTest, setWhTest] = useState<"idle" | "ok" | string>("idle");
-  const [scanState, setScanState] = useState<{ loading: boolean; message: string | null; error: boolean }>({
-    loading: false,
-    message: null,
-    error: false,
-  });
-  const [manualUptime, setManualUptime] = useState("");
   if (!s) return null;
   const toggle = (k: string) => setOpen((o) => (o === k ? null : k));
   const baitReady = !!s.points.bait[0];
   const shopReady = !!s.points.purchase[0] && !!s.points.purchase[1];
   const fruitReady = !!s.points.fruit[0];
-
-  const handleScanTimer = async () => {
-    setScanState({ loading: true, message: null, error: false });
-    try {
-      const res = await api.bossTrackerScanServerAge();
-      setScanState({
-        loading: false,
-        message: `Scanned ${res.time_str}: ${res.message}`,
-        error: false,
-      });
-      const latest = await api.settingsGet();
-      update((x) => Object.assign(x, latest));
-    } catch (err) {
-      setScanState({
-        loading: false,
-        message: String(err),
-        error: true,
-      });
-    }
-  };
-
-  const handleSyncManual = async () => {
-    if (!manualUptime.trim()) return;
-    try {
-      const res = await api.bossTrackerSyncServerAge(manualUptime.trim());
-      setScanState({
-        loading: false,
-        message: `Manual sync (${res.time_str}): ${res.message}`,
-        error: false,
-      });
-      setManualUptime("");
-      const latest = await api.settingsGet();
-      update((x) => Object.assign(x, latest));
-    } catch (err) {
-      setScanState({
-        loading: false,
-        message: String(err),
-        error: true,
-      });
-    }
-  };
 
   const [baitScanState, setBaitScanState] = useState<{
     loading: boolean;
@@ -176,7 +129,7 @@ export default function Features() {
                       disabled={!roblox}
                       icon={<PencilRuler size={13} />}
                     >
-                      Edit Area (4)
+                      Edit Area (3)
                     </Button>
                   </div>
                   {baitScanState.result && (
@@ -481,208 +434,6 @@ export default function Features() {
               </Field>
             </div>
           )}
-        </Row>
-      </Section>
-
-      <Section title="Event Bosses & Merchant Tracker">
-        <Row
-          title="Live Boss & Merchant Tracker"
-          sub="Tracks Hawk Eye, Roger, Soul King, Radiant Admiral, and Travelling Merchant with automated 5m & spawn alerts."
-          right={
-            <Toggle
-              value={s.boss_tracker?.enabled ?? true}
-              onChange={(v) => {
-                update((x) => {
-                  if (!x.boss_tracker) {
-                    x.boss_tracker = {
-                      enabled: true,
-                      notify_5m: true,
-                      notify_spawn: true,
-                      notify_hawkeye: true,
-                      notify_roger: true,
-                      notify_soulking: true,
-                      notify_radiant_admiral: true,
-                      notify_merchant: true,
-                      hawkeye_offset: null,
-                      roger_offset: null,
-                      soulking_offset: null,
-                      radiant_admiral_offset: null,
-                      merchant_offset: null,
-                    };
-                  }
-                  x.boss_tracker.enabled = v;
-                });
-                if (v) setOpen("bosses");
-              }}
-            />
-          }
-          open={open === "bosses"}
-          onToggle={() => toggle("bosses")}
-        >
-          <div className="space-y-3 pt-1">
-            <div className="p-3 rounded-xl bg-black/20 border border-line flex flex-col gap-2">
-              <div className="text-[12px] font-semibold text-fg flex items-center justify-between">
-                <span>Telegram Notifications</span>
-                <span className="text-[11px] font-normal text-fg-mute">Works 24/7 even when fishing is stopped</span>
-              </div>
-              
-              <div className="flex items-center justify-between py-1 border-b border-line/50">
-                <div>
-                  <div className="text-[12px] text-fg">⏰ 5-Minute Warning</div>
-                  <div className="text-[11px] text-fg-mute">Alerts 5 minutes before boss spawns so you can sail in time.</div>
-                </div>
-                <Toggle
-                  value={s.boss_tracker?.notify_5m ?? true}
-                  onChange={(v) => update((x) => void (x.boss_tracker.notify_5m = v))}
-                />
-              </div>
-
-              <div className="flex items-center justify-between py-1">
-                <div>
-                  <div className="text-[12px] text-fg">🚨 Spawn Moment Alert</div>
-                  <div className="text-[11px] text-fg-mute">Instant alert when the boss appears or merchant restocks.</div>
-                </div>
-                <Toggle
-                  value={s.boss_tracker?.notify_spawn ?? true}
-                  onChange={(v) => update((x) => void (x.boss_tracker.notify_spawn = v))}
-                />
-              </div>
-            </div>
-
-            <div className="text-[12px] font-medium text-fg-dim px-0.5 pt-1">
-              Select which Bosses & Merchants send alerts:
-            </div>
-
-            <div className="grid grid-cols-1 gap-2">
-              {[
-                { key: "notify_hawkeye" as const, emoji: "🦅", name: "Hawk Eye (Mihawk)", loc: "Umi Island (Second Sea)", cycle: "Every 2 hours", schedule: "01:00, 03:00, 05:00... (UTC+3)" },
-                { key: "notify_roger" as const, emoji: "👑", name: "Roger", loc: "Umi Island (Second Sea)", cycle: "Every 1.5 hours", schedule: "00:00, 01:30, 03:00... (UTC+3)" },
-                { key: "notify_soulking" as const, emoji: "🎺", name: "Soul King (Brook)", loc: "Soul King's Ship (Second Sea)", cycle: "Every 1 hour", schedule: "On the hour (:00)" },
-                { key: "notify_radiant_admiral" as const, emoji: "⚡", name: "Radiant Admiral (Kizaru)", loc: "Marine Base G-1 (First Sea)", cycle: "Every 30 mins", schedule: ":00 and :30" },
-                { key: "notify_merchant" as const, emoji: "🛒", name: "Travelling Merchant", loc: "Random Island (Compass icon)", cycle: "Every 40 mins (Server Age)", schedule: "First spawn 00:10:00, stays 10m" },
-              ].map((b) => {
-                const isEnabled = s.boss_tracker?.[b.key] ?? true;
-                return (
-                  <div key={b.name} className={cx("flex items-center justify-between p-2.5 rounded-lg border transition-colors", isEnabled ? "bg-white/[0.02] border-line/60" : "bg-black/10 border-line/30 opacity-70")}>
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-base">{b.emoji}</span>
-                      <div>
-                        <div className="text-[12px] font-medium text-fg flex items-center gap-1.5">
-                          <span>{b.name}</span>
-                          {!isEnabled && <span className="text-[10px] text-fg-mute font-normal">(muted)</span>}
-                        </div>
-                        <div className="text-[10px] text-fg-mute">{b.loc}</div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right hidden sm:block">
-                        <div className="text-[11px] font-mono text-fg-dim">{b.cycle}</div>
-                        <div className="text-[10px] text-fg-mute">{b.schedule}</div>
-                      </div>
-                      <Toggle
-                        value={isEnabled}
-                        onChange={(v) => update((x) => void ((x.boss_tracker as any)[b.key] = v))}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Travelling Merchant In-Game Timer Auto-Sync */}
-            <div className="p-3 rounded-xl bg-black/20 border border-line flex flex-col gap-2.5">
-              <div className="text-[12px] font-semibold text-fg flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <Camera size={14} className="text-accent" />
-                  <span>Travelling Merchant In-Game Timer (Server Age)</span>
-                </div>
-                <span className="text-[10px] text-fg-mute font-normal">Bottom-right corner</span>
-              </div>
-              <div className="text-[11px] text-fg-mute leading-relaxed">
-                The Travelling Merchant spawns based on your server's uptime (e.g. <span className="font-mono text-fg-dim">01:43:48</span>). You can auto-scan the timer directly from your Roblox window with OCR or enter it manually.
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                <Button
-                  size="sm"
-                  onClick={handleScanTimer}
-                  disabled={scanState.loading}
-                  icon={<Camera size={13} />}
-                >
-                  {scanState.loading ? "Scanning screen..." : "📷 Auto-Scan In-Game Timer"}
-                </Button>
-
-                <Button
-                  size="sm"
-                  kind="ghost"
-                  onClick={() => api.overlayOpen("server_time_region")}
-                  disabled={!roblox}
-                  icon={<PencilRuler size={13} />}
-                >
-                  Adjust timer box
-                </Button>
-
-                <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">
-                  <TextField
-                    type="text"
-                    mono
-                    placeholder="e.g. 01:43:48"
-                    value={manualUptime}
-                    onChange={(v) => setManualUptime(v)}
-                  />
-                  <Button
-                    size="sm"
-                    kind="ghost"
-                    onClick={handleSyncManual}
-                    disabled={!manualUptime.trim()}
-                    icon={<Check size={12} />}
-                  >
-                    Sync
-                  </Button>
-                </div>
-              </div>
-
-              {scanState.message && (
-                <div className={cx("text-[11px] p-2 rounded-lg flex items-center gap-1.5", scanState.error ? "bg-red-500/10 text-red-400 border border-red-500/20" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20")}>
-                  {scanState.error ? <AlertCircle size={13} /> : <Check size={13} />}
-                  <span>{scanState.message}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="p-3 rounded-lg bg-white/[0.03] border border-line/50 text-[11px] text-fg-mute leading-relaxed space-y-1.5">
-              <div className="font-semibold text-fg flex items-center gap-1.5">
-                📱 Telegram Remote Commands:
-              </div>
-              <div>• Send <code className="text-fg-dim font-mono">/bosses</code> to get live countdowns with notification badges.</div>
-              <div>• Send <code className="text-fg-dim font-mono">/toggle &lt;boss&gt;</code> (e.g. <code className="text-fg-dim font-mono">/toggle roger</code> or <code className="text-fg-dim font-mono">/toggle all</code>) to mute/unmute alerts.</div>
-              <div>• Send <code className="text-fg-dim font-mono">/sync read</code> to auto-read the in-game timer directly from your screen with OCR!</div>
-              <div>• Send <code className="text-fg-dim font-mono">/sync server 01:43:48</code> to calculate merchant from bottom-right timer.</div>
-              <div>• Send <code className="text-fg-dim font-mono">/sync hawkeye 1h 13m</code> or <code className="text-fg-dim font-mono">/sync all 1h13m 13m</code> to calibrate timers.</div>
-              <div>• Or simply <b>paste your Discord bot counter message</b> directly into Telegram to auto-sync!</div>
-            </div>
-
-            <div className="flex justify-end pt-1">
-              <Button
-                size="sm"
-                kind="ghost"
-                icon={<RotateCcw size={12} />}
-                onClick={() => {
-                  update((x) => {
-                    if (x.boss_tracker) {
-                      x.boss_tracker.hawkeye_offset = null;
-                      x.boss_tracker.roger_offset = null;
-                      x.boss_tracker.soulking_offset = null;
-                      x.boss_tracker.radiant_admiral_offset = null;
-                      x.boss_tracker.merchant_offset = null;
-                    }
-                  });
-                }}
-              >
-                Reset to Official Wiki Schedule
-              </Button>
-            </div>
-          </div>
         </Row>
       </Section>
     </div>

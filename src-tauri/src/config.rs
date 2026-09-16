@@ -339,7 +339,7 @@ pub struct BossTrackerSettings {
 impl Default for BossTrackerSettings {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,
             notify_5m: true,
             notify_spawn: true,
             notify_hawkeye: true,
@@ -626,11 +626,8 @@ impl Store {
                 }
             }
             if settings.version < 12 {
-                if settings.regions.bait_menu.x < 0.55 {
+                if settings.regions.bait_menu.w < 0.01 {
                     settings.regions.bait_menu = Regions::default().bait_menu;
-                }
-                if settings.regions.server_time.x > 0.92 || settings.regions.server_time.w < 0.10 {
-                    settings.regions.server_time = Regions::default().server_time;
                 }
             }
             settings.version = SETTINGS_VERSION;

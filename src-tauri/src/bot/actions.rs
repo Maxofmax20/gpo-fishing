@@ -230,17 +230,15 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
         .grab(scan_rect)
         .map_err(|e| format!("Screen capture failed: {e}"))?;
 
-    // Upscale 2x for optimal OCR readability
-    let upscaled = frame.upscale(2);
     let text = ctx
         .platform
         .ocr
-        .read(&upscaled)
+        .read(&frame)
         .map_err(|e| format!("OCR failed: {e}"))?;
 
     ctx.log_debug(&format!("Bait menu OCR raw text:\n{text}"));
     let is_visible = crate::core::bait::is_bait_menu_visible(&text);
-    let stock = crate::core::bait::parse_bait_stock(&text);
+    let stock = crate::core::bait::parse_bait_stock_with_frame(&text, &frame);
     Ok((stock, is_visible))
 }
 

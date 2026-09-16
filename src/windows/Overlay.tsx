@@ -10,11 +10,11 @@ type Mode =
   | { kind: "idle" };
 type PxBox = { x: number; y: number; w: number; h: number };
 type Drag = { type: "move" | "draw" | "resize"; edge?: string; sx: number; sy: number; start: RelRect };
-type RegionKey = "bar" | "drop" | "server_time" | "bait_menu";
+type RegionKey = "bar" | "drop" | "bait_menu";
 
 const HANDLE = 8;
-const COLORS: Record<RegionKey, string> = { bar: "#4f8cff", drop: "#22c55e", server_time: "#eab308", bait_menu: "#f97316" };
-const LABELS: Record<RegionKey, string> = { bar: "Fishing bar", drop: "Drop message", server_time: "Server timer", bait_menu: "Bait menu" };
+const COLORS: Record<RegionKey, string> = { bar: "#4f8cff", drop: "#22c55e", bait_menu: "#f97316" };
+const LABELS: Record<RegionKey, string> = { bar: "Fishing bar", drop: "Drop message", bait_menu: "Bait menu" };
 
 export default function Overlay() {
   const [mode, setMode] = useState<Mode>({ kind: "idle" });
@@ -114,11 +114,10 @@ export default function Overlay() {
       else if (mode.kind === "regions") {
         if (e.key === "Tab") {
           e.preventDefault();
-          setActive((a) => (a === "bar" ? "drop" : a === "drop" ? "server_time" : a === "server_time" ? "bait_menu" : "bar"));
+          setActive((a) => (a === "bar" ? "drop" : a === "drop" ? "bait_menu" : "bar"));
         } else if (e.key === "1") setActive("bar");
         else if (e.key === "2") setActive("drop");
-        else if (e.key === "3") setActive("server_time");
-        else if (e.key === "4") setActive("bait_menu");
+        else if (e.key === "3") setActive("bait_menu");
         else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && regions) {
           e.preventDefault();
           const step = (e.shiftKey ? 10 : 1) / (e.key === "ArrowUp" || e.key === "ArrowDown" ? size.h : size.w);
@@ -144,7 +143,7 @@ export default function Overlay() {
     const startDrag = (e: React.PointerEvent) => {
       if (e.button !== 0) return;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      const allKeys: RegionKey[] = ["bar", "drop", "server_time", "bait_menu"];
+      const allKeys: RegionKey[] = ["bar", "drop", "bait_menu"];
       const order: RegionKey[] = [active, ...allKeys.filter((k) => k !== active)];
       for (const k of order) {
         const edge = hitEdge(toPx(regions[k]), e.clientX, e.clientY);
@@ -166,7 +165,7 @@ export default function Overlay() {
       setRegions({ ...regions, [active]: applyDrag(d, e.clientX, e.clientY, W, H) });
     };
     const cursorFor = (e: React.MouseEvent) => {
-      const allKeys: RegionKey[] = ["bar", "drop", "server_time", "bait_menu"];
+      const allKeys: RegionKey[] = ["bar", "drop", "bait_menu"];
       const order: RegionKey[] = [active, ...allKeys.filter((k) => k !== active)];
       for (const k of order) {
         const edge = hitEdge(toPx(regions[k]), e.clientX, e.clientY);
@@ -184,12 +183,12 @@ export default function Overlay() {
         onMouseMove={(e) => ((e.currentTarget as HTMLElement).style.cursor = cursorFor(e))}
         style={{ background: "rgba(5,7,12,0.28)" }}
       >
-        {(["bait_menu", "server_time", "drop", "bar"] as RegionKey[]).map((k) => (
+        {(["bait_menu", "drop", "bar"] as RegionKey[]).map((k) => (
           <Box
             key={k}
             r={toPx(regions[k])}
             color={COLORS[k]}
-            label={`${k === "bar" ? "1" : k === "drop" ? "2" : k === "server_time" ? "3" : "4"} · ${LABELS[k]}`}
+            label={`${k === "bar" ? "1" : k === "drop" ? "2" : "3"} · ${LABELS[k]}`}
             handles={active === k}
             dim={active !== k}
             badge={
@@ -207,12 +206,11 @@ export default function Overlay() {
         {reading && <LiveBar reading={reading} origin={toPx(regions.bar)} />}
         <Toolbar
           title="Edit areas"
-          hint="Drag to move · edges to resize · arrows nudge (Shift ×10) · Tab / 1 / 2 / 3 / 4 switch · Enter save · Esc cancel"
+          hint="Drag to move · edges to resize · arrows nudge (Shift ×10) · Tab / 1 / 2 / 3 switch · Enter save · Esc cancel"
           chips={[
             { key: "1", label: LABELS.bar, active: active === "bar", color: COLORS.bar, onClick: () => setActive("bar") },
             { key: "2", label: LABELS.drop, active: active === "drop", color: COLORS.drop, onClick: () => setActive("drop") },
-            { key: "3", label: LABELS.server_time, active: active === "server_time", color: COLORS.server_time, onClick: () => setActive("server_time") },
-            { key: "4", label: LABELS.bait_menu, active: active === "bait_menu", color: COLORS.bait_menu, onClick: () => setActive("bait_menu") },
+            { key: "3", label: LABELS.bait_menu, active: active === "bait_menu", color: COLORS.bait_menu, onClick: () => setActive("bait_menu") },
           ]}
           onSave={commit}
           onCancel={cancel}
@@ -274,7 +272,7 @@ export default function Overlay() {
           <div className="absolute inset-0 pointer-events-none" style={maskStyle(px, W, H)} />
           <Box
             r={px}
-            color={target === "bar_region" ? COLORS.bar : target === "drop_region" ? COLORS.drop : COLORS.server_time}
+            color={target === "bar_region" ? COLORS.bar : target === "drop_region" ? COLORS.drop : COLORS.bait_menu}
             handles
           />
         </>

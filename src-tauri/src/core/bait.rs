@@ -120,21 +120,30 @@ fn extract_quantity(line: &str) -> Option<u32> {
                 .take_while(|c| c.is_alphanumeric())
                 .collect();
             let digits = clean_ocr_digits(&raw_chunk);
-            if let Ok(n) = digits.parse::<u32>() {
-                if n <= 9999 {
-                    return Some(n);
+            if !digits.is_empty() {
+                if let Ok(n) = digits.parse::<u32>() {
+                    if n <= 9999 {
+                        return Some(n);
+                    }
                 }
             }
         }
     }
 
-    // 2. Scan tokens from right to left for standard "x123", "*123", ":123", "123"
+    // 2. Scan tokens from right to left for numbers.
+    // CRITICAL: The token MUST contain at least one genuine ASCII digit or start with 'x' / '*'.
+    // Never pass generic English words like "fish" or "bait" to clean_ocr_digits!
     for word in lower.split_whitespace().rev() {
-        let digits = clean_ocr_digits(word);
-        if !digits.is_empty() {
-            if let Ok(n) = digits.parse::<u32>() {
-                if n <= 9999 {
-                    return Some(n);
+        let has_real_digit = word.chars().any(|c| c.is_ascii_digit());
+        let starts_with_mult = word.starts_with('x') || word.starts_with('*') || word.starts_with(':');
+
+        if has_real_digit || starts_with_mult {
+            let digits = clean_ocr_digits(word);
+            if !digits.is_empty() {
+                if let Ok(n) = digits.parse::<u32>() {
+                    if n <= 9999 {
+                        return Some(n);
+                    }
                 }
             }
         }
@@ -288,6 +297,110 @@ pub fn parse_bait_stock(text: &str) -> BaitStock {
     stock
 }
 
+/// Disambiguates whether a detected digit ending in 9 (e.g. 229, 149) is actually a 4 in GPO font.
+/// In GPO font, '4' has an enclosed/rounded top which generic Windows OCR often misrecognizes as '9'.
+/// In the digit '4', the lower-left quadrant is empty background, whereas in '9', the stroke
+/// curves down and through the center/bottom.
+pub fn disambiguate_four_vs_nine(count: u32, row_idx: usize, frame: &crate::core::types::Frame) -> u32 {
+    if count % 10 != 9 {
+        return count;
+    }
+
+    let h = frame.h;
+    let w = frame.w;
+    if h < 20 || w < 40 {
+        return count;
+    }
+
+    let (y0_pct, y1_pct) = match row_idx {
+        0 => (0.18, 0.48),
+        1 => (0.48, 0.72),
+        _ => (0.72, 0.98),
+    };
+
+    let y_start = (h as f32 * y0_pct) as usize;
+    let y_end = ((h as f32 * y1_pct) as usize).min(h);
+    let x_start = (w as f32 * 0.60) as usize;
+    let x_end = w;
+
+    // Scan for orange/gold text pixels in the row's right side:
+    // Gold/orange text in GPO: R > 150, G > 90, B < 110, R > G
+    let mut orange_pixels = Vec::new();
+    for y in y_start..y_end {
+        for x in x_start..x_end {
+            let (r, g, b) = frame.px(x, y);
+            if r > 150 && g > 90 && b < 110 && r > g && g > (b as f32 * 1.3) as u8 {
+                orange_pixels.push((x, y));
+            }
+        }
+    }
+
+    if orange_pixels.is_empty() {
+        return count;
+    }
+
+    // Find the rightmost connected component (the last digit)
+    let max_x = match orange_pixels.iter().map(|&(x, _)| x).max() {
+        Some(mx) => mx,
+        None => return count,
+    };
+    // The last digit is within max_x - 14 .. max_x
+    let digit_min_x = max_x.saturating_sub(13);
+    let digit_pixels: Vec<(usize, usize)> = orange_pixels
+        .into_iter()
+        .filter(|&(x, _)| x >= digit_min_x)
+        .collect();
+
+    if digit_pixels.len() < 8 {
+        return count;
+    }
+
+    let min_y = digit_pixels.iter().map(|&(_, y)| y).min().unwrap();
+    let max_y = digit_pixels.iter().map(|&(_, y)| y).max().unwrap();
+    let min_x = digit_pixels.iter().map(|&(x, _)| x).min().unwrap();
+    let digit_h = max_y.saturating_sub(min_y) + 1;
+    let digit_w = max_x.saturating_sub(min_x) + 1;
+
+    if digit_h < 6 || digit_w < 3 {
+        return count;
+    }
+
+    // Check lower-left quadrant:
+    // Y in bottom 40% of the digit, X in left 45% of the digit
+    let lower_y = min_y + (digit_h as f32 * 0.60) as usize;
+    let left_x = min_x + (digit_w as f32 * 0.45) as usize;
+
+    let bot_left_count = digit_pixels
+        .iter()
+        .filter(|&&(x, y)| y >= lower_y && x <= left_x)
+        .count();
+
+    // In '4', the lower-left is completely empty (0 or at most 2 anti-aliasing edge pixels)
+    // In '9', the bottom stroke has many pixels (typically >= 5)
+    if bot_left_count <= 2 {
+        // Change trailing 9 to 4:
+        return (count / 10) * 10 + 4;
+    }
+
+    count
+}
+
+/// Parses in-game OCR text from the bait menu, assisted by frame pixel verification
+/// to correct font misreadings (such as '4' misread as '9').
+pub fn parse_bait_stock_with_frame(text: &str, frame: &crate::core::types::Frame) -> BaitStock {
+    let mut stock = parse_bait_stock(text);
+    if let Some(leg) = stock.legendary {
+        stock.legendary = Some(disambiguate_four_vs_nine(leg, 0, frame));
+    }
+    if let Some(rare) = stock.rare {
+        stock.rare = Some(disambiguate_four_vs_nine(rare, 1, frame));
+    }
+    if let Some(com) = stock.common {
+        stock.common = Some(disambiguate_four_vs_nine(com, 2, frame));
+    }
+    stock
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -409,6 +522,19 @@ mod tests {
         assert!(!is_bait_menu_visible("P: 8250 MINS\n922,870\nMAX / MAX"));
         assert!(!is_bait_menu_visible("[Godly Fisherman]\nMOHAMMEDSAMIR2005"));
         assert!(!is_bait_menu_visible("random water pixels 0 0 0"));
+    }
+
+    #[test]
+    fn test_parse_bait_stock_words_never_turn_into_digits() {
+        // Plain tier names without numbers must NOT be parsed as numbers (e.g. 'fish' turning to '5')
+        let text = "Fishing Baits\n\
+                    Legendary Fish Bait\n\
+                    Rare Fish Bait\n\
+                    Common Fish Bait";
+        let s = parse_bait_stock(text);
+        assert_eq!(s.legendary, None);
+        assert_eq!(s.rare, None);
+        assert_eq!(s.common, None);
     }
 
     #[test]
