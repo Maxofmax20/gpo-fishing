@@ -8,9 +8,9 @@ use crate::core::fruit::Lexicon;
 use crate::core::types::{PxRect, RelPoint, RelRect};
 use crate::core::vision::Palette;
 
-pub const SETTINGS_VERSION: u32 = 11;
+pub const SETTINGS_VERSION: u32 = 12;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Regions {
     pub bar: RelRect,
@@ -24,8 +24,8 @@ impl Default for Regions {
         Self {
             bar: RelRect { x: 0.546, y: 0.322, w: 0.121, h: 0.436 },
             drop: RelRect { x: 0.369, y: 0.052, w: 0.259, h: 0.113 },
-            server_time: RelRect { x: 0.88, y: 0.91, w: 0.11, h: 0.06 },
-            bait_menu: RelRect { x: 0.40, y: 0.68, w: 0.20, h: 0.18 },
+            server_time: RelRect { x: 0.82, y: 0.90, w: 0.17, h: 0.08 },
+            bait_menu: RelRect { x: 0.64, y: 0.64, w: 0.26, h: 0.32 },
         }
     }
 }
@@ -623,6 +623,14 @@ impl Store {
                 }
                 if settings.purchase.max_bait == 0 {
                     settings.purchase.max_bait = 300;
+                }
+            }
+            if settings.version < 12 {
+                if settings.regions.bait_menu.x < 0.55 {
+                    settings.regions.bait_menu = Regions::default().bait_menu;
+                }
+                if settings.regions.server_time.x > 0.92 || settings.regions.server_time.w < 0.10 {
+                    settings.regions.server_time = Regions::default().server_time;
                 }
             }
             settings.version = SETTINGS_VERSION;

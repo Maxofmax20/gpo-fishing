@@ -94,14 +94,33 @@ pub fn resolve_tier(stock: &BaitStock, preference: BaitTier) -> BaitTier {
 }
 
 
+fn clean_ocr_digits(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            'O' | 'o' | 'D' | 'Q' => '0',
+            'I' | 'l' | '|' | '!' => '1',
+            'S' | 's' => '5',
+            'B' => '8',
+            other => other,
+        })
+        .filter(|c| c.is_ascii_digit())
+        .collect()
+}
+
 fn extract_quantity(line: &str) -> Option<u32> {
     let lower = line.to_lowercase();
 
-    // 1. Scan tokens from right to left for standard "x123", "*123", ":123", "123"
-    for word in lower.split_whitespace().rev() {
-        let clean: String = word.chars().filter(|c| c.is_ascii_digit()).collect();
-        if !clean.is_empty() {
-            if let Ok(n) = clean.parse::<u32>() {
+    // 1. Look for explicit multiplier symbols: 'x', '×', '*', '•', '+', ':' followed by digits
+    for sym in ['x', '×', '*', '•', '+', ':'] {
+        if let Some(idx) = lower.rfind(sym) {
+            let after = &lower[idx + 1..];
+            let raw_chunk: String = after
+                .chars()
+                .skip_while(|c| c.is_whitespace() || *c == ':' || *c == '.' || *c == '-' || *c == '\'')
+                .take_while(|c| c.is_alphanumeric())
+                .collect();
+            let digits = clean_ocr_digits(&raw_chunk);
+            if let Ok(n) = digits.parse::<u32>() {
                 if n <= 9999 {
                     return Some(n);
                 }
@@ -109,15 +128,10 @@ fn extract_quantity(line: &str) -> Option<u32> {
         }
     }
 
-    // 2. Look for explicit multiplier symbols: 'x', '×', '*', '•', '+', ':' followed by digits
-    for sym in ['x', '×', '*', '•', '+', ':'] {
-        if let Some(idx) = lower.rfind(sym) {
-            let after = &lower[idx + 1..];
-            let digits: String = after
-                .chars()
-                .skip_while(|c| c.is_whitespace() || *c == ':' || *c == '.' || *c == '-' || *c == '\'')
-                .take_while(|c| c.is_ascii_digit())
-                .collect();
+    // 2. Scan tokens from right to left for standard "x123", "*123", ":123", "123"
+    for word in lower.split_whitespace().rev() {
+        let digits = clean_ocr_digits(word);
+        if !digits.is_empty() {
             if let Ok(n) = digits.parse::<u32>() {
                 if n <= 9999 {
                     return Some(n);
@@ -180,12 +194,16 @@ fn normalize_bait_lines(text: &str) -> Vec<String> {
 pub fn is_bait_menu_visible(text: &str) -> bool {
     let lower = text.to_lowercase();
     lower.contains("bait")
+        || lower.contains("gait")
+        || lower.contains("buit")
         || lower.contains("fishing")
+        || lower.contains("fishint")
         || lower.contains("legendary")
         || lower.contains("lesendary")
         || lower.contains("rare")
         || lower.contains("common")
-        || lower.contains("craft more")
+        || lower.contains("comon")
+        || lower.contains("craft")
         || lower.contains("blacksmith")
 }
 
@@ -209,7 +227,7 @@ pub fn parse_bait_stock(text: &str) -> BaitStock {
         }
         let lower = trimmed.to_lowercase();
         // Skip header lines or footer
-        if lower.contains("fishing") && lower.contains("bait") && !lower.contains("x") && !lower.contains("*") {
+        if (lower.contains("fishing") || lower.contains("fishint")) && (lower.contains("bait") || lower.contains("gait")) && !lower.contains("x") && !lower.contains("*") {
             continue;
         }
         if lower.contains("craft") || lower.contains("blacksmith") {
@@ -224,19 +242,19 @@ pub fn parse_bait_stock(text: &str) -> BaitStock {
             || lower.contains("legend")
             || lower.contains("dary")
             || lower.contains("eserw")
-            || (lower.starts_with('l') && (lower.contains("sh") || lower.contains("bait") || lower.contains("fish")));
+            || (lower.starts_with('l') && (lower.contains("sh") || lower.contains("bait") || lower.contains("gait") || lower.contains("fish")));
 
         let is_rare = lower.contains("rare")
             || lower.contains("rar")
             || lower.contains("r.are")
-            || (lower.starts_with('r') && (lower.contains("bait") || lower.contains("fish")));
+            || (lower.starts_with('r') && (lower.contains("bait") || lower.contains("gait") || lower.contains("fish")));
 
         let is_common = lower.contains("common")
             || lower.contains("comon")
             || lower.contains("comm")
             || lower.contains("mmon")
             || lower.contains("ommon")
-            || (lower.starts_with('c') && (lower.contains("bait") || lower.contains("fish")));
+            || (lower.starts_with('c') && (lower.contains("bait") || lower.contains("gait") || lower.contains("fish")));
 
         if is_legendary {
             if count.is_some() || stock.legendary.is_none() {
@@ -391,5 +409,19 @@ mod tests {
         assert!(!is_bait_menu_visible("P: 8250 MINS\n922,870\nMAX / MAX"));
         assert!(!is_bait_menu_visible("[Godly Fisherman]\nMOHAMMEDSAMIR2005"));
         assert!(!is_bait_menu_visible("random water pixels 0 0 0"));
+    }
+
+    #[test]
+    fn test_parse_bait_stock_noisy_user_image() {
+        let text = "Fishint Baits\n\
+                    Lesendary Fish Bait Xl46\n\
+                    Rare Fish gait x166\n\
+                    Common Fish Bait X198\n\
+                    Craft rr orr types frcrn El Bcksn-.ith";
+        assert!(is_bait_menu_visible(text));
+        let s = parse_bait_stock(text);
+        assert_eq!(s.legendary, Some(146));
+        assert_eq!(s.rare, Some(166));
+        assert_eq!(s.common, Some(198));
     }
 }
