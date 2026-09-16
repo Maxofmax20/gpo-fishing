@@ -83,7 +83,22 @@ impl Ocr for WindowsOcr {
         )
         .map_err(err)?;
         let result = engine.RecognizeAsync(&bitmap).map_err(err)?.join().map_err(err)?;
-        let text = result.Text().map_err(err)?;
-        Ok(text.to_string())
+        let mut lines_text = Vec::new();
+        if let Ok(lines) = result.Lines() {
+            for line in lines {
+                if let Ok(t) = line.Text() {
+                    let s = t.to_string();
+                    if !s.trim().is_empty() {
+                        lines_text.push(s);
+                    }
+                }
+            }
+        }
+        if !lines_text.is_empty() {
+            Ok(lines_text.join("\n"))
+        } else {
+            let text = result.Text().map_err(err)?;
+            Ok(text.to_string())
+        }
     }
 }

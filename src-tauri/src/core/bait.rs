@@ -97,22 +97,7 @@ pub fn resolve_tier(stock: &BaitStock, preference: BaitTier) -> BaitTier {
 fn extract_quantity(line: &str) -> Option<u32> {
     let lower = line.to_lowercase();
 
-    // 1. Look for 'x', '×', '*', '•', '+', ':', 'm', 'k' followed by digits
-    if let Some(idx) = lower.find(|c| c == 'x' || c == '×' || c == '*' || c == '•' || c == '+' || c == ':' || c == 'm' || c == 'k') {
-        let after = &lower[idx + 1..];
-        let digits: String = after
-            .chars()
-            .skip_while(|c| c.is_whitespace() || *c == ':' || *c == '.' || *c == '-' || *c == '\'')
-            .take_while(|c| c.is_ascii_digit())
-            .collect();
-        if let Ok(n) = digits.parse::<u32>() {
-            if n <= 9999 {
-                return Some(n);
-            }
-        }
-    }
-
-    // 2. Scan all tokens from right to left for a number
+    // 1. Scan tokens from right to left for standard "x123", "*123", ":123", "123"
     for word in lower.split_whitespace().rev() {
         let clean: String = word.chars().filter(|c| c.is_ascii_digit()).collect();
         if !clean.is_empty() {
@@ -124,23 +109,70 @@ fn extract_quantity(line: &str) -> Option<u32> {
         }
     }
 
-    // 3. Fallback: look for trailing digits at the end of the line
-    let trimmed = lower.trim_end();
-    let digits: String = trimmed
-        .chars()
-        .rev()
-        .take_while(|c| c.is_ascii_digit())
-        .collect::<String>()
-        .chars()
-        .rev()
-        .collect();
-    if !digits.is_empty() {
-        if let Ok(n) = digits.parse::<u32>() {
-            return Some(n);
+    // 2. Look for explicit multiplier symbols: 'x', '×', '*', '•', '+', ':' followed by digits
+    for sym in ['x', '×', '*', '•', '+', ':'] {
+        if let Some(idx) = lower.rfind(sym) {
+            let after = &lower[idx + 1..];
+            let digits: String = after
+                .chars()
+                .skip_while(|c| c.is_whitespace() || *c == ':' || *c == '.' || *c == '-' || *c == '\'')
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            if let Ok(n) = digits.parse::<u32>() {
+                if n <= 9999 {
+                    return Some(n);
+                }
+            }
         }
     }
 
     None
+}
+
+/// Splits text by tier keywords if OCR concatenated multiple rows onto a single line.
+fn normalize_bait_lines(text: &str) -> Vec<String> {
+    let mut lines = Vec::new();
+    for raw_line in text.lines() {
+        let trimmed = raw_line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let lower = trimmed.to_lowercase();
+        // Keywords that begin a new row in GPO
+        let keywords = ["legendary", "lesendary", "legend", "rare", "common", "craft more"];
+        let mut split_positions = Vec::new();
+
+        for kw in keywords {
+            let mut start = 0;
+            while let Some(pos) = lower[start..].find(kw) {
+                let abs = start + pos;
+                if abs > 0 && !split_positions.contains(&abs) {
+                    split_positions.push(abs);
+                }
+                start = abs + kw.len();
+            }
+        }
+        split_positions.sort();
+
+        if split_positions.is_empty() {
+            lines.push(trimmed.to_string());
+        } else {
+            let mut last = 0;
+            for &pos in &split_positions {
+                let chunk = trimmed[last..pos].trim();
+                if !chunk.is_empty() {
+                    lines.push(chunk.to_string());
+                }
+                last = pos;
+            }
+            let chunk = trimmed[last..].trim();
+            if !chunk.is_empty() {
+                lines.push(chunk.to_string());
+            }
+        }
+    }
+    lines
 }
 
 /// Parses in-game OCR text from the "Fishing Baits" menu.
@@ -148,13 +180,16 @@ fn extract_quantity(line: &str) -> Option<u32> {
 ///   "Legendary Fish Bait x104"
 ///   "Rare Fish Bait x35"
 ///   "Common Fish Bait x281"
+///   "Lesendary Fish Bait X136"
 ///   "L.eserw.ry shg.it *110"
 pub fn parse_bait_stock(text: &str) -> BaitStock {
     let mut stock = BaitStock::default();
     let mut candidate_rows: Vec<(String, Option<u32>)> = Vec::new();
 
-    for raw_line in text.lines() {
-        let trimmed = raw_line.trim();
+    let lines = normalize_bait_lines(text);
+
+    for line in lines {
+        let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
@@ -171,20 +206,23 @@ pub fn parse_bait_stock(text: &str) -> BaitStock {
 
         // Tier classification with fuzzy resilience:
         let is_legendary = lower.contains("legendary")
+            || lower.contains("lesendary")
             || lower.contains("legend")
             || lower.contains("dary")
             || lower.contains("eserw")
-            || (lower.starts_with('l') && (lower.contains("sh") || lower.contains("bait")));
+            || (lower.starts_with('l') && (lower.contains("sh") || lower.contains("bait") || lower.contains("fish")));
 
         let is_rare = lower.contains("rare")
             || lower.contains("rar")
-            || (lower.starts_with('r') && lower.contains("bait"));
+            || lower.contains("r.are")
+            || (lower.starts_with('r') && (lower.contains("bait") || lower.contains("fish")));
 
         let is_common = lower.contains("common")
             || lower.contains("comon")
             || lower.contains("comm")
             || lower.contains("mmon")
-            || lower.contains("ommon");
+            || lower.contains("ommon")
+            || (lower.starts_with('c') && (lower.contains("bait") || lower.contains("fish")));
 
         if is_legendary {
             if count.is_some() || stock.legendary.is_none() {
@@ -285,5 +323,45 @@ mod tests {
         let (chosen, cnt) = s.resolve_tier(BaitTier::Highest);
         assert_eq!(chosen, BaitTier::Rare);
         assert_eq!(cnt, Some(15));
+    }
+
+    #[test]
+    fn test_parse_bait_stock_user_image() {
+        // Single line string as returned by Windows OCR
+        let single_line = "Fishing Baits Lesendary Fish Bait X136 Rare Fish Bait x130 Common Fish Bait x224";
+        let s = parse_bait_stock(single_line);
+        assert_eq!(s.legendary, Some(136));
+        assert_eq!(s.rare, Some(130));
+        assert_eq!(s.common, Some(224));
+
+        // Multiline string
+        let multiline = "Fishing Baits\nLesendary Fish Bait X136\nRare Fish Bait x130\nCommon Fish Bait x224";
+        let s2 = parse_bait_stock(multiline);
+        assert_eq!(s2.legendary, Some(136));
+        assert_eq!(s2.rare, Some(130));
+        assert_eq!(s2.common, Some(224));
+    }
+
+    #[test]
+    fn test_resolve_tier_rare_depleted_falls_back_to_common() {
+        // User chose Rare, Rare has 130 -> resolves to Rare
+        let stock_available = BaitStock {
+            legendary: Some(136),
+            rare: Some(130),
+            common: Some(224),
+        };
+        let (chosen, cnt) = stock_available.resolve_tier(BaitTier::Rare);
+        assert_eq!(chosen, BaitTier::Rare);
+        assert_eq!(cnt, Some(130));
+
+        // User chose Rare, but Rare is 0 -> resolves to Common!
+        let stock_depleted = BaitStock {
+            legendary: Some(136),
+            rare: Some(0),
+            common: Some(224),
+        };
+        let (chosen, cnt) = stock_depleted.resolve_tier(BaitTier::Rare);
+        assert_eq!(chosen, BaitTier::Common);
+        assert_eq!(cnt, Some(224));
     }
 }

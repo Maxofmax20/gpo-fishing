@@ -796,7 +796,7 @@ pub fn scan_server_age(ctx: &Ctx) -> Result<(i64, String, i64, bool), String> {
         let s = ctx.settings();
         let r = s.regions.server_time.to_px(&rect);
         if r.w < 10 || r.h < 10 {
-            let scan_w = 140.min(rect.w);
+            let scan_w = 220.min(rect.w);
             let scan_h = 60.min(rect.h);
             let scan_x = rect.x + rect.w.saturating_sub(scan_w + 5);
             let scan_y = rect.y + rect.h.saturating_sub(scan_h + 15);
