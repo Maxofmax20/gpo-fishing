@@ -441,3 +441,82 @@ fn encode_png(frame: &crate::core::types::Frame) -> Result<String, String> {
     .map_err(|e| e.to_string())?;
     Ok(base64::engine::general_purpose::STANDARD.encode(out))
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ServerAgeScanResult {
+    pub success: bool,
+    pub uptime_sec: i64,
+    pub time_str: String,
+    pub remaining_sec: i64,
+    pub is_spawned: bool,
+    pub message: String,
+}
+
+#[tauri::command]
+pub async fn boss_tracker_scan_server_age(st: State<'_, AppState>) -> Result<ServerAgeScanResult, String> {
+    let ctx = st.bot.ctx();
+    let res = crate::bot::actions::scan_server_age(&ctx);
+    match res {
+        Ok((uptime_sec, time_str, remaining_sec, is_spawned)) => {
+            let now = crate::core::boss_tracker::now_sec();
+            let mut s = st.settings.read().clone();
+            let offset = if is_spawned {
+                now + remaining_sec + 1800
+            } else {
+                now + remaining_sec
+            };
+            s.boss_tracker.merchant_offset = Some(offset);
+            let _ = st.store.save(&s);
+            *st.settings.write() = s;
+
+            let msg = if is_spawned {
+                format!("Travelling Merchant is SPAWNED right now! (Despawns in {})", crate::core::boss_tracker::format_duration(remaining_sec))
+            } else {
+                format!("Travelling Merchant next spawn in {}", crate::core::boss_tracker::format_duration(remaining_sec))
+            };
+
+            Ok(ServerAgeScanResult {
+                success: true,
+                uptime_sec,
+                time_str,
+                remaining_sec,
+                is_spawned,
+                message: msg,
+            })
+        }
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
+pub fn boss_tracker_sync_server_age(st: State<'_, AppState>, time_str: String) -> Result<ServerAgeScanResult, String> {
+    let uptime_sec = crate::core::boss_tracker::parse_duration_str(&time_str)
+        .ok_or_else(|| format!("Could not parse Server Age: '{}'", time_str))?;
+
+    let (remaining_sec, is_spawned) = crate::core::boss_tracker::merchant_spawn_from_server_age(uptime_sec);
+    let now = crate::core::boss_tracker::now_sec();
+    let mut s = st.settings.read().clone();
+    let offset = if is_spawned {
+        now + remaining_sec + 1800
+    } else {
+        now + remaining_sec
+    };
+    s.boss_tracker.merchant_offset = Some(offset);
+    let _ = st.store.save(&s);
+    *st.settings.write() = s;
+
+    let msg = if is_spawned {
+        format!("Travelling Merchant is SPAWNED right now! (Despawns in {})", crate::core::boss_tracker::format_duration(remaining_sec))
+    } else {
+        format!("Travelling Merchant next spawn in {}", crate::core::boss_tracker::format_duration(remaining_sec))
+    };
+
+    Ok(ServerAgeScanResult {
+        success: true,
+        uptime_sec,
+        time_str,
+        remaining_sec,
+        is_spawned,
+        message: msg,
+    })
+}

@@ -59,7 +59,7 @@ impl BossId {
             BossId::Roger => 90 * 60,            // 1.5 hours = 5400s
             BossId::SoulKing => 3600,            // 1 hour = 3600s
             BossId::RadiantAdmiral => 30 * 60,   // 30 minutes = 1800s
-            BossId::TravellingMerchant => 30 * 60,// 30 minutes = 1800s
+            BossId::TravellingMerchant => 40 * 60,// 40 minutes = 2400s (Server Age cycle)
         }
     }
 
@@ -69,7 +69,7 @@ impl BossId {
             BossId::Roger => "Every 1h 30m",
             BossId::SoulKing => "Every 1h",
             BossId::RadiantAdmiral => "Every 30m",
-            BossId::TravellingMerchant => "Every 30m",
+            BossId::TravellingMerchant => "Every 40m (Server Age)",
         }
     }
 
@@ -83,12 +83,12 @@ impl BossId {
         }
     }
 
-    /// Calculates next spawn based on official Wiki UTC schedule.
+    /// Calculates next spawn based on official Wiki schedule.
     /// - Hawk Eye: UTC even hours (UTC+3 odd hours: 01:00, 03:00, etc.)
     /// - Roger: UTC modulo 5400 == 0 (UTC+3: 00:00, 01:30, 03:00, etc.)
     /// - Soul King: Every 1 hour (:00)
     /// - Radiant Admiral: Every 30 mins (:00, :30)
-    /// - Travelling Merchant: Every 30 mins
+    /// - Travelling Merchant: Every 40 mins
     pub fn default_next_spawn_ts(&self, now: i64) -> i64 {
         let cycle = self.cycle_seconds();
         let past = now % cycle;
@@ -96,6 +96,29 @@ impl BossId {
             now
         } else {
             now + (cycle - past)
+        }
+    }
+}
+
+/// Calculates Travelling Merchant status from in-game Server Age (uptime in seconds).
+/// Official GPO Wiki:
+/// - First spawn at 00:10:00 (600s) server uptime.
+/// - Lasts 10m (600s), then despawns.
+/// - Spawns every 40m (2400s) after first spawn.
+/// Returns: (remaining_seconds, is_currently_spawned)
+/// If spawned: remaining_seconds is time until despawn.
+/// If despawned: remaining_seconds is time until next spawn.
+pub fn merchant_spawn_from_server_age(uptime_sec: i64) -> (i64, bool) {
+    if uptime_sec < 600 {
+        (600 - uptime_sec, false)
+    } else {
+        let elapsed = (uptime_sec - 600) % 2400;
+        if elapsed < 600 {
+            // Currently spawned!
+            (600 - elapsed, true)
+        } else {
+            // Despawned, waiting for next spawn
+            (2400 - elapsed, false)
         }
     }
 }
@@ -357,11 +380,39 @@ impl BossTracker {
             }
         }
 
-        // 3. Command: /sync <boss> <duration>
+        // 3. Command: /sync server <HH:MM:SS> or /sync uptime <HH:MM:SS>
         let parts: Vec<&str> = text.split_whitespace().collect();
         if parts.len() >= 2 {
             let target = parts[1].to_lowercase();
             let dur_str = parts[2..].join(" ");
+
+            if target.contains("server") || target.contains("uptime") {
+                if let Some(uptime_sec) = parse_duration_str(&dur_str) {
+                    let (rem, is_spawned) = merchant_spawn_from_server_age(uptime_sec);
+                    if is_spawned {
+                        // Spawned right now! Despawns in rem, then next spawn in (rem + 1800)
+                        self.set_offset(BossId::TravellingMerchant, now + rem + 1800);
+                        return Ok(format!(
+                            "🛒 <b>Travelling Merchant is SPAWNED RIGHT NOW!</b>\n\
+                             ⏳ Despawns in: <b>{}</b>\n\
+                             (Calculated from Server Age: <code>{}</code>)",
+                            format_duration(rem),
+                            dur_str
+                        ));
+                    } else {
+                        self.set_offset(BossId::TravellingMerchant, now + rem);
+                        return Ok(format!(
+                            "✅ Synced 🛒 <b>Travelling Merchant</b> to <b>{}</b> remaining!\n\
+                             (Calculated from Server Age: <code>{}</code>)",
+                            format_duration(rem),
+                            dur_str
+                        ));
+                    }
+                } else {
+                    return Err(format!("⚠️ Could not parse Server Age <code>{}</code>.\nExample: <code>/sync server 01:43:48</code>", dur_str));
+                }
+            }
+
             let target_boss = if target.contains("hawk") || target.contains("mihawk") {
                 Some(BossId::HawkEye)
             } else if target.contains("roger") {
@@ -386,7 +437,7 @@ impl BossTracker {
                         self.set_offset(BossId::TravellingMerchant, now + second_dur);
                     } else {
                         self.set_offset(BossId::RadiantAdmiral, now + (first_dur % 1800));
-                        self.set_offset(BossId::TravellingMerchant, now + (first_dur % 1800));
+                        self.set_offset(BossId::TravellingMerchant, now + (first_dur % 2400));
                     }
                     return Ok("✅ <b>Synced all 5 boss & merchant timers!</b>".into());
                 }
@@ -397,15 +448,48 @@ impl BossTracker {
 
             if let Some(b) = target_boss {
                 if let Some(dur) = parse_duration_str(&dur_str) {
+                    // If syncing merchant and duration > 2400s (40 min), treat as in-game Server Age
+                    if b == BossId::TravellingMerchant && dur > 2400 {
+                        let (rem, is_spawned) = merchant_spawn_from_server_age(dur);
+                        if is_spawned {
+                            self.set_offset(BossId::TravellingMerchant, now + rem + 1800);
+                            return Ok(format!(
+                                "🛒 <b>Travelling Merchant is SPAWNED RIGHT NOW!</b>\n\
+                                 ⏳ Despawns in: <b>{}</b>\n\
+                                 (Calculated from Server Age: <code>{}</code>)",
+                                format_duration(rem),
+                                dur_str
+                            ));
+                        } else {
+                            self.set_offset(BossId::TravellingMerchant, now + rem);
+                            return Ok(format!(
+                                "✅ Synced 🛒 <b>Travelling Merchant</b> to <b>{}</b> remaining!\n\
+                                 (Calculated from Server Age: <code>{}</code>)",
+                                format_duration(rem),
+                                dur_str
+                            ));
+                        }
+                    }
+
                     self.set_offset(b, now + dur);
                     return Ok(format!("✅ Synced {} <b>{}</b> to <b>{}</b> remaining!", b.emoji(), b.name(), format_duration(dur)));
                 } else {
-                    return Err(format!("⚠️ Could not parse duration <code>{}</code>.\nExample: <code>/sync hawkeye 1h 13m 23s</code>", dur_str));
+                    return Err(format!("⚠️ Could not parse duration <code>{}</code>.\nExample: <code>/sync hawkeye 1h 13m 23s</code> or <code>/sync server 01:43:48</code>", dur_str));
                 }
             }
         }
 
-        Err("ℹ️ <b>How to sync Boss Timers:</b>\n\n• <code>/sync hawkeye 1h 13m 23s</code>\n• <code>/sync roger 1h 13m 23s</code>\n• <code>/sync soulking 13m 23s</code>\n• <code>/sync admiral 13m 13s</code>\n• <code>/sync merchant 13m 13s</code>\n• <code>/sync all 1h13m23s 13m13s</code>\n• <code>/sync reset</code>\n\n💡 <i>Or simply copy and paste the entire Discord bot message here!</i>".into())
+        Err("ℹ️ <b>How to sync Boss & Merchant Timers:</b>\n\n\
+             • <code>/sync server 01:43:48</code> (Calculates merchant from in-game bottom-right timer!)\n\
+             • <code>/sync read</code> (Auto-reads in-game timer from screen with OCR)\n\
+             • <code>/sync hawkeye 1h 13m 23s</code>\n\
+             • <code>/sync roger 1h 13m 23s</code>\n\
+             • <code>/sync soulking 13m 23s</code>\n\
+             • <code>/sync admiral 13m 13s</code>\n\
+             • <code>/sync merchant 13m 13s</code>\n\
+             • <code>/sync all 1h13m23s 13m13s</code>\n\
+             • <code>/sync reset</code>\n\n\
+             💡 <i>Or simply copy and paste the entire Discord bot message here!</i>".into())
     }
 }
 
@@ -482,5 +566,30 @@ mod tests {
         // Subsequent tick within same window should not re-alert
         let alerts2 = tracker.tick(now + 1, true, true);
         assert_eq!(alerts2.len(), 0);
+    }
+
+    #[test]
+    fn test_merchant_spawn_from_server_age() {
+        // Test 01:43:48 (1h 43m 48s = 6228s) from user screenshot
+        let (rem, is_spawned) = merchant_spawn_from_server_age(3600 + 43 * 60 + 48);
+        assert!(!is_spawned);
+        assert_eq!(rem, 1572); // 26 minutes and 12 seconds
+
+        // Test before first spawn: 00:05:00 (300s)
+        let (rem, is_spawned) = merchant_spawn_from_server_age(300);
+        assert!(!is_spawned);
+        assert_eq!(rem, 300); // 5 minutes until 00:10:00
+
+        // Test during spawn: 01:35:00 (5700s)
+        let (rem, is_spawned) = merchant_spawn_from_server_age(5700);
+        assert!(is_spawned);
+        assert_eq!(rem, 300); // 5 minutes remaining until despawn
+
+        // Test /sync server 01:43:48 in tracker
+        let mut tracker = BossTracker::new();
+        let now = 100000;
+        let res = tracker.parse_sync_text("/sync server 01:43:48", now);
+        assert!(res.is_ok());
+        assert_eq!(tracker.remaining_seconds(BossId::TravellingMerchant, now), 1572);
     }
 }

@@ -79,6 +79,8 @@ pub fn run() {
             commands::catches_list,
             commands::catches_clear,
             commands::catches_open,
+            commands::boss_tracker_scan_server_age,
+            commands::boss_tracker_sync_server_age,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

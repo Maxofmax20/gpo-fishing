@@ -60,6 +60,11 @@ export const api = {
   getCatches: () => invoke<CatchRecord[]>("catches_list"),
   clearCatches: () => invoke<void>("catches_clear"),
   openCatches: () => invoke<void>("catches_open"),
+  openCatchesFile: () => invoke<void>("catches_open"),
+  bossTrackerScanServerAge: () =>
+    invoke<{ success: boolean; uptime_sec: number; time_str: string; remaining_sec: number; is_spawned: boolean; message: string }>("boss_tracker_scan_server_age"),
+  bossTrackerSyncServerAge: (timeStr: string) =>
+    invoke<{ success: boolean; uptime_sec: number; time_str: string; remaining_sec: number; is_spawned: boolean; message: string }>("boss_tracker_sync_server_age", { timeStr }),
 };
 
 type Events = {

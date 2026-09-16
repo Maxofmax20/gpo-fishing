@@ -512,3 +512,85 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
     }
     ctx.sleep_ms(300)
 }
+
+/// Parses strings looking for timestamps like "01:43:48" or "1:43:48" or "43:48"
+pub fn extract_timestamp(text: &str) -> Option<(String, i64)> {
+    for line in text.lines() {
+        for word in line.split_whitespace() {
+            let clean = word.trim_matches(|c: char| !c.is_ascii_digit() && c != ':');
+            if clean.contains(':') {
+                let parts: Vec<&str> = clean.split(':').collect();
+                if parts.len() == 3 {
+                    if let (Ok(h), Ok(m), Ok(s)) = (
+                        parts[0].parse::<i64>(),
+                        parts[1].parse::<i64>(),
+                        parts[2].parse::<i64>(),
+                    ) {
+                        if m < 60 && s < 60 {
+                            let total = h * 3600 + m * 60 + s;
+                            return Some((clean.to_string(), total));
+                        }
+                    }
+                } else if parts.len() == 2 {
+                    if let (Ok(m), Ok(s)) = (
+                        parts[0].parse::<i64>(),
+                        parts[1].parse::<i64>(),
+                    ) {
+                        if m < 60 && s < 60 {
+                            let total = m * 60 + s;
+                            return Some((clean.to_string(), total));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Automatically captures the bottom-right corner of the Roblox window where the in-game
+/// Server Age timer is displayed, runs Windows OCR, and calculates Travelling Merchant spawn.
+/// Returns: (uptime_seconds, raw_time_string, remaining_seconds, is_currently_spawned)
+pub fn scan_server_age(ctx: &Ctx) -> Result<(i64, String, i64, bool), String> {
+    if !ctx.platform.ocr.available() {
+        return Err("Windows OCR is not available on this system".into());
+    }
+
+    let rect = ctx.roblox_rect().ok_or("Roblox window not found")?;
+
+    // In Roblox GPO, the server age timer is in the bottom-right corner
+    // We capture a box of width 140px, height 60px anchored at the bottom-right
+    let scan_w = 140.min(rect.w);
+    let scan_h = 60.min(rect.h);
+    let scan_x = rect.x + rect.w.saturating_sub(scan_w + 5);
+    let scan_y = rect.y + rect.h.saturating_sub(scan_h + 15);
+
+    let scan_rect = PxRect {
+        x: scan_x,
+        y: scan_y,
+        w: scan_w,
+        h: scan_h,
+    };
+
+    let frame = ctx
+        .platform
+        .capture
+        .grab(scan_rect)
+        .map_err(|e| format!("Screen capture failed: {e}"))?;
+
+    // Upscale 2x for optimal OCR readability on small fonts
+    let upscaled = frame.upscale(2);
+
+    let text = ctx
+        .platform
+        .ocr
+        .read(&upscaled)
+        .map_err(|e| format!("OCR read failed: {e}"))?;
+
+    let (time_str, uptime_sec) = extract_timestamp(&text)
+        .ok_or_else(|| format!("Could not find time (HH:MM:SS) in bottom-right corner. OCR detected: '{}'", text.trim()))?;
+
+    let (rem, is_spawned) = crate::core::boss_tracker::merchant_spawn_from_server_age(uptime_sec);
+
+    Ok((uptime_sec, time_str, rem, is_spawned))
+}

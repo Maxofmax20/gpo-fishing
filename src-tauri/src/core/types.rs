@@ -145,6 +145,24 @@ impl Frame {
         Frame { w: nw, h: nh, rgba: out }
     }
 
+    pub fn upscale(&self, factor: usize) -> Frame {
+        if factor <= 1 || self.w == 0 || self.h == 0 {
+            return self.clone();
+        }
+        let nw = self.w * factor;
+        let nh = self.h * factor;
+        let mut out = Vec::with_capacity(nw * nh * 4);
+        for y in 0..nh {
+            let sy = y / factor;
+            for x in 0..nw {
+                let sx = x / factor;
+                let i = (sy * self.w + sx) * 4;
+                out.extend_from_slice(&self.rgba[i..i + 4]);
+            }
+        }
+        Frame { w: nw, h: nh, rgba: out }
+    }
+
     pub fn to_png_bytes(&self) -> Result<Vec<u8>, String> {
         if self.w == 0 || self.h == 0 {
             return Err("Empty frame".into());

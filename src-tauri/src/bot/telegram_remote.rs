@@ -28,6 +28,7 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
     };
 
     let mut registered_token = String::new();
+    let mut last_auto_scan = std::time::Instant::now();
     let mut boss_tracker = crate::core::boss_tracker::BossTracker::new();
 
     // Initialize boss tracker offsets from settings
@@ -113,6 +114,24 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
                     }
                 };
                 let _ = post_telegram(&token, &expected_chat, &alert_text);
+            }
+
+            // Periodic auto-sync of Travelling Merchant via in-game Server Age OCR (every 5 minutes)
+            if last_auto_scan.elapsed() >= Duration::from_secs(300) {
+                last_auto_scan = std::time::Instant::now();
+                let ctx = bot.ctx();
+                if let Ok((uptime_sec, time_str, rem, is_spawned)) = crate::bot::actions::scan_server_age(&ctx) {
+                    let target_offset = if is_spawned {
+                        now + rem + 1800
+                    } else {
+                        now + rem
+                    };
+                    boss_tracker.set_offset(crate::core::boss_tracker::BossId::TravellingMerchant, target_offset);
+                    let mut s = settings.write();
+                    s.boss_tracker.merchant_offset = Some(target_offset);
+                    let _ = bot.ctx().store.save(&s);
+                    tracing::info!("Auto-synced Travelling Merchant from in-game Server Age: {time_str} (uptime: {uptime_sec}s)");
+                }
             }
         }
 
@@ -464,21 +483,56 @@ fn handle_command(
         }
         cmd if cmd.starts_with("/sync") || cmd.starts_with("sync") || text.to_lowercase().contains("live spawn times") || text.to_lowercase().contains("event bosses") => {
             let now = crate::core::boss_tracker::now_sec();
-            match boss_tracker.parse_sync_text(text, now) {
-                Ok(reply) => {
-                    {
-                        let mut s = settings.write();
-                        s.boss_tracker.hawkeye_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::HawkEye).copied();
-                        s.boss_tracker.roger_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::Roger).copied();
-                        s.boss_tracker.soulking_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::SoulKing).copied();
-                        s.boss_tracker.radiant_admiral_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::RadiantAdmiral).copied();
-                        s.boss_tracker.merchant_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::TravellingMerchant).copied();
-                        let _ = bot.ctx().store.save(&s);
+            let text_low = text.to_lowercase();
+            if text_low.contains("read") || text_low.contains("screen") || text_low.contains("ocr") {
+                let ctx = bot.ctx();
+                match crate::bot::actions::scan_server_age(&ctx) {
+                    Ok((uptime_sec, time_str, rem, is_spawned)) => {
+                        let target_offset = if is_spawned {
+                            now + rem + 1800
+                        } else {
+                            now + rem
+                        };
+                        boss_tracker.set_offset(crate::core::boss_tracker::BossId::TravellingMerchant, target_offset);
+                        {
+                            let mut s = settings.write();
+                            s.boss_tracker.merchant_offset = Some(target_offset);
+                            let _ = bot.ctx().store.save(&s);
+                        }
+                        let status_str = if is_spawned {
+                            format!("🛒 <b>Travelling Merchant is SPAWNED RIGHT NOW!</b>\n⏳ Despawns in: <b>{}</b>", crate::core::boss_tracker::format_duration(rem))
+                        } else {
+                            format!("🛒 <b>Travelling Merchant synced!</b>\n⏳ Next spawn in: <b>{}</b>", crate::core::boss_tracker::format_duration(rem))
+                        };
+                        let reply = format!(
+                            "📷 <b>Auto-Read Server Age from Screen:</b>\n\n\
+                             • Detected In-Game Timer: <code>{time_str}</code> (uptime: {uptime_sec}s)\n\
+                             • {status_str}\n\n\
+                             <i>Travelling Merchant countdown is now synchronized!</i>"
+                        );
+                        let _ = post_telegram(token, chat_id, &reply);
                     }
-                    let _ = post_telegram(token, chat_id, &reply);
+                    Err(e) => {
+                        let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Screen Scan Failed:</b> {e}\n\nMake sure Roblox is running on your screen!"));
+                    }
                 }
-                Err(err_msg) => {
-                    let _ = post_telegram(token, chat_id, &err_msg);
+            } else {
+                match boss_tracker.parse_sync_text(text, now) {
+                    Ok(reply) => {
+                        {
+                            let mut s = settings.write();
+                            s.boss_tracker.hawkeye_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::HawkEye).copied();
+                            s.boss_tracker.roger_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::Roger).copied();
+                            s.boss_tracker.soulking_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::SoulKing).copied();
+                            s.boss_tracker.radiant_admiral_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::RadiantAdmiral).copied();
+                            s.boss_tracker.merchant_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::TravellingMerchant).copied();
+                            let _ = bot.ctx().store.save(&s);
+                        }
+                        let _ = post_telegram(token, chat_id, &reply);
+                    }
+                    Err(err_msg) => {
+                        let _ = post_telegram(token, chat_id, &err_msg);
+                    }
                 }
             }
         }
@@ -486,7 +540,7 @@ fn handle_command(
             let help_text = "🎮 <b>GPO Autofish Remote Controls</b>\n\n\
                 👑 /bosses - Live Boss & Merchant countdowns\n\
                 🔔 /toggle &lt;boss&gt; - Mute/unmute alerts (e.g. /toggle roger)\n\
-                🔄 /sync - Calibrate timers (or paste Discord bot text)\n\
+                🔄 /sync - Calibrate timers (/sync read, /sync server, or paste Discord)\n\
                 📊 /status - View live stats & screenshot\n\
                 📸 /screenshot - Instant Roblox screenshot on demand\n\
                 ⚡ /pity - Quick Devil Fruit pity counter\n\
