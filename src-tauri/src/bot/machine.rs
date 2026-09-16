@@ -53,8 +53,12 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
         if !actions::ensure_rod_equipped(ctx, &mut rod_equipped) {
             return;
         }
-        if ctx.settings.read().features.auto_bait && !actions::select_bait(ctx) {
-            return;
+        if ctx.settings.read().features.auto_bait {
+            if !actions::select_bait(ctx) {
+                if ctx.state() == BotState::Paused || !ctx.alive() {
+                    return;
+                }
+            }
         }
         if !actions::cast(ctx) {
             return;

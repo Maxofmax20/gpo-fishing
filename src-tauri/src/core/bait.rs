@@ -175,6 +175,20 @@ fn normalize_bait_lines(text: &str) -> Vec<String> {
     lines
 }
 
+/// Checks if the OCR text contains genuine markers of the in-game "Fishing Baits" menu.
+/// Returns false if the menu is closed and OCR is just reading background water/scene.
+pub fn is_bait_menu_visible(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("bait")
+        || lower.contains("fishing")
+        || lower.contains("legendary")
+        || lower.contains("lesendary")
+        || lower.contains("rare")
+        || lower.contains("common")
+        || lower.contains("craft more")
+        || lower.contains("blacksmith")
+}
+
 /// Parses in-game OCR text from the "Fishing Baits" menu.
 /// Handles cases like:
 ///   "Legendary Fish Bait x104"
@@ -363,5 +377,19 @@ mod tests {
         let (chosen, cnt) = stock_depleted.resolve_tier(BaitTier::Rare);
         assert_eq!(chosen, BaitTier::Common);
         assert_eq!(cnt, Some(224));
+    }
+
+    #[test]
+    fn test_is_bait_menu_visible() {
+        assert!(is_bait_menu_visible("Fishing Baits\nRare Fish Bait x130"));
+        assert!(is_bait_menu_visible("Common Fish Bait x224"));
+        assert!(is_bait_menu_visible("Lesendary Fish Bait X136"));
+        assert!(is_bait_menu_visible("Craft more bait types from Blacksmith Sen!"));
+
+        // Background / water noise when menu is closed:
+        assert!(!is_bait_menu_visible(""));
+        assert!(!is_bait_menu_visible("P: 8250 MINS\n922,870\nMAX / MAX"));
+        assert!(!is_bait_menu_visible("[Godly Fisherman]\nMOHAMMEDSAMIR2005"));
+        assert!(!is_bait_menu_visible("random water pixels 0 0 0"));
     }
 }

@@ -208,7 +208,8 @@ pub fn is_bait_depleted(ctx: &Ctx) -> bool {
 }
 
 /// Scans the in-game bait menu using Windows OCR to extract current stock for each tier.
-pub fn scan_bait_stock(ctx: &Ctx) -> Result<crate::core::bait::BaitStock, String> {
+/// Returns: (BaitStock, is_menu_visible)
+pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, bool), String> {
     if !ctx.platform.ocr.available() {
         return Err("Windows OCR is not available on this system".into());
     }
@@ -238,8 +239,13 @@ pub fn scan_bait_stock(ctx: &Ctx) -> Result<crate::core::bait::BaitStock, String
         .map_err(|e| format!("OCR failed: {e}"))?;
 
     ctx.log_debug(&format!("Bait menu OCR raw text:\n{text}"));
+    let is_visible = crate::core::bait::is_bait_menu_visible(&text);
     let stock = crate::core::bait::parse_bait_stock(&text);
-    Ok(stock)
+    Ok((stock, is_visible))
+}
+
+pub fn scan_bait_stock(ctx: &Ctx) -> Result<crate::core::bait::BaitStock, String> {
+    scan_bait_stock_raw(ctx).map(|(s, _)| s)
 }
 
 pub fn select_bait(ctx: &Ctx) -> bool {
@@ -249,8 +255,19 @@ pub fn select_bait(ctx: &Ctx) -> bool {
     }
 
     if s.features.smart_bait {
-        ctx.log_debug("Smart Bait: inspecting bait menu...");
-        let stock = scan_bait_stock(ctx).unwrap_or_default();
+        let (stock, menu_visible) = match scan_bait_stock_raw(ctx) {
+            Ok(res) => res,
+            Err(e) => {
+                ctx.log_debug(&format!("Smart Bait: scan skipped: {e}"));
+                return true;
+            }
+        };
+
+        if !menu_visible {
+            // Menu is not open on screen. If rod is already in hand from previous cast, it is already baited!
+            ctx.log_debug("Smart Bait: bait menu not visible (rod already baited); skipping selection.");
+            return true;
+        }
 
         let leg_str = stock.legendary.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
         let rare_str = stock.rare.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
@@ -270,14 +287,15 @@ pub fn select_bait(ctx: &Ctx) -> bool {
                         s.purchase.low_bait_threshold
                     ));
                     if !purchase_amount(ctx, Some(to_buy)) {
-                        return false;
-                    }
-                    let mut rod_eq = false;
-                    if !ensure_rod_equipped(ctx, &mut rod_eq) {
-                        return false;
-                    }
-                    if !ctx.sleep_ms(400) {
-                        return false;
+                        ctx.log_warn("Auto purchase failed; continuing with available bait.");
+                    } else {
+                        let mut rod_eq = false;
+                        if !ensure_rod_equipped(ctx, &mut rod_eq) {
+                            return false;
+                        }
+                        if !ctx.sleep_ms(400) {
+                            return false;
+                        }
                     }
                 }
             }
@@ -296,7 +314,7 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             _ => {}
         }
 
-        // Check failsafe: if chosen tier has 0 stock
+        // Check failsafe: if chosen tier has 0 stock while menu is visibly open
         if s.features.zero_bait_failsafe {
             let is_zero = match chosen_tier {
                 crate::core::bait::BaitTier::Legendary => stock.legendary == Some(0),
@@ -307,6 +325,7 @@ pub fn select_bait(ctx: &Ctx) -> bool {
                 }
             };
             if is_zero {
+                ctx.set_state(BotState::Paused, Some("Bait depleted".into()));
                 ctx.log_warn("🎣 Bait depleted (zero bait detected)! Safely pausing macro.");
                 ctx.webhook.bait_depleted();
                 return false;
@@ -349,6 +368,7 @@ pub fn select_bait(ctx: &Ctx) -> bool {
         return true;
     };
     if s.features.zero_bait_failsafe && is_bait_depleted(ctx) {
+        ctx.set_state(BotState::Paused, Some("Bait depleted".into()));
         ctx.log_warn("🎣 Bait depleted (zero bait detected)! Safely pausing macro.");
         ctx.webhook.bait_depleted();
         return false;
@@ -406,7 +426,7 @@ pub fn initial_setup(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
 
         if let Some(amt) = to_buy {
             if !purchase_amount(ctx, Some(amt)) {
-                return false;
+                ctx.log_warn("Initial shop purchase failed or skipped; proceeding with fishing setup.");
             }
         }
     }
