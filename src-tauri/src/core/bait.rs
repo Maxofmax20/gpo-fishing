@@ -96,20 +96,35 @@ pub fn resolve_tier(stock: &BaitStock, preference: BaitTier) -> BaitTier {
 
 fn extract_quantity(line: &str) -> Option<u32> {
     let lower = line.to_lowercase();
-    // Look for 'x' or '×' followed by digits
-    if let Some(idx) = lower.find(|c| c == 'x' || c == '×') {
+
+    // 1. Look for 'x', '×', '*', '•', '+', ':', 'm', 'k' followed by digits
+    if let Some(idx) = lower.find(|c| c == 'x' || c == '×' || c == '*' || c == '•' || c == '+' || c == ':' || c == 'm' || c == 'k') {
         let after = &lower[idx + 1..];
         let digits: String = after
             .chars()
-            .skip_while(|c| c.is_whitespace() || *c == ':')
+            .skip_while(|c| c.is_whitespace() || *c == ':' || *c == '.' || *c == '-' || *c == '\'')
             .take_while(|c| c.is_ascii_digit())
             .collect();
         if let Ok(n) = digits.parse::<u32>() {
-            return Some(n);
+            if n <= 9999 {
+                return Some(n);
+            }
         }
     }
 
-    // Fallback: look for trailing digits at the end of the line
+    // 2. Scan all tokens from right to left for a number
+    for word in lower.split_whitespace().rev() {
+        let clean: String = word.chars().filter(|c| c.is_ascii_digit()).collect();
+        if !clean.is_empty() {
+            if let Ok(n) = clean.parse::<u32>() {
+                if n <= 9999 {
+                    return Some(n);
+                }
+            }
+        }
+    }
+
+    // 3. Fallback: look for trailing digits at the end of the line
     let trimmed = lower.trim_end();
     let digits: String = trimmed
         .chars()
@@ -133,30 +148,71 @@ fn extract_quantity(line: &str) -> Option<u32> {
 ///   "Legendary Fish Bait x104"
 ///   "Rare Fish Bait x35"
 ///   "Common Fish Bait x281"
+///   "L.eserw.ry shg.it *110"
 pub fn parse_bait_stock(text: &str) -> BaitStock {
     let mut stock = BaitStock::default();
+    let mut candidate_rows: Vec<(String, Option<u32>)> = Vec::new();
 
-    for line in text.lines() {
-        let trimmed = line.trim();
+    for raw_line in text.lines() {
+        let trimmed = raw_line.trim();
         if trimmed.is_empty() {
             continue;
         }
         let lower = trimmed.to_lowercase();
+        // Skip header lines or footer
+        if lower.contains("fishing") && lower.contains("bait") && !lower.contains("x") && !lower.contains("*") {
+            continue;
+        }
+        if lower.contains("craft") || lower.contains("blacksmith") {
+            continue;
+        }
+
         let count = extract_quantity(trimmed);
 
-        if lower.contains("legendary") {
+        // Tier classification with fuzzy resilience:
+        let is_legendary = lower.contains("legendary")
+            || lower.contains("legend")
+            || lower.contains("dary")
+            || lower.contains("eserw")
+            || (lower.starts_with('l') && (lower.contains("sh") || lower.contains("bait")));
+
+        let is_rare = lower.contains("rare")
+            || lower.contains("rar")
+            || (lower.starts_with('r') && lower.contains("bait"));
+
+        let is_common = lower.contains("common")
+            || lower.contains("comon")
+            || lower.contains("comm")
+            || lower.contains("mmon")
+            || lower.contains("ommon");
+
+        if is_legendary {
             if count.is_some() || stock.legendary.is_none() {
                 stock.legendary = count;
             }
-        } else if lower.contains("rare") {
+        } else if is_rare {
             if count.is_some() || stock.rare.is_none() {
                 stock.rare = count;
             }
-        } else if lower.contains("common") {
+        } else if is_common {
             if count.is_some() || stock.common.is_none() {
                 stock.common = count;
             }
+        } else if count.is_some() {
+            candidate_rows.push((lower, count));
         }
+    }
+
+    // Positional fallback:
+    // In GPO, the 3 rows are ALWAYS: Row 0 = Legendary, Row 1 = Rare, Row 2 = Common.
+    if stock.legendary.is_none() && !candidate_rows.is_empty() {
+        stock.legendary = candidate_rows[0].1;
+    }
+    if stock.rare.is_none() && candidate_rows.len() >= 2 {
+        stock.rare = candidate_rows[1].1;
+    }
+    if stock.common.is_none() && candidate_rows.len() >= 3 {
+        stock.common = candidate_rows[2].1;
     }
 
     stock
@@ -204,6 +260,19 @@ mod tests {
         assert_eq!(s.legendary, Some(12));
         assert_eq!(s.rare, Some(99));
         assert_eq!(s.common, Some(450));
+    }
+
+    #[test]
+    fn test_parse_bait_stock_real_ocr() {
+        let text = "Fishing gaits\n\
+                    L.eserw.ry shg.it *110\n\
+                    Rare Fish Buit x30\n\
+                    Common Fish Bait *204\n\
+                    Craft more bait types from";
+        let s = parse_bait_stock(text);
+        assert_eq!(s.legendary, Some(110));
+        assert_eq!(s.rare, Some(30));
+        assert_eq!(s.common, Some(204));
     }
 
     #[test]

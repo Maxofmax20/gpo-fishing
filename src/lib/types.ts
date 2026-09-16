@@ -136,6 +136,7 @@ export type Settings = {
     after_type_ms: number;
     bait_tier: BaitTier;
     low_bait_threshold: number;
+    max_bait: number;
   };
   zoom: { out_steps: number; in_steps: number; step_delay_ms: number; sequence_delay_ms: number };
   fruit_storage: { key_settle_ms: number; click_settle_ms: number; dialog_wait_ms: number; after_drop_ms: number; never_drop_legendary_or_mythical: boolean; pause_on_protected_fruit: boolean };

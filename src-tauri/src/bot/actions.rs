@@ -257,16 +257,19 @@ pub fn select_bait(ctx: &Ctx) -> bool {
         let com_str = stock.common.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
         ctx.log_info(&format!("🐟 Bait Stock: [Legendary: {leg_str} | Rare: {rare_str} | Common: {com_str}]"));
 
-        // Check if Common bait is critically low and auto-purchase is enabled
-        // Only Common bait can be purchased from the NPC shop.
+        // Dynamic auto-purchase trigger:
+        // In GPO, ONLY Common Fish Bait can be purchased from the NPC shop.
+        // Calculates the exact missing amount to reach max capacity (300).
         if s.features.auto_purchase {
             if let Some(c_qty) = stock.common {
                 if c_qty <= s.purchase.low_bait_threshold {
+                    let max_cap = s.purchase.max_bait.clamp(1, 300);
+                    let to_buy = max_cap.saturating_sub(c_qty).clamp(1, max_cap);
                     ctx.log_warn(&format!(
-                        "🛒 Common bait stock ({c_qty}) <= threshold ({})! Triggering auto-purchase...",
+                        "🛒 Common bait stock ({c_qty}/{max_cap}) <= threshold ({})! Purchasing exact missing {to_buy} bait...",
                         s.purchase.low_bait_threshold
                     ));
-                    if !purchase(ctx) {
+                    if !purchase_amount(ctx, Some(to_buy)) {
                         return false;
                     }
                     let mut rod_eq = false;
@@ -381,8 +384,31 @@ pub fn initial_setup(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
     if s.features.auto_zoom && (!zoom_reset(ctx) || !ctx.sleep_ms(800)) {
         return false;
     }
-    if s.features.auto_purchase && !purchase(ctx) {
-        return false;
+    if s.features.auto_purchase {
+        let to_buy = if s.features.smart_bait {
+            let stock = scan_bait_stock(ctx).unwrap_or_default();
+            if let Some(c_qty) = stock.common {
+                let max_cap = s.purchase.max_bait.clamp(1, 300);
+                if c_qty >= max_cap {
+                    ctx.log_info(&format!("🐟 Common bait already full ({c_qty}/{max_cap}) - skipping initial purchase"));
+                    None
+                } else {
+                    let missing = max_cap.saturating_sub(c_qty).clamp(1, max_cap);
+                    ctx.log_info(&format!("🛒 Initial setup: Common bait at {c_qty}/{max_cap}. Buying exact missing {missing} bait..."));
+                    Some(missing)
+                }
+            } else {
+                Some(s.purchase.amount)
+            }
+        } else {
+            Some(s.purchase.amount)
+        };
+
+        if let Some(amt) = to_buy {
+            if !purchase_amount(ctx, Some(amt)) {
+                return false;
+            }
+        }
     }
     if !ensure_rod_equipped(ctx, rod_equipped) {
         return false;
@@ -413,14 +439,16 @@ pub fn cast(ctx: &Ctx) -> bool {
     ok
 }
 
-pub fn purchase(ctx: &Ctx) -> bool {
+pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
     let s = ctx.settings();
     let (Some(confirm), Some(quantity)) = (s.points.purchase[0].and_then(|p| rel_to_px(ctx, p)), s.points.purchase[1].and_then(|p| rel_to_px(ctx, p))) else {
         ctx.log_warn("Auto purchase: confirm and quantity points not both set");
         return true;
     };
+    let max_cap = s.purchase.max_bait.clamp(1, 300);
+    let amount = amount_override.unwrap_or(s.purchase.amount).clamp(1, max_cap);
     ctx.set_state(BotState::Purchasing, None);
-    ctx.log_info(&format!("Buying {} bait", s.purchase.amount));
+    ctx.log_info(&format!("Buying {amount} bait (up to {max_cap} max capacity)"));
     let p = &s.purchase;
     let delay = p.click_delay_ms;
 
@@ -447,7 +475,7 @@ pub fn purchase(ctx: &Ctx) -> bool {
     if !ctx.sleep_ms(30) {
         return false;
     }
-    for c in p.amount.to_string().chars() {
+    for c in amount.to_string().chars() {
         if !key_tap(ctx, Key::Char(c)) || !ctx.sleep_ms(25) {
             return false;
         }
@@ -473,15 +501,19 @@ pub fn purchase(ctx: &Ctx) -> bool {
     }
     {
         let mut sess = ctx.session.lock();
-        sess.bait_purchased += p.amount;
+        sess.bait_purchased += amount;
         sess.since_purchase = 0;
     }
     ctx.emit_stats();
-    ctx.emit(crate::events::BotEvent::Purchase { amount: p.amount });
+    ctx.emit(crate::events::BotEvent::Purchase { amount });
     if s.webhook.purchase {
-        ctx.webhook.purchase(p.amount);
+        ctx.webhook.purchase(amount);
     }
     true
+}
+
+pub fn purchase(ctx: &Ctx) -> bool {
+    purchase_amount(ctx, None)
 }
 
 pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
@@ -642,38 +674,109 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
     ctx.sleep_ms(300)
 }
 
-/// Parses strings looking for timestamps like "01:43:48" or "1:43:48" or "43:48"
+fn clean_ocr_digits(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            'O' | 'o' | 'C' | 'c' | 'D' | 'Q' => '0',
+            'I' | 'l' | '|' | '!' => '1',
+            'S' | 's' => '5',
+            'B' => '8',
+            other => other,
+        })
+        .filter(|c| c.is_ascii_digit())
+        .collect()
+}
+
+/// Parses strings looking for timestamps like "1 days 14:00:44", "dap 14•0C29", "01:43:48", "14:00:17"
 pub fn extract_timestamp(text: &str) -> Option<(String, i64)> {
-    for line in text.lines() {
-        for word in line.split_whitespace() {
-            let clean = word.trim_matches(|c: char| !c.is_ascii_digit() && c != ':');
-            if clean.contains(':') {
-                let parts: Vec<&str> = clean.split(':').collect();
-                if parts.len() == 3 {
+    let mut normalized = String::new();
+    for c in text.chars() {
+        match c {
+            '•' | '·' | ';' => normalized.push(':'),
+            _ => normalized.push(c),
+        }
+    }
+
+    let lower = normalized.to_lowercase();
+
+    // 1. Detect days: e.g. "1 days", "2 days", "dap", "1 dap", "dys"
+    let mut days: i64 = 0;
+    if let Some(idx) = lower.find("day") {
+        let before = &lower[..idx];
+        let digits: String = before.chars().rev().take_while(|c| c.is_ascii_digit()).collect::<String>().chars().rev().collect();
+        days = digits.parse::<i64>().unwrap_or(1);
+    } else if lower.contains("dap") || lower.contains("dys") {
+        if let Some(idx) = lower.find("dap").or_else(|| lower.find("dys")) {
+            let before = &lower[..idx];
+            let digits: String = before.chars().rev().take_while(|c| c.is_ascii_digit()).collect::<String>().chars().rev().collect();
+            days = digits.parse::<i64>().unwrap_or(1);
+        } else {
+            days = 1;
+        }
+    }
+
+    // 2. Scan words for time chunks
+    for word in normalized.split_whitespace() {
+        let clean = word.trim_matches(|c: char| !c.is_alphanumeric() && c != ':');
+        if clean.contains(':') {
+            let parts: Vec<&str> = clean.split(':').collect();
+            if parts.len() == 3 {
+                let h_str = clean_ocr_digits(parts[0]);
+                let m_str = clean_ocr_digits(parts[1]);
+                let s_str = clean_ocr_digits(parts[2]);
+
+                if let (Ok(h), Ok(m), Ok(s)) = (h_str.parse::<i64>(), m_str.parse::<i64>(), s_str.parse::<i64>()) {
+                    if m < 60 && s < 60 {
+                        let total = days * 86400 + h * 3600 + m * 60 + s;
+                        let display = if days > 0 {
+                            format!("{days}d {h:02}:{m:02}:{s:02}")
+                        } else {
+                            format!("{h:02}:{m:02}:{s:02}")
+                        };
+                        return Some((display, total));
+                    }
+                }
+            } else if parts.len() == 2 {
+                let p0 = clean_ocr_digits(parts[0]);
+                let p1 = clean_ocr_digits(parts[1]);
+
+                if p1.len() == 4 {
                     if let (Ok(h), Ok(m), Ok(s)) = (
-                        parts[0].parse::<i64>(),
-                        parts[1].parse::<i64>(),
-                        parts[2].parse::<i64>(),
+                        p0.parse::<i64>(),
+                        p1[..2].parse::<i64>(),
+                        p1[2..].parse::<i64>(),
                     ) {
                         if m < 60 && s < 60 {
-                            let total = h * 3600 + m * 60 + s;
-                            return Some((clean.to_string(), total));
+                            let total = days * 86400 + h * 3600 + m * 60 + s;
+                            let display = if days > 0 {
+                                format!("{days}d {h:02}:{m:02}:{s:02}")
+                            } else {
+                                format!("{h:02}:{m:02}:{s:02}")
+                            };
+                            return Some((display, total));
                         }
                     }
-                } else if parts.len() == 2 {
-                    if let (Ok(m), Ok(s)) = (
-                        parts[0].parse::<i64>(),
-                        parts[1].parse::<i64>(),
-                    ) {
-                        if m < 60 && s < 60 {
-                            let total = m * 60 + s;
-                            return Some((clean.to_string(), total));
-                        }
+                } else if let (Ok(m), Ok(s)) = (p0.parse::<i64>(), p1.parse::<i64>()) {
+                    if m < 60 && s < 60 {
+                        let total = days * 86400 + m * 60 + s;
+                        let display = if days > 0 {
+                            format!("{days}d 00:{m:02}:{s:02}")
+                        } else {
+                            format!("{m:02}:{s:02}")
+                        };
+                        return Some((display, total));
                     }
                 }
             }
         }
     }
+
+    // 3. Fallback: also check core::boss_tracker::parse_duration_str
+    if let Some(sec) = crate::core::boss_tracker::parse_duration_str(&normalized) {
+        let total = days * 86400 + sec;
+        return Some((crate::core::boss_tracker::format_duration(total), total));
+    }
+
     None
 }
 

@@ -259,6 +259,18 @@ export default function Features() {
             <div className="text-[11px] text-fg-mute pb-2">
               💡 Only Common bait can be bought from the shop. When Common bait drops to or below this amount, macro immediately purchases from shop.
             </div>
+            <Field label="Max bait capacity">
+              <Stepper
+                value={s.purchase.max_bait ?? 300}
+                min={1}
+                max={300}
+                suffix="max bait"
+                onChange={(v) => update((x) => void (x.purchase.max_bait = v))}
+              />
+            </Field>
+            <div className="text-[11px] text-fg-mute pb-2">
+              📦 Macro calculates missing bait (Max - Current) and buys the exact amount up to this limit (max inventory is 300).
+            </div>
             <Field label="Buy every">
               <Stepper value={s.purchase.every_n_catches} min={1} max={500} suffix="fish" onChange={(v) => update((x) => void (x.purchase.every_n_catches = v))} />
             </Field>

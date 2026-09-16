@@ -137,6 +137,7 @@ impl Default for Features {
 #[serde(default)]
 pub struct Purchase {
     pub amount: u32,
+    pub max_bait: u32,
     pub every_n_catches: u32,
     pub hold_shop_key_ms: u32,
     pub after_key_ms: u32,
@@ -150,6 +151,7 @@ impl Default for Purchase {
     fn default() -> Self {
         Self {
             amount: 100,
+            max_bait: 300,
             every_n_catches: 10,
             hold_shop_key_ms: 800,
             after_key_ms: 350,
@@ -618,6 +620,9 @@ impl Store {
             if settings.version < 11 {
                 if settings.regions.bait_menu.w < 0.01 {
                     settings.regions.bait_menu = Regions::default().bait_menu;
+                }
+                if settings.purchase.max_bait == 0 {
+                    settings.purchase.max_bait = 300;
                 }
             }
             settings.version = SETTINGS_VERSION;

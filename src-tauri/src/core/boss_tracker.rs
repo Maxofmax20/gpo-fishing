@@ -147,23 +147,48 @@ pub fn format_duration(seconds: i64) -> String {
     }
 }
 
-/// Parses strings like "1h 13m and 23s", "1h 13m 23s", "13m and 13s", "13m13s", "45m", "90s", "1:13:23"
+/// Parses strings like "1 days 14:00:44", "1d 14h 23m", "1h 13m and 23s", "1h 13m 23s", "13m and 13s", "13m13s", "45m", "90s", "1:13:23"
 pub fn parse_duration_str(raw: &str) -> Option<i64> {
     let text = raw.trim().to_lowercase().replace("and", " ");
     if text.is_empty() {
         return None;
     }
 
-    // Try format like "1:13:23" or "13:23"
+    // Try format with colons like "1 days 14:00:44", "2d 01:00:00", "1:13:23" or "13:23"
     if text.contains(':') {
-        let parts: Vec<&str> = text.split(':').collect();
-        if parts.len() == 3 {
-            if let (Ok(h), Ok(m), Ok(s)) = (parts[0].trim().parse::<i64>(), parts[1].trim().parse::<i64>(), parts[2].trim().parse::<i64>()) {
-                return Some(h * 3600 + m * 60 + s);
-            }
-        } else if parts.len() == 2 {
-            if let (Ok(m), Ok(s)) = (parts[0].trim().parse::<i64>(), parts[1].trim().parse::<i64>()) {
-                return Some(m * 60 + s);
+        let mut days_sec: i64 = 0;
+        let words: Vec<&str> = text.split_whitespace().collect();
+        for i in 0..words.len() {
+            let w = words[i];
+            if !w.contains(':') {
+                if w.contains("day") || w.contains("dap") || w == "d" {
+                    if i > 0 {
+                        let digits: String = words[i - 1].chars().filter(|c| c.is_ascii_digit()).collect();
+                        if let Ok(d) = digits.parse::<i64>() {
+                            days_sec += d * 86400;
+                        }
+                    }
+                    let digits: String = w.chars().filter(|c| c.is_ascii_digit()).collect();
+                    if let Ok(d) = digits.parse::<i64>() {
+                        days_sec += d * 86400;
+                    }
+                } else if w.ends_with('d') {
+                    let digits: String = w.chars().filter(|c| c.is_ascii_digit()).collect();
+                    if let Ok(d) = digits.parse::<i64>() {
+                        days_sec += d * 86400;
+                    }
+                }
+            } else {
+                let parts: Vec<&str> = w.split(':').collect();
+                if parts.len() == 3 {
+                    if let (Ok(h), Ok(m), Ok(s)) = (parts[0].trim().parse::<i64>(), parts[1].trim().parse::<i64>(), parts[2].trim().parse::<i64>()) {
+                        return Some(days_sec + h * 3600 + m * 60 + s);
+                    }
+                } else if parts.len() == 2 {
+                    if let (Ok(m), Ok(s)) = (parts[0].trim().parse::<i64>(), parts[1].trim().parse::<i64>()) {
+                        return Some(days_sec + m * 60 + s);
+                    }
+                }
             }
         }
     }
@@ -174,6 +199,11 @@ pub fn parse_duration_str(raw: &str) -> Option<i64> {
     for ch in text.chars() {
         if ch.is_ascii_digit() {
             curr_num.push(ch);
+        } else if ch == 'd' {
+            if let Ok(n) = curr_num.parse::<i64>() {
+                total_sec += n * 86400;
+            }
+            curr_num.clear();
         } else if ch == 'h' {
             if let Ok(n) = curr_num.parse::<i64>() {
                 total_sec += n * 3600;
@@ -506,6 +536,8 @@ mod tests {
         assert_eq!(parse_duration_str("45m"), Some(45 * 60));
         assert_eq!(parse_duration_str("1:13:23"), Some(3600 + 13 * 60 + 23));
         assert_eq!(parse_duration_str("13:23"), Some(13 * 60 + 23));
+        assert_eq!(parse_duration_str("1 days 14:00:44"), Some(86400 + 14 * 3600 + 44));
+        assert_eq!(parse_duration_str("2d 01:00:00"), Some(2 * 86400 + 3600));
     }
 
     #[test]
