@@ -8,7 +8,7 @@ use crate::core::fruit::Lexicon;
 use crate::core::types::{PxRect, RelPoint, RelRect};
 use crate::core::vision::Palette;
 
-pub const SETTINGS_VERSION: u32 = 10;
+pub const SETTINGS_VERSION: u32 = 11;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -16,6 +16,7 @@ pub struct Regions {
     pub bar: RelRect,
     pub drop: RelRect,
     pub server_time: RelRect,
+    pub bait_menu: RelRect,
 }
 
 impl Default for Regions {
@@ -24,6 +25,7 @@ impl Default for Regions {
             bar: RelRect { x: 0.546, y: 0.322, w: 0.121, h: 0.436 },
             drop: RelRect { x: 0.369, y: 0.052, w: 0.259, h: 0.113 },
             server_time: RelRect { x: 0.88, y: 0.91, w: 0.11, h: 0.06 },
+            bait_menu: RelRect { x: 0.40, y: 0.68, w: 0.20, h: 0.18 },
         }
     }
 }
@@ -107,6 +109,7 @@ pub struct Features {
     pub auto_zoom: bool,
     pub auto_mouse_position: bool,
     pub auto_bait: bool,
+    pub smart_bait: bool,
     pub fruit_storage: bool,
     pub auto_purchase: bool,
     pub zero_bait_failsafe: bool,
@@ -120,6 +123,7 @@ impl Default for Features {
             auto_zoom: false,
             auto_mouse_position: false,
             auto_bait: false,
+            smart_bait: true,
             fruit_storage: false,
             auto_purchase: false,
             zero_bait_failsafe: true,
@@ -138,6 +142,8 @@ pub struct Purchase {
     pub after_key_ms: u32,
     pub click_delay_ms: u32,
     pub after_type_ms: u32,
+    pub bait_tier: crate::core::bait::BaitTier,
+    pub low_bait_threshold: u32,
 }
 
 impl Default for Purchase {
@@ -149,6 +155,8 @@ impl Default for Purchase {
             after_key_ms: 350,
             click_delay_ms: 200,
             after_type_ms: 250,
+            bait_tier: crate::core::bait::BaitTier::Common,
+            low_bait_threshold: 5,
         }
     }
 }
@@ -605,6 +613,11 @@ impl Store {
                 }
                 if settings.fishing.cast_hold_ms >= 1000 {
                     settings.fishing.cast_hold_ms = 700;
+                }
+            }
+            if settings.version < 11 {
+                if settings.regions.bait_menu.w < 0.01 {
+                    settings.regions.bait_menu = Regions::default().bait_menu;
                 }
             }
             settings.version = SETTINGS_VERSION;

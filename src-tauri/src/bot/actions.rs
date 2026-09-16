@@ -207,11 +207,140 @@ pub fn is_bait_depleted(ctx: &Ctx) -> bool {
     false
 }
 
+/// Scans the in-game bait menu using Windows OCR to extract current stock for each tier.
+pub fn scan_bait_stock(ctx: &Ctx) -> Result<crate::core::bait::BaitStock, String> {
+    if !ctx.platform.ocr.available() {
+        return Err("Windows OCR is not available on this system".into());
+    }
+
+    let rect = ctx.roblox_rect().ok_or("Roblox window not found")?;
+    let scan_rect = {
+        let s = ctx.settings();
+        s.regions.bait_menu.to_px(&rect)
+    };
+
+    if scan_rect.w < 10 || scan_rect.h < 10 {
+        return Err("Bait menu region is too small or not configured".into());
+    }
+
+    let frame = ctx
+        .platform
+        .capture
+        .grab(scan_rect)
+        .map_err(|e| format!("Screen capture failed: {e}"))?;
+
+    // Upscale 2x for optimal OCR readability
+    let upscaled = frame.upscale(2);
+    let text = ctx
+        .platform
+        .ocr
+        .read(&upscaled)
+        .map_err(|e| format!("OCR failed: {e}"))?;
+
+    ctx.log_debug(&format!("Bait menu OCR raw text:\n{text}"));
+    let stock = crate::core::bait::parse_bait_stock(&text);
+    Ok(stock)
+}
+
 pub fn select_bait(ctx: &Ctx) -> bool {
     let s = ctx.settings();
     if !s.features.auto_bait {
         return true;
     }
+
+    if s.features.smart_bait {
+        ctx.log_debug("Smart Bait: inspecting bait menu...");
+        let stock = scan_bait_stock(ctx).unwrap_or_default();
+
+        let leg_str = stock.legendary.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
+        let rare_str = stock.rare.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
+        let com_str = stock.common.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
+        ctx.log_info(&format!("🐟 Bait Stock: [Legendary: {leg_str} | Rare: {rare_str} | Common: {com_str}]"));
+
+        // Check if Common bait is critically low and auto-purchase is enabled
+        // Only Common bait can be purchased from the NPC shop.
+        if s.features.auto_purchase {
+            if let Some(c_qty) = stock.common {
+                if c_qty <= s.purchase.low_bait_threshold {
+                    ctx.log_warn(&format!(
+                        "🛒 Common bait stock ({c_qty}) <= threshold ({})! Triggering auto-purchase...",
+                        s.purchase.low_bait_threshold
+                    ));
+                    if !purchase(ctx) {
+                        return false;
+                    }
+                    let mut rod_eq = false;
+                    if !ensure_rod_equipped(ctx, &mut rod_eq) {
+                        return false;
+                    }
+                    if !ctx.sleep_ms(400) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        let chosen_tier = crate::core::bait::resolve_tier(&stock, s.purchase.bait_tier);
+
+        // Notify user if a high tier bait depleted and we fell back to Common
+        match s.purchase.bait_tier {
+            crate::core::bait::BaitTier::Legendary if chosen_tier == crate::core::bait::BaitTier::Common && stock.legendary == Some(0) => {
+                ctx.log_warn("⚠️ Legendary bait depleted! Automatically fell back to Common bait.");
+            }
+            crate::core::bait::BaitTier::Rare if chosen_tier == crate::core::bait::BaitTier::Common && stock.rare == Some(0) => {
+                ctx.log_warn("⚠️ Rare bait depleted! Automatically fell back to Common bait.");
+            }
+            _ => {}
+        }
+
+        // Check failsafe: if chosen tier has 0 stock
+        if s.features.zero_bait_failsafe {
+            let is_zero = match chosen_tier {
+                crate::core::bait::BaitTier::Legendary => stock.legendary == Some(0),
+                crate::core::bait::BaitTier::Rare => stock.rare == Some(0),
+                crate::core::bait::BaitTier::Common => stock.common == Some(0),
+                crate::core::bait::BaitTier::Highest => {
+                    stock.legendary == Some(0) && stock.rare == Some(0) && stock.common == Some(0)
+                }
+            };
+            if is_zero {
+                ctx.log_warn("🎣 Bait depleted (zero bait detected)! Safely pausing macro.");
+                ctx.webhook.bait_depleted();
+                return false;
+            }
+        }
+
+        let Some(rect) = ctx.roblox_rect() else {
+            ctx.log_warn("Roblox window not found; cannot select bait");
+            return false;
+        };
+
+        let menu = s.regions.bait_menu;
+        let (row_rx, row_ry) = chosen_tier.relative_pos();
+        let target_rel = RelPoint {
+            x: menu.x + menu.w * row_rx,
+            y: menu.y + menu.h * row_ry,
+        };
+        let target_px = target_rel.to_px(&rect);
+
+        ctx.log_debug(&format!("Selecting {:?} bait at ({}, {})", chosen_tier, target_px.x, target_px.y));
+        if !click(ctx, target_px) || !ctx.sleep_ms(300) {
+            return false;
+        }
+
+        // If secondary backup point is also set, click it too (legacy support)
+        if let Some(backup) = s.points.bait[1].and_then(|p| rel_to_px(ctx, p)) {
+            if !click(ctx, backup) || !ctx.sleep_ms(300) {
+                return false;
+            }
+            if !click(ctx, target_px) || !ctx.sleep_ms(300) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     let Some(primary) = s.points.bait[0] else {
         ctx.log_warn("Auto bait enabled but bait point not set");
         return true;

@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  BaitStock,
   BotState,
   CatchRecord,
   DropInfo, SpawnInfo,
@@ -65,6 +66,7 @@ export const api = {
     invoke<{ success: boolean; uptime_sec: number; time_str: string; remaining_sec: number; is_spawned: boolean; message: string }>("boss_tracker_scan_server_age"),
   bossTrackerSyncServerAge: (timeStr: string) =>
     invoke<{ success: boolean; uptime_sec: number; time_str: string; remaining_sec: number; is_spawned: boolean; message: string }>("boss_tracker_sync_server_age", { timeStr }),
+  scanBaitStock: () => invoke<BaitStock>("scan_bait_stock"),
 };
 
 type Events = {

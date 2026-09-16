@@ -126,6 +126,7 @@ pub enum OverlayTarget {
     BarRegion,
     DropRegion,
     ServerTimeRegion,
+    BaitMenuRegion,
     FishingPoint,
     Purchase1,
     Purchase2,
@@ -139,7 +140,13 @@ pub enum OverlayTarget {
 
 impl OverlayTarget {
     pub fn is_region(self) -> bool {
-        matches!(self, OverlayTarget::BarRegion | OverlayTarget::DropRegion | OverlayTarget::ServerTimeRegion)
+        matches!(
+            self,
+            OverlayTarget::BarRegion
+                | OverlayTarget::DropRegion
+                | OverlayTarget::ServerTimeRegion
+                | OverlayTarget::BaitMenuRegion
+        )
     }
 }
 
@@ -161,6 +168,7 @@ pub fn overlay_open(app: AppHandle, st: State<'_, AppState>, target: OverlayTarg
         OverlayTarget::BarRegion => (Some(s.regions.bar), None),
         OverlayTarget::DropRegion => (Some(s.regions.drop), None),
         OverlayTarget::ServerTimeRegion => (Some(s.regions.server_time), None),
+        OverlayTarget::BaitMenuRegion => (Some(s.regions.bait_menu), None),
         OverlayTarget::FishingPoint => (None, Some(s.points.fishing)),
         OverlayTarget::Purchase1 => (None, s.points.purchase[0]),
         OverlayTarget::Purchase2 => (None, s.points.purchase[1]),
@@ -193,6 +201,7 @@ pub fn overlay_commit(app: AppHandle, st: State<'_, AppState>, commit: OverlayCo
         OverlayTarget::BarRegion => s.regions.bar = commit.region.ok_or("region required")?,
         OverlayTarget::DropRegion => s.regions.drop = commit.region.ok_or("region required")?,
         OverlayTarget::ServerTimeRegion => s.regions.server_time = commit.region.ok_or("region required")?,
+        OverlayTarget::BaitMenuRegion => s.regions.bait_menu = commit.region.ok_or("region required")?,
         OverlayTarget::FishingPoint => s.points.fishing = commit.point.ok_or("point required")?,
         OverlayTarget::Purchase1 => s.points.purchase[0] = commit.point,
         OverlayTarget::Purchase2 => s.points.purchase[1] = commit.point,
@@ -219,6 +228,7 @@ pub struct RegionsSession {
     pub bar: RelRect,
     pub drop: RelRect,
     pub server_time: RelRect,
+    pub bait_menu: RelRect,
 }
 
 pub fn open_regions_editor(app: &AppHandle) -> Result<RegionsSession, String> {
@@ -231,6 +241,7 @@ pub fn open_regions_editor(app: &AppHandle) -> Result<RegionsSession, String> {
         bar: s.regions.bar,
         drop: s.regions.drop,
         server_time: s.regions.server_time,
+        bait_menu: s.regions.bait_menu,
     };
     drop(s);
     *st.overlay_session.lock() = Some(serde_json::json!({ "kind": "regions", "session": session }));
@@ -255,6 +266,7 @@ pub struct RegionsCommit {
     pub bar: RelRect,
     pub drop: RelRect,
     pub server_time: RelRect,
+    pub bait_menu: RelRect,
 }
 
 #[tauri::command]
@@ -263,6 +275,7 @@ pub fn overlay_commit_regions(app: AppHandle, st: State<'_, AppState>, commit: R
     s.regions.bar = commit.bar;
     s.regions.drop = commit.drop;
     s.regions.server_time = commit.server_time;
+    s.regions.bait_menu = commit.bait_menu;
     windows::hide_overlay(&app);
     settings_set(app, st, s.clone())?;
     Ok(s)
@@ -531,3 +544,10 @@ pub fn boss_tracker_sync_server_age(st: State<'_, AppState>, time_str: String) -
         message: msg,
     })
 }
+
+#[tauri::command]
+pub async fn scan_bait_stock(st: State<'_, AppState>) -> Result<crate::core::bait::BaitStock, String> {
+    let ctx = st.bot.ctx();
+    crate::bot::actions::scan_bait_stock(&ctx)
+}
+

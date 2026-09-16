@@ -65,6 +65,22 @@ export default function Features() {
     }
   };
 
+  const [baitScanState, setBaitScanState] = useState<{
+    loading: boolean;
+    result: { legendary: number | null; rare: number | null; common: number | null } | null;
+    error: string | null;
+  }>({ loading: false, result: null, error: null });
+
+  const handleScanBait = async () => {
+    setBaitScanState({ loading: true, result: null, error: null });
+    try {
+      const stock = await api.scanBaitStock();
+      setBaitScanState({ loading: false, result: stock, error: null });
+    } catch (e) {
+      setBaitScanState({ loading: false, result: null, error: String(e) });
+    }
+  };
+
   const testWebhook = async () => {
     try {
       await api.webhookTest();
@@ -99,22 +115,97 @@ export default function Features() {
           sub="Re-selects your bait before every cast so the rod never fishes empty."
           right={
             <>
-              {s.features.auto_bait && !baitReady && <Pill tone="warn">point needed</Pill>}
+              {s.features.auto_bait && !s.features.smart_bait && !baitReady && <Pill tone="warn">point needed</Pill>}
+              {s.features.auto_bait && s.features.smart_bait && <Pill tone="accent">OCR smart</Pill>}
               <Toggle value={s.features.auto_bait} onChange={(v) => { update((x) => void (x.features.auto_bait = v)); if (v) setOpen("bait"); }} />
             </>
           }
           open={open === "bait"}
           onToggle={() => toggle("bait")}
         >
-          <Steps>
-            <Step n={1} title={<>Press <Kbd>{s.keys.rod.toUpperCase()}</Kbd> to open the rod menu</>} sub="The rod key is set in Setup › Inventory keys." done />
-            <Step n={2} title="Click the bait" sub="Pick the top bait in the rod menu." done={baitReady}>
-              <PointField target="bait1" value={s.points.bait[0]} />
-            </Step>
-            <Step n={3} title="Backup click" sub="Optional. If set, the bot clicks here, then the bait again." done={!!s.points.bait[1]} last>
-              <PointField target="bait2" value={s.points.bait[1]} clearable onCleared={() => update((x) => void (x.points.bait[1] = null))} />
-            </Step>
-          </Steps>
+          <div className="mb-3 pb-3 border-b border-line flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[12px] font-medium text-fg">Smart Bait (OCR stock tracking)</div>
+                <div className="text-[11px] text-fg-mute">
+                  Uses OCR to read bait quantities directly from the bait menu and auto-selects your preferred tier.
+                </div>
+              </div>
+              <Toggle
+                disabled={!ocrAvailable}
+                value={s.features.smart_bait}
+                onChange={(v) => update((x) => void (x.features.smart_bait = v))}
+              />
+            </div>
+
+            {s.features.smart_bait && (
+              <div className="p-2.5 rounded bg-bg-card/70 border border-line space-y-3">
+                <div>
+                  <div className="text-[11px] font-medium text-fg-dim mb-1">Target Bait Tier</div>
+                  <Segmented
+                    value={s.purchase.bait_tier ?? "common"}
+                    onChange={(v) => update((x) => void (x.purchase.bait_tier = v as any))}
+                    options={[
+                      { value: "common", label: "Common" },
+                      { value: "rare", label: "Rare" },
+                      { value: "legendary", label: "Legendary" },
+                      { value: "highest", label: "Highest" },
+                    ]}
+                  />
+                  <div className="text-[10px] text-fg-mute mt-1">
+                    {s.purchase.bait_tier === "legendary" && "Uses Legendary bait. Automatically falls back to Rare then Common when empty."}
+                    {s.purchase.bait_tier === "rare" && "Uses Rare bait. Automatically falls back to Common when empty."}
+                    {s.purchase.bait_tier === "common" && "Always uses standard Common bait."}
+                    {s.purchase.bait_tier === "highest" && "Always uses the highest tier bait currently in inventory (Legendary > Rare > Common)."}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-1">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleScanBait}
+                      disabled={baitScanState.loading || !roblox}
+                      icon={<Camera size={13} />}
+                    >
+                      {baitScanState.loading ? "Scanning..." : "Test OCR scan"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => api.overlayOpenRegions()}
+                      disabled={!roblox}
+                      icon={<PencilRuler size={13} />}
+                    >
+                      Edit Area (4)
+                    </Button>
+                  </div>
+                  {baitScanState.result && (
+                    <div className="text-[11px] font-mono text-fg-dim flex items-center gap-2">
+                      <span>🌟 {baitScanState.result.legendary ?? "?"}</span>
+                      <span>🔷 {baitScanState.result.rare ?? "?"}</span>
+                      <span>⚪ {baitScanState.result.common ?? "?"}</span>
+                    </div>
+                  )}
+                  {baitScanState.error && (
+                    <div className="text-[11px] text-err">{baitScanState.error}</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!s.features.smart_bait && (
+            <Steps>
+              <Step n={1} title={<>Press <Kbd>{s.keys.rod.toUpperCase()}</Kbd> to open the rod menu</>} sub="The rod key is set in Setup › Inventory keys." done />
+              <Step n={2} title="Click the bait" sub="Pick the top bait in the rod menu." done={baitReady}>
+                <PointField target="bait1" value={s.points.bait[0]} />
+              </Step>
+              <Step n={3} title="Backup click" sub="Optional. If set, the bot clicks here, then the bait again." done={!!s.points.bait[1]} last>
+                <PointField target="bait2" value={s.points.bait[1]} clearable onCleared={() => update((x) => void (x.points.bait[1] = null))} />
+              </Step>
+            </Steps>
+          )}
+
           <div className="mt-3 pt-3 border-t border-line flex items-center justify-between">
             <div>
               <div className="text-[12px] font-medium text-fg">Zero-bait failsafe</div>
@@ -156,11 +247,23 @@ export default function Features() {
             <Step n={5} title="Back to fishing" sub="Clicks the quantity box once more, then right-clicks the cast point." done last />
           </Steps>
           <div className="mt-4 pt-3 border-t border-line">
+            <Field label="Dynamic buy threshold (Smart Bait)">
+              <Stepper
+                value={s.purchase.low_bait_threshold ?? 5}
+                min={0}
+                max={50}
+                suffix="common bait"
+                onChange={(v) => update((x) => void (x.purchase.low_bait_threshold = v))}
+              />
+            </Field>
+            <div className="text-[11px] text-fg-mute pb-2">
+              💡 Only Common bait can be bought from the shop. When Common bait drops to or below this amount, macro immediately purchases from shop.
+            </div>
             <Field label="Buy every">
               <Stepper value={s.purchase.every_n_catches} min={1} max={500} suffix="fish" onChange={(v) => update((x) => void (x.purchase.every_n_catches = v))} />
             </Field>
             <div className="text-[11px] text-fg-mute pb-2">
-              🛒 Restocks bait from merchant every {s.purchase.every_n_catches} fish. (Separated from Telegram alerts)
+              🛒 Periodic restock backup: Restocks bait from merchant every {s.purchase.every_n_catches} fish.
             </div>
             <Field label="Pause between clicks">
               <Slider value={s.purchase.click_delay_ms} min={200} max={3000} step={50} format={(v) => `${v} ms`} onChange={(v) => update((x) => void (x.purchase.click_delay_ms = v))} />

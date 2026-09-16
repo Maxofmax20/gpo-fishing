@@ -86,7 +86,7 @@ export type CatchRecord = {
 
 export type Settings = {
   version: number;
-  regions: { bar: RelRect; drop: RelRect; server_time: RelRect };
+  regions: { bar: RelRect; drop: RelRect; server_time: RelRect; bait_menu: RelRect };
   points: {
     fishing: RelPoint;
     purchase: [RelPoint | null, RelPoint | null, RelPoint | null];
@@ -120,6 +120,7 @@ export type Settings = {
     auto_zoom: boolean;
     auto_mouse_position: boolean;
     auto_bait: boolean;
+    smart_bait: boolean;
     fruit_storage: boolean;
     auto_purchase: boolean;
     zero_bait_failsafe: boolean;
@@ -133,6 +134,8 @@ export type Settings = {
     after_key_ms: number;
     click_delay_ms: number;
     after_type_ms: number;
+    bait_tier: BaitTier;
+    low_bait_threshold: number;
   };
   zoom: { out_steps: number; in_steps: number; step_delay_ms: number; sequence_delay_ms: number };
   fruit_storage: { key_settle_ms: number; click_settle_ms: number; dialog_wait_ms: number; after_drop_ms: number; never_drop_legendary_or_mythical: boolean; pause_on_protected_fruit: boolean };
@@ -186,10 +189,19 @@ export type Snapshot = {
   version: string;
 };
 
+export type BaitTier = "common" | "rare" | "legendary" | "highest";
+
+export type BaitStock = {
+  legendary: number | null;
+  rare: number | null;
+  common: number | null;
+};
+
 export type OverlayTarget =
   | "bar_region"
   | "drop_region"
   | "server_time_region"
+  | "bait_menu_region"
   | "fishing_point"
   | "purchase1"
   | "purchase2"
@@ -208,7 +220,7 @@ export type OverlaySession = {
   point: RelPoint | null;
 };
 
-export type RegionsSession = { roblox: PxRect; bar: RelRect; drop: RelRect; server_time: RelRect };
+export type RegionsSession = { roblox: PxRect; bar: RelRect; drop: RelRect; server_time: RelRect; bait_menu: RelRect };
 
 export type Geometry = { bar: Bbox; fish: Span; marker: Span; fish_center: number; marker_center: number; error: number };
 
@@ -240,6 +252,7 @@ export const TARGET_LABEL: Record<OverlayTarget, string> = {
   bar_region: "Fishing bar area",
   drop_region: "Drop message area",
   server_time_region: "Server timer area",
+  bait_menu_region: "Bait menu area",
   fishing_point: "Cast point",
   purchase1: "Shop confirm button",
   purchase2: "Shop quantity box",

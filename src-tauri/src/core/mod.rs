@@ -1,3 +1,4 @@
+pub mod bait;
 pub mod boss_tracker;
 pub mod controller;
 pub mod fruit;

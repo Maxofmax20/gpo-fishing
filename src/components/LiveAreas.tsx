@@ -13,6 +13,7 @@ export function LiveAreas() {
   const [bar, setBar] = useState<RegionPreview | null>(null);
   const [drop, setDrop] = useState<RegionPreview | null>(null);
   const [serverTime, setServerTime] = useState<RegionPreview | null>(null);
+  const [baitMenu, setBaitMenu] = useState<RegionPreview | null>(null);
   const active = isActive(state);
   const regions = settings?.regions;
   const hk = settings?.hotkeys;
@@ -22,15 +23,17 @@ export function LiveAreas() {
     let alive = true;
     const tick = async () => {
       try {
-        const [b, d, st] = await Promise.all([
+        const [b, d, st, bm] = await Promise.all([
           api.regionPreview(regions.bar, 200),
           api.regionPreview(regions.drop, 320),
           api.regionPreview(regions.server_time, 240),
+          api.regionPreview(regions.bait_menu, 240),
         ]);
         if (alive) {
           setBar(b);
           setDrop(d);
           setServerTime(st);
+          setBaitMenu(bm);
         }
       } catch {
         /* Roblox hidden or capture failed; keep last frame */
@@ -59,6 +62,10 @@ export function LiveAreas() {
     regions?.server_time.y,
     regions?.server_time.w,
     regions?.server_time.h,
+    regions?.bait_menu.x,
+    regions?.bait_menu.y,
+    regions?.bait_menu.w,
+    regions?.bait_menu.h,
   ]);
 
   const score = bar?.confidence.score ?? 0;
@@ -66,7 +73,7 @@ export function LiveAreas() {
 
   return (
     <div className="px-4 py-3 flex flex-col gap-3 @container">
-      <div className="grid gap-3 grid-cols-1 @[520px]:grid-cols-3">
+      <div className="grid gap-3 grid-cols-1 @[420px]:grid-cols-2 @[720px]:grid-cols-4">
         <Tile
           label="Fishing bar"
           color="#4f8cff"
@@ -95,6 +102,7 @@ export function LiveAreas() {
         />
         <Tile label="Drop message" color="#22c55e" preview={drop} fallbackRatio={2.5} status={drop ? "watching" : "no capture"} tone={drop ? "accent" : "mute"} />
         <Tile label="Server timer" color="#eab308" preview={serverTime} fallbackRatio={2.5} status={serverTime ? "watching" : "no capture"} tone={serverTime ? "accent" : "mute"} />
+        <Tile label="Bait menu" color="#f97316" preview={baitMenu} fallbackRatio={1.2} status={baitMenu ? "watching" : "no capture"} tone={baitMenu ? "accent" : "mute"} />
       </div>
       <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap text-[11px] text-fg-dim">
         <Button size="sm" onClick={() => api.overlayOpenRegions()} disabled={!roblox} icon={<PencilRuler size={13} />}>
