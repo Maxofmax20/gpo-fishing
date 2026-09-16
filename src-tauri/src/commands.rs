@@ -125,6 +125,7 @@ pub fn legacy_import(app: AppHandle, st: State<'_, AppState>, json: String) -> R
 pub enum OverlayTarget {
     BarRegion,
     DropRegion,
+    ServerTimeRegion,
     FishingPoint,
     Purchase1,
     Purchase2,
@@ -138,7 +139,7 @@ pub enum OverlayTarget {
 
 impl OverlayTarget {
     pub fn is_region(self) -> bool {
-        matches!(self, OverlayTarget::BarRegion | OverlayTarget::DropRegion)
+        matches!(self, OverlayTarget::BarRegion | OverlayTarget::DropRegion | OverlayTarget::ServerTimeRegion)
     }
 }
 
@@ -159,6 +160,7 @@ pub fn overlay_open(app: AppHandle, st: State<'_, AppState>, target: OverlayTarg
     let (region, point) = match target {
         OverlayTarget::BarRegion => (Some(s.regions.bar), None),
         OverlayTarget::DropRegion => (Some(s.regions.drop), None),
+        OverlayTarget::ServerTimeRegion => (Some(s.regions.server_time), None),
         OverlayTarget::FishingPoint => (None, Some(s.points.fishing)),
         OverlayTarget::Purchase1 => (None, s.points.purchase[0]),
         OverlayTarget::Purchase2 => (None, s.points.purchase[1]),
@@ -190,6 +192,7 @@ pub fn overlay_commit(app: AppHandle, st: State<'_, AppState>, commit: OverlayCo
     match commit.target {
         OverlayTarget::BarRegion => s.regions.bar = commit.region.ok_or("region required")?,
         OverlayTarget::DropRegion => s.regions.drop = commit.region.ok_or("region required")?,
+        OverlayTarget::ServerTimeRegion => s.regions.server_time = commit.region.ok_or("region required")?,
         OverlayTarget::FishingPoint => s.points.fishing = commit.point.ok_or("point required")?,
         OverlayTarget::Purchase1 => s.points.purchase[0] = commit.point,
         OverlayTarget::Purchase2 => s.points.purchase[1] = commit.point,
@@ -215,6 +218,7 @@ pub struct RegionsSession {
     pub roblox: PxRect,
     pub bar: RelRect,
     pub drop: RelRect,
+    pub server_time: RelRect,
 }
 
 pub fn open_regions_editor(app: &AppHandle) -> Result<RegionsSession, String> {
@@ -222,7 +226,12 @@ pub fn open_regions_editor(app: &AppHandle) -> Result<RegionsSession, String> {
     let roblox = st.roblox.read().map(|w| w.client).ok_or("Roblox window not found")?;
     windows::show_overlay(app, roblox, true)?;
     let s = st.settings.read();
-    let session = RegionsSession { roblox, bar: s.regions.bar, drop: s.regions.drop };
+    let session = RegionsSession {
+        roblox,
+        bar: s.regions.bar,
+        drop: s.regions.drop,
+        server_time: s.regions.server_time,
+    };
     drop(s);
     *st.overlay_session.lock() = Some(serde_json::json!({ "kind": "regions", "session": session }));
     if let Some(o) = app.get_webview_window("overlay") {
@@ -245,6 +254,7 @@ pub fn overlay_open_regions(app: AppHandle) -> Result<RegionsSession, String> {
 pub struct RegionsCommit {
     pub bar: RelRect,
     pub drop: RelRect,
+    pub server_time: RelRect,
 }
 
 #[tauri::command]
@@ -252,6 +262,7 @@ pub fn overlay_commit_regions(app: AppHandle, st: State<'_, AppState>, commit: R
     let mut s = st.settings.read().clone();
     s.regions.bar = commit.bar;
     s.regions.drop = commit.drop;
+    s.regions.server_time = commit.server_time;
     windows::hide_overlay(&app);
     settings_set(app, st, s.clone())?;
     Ok(s)

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Send, RotateCcw, Camera, Check, AlertCircle } from "lucide-react";
+import { Send, RotateCcw, Camera, Check, AlertCircle, PencilRuler } from "lucide-react";
 import { api } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { PointField } from "../components/PointField";
@@ -7,6 +7,7 @@ import { Button, cx, Kbd, KeyCapture, Pill, Row, Section, Segmented, Slider, Ste
 
 export default function Features() {
   const s = useStore((st) => st.settings);
+  const roblox = useStore((st) => st.roblox);
   const update = useStore((st) => st.update);
   const ocrAvailable = useStore((st) => st.ocrAvailable);
   const [open, setOpen] = useState<string | null>(null);
@@ -494,6 +495,16 @@ export default function Features() {
                   icon={<Camera size={13} />}
                 >
                   {scanState.loading ? "Scanning screen..." : "📷 Auto-Scan In-Game Timer"}
+                </Button>
+
+                <Button
+                  size="sm"
+                  kind="ghost"
+                  onClick={() => api.overlayOpen("server_time_region")}
+                  disabled={!roblox}
+                  icon={<PencilRuler size={13} />}
+                >
+                  Adjust timer box
                 </Button>
 
                 <div className="flex items-center gap-1.5 flex-1 min-w-[200px]">

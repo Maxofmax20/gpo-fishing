@@ -12,6 +12,7 @@ export function LiveAreas() {
   const reading = useStore((s) => s.reading);
   const [bar, setBar] = useState<RegionPreview | null>(null);
   const [drop, setDrop] = useState<RegionPreview | null>(null);
+  const [serverTime, setServerTime] = useState<RegionPreview | null>(null);
   const active = isActive(state);
   const regions = settings?.regions;
   const hk = settings?.hotkeys;
@@ -21,10 +22,15 @@ export function LiveAreas() {
     let alive = true;
     const tick = async () => {
       try {
-        const [b, d] = await Promise.all([api.regionPreview(regions.bar, 200), api.regionPreview(regions.drop, 320)]);
+        const [b, d, st] = await Promise.all([
+          api.regionPreview(regions.bar, 200),
+          api.regionPreview(regions.drop, 320),
+          api.regionPreview(regions.server_time, 240),
+        ]);
         if (alive) {
           setBar(b);
           setDrop(d);
+          setServerTime(st);
         }
       } catch {
         /* Roblox hidden or capture failed; keep last frame */
@@ -36,14 +42,31 @@ export function LiveAreas() {
       alive = false;
       clearInterval(t);
     };
-  }, [roblox?.client.w, roblox?.client.h, !!roblox, active, regions?.bar.x, regions?.bar.y, regions?.bar.w, regions?.bar.h, regions?.drop.x, regions?.drop.y, regions?.drop.w, regions?.drop.h]);
+  }, [
+    roblox?.client.w,
+    roblox?.client.h,
+    !!roblox,
+    active,
+    regions?.bar.x,
+    regions?.bar.y,
+    regions?.bar.w,
+    regions?.bar.h,
+    regions?.drop.x,
+    regions?.drop.y,
+    regions?.drop.w,
+    regions?.drop.h,
+    regions?.server_time.x,
+    regions?.server_time.y,
+    regions?.server_time.w,
+    regions?.server_time.h,
+  ]);
 
   const score = bar?.confidence.score ?? 0;
   const barTone = reading ? "ok" : score >= 0.6 ? "ok" : score > 0 ? "warn" : "mute";
 
   return (
     <div className="px-4 py-3 flex flex-col gap-3 @container">
-      <div className="grid gap-3 grid-cols-1 @[440px]:grid-cols-[minmax(160px,2fr)_3fr]">
+      <div className="grid gap-3 grid-cols-1 @[520px]:grid-cols-3">
         <Tile
           label="Fishing bar"
           color="#4f8cff"
@@ -70,7 +93,8 @@ export function LiveAreas() {
             ) : null
           }
         />
-        <Tile label="Drop message" color="#22c55e" preview={drop} fallbackRatio={3} status={drop ? "watching" : "no capture"} tone={drop ? "accent" : "mute"} />
+        <Tile label="Drop message" color="#22c55e" preview={drop} fallbackRatio={2.5} status={drop ? "watching" : "no capture"} tone={drop ? "accent" : "mute"} />
+        <Tile label="Server timer" color="#eab308" preview={serverTime} fallbackRatio={2.5} status={serverTime ? "watching" : "no capture"} tone={serverTime ? "accent" : "mute"} />
       </div>
       <div className="flex items-center gap-x-3 gap-y-1.5 flex-wrap text-[11px] text-fg-dim">
         <Button size="sm" onClick={() => api.overlayOpenRegions()} disabled={!roblox} icon={<PencilRuler size={13} />}>

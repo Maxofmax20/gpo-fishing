@@ -59,7 +59,7 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
         if !actions::cast(ctx) {
             return;
         }
-        if !ctx.sleep_ms(150) {
+        if !ctx.sleep_ms(60) {
             return;
         }
         tracker.reset();

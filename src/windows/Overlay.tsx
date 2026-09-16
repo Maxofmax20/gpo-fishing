@@ -10,17 +10,17 @@ type Mode =
   | { kind: "idle" };
 type PxBox = { x: number; y: number; w: number; h: number };
 type Drag = { type: "move" | "draw" | "resize"; edge?: string; sx: number; sy: number; start: RelRect };
-type RegionKey = "bar" | "drop";
+type RegionKey = "bar" | "drop" | "server_time";
 
 const HANDLE = 8;
-const COLORS: Record<RegionKey, string> = { bar: "#4f8cff", drop: "#22c55e" };
-const LABELS: Record<RegionKey, string> = { bar: "Fishing bar", drop: "Drop message" };
+const COLORS: Record<RegionKey, string> = { bar: "#4f8cff", drop: "#22c55e", server_time: "#eab308" };
+const LABELS: Record<RegionKey, string> = { bar: "Fishing bar", drop: "Drop message", server_time: "Server timer" };
 
 export default function Overlay() {
   const [mode, setMode] = useState<Mode>({ kind: "idle" });
   const [region, setRegion] = useState<RelRect | null>(null);
   const [point, setPoint] = useState<RelPoint | null>(null);
-  const [regions, setRegions] = useState<{ bar: RelRect; drop: RelRect } | null>(null);
+  const [regions, setRegions] = useState<{ bar: RelRect; drop: RelRect; server_time: RelRect } | null>(null);
   const [active, setActive] = useState<RegionKey>("bar");
   const [reading, setReading] = useState<Reading | null>(null);
   const [barMatch, setBarMatch] = useState<RegionPreview | null>(null);
@@ -33,8 +33,8 @@ export default function Overlay() {
       setPoint(s.point);
       setMode({ kind: "single", session: s });
     };
-    const openRegions = (s: { roblox: { w: number; h: number }; bar: RelRect; drop: RelRect }) => {
-      setRegions({ bar: s.bar, drop: s.drop });
+    const openRegions = (s: { roblox: { w: number; h: number }; bar: RelRect; drop: RelRect; server_time: RelRect }) => {
+      setRegions({ bar: s.bar, drop: s.drop, server_time: s.server_time });
       setActive("bar");
       setMode({ kind: "regions", roblox: { w: s.roblox.w, h: s.roblox.h } });
     };
@@ -97,7 +97,7 @@ export default function Overlay() {
   const commit = async () => {
     if (mode.kind === "single") {
       const t = mode.session.target;
-      const isRegion = t === "bar_region" || t === "drop_region";
+      const isRegion = t === "bar_region" || t === "drop_region" || t === "server_time_region";
       if (isRegion ? !region || region.w < 0.005 : !point) return;
       await api.overlayCommit({ target: t, region: isRegion ? region : null, point: isRegion ? null : point });
     } else if (mode.kind === "regions" && regions) {
@@ -114,9 +114,10 @@ export default function Overlay() {
       else if (mode.kind === "regions") {
         if (e.key === "Tab") {
           e.preventDefault();
-          setActive((a) => (a === "bar" ? "drop" : "bar"));
+          setActive((a) => (a === "bar" ? "drop" : a === "drop" ? "server_time" : "bar"));
         } else if (e.key === "1") setActive("bar");
         else if (e.key === "2") setActive("drop");
+        else if (e.key === "3") setActive("server_time");
         else if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key) && regions) {
           e.preventDefault();
           const step = (e.shiftKey ? 10 : 1) / (e.key === "ArrowUp" || e.key === "ArrowDown" ? size.h : size.w);
@@ -142,7 +143,8 @@ export default function Overlay() {
     const startDrag = (e: React.PointerEvent) => {
       if (e.button !== 0) return;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      const order: RegionKey[] = [active, active === "bar" ? "drop" : "bar"];
+      const allKeys: RegionKey[] = ["bar", "drop", "server_time"];
+      const order: RegionKey[] = [active, ...allKeys.filter((k) => k !== active)];
       for (const k of order) {
         const edge = hitEdge(toPx(regions[k]), e.clientX, e.clientY);
         if (!edge) continue;
@@ -163,7 +165,9 @@ export default function Overlay() {
       setRegions({ ...regions, [active]: applyDrag(d, e.clientX, e.clientY, W, H) });
     };
     const cursorFor = (e: React.MouseEvent) => {
-      for (const k of [active, active === "bar" ? "drop" : "bar"] as RegionKey[]) {
+      const allKeys: RegionKey[] = ["bar", "drop", "server_time"];
+      const order: RegionKey[] = [active, ...allKeys.filter((k) => k !== active)];
+      for (const k of order) {
         const edge = hitEdge(toPx(regions[k]), e.clientX, e.clientY);
         if (edge) return edge === "inside" ? "move" : `${edge}-resize`;
       }
@@ -179,12 +183,12 @@ export default function Overlay() {
         onMouseMove={(e) => ((e.currentTarget as HTMLElement).style.cursor = cursorFor(e))}
         style={{ background: "rgba(5,7,12,0.28)" }}
       >
-        {(["drop", "bar"] as RegionKey[]).map((k) => (
+        {(["server_time", "drop", "bar"] as RegionKey[]).map((k) => (
           <Box
             key={k}
             r={toPx(regions[k])}
             color={COLORS[k]}
-            label={`${k === "bar" ? "1" : "2"} · ${LABELS[k]}`}
+            label={`${k === "bar" ? "1" : k === "drop" ? "2" : "3"} · ${LABELS[k]}`}
             handles={active === k}
             dim={active !== k}
             badge={
@@ -202,10 +206,11 @@ export default function Overlay() {
         {reading && <LiveBar reading={reading} origin={toPx(regions.bar)} />}
         <Toolbar
           title="Edit areas"
-          hint="Drag to move · edges to resize · arrows nudge (Shift ×10) · Tab / 1 / 2 switch · Enter save · Esc cancel"
+          hint="Drag to move · edges to resize · arrows nudge (Shift ×10) · Tab / 1 / 2 / 3 switch · Enter save · Esc cancel"
           chips={[
             { key: "1", label: LABELS.bar, active: active === "bar", color: COLORS.bar, onClick: () => setActive("bar") },
             { key: "2", label: LABELS.drop, active: active === "drop", color: COLORS.drop, onClick: () => setActive("drop") },
+            { key: "3", label: LABELS.server_time, active: active === "server_time", color: COLORS.server_time, onClick: () => setActive("server_time") },
           ]}
           onSave={commit}
           onCancel={cancel}
@@ -218,7 +223,7 @@ export default function Overlay() {
   if (mode.kind !== "single") return null;
 
   const target = mode.session.target;
-  const isRegion = target === "bar_region" || target === "drop_region";
+  const isRegion = target === "bar_region" || target === "drop_region" || target === "server_time_region";
   const px = region ? toPx(region) : null;
 
   const onDown = (e: React.PointerEvent) => {
@@ -265,7 +270,11 @@ export default function Overlay() {
       {isRegion && px && (
         <>
           <div className="absolute inset-0 pointer-events-none" style={maskStyle(px, W, H)} />
-          <Box r={px} color={target === "bar_region" ? COLORS.bar : COLORS.drop} handles />
+          <Box
+            r={px}
+            color={target === "bar_region" ? COLORS.bar : target === "drop_region" ? COLORS.drop : COLORS.server_time}
+            handles
+          />
         </>
       )}
       {!isRegion && point && <Cross x={point.x * W} y={point.y * H} />}

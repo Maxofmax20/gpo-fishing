@@ -8,13 +8,14 @@ use crate::core::fruit::Lexicon;
 use crate::core::types::{PxRect, RelPoint, RelRect};
 use crate::core::vision::Palette;
 
-pub const SETTINGS_VERSION: u32 = 9;
+pub const SETTINGS_VERSION: u32 = 10;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Regions {
     pub bar: RelRect,
     pub drop: RelRect,
+    pub server_time: RelRect,
 }
 
 impl Default for Regions {
@@ -22,6 +23,7 @@ impl Default for Regions {
         Self {
             bar: RelRect { x: 0.546, y: 0.322, w: 0.121, h: 0.436 },
             drop: RelRect { x: 0.369, y: 0.052, w: 0.259, h: 0.113 },
+            server_time: RelRect { x: 0.88, y: 0.91, w: 0.11, h: 0.06 },
         }
     }
 }
@@ -90,9 +92,9 @@ impl Default for Fishing {
             min_track_s: 0.8,
             bite_confirm_frames: 2,
             lost_frames: 4,
-            wait_after_catch_s: 1.0,
-            cast_hold_ms: 1000,
-            scan_hz: 15,
+            wait_after_catch_s: 0.3,
+            cast_hold_ms: 700,
+            scan_hz: 30,
             track_hz: 60,
             trace: false,
         }
@@ -143,10 +145,10 @@ impl Default for Purchase {
         Self {
             amount: 100,
             every_n_catches: 10,
-            hold_shop_key_ms: 3000,
-            after_key_ms: 2000,
-            click_delay_ms: 1000,
-            after_type_ms: 1500,
+            hold_shop_key_ms: 800,
+            after_key_ms: 350,
+            click_delay_ms: 200,
+            after_type_ms: 250,
         }
     }
 }
@@ -581,6 +583,29 @@ impl Store {
             }
             if settings.version < 9 {
                 settings.fishing.trace = false;
+            }
+            if settings.version < 10 {
+                if settings.purchase.hold_shop_key_ms >= 3000 {
+                    settings.purchase.hold_shop_key_ms = 800;
+                }
+                if settings.purchase.after_key_ms >= 2000 {
+                    settings.purchase.after_key_ms = 350;
+                }
+                if settings.purchase.click_delay_ms >= 1000 {
+                    settings.purchase.click_delay_ms = 200;
+                }
+                if settings.purchase.after_type_ms >= 1500 {
+                    settings.purchase.after_type_ms = 250;
+                }
+                if settings.fishing.wait_after_catch_s >= 1.0 {
+                    settings.fishing.wait_after_catch_s = 0.3;
+                }
+                if settings.fishing.scan_hz <= 15 {
+                    settings.fishing.scan_hz = 30;
+                }
+                if settings.fishing.cast_hold_ms >= 1000 {
+                    settings.fishing.cast_hold_ms = 700;
+                }
             }
             settings.version = SETTINGS_VERSION;
             let _ = self.save(&settings);

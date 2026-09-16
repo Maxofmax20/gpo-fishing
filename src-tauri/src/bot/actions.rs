@@ -275,7 +275,7 @@ pub fn cast(ctx: &Ctx) -> bool {
     if !ctx.sleep_ms(80) {
         return false;
     }
-    if !right_click(ctx, p) || !ctx.sleep_ms(250) {
+    if !right_click(ctx, p) || !ctx.sleep_ms(120) {
         return false;
     }
     ctx.hold_mouse(true);
@@ -305,21 +305,21 @@ pub fn purchase(ctx: &Ctx) -> bool {
     if !click(ctx, confirm) || !ctx.sleep_ms(delay) {
         return false;
     }
-    if !click(ctx, quantity) || !ctx.sleep_ms(delay + 300) {
+    if !click(ctx, quantity) || !ctx.sleep_ms(delay + 100) {
         return false;
     }
     ctx.platform.input.key(Key::Control, true);
     key_tap(ctx, Key::Char('a'));
     ctx.platform.input.key(Key::Control, false);
-    if !ctx.sleep_ms(100) {
+    if !ctx.sleep_ms(30) {
         return false;
     }
     key_tap(ctx, Key::Delete);
-    if !ctx.sleep_ms(100) {
+    if !ctx.sleep_ms(30) {
         return false;
     }
     for c in p.amount.to_string().chars() {
-        if !key_tap(ctx, Key::Char(c)) || !ctx.sleep_ms(50) {
+        if !key_tap(ctx, Key::Char(c)) || !ctx.sleep_ms(25) {
             return false;
         }
     }
@@ -558,18 +558,25 @@ pub fn scan_server_age(ctx: &Ctx) -> Result<(i64, String, i64, bool), String> {
 
     let rect = ctx.roblox_rect().ok_or("Roblox window not found")?;
 
-    // In Roblox GPO, the server age timer is in the bottom-right corner
-    // We capture a box of width 140px, height 60px anchored at the bottom-right
-    let scan_w = 140.min(rect.w);
-    let scan_h = 60.min(rect.h);
-    let scan_x = rect.x + rect.w.saturating_sub(scan_w + 5);
-    let scan_y = rect.y + rect.h.saturating_sub(scan_h + 15);
-
-    let scan_rect = PxRect {
-        x: scan_x,
-        y: scan_y,
-        w: scan_w,
-        h: scan_h,
+    // In Roblox GPO, the server age timer is configured via s.regions.server_time
+    // Default is bottom-right corner; user can adjust via F2 Overlay
+    let scan_rect = {
+        let s = ctx.settings();
+        let r = s.regions.server_time.to_px(&rect);
+        if r.w < 10 || r.h < 10 {
+            let scan_w = 140.min(rect.w);
+            let scan_h = 60.min(rect.h);
+            let scan_x = rect.x + rect.w.saturating_sub(scan_w + 5);
+            let scan_y = rect.y + rect.h.saturating_sub(scan_h + 15);
+            PxRect {
+                x: scan_x,
+                y: scan_y,
+                w: scan_w,
+                h: scan_h,
+            }
+        } else {
+            r
+        }
     };
 
     let frame = ctx

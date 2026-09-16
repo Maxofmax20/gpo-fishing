@@ -86,7 +86,7 @@ export type CatchRecord = {
 
 export type Settings = {
   version: number;
-  regions: { bar: RelRect; drop: RelRect };
+  regions: { bar: RelRect; drop: RelRect; server_time: RelRect };
   points: {
     fishing: RelPoint;
     purchase: [RelPoint | null, RelPoint | null, RelPoint | null];
@@ -189,6 +189,7 @@ export type Snapshot = {
 export type OverlayTarget =
   | "bar_region"
   | "drop_region"
+  | "server_time_region"
   | "fishing_point"
   | "purchase1"
   | "purchase2"
@@ -207,7 +208,7 @@ export type OverlaySession = {
   point: RelPoint | null;
 };
 
-export type RegionsSession = { roblox: PxRect; bar: RelRect; drop: RelRect };
+export type RegionsSession = { roblox: PxRect; bar: RelRect; drop: RelRect; server_time: RelRect };
 
 export type Geometry = { bar: Bbox; fish: Span; marker: Span; fish_center: number; marker_center: number; error: number };
 
@@ -238,6 +239,7 @@ export const STATE_LABEL: Record<BotState, string> = {
 export const TARGET_LABEL: Record<OverlayTarget, string> = {
   bar_region: "Fishing bar area",
   drop_region: "Drop message area",
+  server_time_region: "Server timer area",
   fishing_point: "Cast point",
   purchase1: "Shop confirm button",
   purchase2: "Shop quantity box",
