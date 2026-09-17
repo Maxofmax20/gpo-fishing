@@ -116,11 +116,12 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
                                 drop(s);
                                 ctx.log_info(&format!("⚡ Fast reset: canceling animation with slot [{reset_key}] -> rod [{rod_key}]"));
                                 actions::key_tap(ctx, Key::Char(reset_key));
-                                if !ctx.sleep_ms(80) {
+                                if !ctx.sleep_ms(100) {
                                     return;
                                 }
                                 actions::key_tap(ctx, Key::Char(rod_key));
-                                if !ctx.sleep_ms(120) {
+                                // Wait 450ms for Roblox to complete tool equip animation before casting!
+                                if !ctx.sleep_ms(450) {
                                     return;
                                 }
                                 rod_equipped = true;

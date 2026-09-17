@@ -66,8 +66,8 @@ impl Default for Keys {
     fn default() -> Self {
         Self {
             rod: '1',
-            fruit_slot_1: '2',
-            fruit_slot_2: '3',
+            fruit_slot_1: '3',
+            fruit_slot_2: '4',
             shop: 'e',
             reset_slot: '2',
         }

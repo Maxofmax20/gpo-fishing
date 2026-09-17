@@ -478,8 +478,9 @@ pub fn cast(ctx: &Ctx) -> bool {
         return false;
     };
     let hold = ctx.settings.read().fishing.cast_hold_ms;
+    ctx.ensure_roblox_focus();
     ctx.platform.input.move_to(p);
-    if !ctx.sleep_ms(80) {
+    if !ctx.sleep_ms(120) {
         return false;
     }
     // Prevent right click when fishing to keep screen and camera steady
@@ -549,19 +550,27 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
         return false;
     }
 
-    // 5. Click Confirm button to execute purchase
-    if !click(ctx, confirm) || !ctx.sleep_ms(delay) {
+    // Press Enter to submit textbox
+    key_tap(ctx, Key::Enter);
+    if !ctx.sleep_ms(100) {
         return false;
     }
-    if let Some(cancel) = s.points.purchase[2].and_then(|p| rel_to_px(ctx, p)) {
-        if !click(ctx, cancel) || !ctx.sleep_ms(delay) {
+
+    // 5. Click the LAST button to finalize and execute purchase
+    // In GPO, point 2 (purchase[2]) is the last button (the Confirm/Buy button in the quantity dialog).
+    // If purchase[2] is not set, fallback to confirm (purchase[0]).
+    let last_button = s.points.purchase[2].or(s.points.purchase[0]).and_then(|p| rel_to_px(ctx, p));
+    if let Some(last_btn) = last_button {
+        ctx.log_info(&format!("🛒 Auto purchase: clicking final button (last button) at ({}, {})", last_btn.x, last_btn.y));
+        if !click(ctx, last_btn) || !ctx.sleep_ms((delay + 200).max(400)) {
             return false;
         }
-    } else if let Some(fp) = fishing_point(ctx) {
-        // Fallback close only if cancel button point is not configured
-        if !right_click(ctx, fp) || !ctx.sleep_ms(delay) {
-            return false;
-        }
+    }
+
+    if let Some(fp) = fishing_point(ctx) {
+        let _ = ctx.sleep_ms(200);
+        let _ = right_click(ctx, fp);
+        let _ = ctx.sleep_ms(delay);
     }
     {
         let mut sess = ctx.session.lock();
