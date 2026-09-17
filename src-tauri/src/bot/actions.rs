@@ -478,12 +478,74 @@ pub fn cast(ctx: &Ctx) -> bool {
     ok
 }
 
+pub fn is_shop_dialog_visible(ctx: &Ctx) -> bool {
+    let Some(rect) = ctx.roblox_rect() else {
+        return false;
+    };
+    let dialog_rect = RelRect {
+        x: 0.35,
+        y: 0.85,
+        w: 0.30,
+        h: 0.12,
+    }
+    .to_px(&rect);
+
+    if dialog_rect.w < 10 || dialog_rect.h < 10 {
+        return false;
+    }
+
+    let Ok(frame) = ctx.platform.capture.grab(dialog_rect) else {
+        return false;
+    };
+
+    let w = frame.w as f32;
+    let h = frame.h as f32;
+    let mut green = 0;
+    let mut red = 0;
+    let y_start = (h * 0.20) as usize;
+    let y_end = (h * 0.85) as usize;
+    let gx_start = (w * 0.12) as usize;
+    let gx_end = (w * 0.30) as usize;
+    let rx_start = (w * 0.70) as usize;
+    let rx_end = (w * 0.90) as usize;
+
+    for y in y_start..y_end.min(frame.h) {
+        for x in gx_start..gx_end.min(frame.w) {
+            let idx = (y * frame.w + x) * 4;
+            if idx + 3 < frame.rgba.len() {
+                let r = frame.rgba[idx];
+                let g = frame.rgba[idx + 1];
+                let b = frame.rgba[idx + 2];
+                if g > 150 && b < 70 && g > r.saturating_add(25) {
+                    green += 1;
+                }
+            }
+        }
+        for x in rx_start..rx_end.min(frame.w) {
+            let idx = (y * frame.w + x) * 4;
+            if idx + 3 < frame.rgba.len() {
+                let r = frame.rgba[idx];
+                let g = frame.rgba[idx + 1];
+                let b = frame.rgba[idx + 2];
+                if r > 170 && g < 70 && b < 70 {
+                    red += 1;
+                }
+            }
+        }
+    }
+    green > 15 || red > 15
+}
+
 pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
     let s = ctx.settings();
-    let (Some(confirm), Some(quantity)) = (s.points.purchase[0].and_then(|p| rel_to_px(ctx, p)), s.points.purchase[1].and_then(|p| rel_to_px(ctx, p))) else {
-        ctx.log_warn("Auto purchase: confirm and quantity points not both set");
-        return true;
+    let Some(rect) = ctx.roblox_rect() else {
+        ctx.log_warn("Auto purchase: Roblox window not found");
+        return false;
     };
+    let quantity = s.points.purchase[1]
+        .and_then(|p| rel_to_px(ctx, p))
+        .unwrap_or_else(|| RelPoint { x: 0.501, y: 0.906 }.to_px(&rect));
+
     let max_cap = s.purchase.max_bait.clamp(1, 300);
     let amount = amount_override.unwrap_or(s.purchase.amount).clamp(1, max_cap);
     ctx.set_state(BotState::Purchasing, None);
@@ -495,15 +557,23 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
     if !key_hold(ctx, Key::Char(s.keys.shop), Duration::from_millis(p.hold_shop_key_ms.max(800) as u64)) {
         return false;
     }
-    // Wait for the barrel merchant dialog to open
-    if !ctx.sleep_ms(p.after_key_ms.max(500)) {
+    // Wait for the merchant/barrel dialog to open
+    if !ctx.sleep_ms(p.after_key_ms.max(400)) {
         return false;
     }
 
-    // 1. Click Confirm option in merchant dialog to open the quantity prompt
-    ctx.log_info(&format!("🛒 Auto purchase: clicking Confirm button at ({}, {})", confirm.x, confirm.y));
-    if !ui_click(ctx, confirm) || !ctx.sleep_ms((delay + 300).max(500)) {
-        return false;
+    // Check if the "How many do you want?" prompt is already visible (e.g. from the dock bait vendor "her")
+    let prompt_already_open = is_shop_dialog_visible(ctx);
+    if prompt_already_open {
+        ctx.log_info("🛒 Shop dialog (How many do you want?) is already open - bypassing Confirm button");
+    } else {
+        // If barrel requires clicking Confirm first to open the quantity prompt
+        if let Some(confirm) = s.points.purchase[0].and_then(|p| rel_to_px(ctx, p)) {
+            ctx.log_info(&format!("🛒 Auto purchase: clicking Confirm button at ({}, {})", confirm.x, confirm.y));
+            if !ui_click(ctx, confirm) || !ctx.sleep_ms((delay + 300).max(500)) {
+                return false;
+            }
+        }
     }
 
     // 2. Click the middle button (quantity text input box) to focus it
@@ -530,7 +600,7 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
             return false;
         }
     }
-    if !ctx.sleep_ms(p.after_type_ms.max(300)) {
+    if !ctx.sleep_ms(p.after_type_ms.max(250)) {
         return false;
     }
 
@@ -541,22 +611,74 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
     }
 
     // 5. Click the Buy button to finalize and execute purchase
-    let buy_button = s.points.purchase[2].or(s.points.purchase[0]).and_then(|p| rel_to_px(ctx, p));
-    if let Some(buy_btn) = buy_button {
-        ctx.log_info(&format!("🛒 Auto purchase: clicking final Buy button at ({}, {})", buy_btn.x, buy_btn.y));
-        if !ui_click(ctx, buy_btn) || !ctx.sleep_ms((delay + 300).max(600)) {
-            return false;
-        }
+    let buy_button = s.points.purchase[2]
+        .or(s.points.purchase[0])
+        .and_then(|p| rel_to_px(ctx, p))
+        .unwrap_or_else(|| RelPoint { x: 0.414, y: 0.910 }.to_px(&rect));
+
+    ctx.log_info(&format!("🛒 Auto purchase: clicking final Buy button at ({}, {})", buy_button.x, buy_button.y));
+    if !ui_click(ctx, buy_button) || !ctx.sleep_ms(250) {
+        return false;
     }
 
-    // 6. Click the final middle button (OK / Close) (purchase[3], or fallback to middle point purchase[1])
-    let middle_button = s.points.purchase[3].or(s.points.purchase[1]).and_then(|p| rel_to_px(ctx, p));
-    if let Some(mid_btn) = middle_button {
-        ctx.log_info(&format!("🛒 Auto purchase: clicking final middle button (OK / Close) at ({}, {})", mid_btn.x, mid_btn.y));
-        if !ui_click(ctx, mid_btn) || !ctx.sleep_ms((delay + 200).max(500)) {
+    // 6. Guarantee this screen is GONE before continuing!
+    ctx.log_info("🛒 Waiting until shop screen is completely gone...");
+    let mut screen_cleared = false;
+    for attempt in 0..15 {
+        if !ctx.sleep_ms(180) {
             return false;
         }
+        if !is_shop_dialog_visible(ctx) {
+            screen_cleared = true;
+            ctx.log_info("🛒 Confirmed: shop screen is gone!");
+            break;
+        }
+        if attempt == 4 || attempt == 8 {
+            ctx.log_info("🛒 Shop screen still visible; retrying Buy button click...");
+            let _ = ui_click(ctx, buy_button);
+        }
+        if attempt == 11 {
+            ctx.log_warn("🛒 Shop screen still visible (amount may exceed Peli limit); dismissing with Cancel/Esc...");
+            let cancel_btn = RelPoint { x: 0.588, y: 0.910 }.to_px(&rect);
+            let _ = ui_click(ctx, cancel_btn);
+            let _ = key_tap(ctx, Key::Escape);
+        }
     }
+    if !screen_cleared {
+        let _ = key_tap(ctx, Key::Escape);
+        let _ = ctx.sleep_ms(200);
+    }
+
+    // 7. Equip the rod and wait until baits are visible again!
+    let rod_key = s.keys.rod;
+    ctx.log_info(&format!("🎣 Equipping rod ({rod_key}) and waiting to see baits again..."));
+    key_tap(ctx, Key::Char(rod_key));
+
+    let mut baits_seen = false;
+    for attempt in 0..14 {
+        if !ctx.sleep_ms(250) {
+            return false;
+        }
+        let (stock, menu_visible) = scan_bait_stock_raw(ctx).unwrap_or_default();
+        if menu_visible {
+            let leg_str = stock.legendary.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
+            let rare_str = stock.rare.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
+            let com_str = stock.common.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
+            ctx.log_info(&format!("🐟 Baits seen again! Stock: [Legendary: {leg_str} | Rare: {rare_str} | Common: {com_str}]"));
+            baits_seen = true;
+            break;
+        }
+        if attempt == 4 || attempt == 9 {
+            ctx.log_debug("Bait menu not yet visible, re-pressing rod key...");
+            key_tap(ctx, Key::Char(rod_key));
+        }
+    }
+    if !baits_seen {
+        ctx.log_warn("Bait menu did not appear within timeout; ensuring rod is equipped before continuing.");
+        let mut rod_eq = false;
+        let _ = ensure_rod_equipped(ctx, &mut rod_eq);
+    }
+
     {
         let mut sess = ctx.session.lock();
         sess.bait_purchased += amount;
