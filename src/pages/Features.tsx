@@ -69,7 +69,7 @@ export default function Features() {
           right={
             <>
               {s.features.auto_bait && !s.features.smart_bait && !baitReady && <Pill tone="warn">point needed</Pill>}
-              {s.features.auto_bait && s.features.smart_bait && <Pill tone="accent">OCR smart</Pill>}
+              {s.features.auto_bait && s.features.smart_bait && <Pill tone="accent">Neural AI</Pill>}
               <Toggle value={s.features.auto_bait} onChange={(v) => { update((x) => void (x.features.auto_bait = v)); if (v) setOpen("bait"); }} />
             </>
           }
@@ -79,13 +79,12 @@ export default function Features() {
           <div className="mb-3 pb-3 border-b border-line flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-[12px] font-medium text-fg">Smart Bait (OCR stock tracking)</div>
+                <div className="text-[12px] font-medium text-fg">Smart Bait (Neural AI Stock Tracking)</div>
                 <div className="text-[11px] text-fg-mute">
-                  Uses OCR to read bait quantities directly from the bait menu and auto-selects your preferred tier.
+                  Uses trained neural network to read bait quantities directly from the bait menu and auto-selects your preferred tier.
                 </div>
               </div>
               <Toggle
-                disabled={!ocrAvailable}
                 value={s.features.smart_bait}
                 onChange={(v) => update((x) => void (x.features.smart_bait = v))}
               />
@@ -121,7 +120,7 @@ export default function Features() {
                       disabled={baitScanState.loading || !roblox}
                       icon={<Camera size={13} />}
                     >
-                      {baitScanState.loading ? "Scanning..." : "Test OCR scan"}
+                      {baitScanState.loading ? "Scanning..." : "Test AI scan"}
                     </Button>
                     <Button
                       size="sm"

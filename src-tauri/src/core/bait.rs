@@ -434,9 +434,15 @@ pub fn scan_bait_stock_neural(frame: &crate::core::types::Frame) -> Option<BaitS
         return None;
     }
 
-    // 2. Crop to right 40% of the menu, excluding outer 4px on the right
-    let x_offset = (w as f32 * 0.60).round() as usize;
-    let x_end = w.saturating_sub(4);
+    // 2. Adaptive horizontal window:
+    // If the user cropped tightly around the numbers (w < 130), scan the full crop width.
+    // If the user cropped the full bait menu card (w >= 130), take the right portion where numbers live.
+    let (x_offset, x_end) = if w < 130 {
+        (0, w.saturating_sub(2).max(10))
+    } else {
+        let take_w = 130.min((w as f32 * 0.42).round() as usize);
+        (w.saturating_sub(take_w), w.saturating_sub(4))
+    };
     if x_end <= x_offset {
         return None;
     }
@@ -456,7 +462,8 @@ pub fn scan_bait_stock_neural(frame: &crate::core::types::Frame) -> Option<BaitS
                 row_sum += 1;
             }
         }
-        if row_sum <= 38 {
+        let max_border_px = 38.min((rw as f32 * 0.75).round() as usize);
+        if row_sum <= max_border_px {
             for x in 0..rw {
                 filtered[y * rw + x] = mask[y * w + (x_offset + x)];
             }
@@ -911,6 +918,25 @@ mod tests {
         assert_eq!(stock_b.legendary, Some(146));
         assert_eq!(stock_b.rare, Some(166));
         assert_eq!(stock_b.common, Some(198));
+
+        // 4. Test tight numbers-only crops (when user draws box only over the numbers, width ~60-80px)
+        let tight_c = frame_c.crop(220, 0, 70, frame_c.h);
+        let stock_tc = scan_bait_stock_neural(&tight_c).expect("Neural scan tight crop C");
+        assert_eq!(stock_tc.legendary, Some(160));
+        assert_eq!(stock_tc.rare, Some(57));
+        assert_eq!(stock_tc.common, Some(183));
+
+        let tight_a = frame_a.crop(225, 0, 70, frame_a.h);
+        let stock_ta = scan_bait_stock_neural(&tight_a).expect("Neural scan tight crop A");
+        assert_eq!(stock_ta.legendary, Some(136));
+        assert_eq!(stock_ta.rare, Some(130));
+        assert_eq!(stock_ta.common, Some(224));
+
+        let tight_b = frame_b.crop(185, 0, 65, frame_b.h);
+        let stock_tb = scan_bait_stock_neural(&tight_b).expect("Neural scan tight crop B");
+        assert_eq!(stock_tb.legendary, Some(146));
+        assert_eq!(stock_tb.rare, Some(166));
+        assert_eq!(stock_tb.common, Some(198));
     }
 }
 

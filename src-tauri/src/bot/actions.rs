@@ -228,8 +228,8 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
 
     // 1. Try dedicated neural network classifier (100% accurate, dedicated GPO model)
     if let Some(stock) = crate::core::bait::scan_bait_stock_neural(&frame) {
-        ctx.log_debug(&format!(
-            "Bait stock recognized via neural model: Leg={:?}, Rare={:?}, Com={:?}",
+        ctx.log_info(&format!(
+            "🐟 Bait stock recognized via neural model: Leg={:?}, Rare={:?}, Com={:?}",
             stock.legendary, stock.rare, stock.common
         ));
         return Ok((stock, true));
@@ -238,7 +238,7 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
     // 2. Fallback to Windows OCR if available
     if ctx.platform.ocr.available() {
         if let Ok(text) = ctx.platform.ocr.read(&frame) {
-            ctx.log_debug(&format!("Bait menu OCR raw text:\n{text}"));
+            ctx.log_info(&format!("Bait menu OCR raw text:\n{text}"));
             let is_visible = crate::core::bait::is_bait_menu_visible(&text);
             let stock = crate::core::bait::parse_bait_stock_with_frame(&text, &frame);
             return Ok((stock, is_visible));
@@ -408,6 +408,12 @@ pub fn initial_setup(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
     if s.features.auto_zoom && (!zoom_reset(ctx) || !ctx.sleep_ms(800)) {
         return false;
     }
+    if !ensure_rod_equipped(ctx, rod_equipped) {
+        return false;
+    }
+    if !ctx.sleep_ms(400) {
+        return false;
+    }
     if s.features.auto_purchase {
         let to_buy = if s.features.smart_bait {
             let stock = scan_bait_stock(ctx).unwrap_or_default();
@@ -431,11 +437,12 @@ pub fn initial_setup(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
         if let Some(amt) = to_buy {
             if !purchase_amount(ctx, Some(amt)) {
                 ctx.log_warn("Initial shop purchase failed or skipped; proceeding with fishing setup.");
+            } else {
+                if !ensure_rod_equipped(ctx, rod_equipped) {
+                    return false;
+                }
             }
         }
-    }
-    if !ensure_rod_equipped(ctx, rod_equipped) {
-        return false;
     }
     if s.features.auto_bait && !select_bait(ctx) {
         return false;
@@ -454,9 +461,7 @@ pub fn cast(ctx: &Ctx) -> bool {
     if !ctx.sleep_ms(80) {
         return false;
     }
-    if !right_click(ctx, p) || !ctx.sleep_ms(120) {
-        return false;
-    }
+    // Prevent right click when fishing to keep screen and camera steady
     ctx.hold_mouse(true);
     let ok = ctx.sleep_ms(hold);
     ctx.hold_mouse(false);
@@ -514,11 +519,8 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
         if !click(ctx, cancel) || !ctx.sleep_ms(delay) {
             return false;
         }
-    }
-    if !click(ctx, quantity) || !ctx.sleep_ms(delay) {
-        return false;
-    }
-    if let Some(fp) = fishing_point(ctx) {
+    } else if let Some(fp) = fishing_point(ctx) {
+        // Fallback close only if cancel button point is not configured
         if !right_click(ctx, fp) || !ctx.sleep_ms(delay) {
             return false;
         }
