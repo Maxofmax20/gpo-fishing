@@ -453,36 +453,6 @@ pub fn initial_setup(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
     if !ctx.sleep_ms(400) {
         return false;
     }
-    if s.features.auto_purchase {
-        let to_buy = if s.features.smart_bait {
-            let stock = scan_bait_stock(ctx).unwrap_or_default();
-            if let Some(c_qty) = stock.common {
-                let max_cap = s.purchase.max_bait.clamp(1, 300);
-                if c_qty >= max_cap {
-                    ctx.log_info(&format!("🐟 Common bait already full ({c_qty}/{max_cap}) - skipping initial purchase"));
-                    None
-                } else {
-                    let missing = max_cap.saturating_sub(c_qty).clamp(1, max_cap);
-                    ctx.log_info(&format!("🛒 Initial setup: Common bait at {c_qty}/{max_cap}. Buying exact missing {missing} bait..."));
-                    Some(missing)
-                }
-            } else {
-                Some(s.purchase.amount)
-            }
-        } else {
-            Some(s.purchase.amount)
-        };
-
-        if let Some(amt) = to_buy {
-            if !purchase_amount(ctx, Some(amt)) {
-                ctx.log_warn("Initial shop purchase failed or skipped; proceeding with fishing setup.");
-            } else {
-                if !ensure_rod_equipped(ctx, rod_equipped) {
-                    return false;
-                }
-            }
-        }
-    }
     if s.features.auto_bait && !select_bait(ctx) {
         return false;
     }
