@@ -315,10 +315,13 @@ export default function Features() {
               <PointField target="purchase2" value={s.points.purchase[1]} clearable onCleared={() => update((x) => void (x.points.purchase[1] = null))} />
               <Stepper value={s.purchase.amount} min={1} max={9999} step={10} suffix="bait" onChange={(v) => update((x) => void (x.purchase.amount = v))} />
             </Step>
-            <Step n={4} title="Click the Last button (Confirm / Buy)" sub="The final button in the dialog clicked to execute and confirm the purchase." done={!!s.points.purchase[2]}>
+            <Step n={4} title="Click the Buy button" sub="Pick the button that executes the purchase." done={!!s.points.purchase[2]}>
               <PointField target="purchase3" value={s.points.purchase[2]} clearable onCleared={() => update((x) => void (x.points.purchase[2] = null))} />
             </Step>
-            <Step n={5} title="Back to fishing" sub="Closes dialog and returns to fishing." done last />
+            <Step n={5} title="Click the Middle button (OK / Close)" sub="The final button in the middle clicked after buy to dismiss the prompt." done={!!s.points.purchase[3]}>
+              <PointField target="purchase4" value={s.points.purchase[3]} clearable onCleared={() => update((x) => void (x.points.purchase[3] = null))} />
+            </Step>
+            <Step n={6} title="Back to fishing" sub="Closes dialog and returns to fishing." done last />
           </Steps>
           <div className="mt-4 pt-3 border-t border-line">
             <Field label="Dynamic buy threshold (Smart Bait)">

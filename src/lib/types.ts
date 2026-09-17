@@ -89,7 +89,7 @@ export type Settings = {
   regions: { bar: RelRect; drop: RelRect; server_time: RelRect; bait_menu: RelRect };
   points: {
     fishing: RelPoint;
-    purchase: [RelPoint | null, RelPoint | null, RelPoint | null];
+    purchase: [RelPoint | null, RelPoint | null, RelPoint | null, RelPoint | null];
     fruit: [RelPoint | null, RelPoint | null];
     bait: [RelPoint | null, RelPoint | null];
     rod_slot: RelPoint | null;
@@ -213,6 +213,7 @@ export type OverlayTarget =
   | "purchase1"
   | "purchase2"
   | "purchase3"
+  | "purchase4"
   | "fruit1"
   | "fruit2"
   | "bait1"
@@ -263,7 +264,8 @@ export const TARGET_LABEL: Record<OverlayTarget, string> = {
   fishing_point: "Cast point",
   purchase1: "Shop confirm button",
   purchase2: "Shop quantity box",
-  purchase3: "Shop cancel button",
+  purchase3: "Shop buy button",
+  purchase4: "Shop middle button (OK / Close)",
   fruit1: "Fruit slot",
   fruit2: "Fruit slot (backup)",
   bait1: "Bait slot",

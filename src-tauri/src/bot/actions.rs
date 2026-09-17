@@ -570,13 +570,20 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
         return false;
     }
 
-    // 5. Click the LAST button to finalize and execute purchase
-    // In GPO, point 2 (purchase[2]) is the last button (the Confirm/Buy button in the quantity dialog).
-    // If purchase[2] is not set, fallback to confirm (purchase[0]).
-    let last_button = s.points.purchase[2].or(s.points.purchase[0]).and_then(|p| rel_to_px(ctx, p));
-    if let Some(last_btn) = last_button {
-        ctx.log_info(&format!("🛒 Auto purchase: clicking final Buy button at ({}, {})", last_btn.x, last_btn.y));
-        if !ui_click(ctx, last_btn) || !ctx.sleep_ms((delay + 300).max(600)) {
+    // 5. Click the Buy button to finalize and execute purchase
+    let buy_button = s.points.purchase[2].or(s.points.purchase[0]).and_then(|p| rel_to_px(ctx, p));
+    if let Some(buy_btn) = buy_button {
+        ctx.log_info(&format!("🛒 Auto purchase: clicking final Buy button at ({}, {})", buy_btn.x, buy_btn.y));
+        if !ui_click(ctx, buy_btn) || !ctx.sleep_ms((delay + 300).max(600)) {
+            return false;
+        }
+    }
+
+    // 6. Click the final middle button (OK / Close) (purchase[3], or fallback to middle point purchase[1])
+    let middle_button = s.points.purchase[3].or(s.points.purchase[1]).and_then(|p| rel_to_px(ctx, p));
+    if let Some(mid_btn) = middle_button {
+        ctx.log_info(&format!("🛒 Auto purchase: clicking final middle button (OK / Close) at ({}, {})", mid_btn.x, mid_btn.y));
+        if !ui_click(ctx, mid_btn) || !ctx.sleep_ms((delay + 200).max(500)) {
             return false;
         }
     }

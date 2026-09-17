@@ -30,11 +30,24 @@ impl Default for Regions {
     }
 }
 
+fn deserialize_purchase<'de, D>(deserializer: D) -> Result<[Option<RelPoint>; 4], D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let v: Vec<Option<RelPoint>> = serde::Deserialize::deserialize(deserializer)?;
+    let mut arr = [None, None, None, None];
+    for (i, item) in v.into_iter().take(4).enumerate() {
+        arr[i] = item;
+    }
+    Ok(arr)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Points {
     pub fishing: RelPoint,
-    pub purchase: [Option<RelPoint>; 3],
+    #[serde(deserialize_with = "deserialize_purchase")]
+    pub purchase: [Option<RelPoint>; 4],
     pub fruit: [Option<RelPoint>; 2],
     pub bait: [Option<RelPoint>; 2],
     pub rod_slot: Option<RelPoint>,
@@ -44,7 +57,7 @@ impl Default for Points {
     fn default() -> Self {
         Self {
             fishing: RelPoint { x: 0.5, y: 0.33 },
-            purchase: [None, None, None],
+            purchase: [None, None, None, None],
             fruit: [None, None],
             bait: [None, None],
             rod_slot: None,
@@ -618,7 +631,7 @@ impl Store {
             }
             if settings.version < 8 {
                 let old = settings.points.purchase;
-                settings.points.purchase = [old[2], old[1], None];
+                settings.points.purchase = [old[2], old[1], None, None];
             }
             if settings.version < 9 {
                 settings.fishing.trace = false;
@@ -848,6 +861,7 @@ pub fn import_legacy(json: &str, roblox: PxRect) -> Result<Settings, ConfigError
     s.points.purchase = [
         l.point_coords.get("3").map(|p| rel(*p)),
         l.point_coords.get("2").map(|p| rel(*p)),
+        None,
         None,
     ];
     s.points.fruit[0] = l.fruit_coords.get("fruit_point").map(|p| rel(*p));
