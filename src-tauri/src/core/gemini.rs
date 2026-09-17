@@ -1,4 +1,4 @@
-﻿use std::io::Cursor;
+use std::io::Cursor;
 use std::time::Duration;
 use base64::prelude::*;
 use serde_json::json;
@@ -32,7 +32,7 @@ pub fn scan_bait_stock_gemini(frame: &Frame, api_key: &str, model: &str) -> Resu
 
     let b64_data = BASE64_STANDARD.encode(&png_bytes);
 
-    let prompt = "Look at this Grand Piece Online (GPO) fishing bait menu. Extract the exact numbers for each bait tier: Legendary Fish Bait, Rare Fish Bait, Common Fish Bait. Respond ONLY with valid JSON in this format: {\"legendary\": <number>, \"rare\": <number>, \"common\": <number>}";
+    let prompt = "Look at this Grand Piece Online (GPO) fishing bait menu. Extract the exact numbers for each bait tier: Legendary Fish Bait, Rare Fish Bait, Common Fish Bait. If a tier is not visible or missing from the menu because its stock is depleted/zero, set its number to 0. Respond ONLY with valid JSON in this format: {\"legendary\": <number>, \"rare\": <number>, \"common\": <number>}";
 
     let payload = json!({
         "contents": [{

@@ -59,11 +59,18 @@ pub struct Keys {
     pub fruit_slot_1: char,
     pub fruit_slot_2: char,
     pub shop: char,
+    pub reset_slot: char,
 }
 
 impl Default for Keys {
     fn default() -> Self {
-        Self { rod: '1', fruit_slot_1: '2', fruit_slot_2: '3', shop: 'e' }
+        Self {
+            rod: '1',
+            fruit_slot_1: '2',
+            fruit_slot_2: '3',
+            shop: 'e',
+            reset_slot: '2',
+        }
     }
 }
 
@@ -113,6 +120,7 @@ pub struct Features {
     pub fruit_storage: bool,
     pub auto_purchase: bool,
     pub zero_bait_failsafe: bool,
+    pub fast_reset: bool,
     pub telegram_remote: bool,
     pub discord_rpc: bool,
 }
@@ -127,6 +135,7 @@ impl Default for Features {
             fruit_storage: false,
             auto_purchase: false,
             zero_bait_failsafe: true,
+            fast_reset: true,
             telegram_remote: true,
             discord_rpc: true,
         }

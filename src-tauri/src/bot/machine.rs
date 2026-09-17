@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::core::controller::Tracker;
 use crate::core::fruit;
-use crate::core::types::{Frame, PxRect, RelRect};
+use crate::core::types::{Frame, Key, PxRect, RelRect};
 use crate::core::vision;
 use crate::events::{BotEvent, BotState, TrackFrame};
 
@@ -63,7 +63,7 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
         if !actions::cast(ctx) {
             return;
         }
-        if !ctx.sleep_ms(60) {
+        if !ctx.sleep_ms(600) {
             return;
         }
         tracker.reset();
@@ -107,10 +107,29 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
                         if !post_catch(ctx, &text, &mut rod_equipped) {
                             return;
                         }
-                        // Fast recast: If a normal fish was caught, immediately recast without long post-catch wait
+                        // Fast recast: If a normal fish was caught, immediately cancel catch animation and recast
                         if !is_fruit {
-                            if !ctx.sleep_ms(100) {
-                                return;
+                            let s = ctx.settings.read();
+                            if s.features.fast_reset {
+                                let reset_key = s.keys.reset_slot;
+                                let rod_key = s.keys.rod;
+                                drop(s);
+                                ctx.log_info(&format!("⚡ Fast reset: canceling animation with slot [{reset_key}] -> rod [{rod_key}]"));
+                                actions::key_tap(ctx, Key::Char(reset_key));
+                                if !ctx.sleep_ms(80) {
+                                    return;
+                                }
+                                actions::key_tap(ctx, Key::Char(rod_key));
+                                if !ctx.sleep_ms(120) {
+                                    return;
+                                }
+                                rod_equipped = true;
+                            } else {
+                                drop(s);
+                                rod_equipped = false;
+                                if !ctx.sleep_ms(100) {
+                                    return;
+                                }
                             }
                             continue;
                         }
@@ -468,8 +487,10 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String) {
         return (fruit::CatchVerdict::Unknown, String::new());
     }
     let s = ctx.settings();
+    let wants_ocr = s.features.fruit_storage || (s.webhook.enabled && s.webhook.fruit_drop);
+    let max_reads = if wants_ocr { s.ocr.post_catch_reads.max(1) } else { 1 };
     let mut last = String::new();
-    for _ in 0..s.ocr.post_catch_reads.max(1) {
+    for _ in 0..max_reads {
         if let Some(frame) = grab_region(ctx, s.regions.drop) {
             if let Ok(text) = ctx.platform.ocr.read(&frame) {
                 if !text.trim().is_empty() {

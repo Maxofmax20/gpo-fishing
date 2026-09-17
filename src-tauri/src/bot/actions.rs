@@ -360,15 +360,18 @@ pub fn select_bait(ctx: &Ctx) -> bool {
         };
 
         let menu = s.regions.bait_menu;
-        let (row_rx, row_ry) = chosen_tier.relative_pos();
+        let (row_rx, row_ry) = stock.click_relative_pos(chosen_tier);
         let target_rel = RelPoint {
             x: menu.x + menu.w * row_rx,
             y: menu.y + menu.h * row_ry,
         };
         let target_px = target_rel.to_px(&rect);
 
-        ctx.log_debug(&format!("Selecting {:?} bait at ({}, {})", chosen_tier, target_px.x, target_px.y));
-        if !click(ctx, target_px) || !ctx.sleep_ms(300) {
+        ctx.log_info(&format!(
+            "🎯 Selecting {:?} bait at dynamic pos ({:.2}, {:.2}) -> px ({}, {})",
+            chosen_tier, row_rx, row_ry, target_px.x, target_px.y
+        ));
+        if !click(ctx, target_px) || !ctx.sleep_ms(450) {
             return false;
         }
 
@@ -377,7 +380,7 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             if !click(ctx, backup) || !ctx.sleep_ms(300) {
                 return false;
             }
-            if !click(ctx, target_px) || !ctx.sleep_ms(300) {
+            if !click(ctx, target_px) || !ctx.sleep_ms(450) {
                 return false;
             }
         }

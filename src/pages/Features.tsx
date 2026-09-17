@@ -260,6 +260,38 @@ export default function Features() {
           </div>
         </Row>
         <Row
+          title="Fast reset (Animation cancel)"
+          sub="Swaps hotbar slots upon catching a fish to cancel the celebration animation, maximizing fishing time."
+          right={
+            <Toggle
+              value={s.features.fast_reset ?? true}
+              onChange={(v) => {
+                update((x) => void (x.features.fast_reset = v));
+                if (v) setOpen("fast_reset");
+              }}
+            />
+          }
+          open={open === "fast_reset"}
+          onToggle={() => toggle("fast_reset")}
+        >
+          <div className="space-y-3">
+            <div className="text-[12px] text-fg-dim">
+              ⚡ When a fish is caught, the macro immediately taps your swap slot key and re-equips the rod. This skips 2–4 seconds of fish-holding animation delay so you recast instantly.
+            </div>
+            <div className="flex items-center justify-between pt-2 border-t border-line/60">
+              <div>
+                <div className="text-[12px] font-medium text-fg">Swap slot key</div>
+                <div className="text-[11px] text-fg-mute">Hotbar slot to swap to (default: 2). Keep empty or with a harmless tool.</div>
+              </div>
+              <KeyCapture
+                single
+                value={s.keys.reset_slot ?? "2"}
+                onChange={(v) => update((x) => void (x.keys.reset_slot = v))}
+              />
+            </div>
+          </div>
+        </Row>
+        <Row
           title="Auto buy bait"
           sub="Stand next to the bait barrel on the dock. Runs once at start and again every N catches."
           right={

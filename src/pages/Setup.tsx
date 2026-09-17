@@ -93,6 +93,9 @@ export default function Setup() {
           onToggle={() => toggle("keys")}
         >
           <KeyRow label="Rod" value={s.keys.rod} onChange={(v) => update((x) => void (x.keys.rod = v))} />
+          <div className="mt-2">
+            <KeyRow label="Fast Reset (Swap slot)" value={s.keys.reset_slot ?? "2"} onChange={(v) => update((x) => void (x.keys.reset_slot = v))} />
+          </div>
           <div className="mt-3 pt-3 border-t border-line/60">
             <div className="text-[12px] text-fg-dim mb-1 flex items-center justify-between">
               <span>Rod slot indicator</span>

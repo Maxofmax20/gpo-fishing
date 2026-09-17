@@ -87,6 +87,37 @@ impl BaitStock {
             BaitTier::Common => (BaitTier::Common, self.common),
         }
     }
+
+    /// Calculate the dynamic relative click position (rx, ry) for the chosen tier
+    /// based on which tiers are currently present in the menu.
+    /// In GPO, tiers appear in order: Legendary, Rare, Common.
+    /// When a tier has 0 stock, its row is omitted and lower tiers shift upward.
+    pub fn click_relative_pos(&self, tier: BaitTier) -> (f32, f32) {
+        let has_legendary = self.legendary.map(|n| n > 0).unwrap_or(true);
+        let has_rare = self.rare.map(|n| n > 0).unwrap_or(true);
+
+        let row_index = match tier {
+            BaitTier::Legendary => 0,
+            BaitTier::Rare => {
+                if has_legendary {
+                    1
+                } else {
+                    0
+                }
+            }
+            BaitTier::Common => {
+                match (has_legendary, has_rare) {
+                    (true, true) => 2,
+                    (true, false) | (false, true) => 1,
+                    (false, false) => 0,
+                }
+            }
+            BaitTier::Highest => 0,
+        };
+
+        let ry = 0.39 + (row_index as f32) * 0.22;
+        (0.50, ry)
+    }
 }
 
 pub fn resolve_tier(stock: &BaitStock, preference: BaitTier) -> BaitTier {
@@ -499,16 +530,16 @@ pub fn scan_bait_stock_neural(frame: &crate::core::types::Frame) -> Option<BaitS
         clusters.push(curr_cluster);
     }
 
-    // Filter clusters by text height (7..=18 px)
+    // Filter clusters by text height (5..=18 px)
     let valid_clusters: Vec<&Vec<usize>> = clusters
         .iter()
         .filter(|c| {
             let ch = c.last().unwrap() - c.first().unwrap() + 1;
-            ch >= 7 && ch <= 18
+            ch >= 5 && ch <= 18
         })
         .collect();
 
-    if valid_clusters.len() < 3 {
+    if valid_clusters.is_empty() {
         return None;
     }
 
@@ -586,6 +617,51 @@ pub fn scan_bait_stock_neural(frame: &crate::core::types::Frame) -> Option<BaitS
             legendary: parsed_numbers[0],
             rare: parsed_numbers[1],
             common: parsed_numbers[2],
+        })
+    } else if parsed_numbers.len() == 2 {
+        // 2 tiers present. In GPO, common is always the bottom row (row 1).
+        // Check if Row 0 is Legendary or Rare by checking colors on the left side of Row 0.
+        let cluster0 = valid_clusters[0];
+        let y0 = *cluster0.first().unwrap();
+        let y1 = *cluster0.last().unwrap();
+        let check_w = (w * 6 / 10).min(w);
+        let mut rainbow_count = 0;
+        let mut cyan_count = 0;
+        for y in y0..=y1 {
+            for x in 0..check_w {
+                let (r, g, b) = frame.px(x, y);
+                let is_orange = r > 160 && g > 80 && g < 200 && b < 100;
+                let is_purple = r > 100 && g < 80 && b > 100;
+                let is_green = g > 130 && r < 100 && b < 120;
+                if is_orange || is_purple || is_green {
+                    rainbow_count += 1;
+                }
+                if b > 130 && g > 110 && r < 120 {
+                    cyan_count += 1;
+                }
+            }
+        }
+        if rainbow_count >= 15 || cyan_count < 15 {
+            // Row 0 is Legendary, Rare is 0, Row 1 is Common
+            Some(BaitStock {
+                legendary: parsed_numbers[0],
+                rare: Some(0),
+                common: parsed_numbers[1],
+            })
+        } else {
+            // Row 0 is Rare, Legendary is 0, Row 1 is Common
+            Some(BaitStock {
+                legendary: Some(0),
+                rare: parsed_numbers[0],
+                common: parsed_numbers[1],
+            })
+        }
+    } else if parsed_numbers.len() == 1 {
+        // 1 tier present: only Common Fish Bait
+        Some(BaitStock {
+            legendary: Some(0),
+            rare: Some(0),
+            common: parsed_numbers[0],
         })
     } else {
         None
@@ -980,5 +1056,47 @@ mod tests {
         assert_eq!(stock_te.rare, Some(34));
         assert_eq!(stock_te.common, Some(221));
     }
+
+    #[test]
+    fn test_dynamic_click_relative_pos() {
+        // Case 1: All 3 tiers present
+        let stock3 = BaitStock {
+            legendary: Some(10),
+            rare: Some(20),
+            common: Some(300),
+        };
+        assert_eq!(stock3.click_relative_pos(BaitTier::Legendary), (0.50, 0.39));
+        assert_eq!(stock3.click_relative_pos(BaitTier::Rare), (0.50, 0.61));
+        assert_eq!(stock3.click_relative_pos(BaitTier::Common), (0.50, 0.83));
+        assert_eq!(stock3.click_relative_pos(BaitTier::Highest), (0.50, 0.39));
+
+        // Case 2: Rare is depleted (0 stock) - Common moves up to Row 1!
+        let stock_no_rare = BaitStock {
+            legendary: Some(185),
+            rare: Some(0),
+            common: Some(300),
+        };
+        assert_eq!(stock_no_rare.click_relative_pos(BaitTier::Legendary), (0.50, 0.39));
+        assert_eq!(stock_no_rare.click_relative_pos(BaitTier::Common), (0.50, 0.61)); // Row 1!
+        assert_eq!(stock_no_rare.click_relative_pos(BaitTier::Highest), (0.50, 0.39));
+
+        // Case 3: Legendary is depleted (0 stock) - Rare is Row 0, Common is Row 1!
+        let stock_no_leg = BaitStock {
+            legendary: Some(0),
+            rare: Some(50),
+            common: Some(100),
+        };
+        assert_eq!(stock_no_leg.click_relative_pos(BaitTier::Rare), (0.50, 0.39)); // Row 0!
+        assert_eq!(stock_no_leg.click_relative_pos(BaitTier::Common), (0.50, 0.61)); // Row 1!
+
+        // Case 4: Both Legendary and Rare depleted - Only Common left at Row 0!
+        let stock_only_common = BaitStock {
+            legendary: Some(0),
+            rare: Some(0),
+            common: Some(300),
+        };
+        assert_eq!(stock_only_common.click_relative_pos(BaitTier::Common), (0.50, 0.39)); // Row 0!
+    }
 }
+
 

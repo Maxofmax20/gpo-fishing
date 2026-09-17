@@ -94,7 +94,7 @@ export type Settings = {
     bait: [RelPoint | null, RelPoint | null];
     rod_slot: RelPoint | null;
   };
-  keys: { rod: string; fruit_slot_1: string; fruit_slot_2: string; shop: string };
+  keys: { rod: string; fruit_slot_1: string; fruit_slot_2: string; shop: string; reset_slot: string };
   fishing: {
     control: {
       mode: "lookahead" | "physics";
@@ -124,6 +124,7 @@ export type Settings = {
     fruit_storage: boolean;
     auto_purchase: boolean;
     zero_bait_failsafe: boolean;
+    fast_reset: boolean;
     telegram_remote: boolean;
     discord_rpc: boolean;
   };
