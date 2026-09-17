@@ -128,7 +128,7 @@ export default function Features() {
                       disabled={!roblox}
                       icon={<PencilRuler size={13} />}
                     >
-                      Edit Area (3)
+                      Edit Area
                     </Button>
                   </div>
                   {baitScanState.result && (

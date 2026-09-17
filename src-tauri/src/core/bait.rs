@@ -554,8 +554,12 @@ pub fn scan_bait_stock_neural(frame: &crate::core::types::Frame) -> Option<BaitS
             spans.push(cur_span);
         }
 
-        // Pick the text span (width >= 15)
-        let text_span = spans.into_iter().find(|s| s.last().unwrap() - s.first().unwrap() + 1 >= 15);
+        // Pick the rightmost text span with width >= 10 (quantities are right-aligned,
+        // whereas item names with rainbow/orange colors are always to the left)
+        let text_span = spans
+            .into_iter()
+            .filter(|s| s.last().unwrap() - s.first().unwrap() + 1 >= 10)
+            .last();
         let Some(ts) = text_span else {
             parsed_numbers.push(None);
             continue;
@@ -654,13 +658,14 @@ fn parse_digits_from_tight_band(tight_band: &[bool], tw: usize, th: usize) -> Op
         }
     }
 
-    // Determine number of digits by width:
-    // <= 12: 1 digit
-    // <= 20: 2 digits
-    // > 20: 3 digits
-    let num_digits = if dw <= 12 {
+    // Determine number of digits by aspect ratio (scale-invariant and robust):
+    // 1 digit: aspect < 1.00 (individual digit width is ~0.5-0.7 of height)
+    // 2 digits: 1.00 <= aspect < 1.66 (two digits width is ~1.2-1.6 of height)
+    // 3 digits: aspect >= 1.66 (three digits width is ~1.7-2.4 of height)
+    let aspect = dw as f32 / dh as f32;
+    let num_digits = if aspect < 1.00 {
         1
-    } else if dw <= 20 {
+    } else if aspect < 1.66 {
         2
     } else {
         3
@@ -937,6 +942,43 @@ mod tests {
         assert_eq!(stock_tb.legendary, Some(146));
         assert_eq!(stock_tb.rare, Some(166));
         assert_eq!(stock_tb.common, Some(198));
+
+        // 5. Fixture D (Latest user upload media_1789640629495.png)
+        // Legendary: 185, Rare: 34, Common: 221
+        let bytes_d = include_bytes!("../../test_fixtures/img_d_185_34_221.png");
+        let dyn_img_d = image::load_from_memory_with_format(bytes_d, image::ImageFormat::Png).expect("Load img D");
+        let (wd, hd) = dyn_img_d.dimensions();
+        let rgba_d = dyn_img_d.to_rgba8().into_raw();
+        let frame_d = crate::core::types::Frame::new(wd as usize, hd as usize, rgba_d);
+        let stock_d = scan_bait_stock_neural(&frame_d).expect("Neural scan img D");
+        assert_eq!(stock_d.legendary, Some(185));
+        assert_eq!(stock_d.rare, Some(34));
+        assert_eq!(stock_d.common, Some(221));
+
+        // 6. Fixture E (Rainbow animated text shift: media_1789640641026.png)
+        // Legendary: 185, Rare: 34, Common: 221
+        let bytes_e = include_bytes!("../../test_fixtures/img_e_185_34_221.png");
+        let dyn_img_e = image::load_from_memory_with_format(bytes_e, image::ImageFormat::Png).expect("Load img E");
+        let (we, he) = dyn_img_e.dimensions();
+        let rgba_e = dyn_img_e.to_rgba8().into_raw();
+        let frame_e = crate::core::types::Frame::new(we as usize, he as usize, rgba_e);
+        let stock_e = scan_bait_stock_neural(&frame_e).expect("Neural scan img E");
+        assert_eq!(stock_e.legendary, Some(185));
+        assert_eq!(stock_e.rare, Some(34));
+        assert_eq!(stock_e.common, Some(221));
+
+        // 7. Tight crops of D and E (when user draws box only over the numbers)
+        let tight_d = frame_d.crop(175, 0, 44, frame_d.h);
+        let stock_td = scan_bait_stock_neural(&tight_d).expect("Neural scan tight crop D");
+        assert_eq!(stock_td.legendary, Some(185));
+        assert_eq!(stock_td.rare, Some(34));
+        assert_eq!(stock_td.common, Some(221));
+
+        let tight_e = frame_e.crop(150, 0, 50, frame_e.h);
+        let stock_te = scan_bait_stock_neural(&tight_e).expect("Neural scan tight crop E");
+        assert_eq!(stock_te.legendary, Some(185));
+        assert_eq!(stock_te.rare, Some(34));
+        assert_eq!(stock_te.common, Some(221));
     }
 }
 
