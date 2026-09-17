@@ -21,11 +21,11 @@ fn rel_to_px(ctx: &Ctx, p: RelPoint) -> Option<PxPoint> {
 pub fn click(ctx: &Ctx, p: PxPoint) -> bool {
     let input = &ctx.platform.input;
     input.move_to(p);
-    if !ctx.sleep_ms(40) {
+    if !ctx.sleep_ms(20) {
         return false;
     }
     input.button(MouseButton::Left, true);
-    if !ctx.sleep_ms(40) {
+    if !ctx.sleep_ms(25) {
         input.button(MouseButton::Left, false);
         return false;
     }
@@ -168,7 +168,7 @@ pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
     }
 
     ctx.log_info(&format!("Equipping rod ({})", s.keys.rod));
-    if !key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(400) {
+    if !key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(120) {
         return false;
     }
     *rod_equipped = true;
@@ -228,7 +228,16 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
 
     let s = ctx.settings();
 
-    // 1. Try Gemini Vision if enabled and configured
+    // 1. Dedicated neural network classifier (100% accurate, dedicated GPO model, sub-millisecond local execution)
+    if let Some(stock) = crate::core::bait::scan_bait_stock_neural(&frame) {
+        ctx.log_info(&format!(
+            "🐟 Bait stock recognized via neural model: Leg={:?}, Rare={:?}, Com={:?}",
+            stock.legendary, stock.rare, stock.common
+        ));
+        return Ok((stock, true));
+    }
+
+    // 2. Try Gemini Vision if enabled and configured (fallback)
     if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
         match crate::core::gemini::scan_bait_stock_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
             Ok(stock) => {
@@ -239,18 +248,9 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
                 return Ok((stock, true));
             }
             Err(e) => {
-                ctx.log_warn(&format!("Gemini Vision scan failed ({e}); falling back to local neural model"));
+                ctx.log_warn(&format!("Gemini Vision scan failed ({e}); falling back to Windows OCR"));
             }
         }
-    }
-
-    // 2. Try dedicated neural network classifier (100% accurate, dedicated GPO model)
-    if let Some(stock) = crate::core::bait::scan_bait_stock_neural(&frame) {
-        ctx.log_info(&format!(
-            "🐟 Bait stock recognized via neural model: Leg={:?}, Rare={:?}, Com={:?}",
-            stock.legendary, stock.rare, stock.common
-        ));
-        return Ok((stock, true));
     }
 
     // 3. Fallback to Windows OCR if available
@@ -315,7 +315,7 @@ pub fn select_bait(ctx: &Ctx) -> bool {
                         if !ensure_rod_equipped(ctx, &mut rod_eq) {
                             return false;
                         }
-                        if !ctx.sleep_ms(400) {
+                        if !ctx.sleep_ms(200) {
                             return false;
                         }
                     }
@@ -371,16 +371,16 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             "🎯 Selecting {:?} bait at dynamic pos ({:.2}, {:.2}) -> px ({}, {})",
             chosen_tier, row_rx, row_ry, target_px.x, target_px.y
         ));
-        if !click(ctx, target_px) || !ctx.sleep_ms(450) {
+        if !click(ctx, target_px) || !ctx.sleep_ms(30) {
             return false;
         }
 
         // If secondary backup point is also set, click it too (legacy support)
         if let Some(backup) = s.points.bait[1].and_then(|p| rel_to_px(ctx, p)) {
-            if !click(ctx, backup) || !ctx.sleep_ms(300) {
+            if !click(ctx, backup) || !ctx.sleep_ms(30) {
                 return false;
             }
-            if !click(ctx, target_px) || !ctx.sleep_ms(450) {
+            if !click(ctx, target_px) || !ctx.sleep_ms(30) {
                 return false;
             }
         }
@@ -399,7 +399,7 @@ pub fn select_bait(ctx: &Ctx) -> bool {
         return false;
     }
     ctx.log_debug("Selecting bait");
-    click_pair(ctx, primary, s.points.bait[1], 300)
+    click_pair(ctx, primary, s.points.bait[1], 30)
 }
 
 pub fn zoom_reset(ctx: &Ctx) -> bool {
@@ -480,7 +480,7 @@ pub fn cast(ctx: &Ctx) -> bool {
     let hold = ctx.settings.read().fishing.cast_hold_ms;
     ctx.ensure_roblox_focus();
     ctx.platform.input.move_to(p);
-    if !ctx.sleep_ms(120) {
+    if !ctx.sleep_ms(30) {
         return false;
     }
     // Prevent right click when fishing to keep screen and camera steady
@@ -630,16 +630,28 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
         }
 
         // Check if storage duplicate/error banner appeared right after clicking store
-        if detected_banner.is_none() && ctx.platform.ocr.available() {
+        if detected_banner.is_none() {
             if let Some(r) = ctx.roblox_rect() {
                 let px_box = banner_rect.to_px(&r);
                 if let Ok(frame) = ctx.platform.capture.grab(px_box) {
-                    if let Ok(text) = ctx.platform.ocr.read(&frame) {
-                        if !text.trim().is_empty() {
-                            ctx.log_debug(&format!("Storage check OCR: {}", text.trim()));
-                            if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
-                                ctx.log_info(&format!("Storage banner detected: {res:?}"));
-                                detected_banner = Some(res);
+                    if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
+                        if let Ok(analysis) = crate::core::gemini::analyze_fruit_event_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
+                            ctx.log_info(&format!("✨ Gemini Storage Analysis: event={}, fruit={:?}", analysis.event, analysis.fruit_name));
+                            if let Some(name) = analysis.fruit_name {
+                                if analysis.event == "storage_full" || analysis.event == "dropped_ground" {
+                                    detected_banner = Some(crate::core::fruit::StorageBannerResult::DuplicateDropped { fruit_name: name });
+                                }
+                            }
+                        }
+                    }
+                    if detected_banner.is_none() && ctx.platform.ocr.available() {
+                        if let Ok(text) = ctx.platform.ocr.read(&frame) {
+                            if !text.trim().is_empty() {
+                                ctx.log_debug(&format!("Storage check OCR: {}", text.trim()));
+                                if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
+                                    ctx.log_info(&format!("Storage banner detected: {res:?}"));
+                                    detected_banner = Some(res);
+                                }
                             }
                         }
                     }
@@ -656,16 +668,28 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
             }
 
             // Check if drop banner appeared right after Backspace
-            if detected_banner.is_none() && ctx.platform.ocr.available() {
+            if detected_banner.is_none() {
                 if let Some(r) = ctx.roblox_rect() {
                     let px_box = banner_rect.to_px(&r);
                     if let Ok(frame) = ctx.platform.capture.grab(px_box) {
-                        if let Ok(text) = ctx.platform.ocr.read(&frame) {
-                            if !text.trim().is_empty() {
-                                ctx.log_debug(&format!("Post-drop OCR: {}", text.trim()));
-                                if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
-                                    ctx.log_info(&format!("Drop banner detected: {res:?}"));
-                                    detected_banner = Some(res);
+                        if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
+                            if let Ok(analysis) = crate::core::gemini::analyze_fruit_event_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
+                                ctx.log_info(&format!("✨ Gemini Drop Analysis: event={}, fruit={:?}", analysis.event, analysis.fruit_name));
+                                if let Some(name) = analysis.fruit_name {
+                                    if analysis.event == "storage_full" || analysis.event == "dropped_ground" {
+                                        detected_banner = Some(crate::core::fruit::StorageBannerResult::DuplicateDropped { fruit_name: name });
+                                    }
+                                }
+                            }
+                        }
+                        if detected_banner.is_none() && ctx.platform.ocr.available() {
+                            if let Ok(text) = ctx.platform.ocr.read(&frame) {
+                                if !text.trim().is_empty() {
+                                    ctx.log_debug(&format!("Post-drop OCR: {}", text.trim()));
+                                    if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
+                                        ctx.log_info(&format!("Drop banner detected: {res:?}"));
+                                        detected_banner = Some(res);
+                                    }
                                 }
                             }
                         }

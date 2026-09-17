@@ -63,7 +63,7 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
         if !actions::cast(ctx) {
             return;
         }
-        if !ctx.sleep_ms(600) {
+        if !ctx.sleep_ms(30) {
             return;
         }
         tracker.reset();
@@ -79,6 +79,26 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
                 return;
             }
             Outcome::Ended => {
+                // 1. Direct fast reset immediately after ending minigame to cancel catch animation on frame 1
+                let s = ctx.settings.read();
+                let fast_reset_enabled = s.features.fast_reset;
+                let reset_key = s.keys.reset_slot;
+                let rod_key = s.keys.rod;
+                drop(s);
+
+                if fast_reset_enabled {
+                    ctx.log_info(&format!("⚡ Fast reset: immediately canceling animation with slot [{reset_key}] -> rod [{rod_key}]"));
+                    actions::key_tap(ctx, Key::Char(reset_key));
+                    if !ctx.sleep_ms(35) {
+                        return;
+                    }
+                    actions::key_tap(ctx, Key::Char(rod_key));
+                    if !ctx.sleep_ms(80) {
+                        return;
+                    }
+                    rod_equipped = true;
+                }
+
                 let (verdict, text) = verify_catch(ctx);
                 match verdict {
                     fruit::CatchVerdict::Failed => {
@@ -107,31 +127,8 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
                         if !post_catch(ctx, &text, &mut rod_equipped) {
                             return;
                         }
-                        // Fast recast: If a normal fish was caught, immediately cancel catch animation and recast
+                        // Fast recast: If normal fish caught, immediately continue straight to bait selection and recast!
                         if !is_fruit {
-                            let s = ctx.settings.read();
-                            if s.features.fast_reset {
-                                let reset_key = s.keys.reset_slot;
-                                let rod_key = s.keys.rod;
-                                drop(s);
-                                ctx.log_info(&format!("⚡ Fast reset: canceling animation with slot [{reset_key}] -> rod [{rod_key}]"));
-                                actions::key_tap(ctx, Key::Char(reset_key));
-                                if !ctx.sleep_ms(100) {
-                                    return;
-                                }
-                                actions::key_tap(ctx, Key::Char(rod_key));
-                                // Wait 450ms for Roblox to complete tool equip animation before casting!
-                                if !ctx.sleep_ms(450) {
-                                    return;
-                                }
-                                rod_equipped = true;
-                            } else {
-                                drop(s);
-                                rod_equipped = false;
-                                if !ctx.sleep_ms(100) {
-                                    return;
-                                }
-                            }
                             continue;
                         }
                     }
@@ -504,7 +501,7 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String) {
                 }
             }
         }
-        if !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms) {
+        if !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms.min(40)) {
             break;
         }
     }
@@ -536,15 +533,30 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
                     }
                 }
             }
-            if !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms) {
+            if !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms.min(40)) {
                 return false;
             }
         }
     }
-    if let Some(d) = drop {
-            let fruit_name = d.name.clone().unwrap_or_else(|| {
-                fruit::parse_catch_item(&s.lexicon, &d.text).1
-            });
+    if let Some(mut d) = drop {
+        // Enhance drop detection with Gemini Vision if enabled and configured
+        if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
+            if let Some(frame) = grab_region(ctx, s.regions.drop) {
+                if let Ok(analysis) = crate::core::gemini::analyze_fruit_event_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
+                    ctx.log_info(&format!("✨ Gemini Drop Analysis: pity={:?}, fruit={:?}", analysis.pity, analysis.fruit_name));
+                    if let Some(p) = analysis.pity {
+                        d.pity = Some(p);
+                    }
+                    if let Some(fn_name) = analysis.fruit_name {
+                        d.name = Some(fn_name);
+                    }
+                }
+            }
+        }
+
+        let fruit_name = d.name.clone().unwrap_or_else(|| {
+            fruit::parse_catch_item(&s.lexicon, &d.text).1
+        });
             let rarity = fruit::fruit_rarity(&fruit_name);
             let is_high_tier = d.is_legendary || rarity.is_high_tier();
             let is_protected = s.fruit_storage.never_drop_legendary_or_mythical && is_high_tier;

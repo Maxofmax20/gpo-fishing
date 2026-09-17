@@ -1,6 +1,7 @@
 use std::io::Cursor;
 use std::time::Duration;
 use base64::prelude::*;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use crate::core::bait::BaitStock;
 use crate::core::types::Frame;
@@ -149,4 +150,118 @@ pub fn test_gemini_connection(api_key: &str, model: &str) -> Result<String, Stri
         let err_body = response.text().unwrap_or_default();
         Err(format!("Gemini API returned status {status}: {err_body}"))
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FruitEventAnalysis {
+    pub fruit_name: Option<String>,
+    pub rarity: Option<String>,
+    pub pity: Option<String>,
+    pub event: String,
+    pub reason: Option<String>,
+    pub raw_text: String,
+}
+
+pub fn analyze_fruit_event_gemini(frame: &Frame, api_key: &str, model: &str) -> Result<FruitEventAnalysis, String> {
+    let key = api_key.trim();
+    if key.is_empty() {
+        return Err("Gemini API key is empty".into());
+    }
+
+    let model_name = if model.trim().is_empty() {
+        "gemini-3.5-flash-lite"
+    } else {
+        model.trim().strip_prefix("models/").unwrap_or(model.trim())
+    };
+
+    if frame.w == 0 || frame.h == 0 || frame.rgba.is_empty() {
+        return Err("Empty frame provided for Gemini scan".into());
+    }
+
+    let img_buffer = image::RgbaImage::from_raw(frame.w as u32, frame.h as u32, frame.rgba.clone())
+        .ok_or_else(|| "Failed to create image buffer from frame".to_string())?;
+
+    let mut png_bytes = Vec::new();
+    img_buffer
+        .write_to(&mut Cursor::new(&mut png_bytes), image::ImageFormat::Png)
+        .map_err(|e| format!("Failed to encode frame as PNG: {e}"))?;
+
+    let b64_data = BASE64_STANDARD.encode(&png_bytes);
+
+    let prompt = "Look at this Grand Piece Online (GPO) Roblox screen notification banner. Extract all information about the devil fruit event.
+Specifically:
+1. Is it a fruit drop, a storage failure, or a fruit despawn notification?
+2. What is the exact fruit name? (e.g. Kilo, Mochi, Pika, Tori, etc. If it just says 'Devil Fruit' without a specific name, set fruit_name to null).
+3. What is the legendary pity count? (e.g. '27/100'). In GPO, pity is always out of 100.
+4. What is the fruit rarity? (Common, Rare, Epic, Legendary, Mythical).
+5. What is the reason or status description?
+Respond ONLY with valid JSON in this format:
+{
+  \"fruit_name\": <string or null>,
+  \"rarity\": <string or null>,
+  \"pity\": <string or null>,
+  \"event\": <\"drop\" | \"storage_full\" | \"dropped_ground\" | \"unknown\">,
+  \"reason\": <string or null>,
+  \"raw_text\": <string of all text on screen>
+}";
+
+    let payload = json!({
+        "contents": [{
+            "parts": [
+                { "text": prompt },
+                {
+                    "inline_data": {
+                        "mime_type": "image/png",
+                        "data": b64_data
+                    }
+                }
+            ]
+        }],
+        "generationConfig": {
+            "response_mime_type": "application/json"
+        }
+    });
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+        model_name, key
+    );
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .map_err(|e| format!("Gemini API request failed: {e}"))?;
+
+    let status = response.status();
+    let body_text = response
+        .text()
+        .map_err(|e| format!("Failed to read Gemini response body: {e}"))?;
+
+    if !status.is_success() {
+        return Err(format!("Gemini API error (status {status}): {body_text}"));
+    }
+
+    let parsed_res: serde_json::Value = serde_json::from_str(&body_text)
+        .map_err(|e| format!("Failed to parse Gemini API response JSON: {e}"))?;
+
+    let text = parsed_res
+        .get("candidates")
+        .and_then(|c| c.get(0))
+        .and_then(|c0| c0.get("content"))
+        .and_then(|cnt| cnt.get("parts"))
+        .and_then(|p| p.get(0))
+        .and_then(|p0| p0.get("text"))
+        .and_then(|t| t.as_str())
+        .ok_or_else(|| format!("Invalid candidate text in Gemini response: {body_text}"))?;
+
+    let clean_json = text.trim().strip_prefix("```json").unwrap_or(text.trim()).strip_suffix("```").unwrap_or(text.trim()).trim();
+
+    serde_json::from_str::<FruitEventAnalysis>(clean_json)
+        .map_err(|e| format!("Failed to parse FruitEventAnalysis JSON '{clean_json}': {e}"))
 }

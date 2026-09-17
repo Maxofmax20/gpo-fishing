@@ -267,8 +267,13 @@ pub fn extract_pity_text(raw: &str) -> Option<String> {
         if word.contains('/') {
             let clean: String = word.chars().filter(|c| c.is_ascii_digit() || *c == '/').collect();
             if let Some((curr, total)) = clean.split_once('/') {
-                if !curr.is_empty() && !total.is_empty() && total.parse::<u32>().is_ok() {
-                    return Some(clean);
+                if !curr.is_empty() && !total.is_empty() {
+                    // In GPO, legendary pity denominator is always 100.
+                    // OCR commonly mistakes '100' for '300' or '00'.
+                    let fixed_total = if total == "300" || total == "100" || total == "00" { "100" } else { total };
+                    if fixed_total == "100" || fixed_total.parse::<u32>().is_ok() {
+                        return Some(format!("{curr}/{fixed_total}"));
+                    }
                 }
             }
         }
@@ -569,8 +574,20 @@ pub fn parse_storage_banner(lex: &Lexicon, raw: &str) -> Option<StorageBannerRes
             .unwrap_or(after.len().min(20));
         let candidate = after[..end_idx].trim();
         if !candidate.is_empty() {
-            let cand_words: Vec<&str> = candidate.split_whitespace().collect();
-            detected_fruit = first_fruit(lex, cand_words.iter().copied());
+            let clean_cand: String = candidate.chars().filter(|c| c.is_alphabetic() || *c == ' ').collect();
+            let cand_words: Vec<&str> = clean_cand.split_whitespace().collect();
+            detected_fruit = first_fruit(lex, cand_words.iter().copied())
+                .or_else(|| {
+                    if let Some(&first) = cand_words.first() {
+                        if let Some(f) = lex.fruits.iter().find(|f| f.eq_ignore_ascii_case(first)) {
+                            return Some(f.clone());
+                        }
+                        if first.len() >= 3 && !STOPWORDS.contains(&first) {
+                            return Some(title_case(&[first]));
+                        }
+                    }
+                    None
+                });
         }
     }
 
@@ -789,11 +806,14 @@ mod tests {
             Some(StorageBannerResult::Dropped { fruit_name: "Mochi".into() })
         );
 
-        let raw4 = "You can only store one of each fruit!";
+        let raw_kilo = "YOU CAN ONLY STORE ONE OF EACH FRUIT! DROPPED Kilo WILL DESPAWN IN 10 MINUTES.";
         assert_eq!(
-            parse_storage_banner(&l, raw4),
-            Some(StorageBannerResult::DuplicateDropped { fruit_name: "Devil Fruit".into() })
+            parse_storage_banner(&l, raw_kilo),
+            Some(StorageBannerResult::DuplicateDropped { fruit_name: "Kilo".into() })
         );
+
+        assert_eq!(extract_pity_text("you got a devil fruit drop legendary pity 27/300"), Some("27/100".into()));
+        assert_eq!(extract_pity_text("legendary pity: 15/100"), Some("15/100".into()));
 
         let fish_text = "You caught a Tuna!";
         assert_eq!(parse_storage_banner(&l, fish_text), None);
