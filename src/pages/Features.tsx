@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Send, Camera, PencilRuler } from "lucide-react";
+import { Send, Camera, PencilRuler, Sparkles } from "lucide-react";
 import { api } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { PointField } from "../components/PointField";
@@ -23,6 +23,26 @@ export default function Features() {
     result: { legendary: number | null; rare: number | null; common: number | null } | null;
     error: string | null;
   }>({ loading: false, result: null, error: null });
+
+  const [geminiTesting, setGeminiTesting] = useState(false);
+  const [geminiTestMsg, setGeminiTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const handleTestGemini = async () => {
+    if (!s?.gemini?.api_key) {
+      setGeminiTestMsg({ ok: false, text: "Please enter your Gemini API key first" });
+      return;
+    }
+    setGeminiTesting(true);
+    setGeminiTestMsg(null);
+    try {
+      const res = await api.testGemini(s.gemini.api_key, s.gemini.model || "gemini-3.5-flash-lite");
+      setGeminiTestMsg({ ok: true, text: res });
+    } catch (err) {
+      setGeminiTestMsg({ ok: false, text: String(err) });
+    } finally {
+      setGeminiTesting(false);
+    }
+  };
 
   const handleScanBait = async () => {
     setBaitScanState({ loading: true, result: null, error: null });
@@ -69,7 +89,9 @@ export default function Features() {
           right={
             <>
               {s.features.auto_bait && !s.features.smart_bait && !baitReady && <Pill tone="warn">point needed</Pill>}
-              {s.features.auto_bait && s.features.smart_bait && <Pill tone="accent">Neural AI</Pill>}
+              {s.features.auto_bait && s.features.smart_bait && (
+                <Pill tone="accent">{s.gemini?.enabled ? "Gemini AI" : "Neural AI"}</Pill>
+              )}
               <Toggle value={s.features.auto_bait} onChange={(v) => { update((x) => void (x.features.auto_bait = v)); if (v) setOpen("bait"); }} />
             </>
           }
@@ -79,9 +101,9 @@ export default function Features() {
           <div className="mb-3 pb-3 border-b border-line flex flex-col gap-2.5">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-[12px] font-medium text-fg">Smart Bait (Neural AI Stock Tracking)</div>
+                <div className="text-[12px] font-medium text-fg">Smart Bait (Neural / Gemini Stock Tracking)</div>
                 <div className="text-[11px] text-fg-mute">
-                  Uses trained neural network to read bait quantities directly from the bait menu and auto-selects your preferred tier.
+                  Uses AI to read bait quantities directly from the bait menu and auto-selects your preferred tier.
                 </div>
               </div>
               <Toggle
@@ -112,7 +134,75 @@ export default function Features() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-1">
+                <div className="pt-2 border-t border-line/60">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div>
+                      <div className="text-[11px] font-medium text-fg flex items-center gap-1.5">
+                        <Sparkles size={13} className="text-accent" />
+                        <span>Google Gemini Vision AI (Cloud)</span>
+                      </div>
+                      <div className="text-[10px] text-fg-mute">
+                        Use Gemini 3.5 Flash Lite or 2.5 Flash for cloud vision with automatic local neural fallback.
+                      </div>
+                    </div>
+                    <Toggle
+                      value={s.gemini?.enabled ?? false}
+                      onChange={(v) =>
+                        update((x) => {
+                          if (!x.gemini) {
+                            x.gemini = { enabled: v, api_key: "", model: "gemini-3.5-flash-lite" };
+                          } else {
+                            x.gemini.enabled = v;
+                          }
+                        })
+                      }
+                    />
+                  </div>
+
+                  {s.gemini?.enabled && (
+                    <div className="space-y-2 mt-2 pt-2 border-t border-line/40">
+                      <div>
+                        <div className="text-[10px] font-medium text-fg-dim mb-1">Gemini Model</div>
+                        <Segmented
+                          value={s.gemini.model || "gemini-3.5-flash-lite"}
+                          onChange={(v) => update((x) => void (x.gemini.model = v))}
+                          options={[
+                            { value: "gemini-3.5-flash-lite", label: "3.5 Flash Lite" },
+                            { value: "gemini-2.5-flash", label: "2.5 Flash" },
+                            { value: "gemini-3.5-flash", label: "3.5 Flash" },
+                            { value: "gemini-2.5-pro", label: "2.5 Pro" },
+                          ]}
+                        />
+                      </div>
+
+                      <div>
+                        <div className="text-[10px] font-medium text-fg-dim mb-1">Gemini API Key</div>
+                        <div className="flex items-center gap-2">
+                          <TextField
+                            type="password"
+                            placeholder="AQ... or AIza..."
+                            value={s.gemini.api_key || ""}
+                            onChange={(v) => update((x) => void (x.gemini.api_key = v))}
+                          />
+                          <Button
+                            size="sm"
+                            onClick={handleTestGemini}
+                            disabled={geminiTesting || !s.gemini.api_key}
+                          >
+                            {geminiTesting ? "Testing..." : "Test Key"}
+                          </Button>
+                        </div>
+                        {geminiTestMsg && (
+                          <div className={cx("text-[10px] mt-1 font-mono", geminiTestMsg.ok ? "text-accent" : "text-err")}>
+                            {geminiTestMsg.text}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-line/60">
                   <div className="flex items-center gap-2">
                     <Button
                       size="sm"
@@ -120,7 +210,7 @@ export default function Features() {
                       disabled={baitScanState.loading || !roblox}
                       icon={<Camera size={13} />}
                     >
-                      {baitScanState.loading ? "Scanning..." : "Test AI scan"}
+                      {baitScanState.loading ? "Scanning..." : (s.gemini?.enabled ? "Test Gemini scan" : "Test AI scan")}
                     </Button>
                     <Button
                       size="sm"

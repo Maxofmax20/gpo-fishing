@@ -226,7 +226,25 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
         .grab(scan_rect)
         .map_err(|e| format!("Screen capture failed: {e}"))?;
 
-    // 1. Try dedicated neural network classifier (100% accurate, dedicated GPO model)
+    let s = ctx.settings();
+
+    // 1. Try Gemini Vision if enabled and configured
+    if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
+        match crate::core::gemini::scan_bait_stock_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
+            Ok(stock) => {
+                ctx.log_info(&format!(
+                    "🐟 Bait stock recognized via Gemini Vision ({}): Leg={:?}, Rare={:?}, Com={:?}",
+                    s.gemini.model, stock.legendary, stock.rare, stock.common
+                ));
+                return Ok((stock, true));
+            }
+            Err(e) => {
+                ctx.log_warn(&format!("Gemini Vision scan failed ({e}); falling back to local neural model"));
+            }
+        }
+    }
+
+    // 2. Try dedicated neural network classifier (100% accurate, dedicated GPO model)
     if let Some(stock) = crate::core::bait::scan_bait_stock_neural(&frame) {
         ctx.log_info(&format!(
             "🐟 Bait stock recognized via neural model: Leg={:?}, Rare={:?}, Com={:?}",
@@ -235,7 +253,7 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
         return Ok((stock, true));
     }
 
-    // 2. Fallback to Windows OCR if available
+    // 3. Fallback to Windows OCR if available
     if ctx.platform.ocr.available() {
         if let Ok(text) = ctx.platform.ocr.read(&frame) {
             ctx.log_info(&format!("Bait menu OCR raw text:\n{text}"));
@@ -488,30 +506,47 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
     if !ctx.sleep_ms(p.after_key_ms) {
         return false;
     }
-    if !click(ctx, confirm) || !ctx.sleep_ms(delay) {
+    // 1. Click Confirm option in merchant dialog to open the quantity prompt
+    if !click(ctx, confirm) || !ctx.sleep_ms((delay + 250).max(450)) {
         return false;
     }
-    if !click(ctx, quantity) || !ctx.sleep_ms(delay + 100) {
+
+    // 2. Click the middle button (quantity text input box).
+    // Perform a double-click sequence with a short settle to guarantee Roblox textbox focus!
+    if !click(ctx, quantity) || !ctx.sleep_ms(60) {
         return false;
     }
+    if !click(ctx, quantity) || !ctx.sleep_ms(150) {
+        return false;
+    }
+
+    // 3. Select all and clear existing text
     ctx.platform.input.key(Key::Control, true);
     key_tap(ctx, Key::Char('a'));
     ctx.platform.input.key(Key::Control, false);
-    if !ctx.sleep_ms(30) {
+    if !ctx.sleep_ms(40) {
         return false;
     }
     key_tap(ctx, Key::Delete);
     if !ctx.sleep_ms(30) {
         return false;
     }
+    key_tap(ctx, Key::Backspace);
+    if !ctx.sleep_ms(40) {
+        return false;
+    }
+
+    // 4. Type the purchase amount
     for c in amount.to_string().chars() {
-        if !key_tap(ctx, Key::Char(c)) || !ctx.sleep_ms(25) {
+        if !key_tap(ctx, Key::Char(c)) || !ctx.sleep_ms(30) {
             return false;
         }
     }
-    if !ctx.sleep_ms(p.after_type_ms) {
+    if !ctx.sleep_ms(p.after_type_ms.max(250)) {
         return false;
     }
+
+    // 5. Click Confirm button to execute purchase
     if !click(ctx, confirm) || !ctx.sleep_ms(delay) {
         return false;
     }

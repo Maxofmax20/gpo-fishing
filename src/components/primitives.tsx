@@ -361,7 +361,7 @@ export function TextField({
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
-  type?: "text" | "url";
+  type?: "text" | "url" | "password";
   mono?: boolean;
   className?: string;
 }) {

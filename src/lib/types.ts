@@ -178,6 +178,11 @@ export type Settings = {
   ui: { theme: string; hud_offset: RelPoint; hud_visible: boolean; panel_offset: RelPoint; panel_size: [number, number]; log_level: string };
   watchdog: { enabled: boolean; heartbeat_timeout_s: number; max_restarts: number; restart_backoff_s: number };
   auto_update: boolean;
+  gemini: {
+    enabled: boolean;
+    api_key: string;
+    model: string;
+  };
 };
 
 export type Snapshot = {

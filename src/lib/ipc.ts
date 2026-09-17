@@ -67,6 +67,7 @@ export const api = {
   bossTrackerSyncServerAge: (timeStr: string) =>
     invoke<{ success: boolean; uptime_sec: number; time_str: string; remaining_sec: number; is_spawned: boolean; message: string }>("boss_tracker_sync_server_age", { timeStr }),
   scanBaitStock: () => invoke<BaitStock>("scan_bait_stock"),
+  testGemini: (apiKey: string, model: string) => invoke<string>("test_gemini", { apiKey, model }),
 };
 
 type Events = {

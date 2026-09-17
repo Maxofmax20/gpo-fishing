@@ -546,8 +546,13 @@ pub fn boss_tracker_sync_server_age(st: State<'_, AppState>, time_str: String) -
 }
 
 #[tauri::command]
-pub async fn scan_bait_stock(st: State<'_, AppState>) -> Result<crate::core::bait::BaitStock, String> {
+pub fn scan_bait_stock(st: State<'_, AppState>) -> Result<crate::core::bait::BaitStock, String> {
     let ctx = st.bot.ctx();
     crate::bot::actions::scan_bait_stock(&ctx)
+}
+
+#[tauri::command]
+pub fn test_gemini(api_key: String, model: String) -> Result<String, String> {
+    crate::core::gemini::test_gemini_connection(&api_key, &model)
 }
 

@@ -370,6 +370,24 @@ impl BossTrackerSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+pub struct GeminiSettings {
+    pub enabled: bool,
+    pub api_key: String,
+    pub model: String,
+}
+
+impl Default for GeminiSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            api_key: String::new(),
+            model: "gemini-3.5-flash-lite".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub version: u32,
     pub regions: Regions,
@@ -388,6 +406,7 @@ pub struct Settings {
     pub ui: Ui,
     pub watchdog: Watchdog,
     pub auto_update: bool,
+    pub gemini: GeminiSettings,
 }
 
 impl Settings {
@@ -416,6 +435,7 @@ impl Default for Settings {
             ui: Ui::default(),
             watchdog: Watchdog::default(),
             auto_update: true,
+            gemini: GeminiSettings::default(),
         }
     }
 }
