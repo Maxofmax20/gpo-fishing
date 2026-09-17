@@ -21,16 +21,33 @@ fn rel_to_px(ctx: &Ctx, p: RelPoint) -> Option<PxPoint> {
 pub fn click(ctx: &Ctx, p: PxPoint) -> bool {
     let input = &ctx.platform.input;
     input.move_to(p);
-    if !ctx.sleep_ms(20) {
+    if !ctx.sleep_ms(35) {
         return false;
     }
     input.button(MouseButton::Left, true);
-    if !ctx.sleep_ms(25) {
+    if !ctx.sleep_ms(45) {
         input.button(MouseButton::Left, false);
         return false;
     }
     input.button(MouseButton::Left, false);
     true
+}
+
+/// A rock-solid, deliberate click designed specifically for Roblox UI dialogs and shop prompts.
+/// Guarantees that mouse down/up states are registered by Roblox across multiple game engine ticks.
+pub fn ui_click(ctx: &Ctx, p: PxPoint) -> bool {
+    let input = &ctx.platform.input;
+    input.move_to(p);
+    if !ctx.sleep_ms(60) {
+        return false;
+    }
+    input.button(MouseButton::Left, true);
+    if !ctx.sleep_ms(70) {
+        input.button(MouseButton::Left, false);
+        return false;
+    }
+    input.button(MouseButton::Left, false);
+    ctx.sleep_ms(80)
 }
 
 pub fn right_click(ctx: &Ctx, p: PxPoint) -> bool {
@@ -315,9 +332,10 @@ pub fn select_bait(ctx: &Ctx) -> bool {
                         if !ensure_rod_equipped(ctx, &mut rod_eq) {
                             return false;
                         }
-                        if !ctx.sleep_ms(200) {
+                        if !ctx.sleep_ms(350) {
                             return false;
                         }
+                        return select_bait(ctx);
                     }
                 }
             }
@@ -504,23 +522,23 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
     let delay = p.click_delay_ms;
 
     ctx.ensure_roblox_focus();
-    if !key_hold(ctx, Key::Char(s.keys.shop), Duration::from_millis(p.hold_shop_key_ms as u64)) {
+    if !key_hold(ctx, Key::Char(s.keys.shop), Duration::from_millis(p.hold_shop_key_ms.max(800) as u64)) {
         return false;
     }
-    if !ctx.sleep_ms(p.after_key_ms) {
-        return false;
-    }
-    // 1. Click Confirm option in merchant dialog to open the quantity prompt
-    if !click(ctx, confirm) || !ctx.sleep_ms((delay + 250).max(450)) {
+    // Wait for the barrel merchant dialog to open
+    if !ctx.sleep_ms(p.after_key_ms.max(500)) {
         return false;
     }
 
-    // 2. Click the middle button (quantity text input box).
-    // Perform a double-click sequence with a short settle to guarantee Roblox textbox focus!
-    if !click(ctx, quantity) || !ctx.sleep_ms(60) {
+    // 1. Click Confirm option in merchant dialog to open the quantity prompt
+    ctx.log_info(&format!("🛒 Auto purchase: clicking Confirm button at ({}, {})", confirm.x, confirm.y));
+    if !ui_click(ctx, confirm) || !ctx.sleep_ms((delay + 300).max(500)) {
         return false;
     }
-    if !click(ctx, quantity) || !ctx.sleep_ms(150) {
+
+    // 2. Click the middle button (quantity text input box) to focus it
+    ctx.log_info(&format!("🛒 Auto purchase: focusing quantity textbox at ({}, {})", quantity.x, quantity.y));
+    if !ui_click(ctx, quantity) || !ctx.sleep_ms(150) {
         return false;
     }
 
@@ -528,31 +546,27 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
     ctx.platform.input.key(Key::Control, true);
     key_tap(ctx, Key::Char('a'));
     ctx.platform.input.key(Key::Control, false);
-    if !ctx.sleep_ms(40) {
-        return false;
-    }
-    key_tap(ctx, Key::Delete);
-    if !ctx.sleep_ms(30) {
+    if !ctx.sleep_ms(60) {
         return false;
     }
     key_tap(ctx, Key::Backspace);
-    if !ctx.sleep_ms(40) {
+    if !ctx.sleep_ms(60) {
         return false;
     }
 
-    // 4. Type the purchase amount
+    // 4. Type the purchase amount with clean keypresses
     for c in amount.to_string().chars() {
-        if !key_tap(ctx, Key::Char(c)) || !ctx.sleep_ms(30) {
+        if !key_tap(ctx, Key::Char(c)) || !ctx.sleep_ms(50) {
             return false;
         }
     }
-    if !ctx.sleep_ms(p.after_type_ms.max(250)) {
+    if !ctx.sleep_ms(p.after_type_ms.max(300)) {
         return false;
     }
 
     // Press Enter to submit textbox
     key_tap(ctx, Key::Enter);
-    if !ctx.sleep_ms(100) {
+    if !ctx.sleep_ms(150) {
         return false;
     }
 
@@ -561,16 +575,10 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
     // If purchase[2] is not set, fallback to confirm (purchase[0]).
     let last_button = s.points.purchase[2].or(s.points.purchase[0]).and_then(|p| rel_to_px(ctx, p));
     if let Some(last_btn) = last_button {
-        ctx.log_info(&format!("🛒 Auto purchase: clicking final button (last button) at ({}, {})", last_btn.x, last_btn.y));
-        if !click(ctx, last_btn) || !ctx.sleep_ms((delay + 200).max(400)) {
+        ctx.log_info(&format!("🛒 Auto purchase: clicking final Buy button at ({}, {})", last_btn.x, last_btn.y));
+        if !ui_click(ctx, last_btn) || !ctx.sleep_ms((delay + 300).max(600)) {
             return false;
         }
-    }
-
-    if let Some(fp) = fishing_point(ctx) {
-        let _ = ctx.sleep_ms(200);
-        let _ = right_click(ctx, fp);
-        let _ = ctx.sleep_ms(delay);
     }
     {
         let mut sess = ctx.session.lock();
