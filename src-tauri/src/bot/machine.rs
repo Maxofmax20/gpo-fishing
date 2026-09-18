@@ -50,13 +50,6 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
         if !ensure_front(ctx) {
             return;
         }
-        if actions::is_shop_dialog_visible(ctx) {
-            ctx.log_warn("⚠️ Shop dialog is still open on screen! Dismissing with Escape before continuing...");
-            actions::key_tap(ctx, Key::Escape);
-            if !ctx.sleep_ms(300) {
-                return;
-            }
-        }
         if !actions::ensure_rod_equipped(ctx, &mut rod_equipped) {
             return;
         }
@@ -625,7 +618,7 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         ctx.webhook.progress(ctx.session.lock().stats());
         let _ = fish;
     }
-    if s.features.auto_purchase && !s.features.smart_bait && since_buy >= s.purchase.every_n_catches.max(1) {
+    if s.features.auto_purchase && since_buy >= s.purchase.every_n_catches.max(1) {
         *rod_equipped = false;
         if !actions::purchase(ctx) {
             return false;
