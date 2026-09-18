@@ -167,6 +167,7 @@ pub struct Purchase {
     pub after_type_ms: u32,
     pub bait_tier: crate::core::bait::BaitTier,
     pub low_bait_threshold: u32,
+    pub legendary_reserve: u32,
 }
 
 impl Default for Purchase {
@@ -181,6 +182,7 @@ impl Default for Purchase {
             after_type_ms: 250,
             bait_tier: crate::core::bait::BaitTier::Common,
             low_bait_threshold: 5,
+            legendary_reserve: 0,
         }
     }
 }

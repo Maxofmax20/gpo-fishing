@@ -44,12 +44,13 @@ pub struct BaitStock {
 }
 
 impl BaitStock {
-    /// Select the best available tier based on user preference and remaining stock
-    pub fn resolve_tier(self, preference: BaitTier) -> (BaitTier, Option<u32>) {
+    /// Select the best available tier based on user preference and remaining stock.
+    /// If legendary_reserve > 0, Legendary bait will not be consumed if remaining stock <= legendary_reserve.
+    pub fn resolve_tier(self, preference: BaitTier, legendary_reserve: u32) -> (BaitTier, Option<u32>) {
         match preference {
             BaitTier::Highest => {
                 if let Some(count) = self.legendary {
-                    if count > 0 {
+                    if count > legendary_reserve {
                         return (BaitTier::Legendary, Some(count));
                     }
                 }
@@ -62,11 +63,11 @@ impl BaitStock {
             }
             BaitTier::Legendary => {
                 if let Some(count) = self.legendary {
-                    if count > 0 {
+                    if count > legendary_reserve {
                         return (BaitTier::Legendary, Some(count));
                     }
                 }
-                // Fallback to Rare if Legendary is 0
+                // Fallback to Rare if Legendary is at or below reserve
                 if let Some(count) = self.rare {
                     if count > 0 {
                         return (BaitTier::Rare, Some(count));
@@ -88,40 +89,39 @@ impl BaitStock {
         }
     }
 
-    /// Calculate the dynamic relative click position (rx, ry) for the chosen tier
-    /// based on which tiers are currently present in the menu.
-    /// In GPO, tiers appear in order: Legendary, Rare, Common.
-    /// When a tier has 0 stock, its row is omitted and lower tiers shift upward.
+    /// Calculate the dynamic relative click position (rx, ry) for the chosen tier.
+    /// In GPO, the bait menu has 3 fixed rows:
+    ///   Row 0: Legendary Fish Bait (centered at ry ≈ 0.15)
+    ///   Row 1: Rare Fish Bait (centered at ry ≈ 0.50)
+    ///   Row 2: Common Fish Bait (centered at ry ≈ 0.85)
     pub fn click_relative_pos(&self, tier: BaitTier) -> (f32, f32) {
-        let has_legendary = self.legendary.map(|n| n > 0).unwrap_or(true);
-        let has_rare = self.rare.map(|n| n > 0).unwrap_or(true);
+        let has_legendary = self.legendary.is_some();
+        let has_rare = self.rare.is_some();
 
-        let row_index = match tier {
-            BaitTier::Legendary => 0,
+        let ry = match tier {
+            BaitTier::Legendary | BaitTier::Highest => 0.15,
             BaitTier::Rare => {
                 if has_legendary {
-                    1
+                    0.50
                 } else {
-                    0
+                    0.35
                 }
             }
             BaitTier::Common => {
                 match (has_legendary, has_rare) {
-                    (true, true) => 2,
-                    (true, false) | (false, true) => 1,
-                    (false, false) => 0,
+                    (true, true) => 0.85,
+                    (true, false) | (false, true) => 0.65,
+                    (false, false) => 0.50,
                 }
             }
-            BaitTier::Highest => 0,
         };
 
-        let ry = 0.39 + (row_index as f32) * 0.22;
         (0.50, ry)
     }
 }
 
-pub fn resolve_tier(stock: &BaitStock, preference: BaitTier) -> BaitTier {
-    stock.resolve_tier(preference).0
+pub fn resolve_tier(stock: &BaitStock, preference: BaitTier, legendary_reserve: u32) -> BaitTier {
+    stock.resolve_tier(preference, legendary_reserve).0
 }
 
 
@@ -838,7 +838,7 @@ mod tests {
         assert_eq!(s.common, Some(5));
 
         // Fallback resolution
-        let (chosen, cnt) = s.resolve_tier(BaitTier::Legendary);
+        let (chosen, cnt) = s.resolve_tier(BaitTier::Legendary, 0);
         assert_eq!(chosen, BaitTier::Common);
         assert_eq!(cnt, Some(5));
     }
@@ -874,9 +874,32 @@ mod tests {
             rare: Some(15),
             common: Some(200),
         };
-        let (chosen, cnt) = s.resolve_tier(BaitTier::Highest);
+        let (chosen, cnt) = s.resolve_tier(BaitTier::Highest, 0);
         assert_eq!(chosen, BaitTier::Rare);
         assert_eq!(cnt, Some(15));
+    }
+
+    #[test]
+    fn test_legendary_reserve_limit() {
+        let s = BaitStock {
+            legendary: Some(50),
+            rare: Some(20),
+            common: Some(200),
+        };
+        // Above reserve (reserve = 40): uses Legendary
+        let (chosen1, cnt1) = s.resolve_tier(BaitTier::Legendary, 40);
+        assert_eq!(chosen1, BaitTier::Legendary);
+        assert_eq!(cnt1, Some(50));
+
+        // At reserve limit (reserve = 50): protects Legendary and falls back to Rare!
+        let (chosen2, cnt2) = s.resolve_tier(BaitTier::Legendary, 50);
+        assert_eq!(chosen2, BaitTier::Rare);
+        assert_eq!(cnt2, Some(20));
+
+        // Below reserve limit (reserve = 100): protects Legendary and falls back to Rare!
+        let (chosen3, cnt3) = s.resolve_tier(BaitTier::Legendary, 100);
+        assert_eq!(chosen3, BaitTier::Rare);
+        assert_eq!(cnt3, Some(20));
     }
 
     #[test]
@@ -904,7 +927,7 @@ mod tests {
             rare: Some(130),
             common: Some(224),
         };
-        let (chosen, cnt) = stock_available.resolve_tier(BaitTier::Rare);
+        let (chosen, cnt) = stock_available.resolve_tier(BaitTier::Rare, 0);
         assert_eq!(chosen, BaitTier::Rare);
         assert_eq!(cnt, Some(130));
 
@@ -914,7 +937,7 @@ mod tests {
             rare: Some(0),
             common: Some(224),
         };
-        let (chosen, cnt) = stock_depleted.resolve_tier(BaitTier::Rare);
+        let (chosen, cnt) = stock_depleted.resolve_tier(BaitTier::Rare, 0);
         assert_eq!(chosen, BaitTier::Common);
         assert_eq!(cnt, Some(224));
     }
@@ -1065,37 +1088,20 @@ mod tests {
             rare: Some(20),
             common: Some(300),
         };
-        assert_eq!(stock3.click_relative_pos(BaitTier::Legendary), (0.50, 0.39));
-        assert_eq!(stock3.click_relative_pos(BaitTier::Rare), (0.50, 0.61));
-        assert_eq!(stock3.click_relative_pos(BaitTier::Common), (0.50, 0.83));
-        assert_eq!(stock3.click_relative_pos(BaitTier::Highest), (0.50, 0.39));
+        assert_eq!(stock3.click_relative_pos(BaitTier::Legendary), (0.50, 0.15));
+        assert_eq!(stock3.click_relative_pos(BaitTier::Rare), (0.50, 0.50));
+        assert_eq!(stock3.click_relative_pos(BaitTier::Common), (0.50, 0.85));
+        assert_eq!(stock3.click_relative_pos(BaitTier::Highest), (0.50, 0.15));
 
-        // Case 2: Rare is depleted (0 stock) - Common moves up to Row 1!
-        let stock_no_rare = BaitStock {
-            legendary: Some(185),
-            rare: Some(0),
-            common: Some(300),
-        };
-        assert_eq!(stock_no_rare.click_relative_pos(BaitTier::Legendary), (0.50, 0.39));
-        assert_eq!(stock_no_rare.click_relative_pos(BaitTier::Common), (0.50, 0.61)); // Row 1!
-        assert_eq!(stock_no_rare.click_relative_pos(BaitTier::Highest), (0.50, 0.39));
-
-        // Case 3: Legendary is depleted (0 stock) - Rare is Row 0, Common is Row 1!
-        let stock_no_leg = BaitStock {
-            legendary: Some(0),
-            rare: Some(50),
-            common: Some(100),
-        };
-        assert_eq!(stock_no_leg.click_relative_pos(BaitTier::Rare), (0.50, 0.39)); // Row 0!
-        assert_eq!(stock_no_leg.click_relative_pos(BaitTier::Common), (0.50, 0.61)); // Row 1!
-
-        // Case 4: Both Legendary and Rare depleted - Only Common left at Row 0!
-        let stock_only_common = BaitStock {
+        // Case 2: In GPO, discovered tiers remain in fixed rows even if 0 stock
+        let stock_depleted = BaitStock {
             legendary: Some(0),
             rare: Some(0),
             common: Some(300),
         };
-        assert_eq!(stock_only_common.click_relative_pos(BaitTier::Common), (0.50, 0.39)); // Row 0!
+        assert_eq!(stock_depleted.click_relative_pos(BaitTier::Legendary), (0.50, 0.15));
+        assert_eq!(stock_depleted.click_relative_pos(BaitTier::Rare), (0.50, 0.50));
+        assert_eq!(stock_depleted.click_relative_pos(BaitTier::Common), (0.50, 0.85));
     }
 }
 

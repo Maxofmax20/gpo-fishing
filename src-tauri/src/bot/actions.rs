@@ -341,17 +341,24 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             }
         }
 
-        let chosen_tier = crate::core::bait::resolve_tier(&stock, s.purchase.bait_tier);
+        let chosen_tier = crate::core::bait::resolve_tier(&stock, s.purchase.bait_tier, s.purchase.legendary_reserve);
 
-        // Notify user if a high tier bait depleted and we fell back to Common
-        match s.purchase.bait_tier {
-            crate::core::bait::BaitTier::Legendary if chosen_tier == crate::core::bait::BaitTier::Common && stock.legendary == Some(0) => {
-                ctx.log_warn("⚠️ Legendary bait depleted! Automatically fell back to Common bait.");
+        // Notify user if a high tier bait depleted or reached reserve limit
+        if (s.purchase.bait_tier == crate::core::bait::BaitTier::Legendary || s.purchase.bait_tier == crate::core::bait::BaitTier::Highest)
+            && chosen_tier != crate::core::bait::BaitTier::Legendary
+        {
+            if let Some(l_qty) = stock.legendary {
+                if s.purchase.legendary_reserve > 0 && l_qty <= s.purchase.legendary_reserve {
+                    ctx.log_warn(&format!(
+                        "🛡️ Legendary bait ({l_qty}) reached reserve limit ({})! Protecting remaining Legendary bait and using {:?}.",
+                        s.purchase.legendary_reserve, chosen_tier
+                    ));
+                } else if l_qty == 0 {
+                    ctx.log_warn(&format!("⚠️ Legendary bait depleted! Automatically fell back to {:?}.", chosen_tier));
+                }
             }
-            crate::core::bait::BaitTier::Rare if chosen_tier == crate::core::bait::BaitTier::Common && stock.rare == Some(0) => {
-                ctx.log_warn("⚠️ Rare bait depleted! Automatically fell back to Common bait.");
-            }
-            _ => {}
+        } else if s.purchase.bait_tier == crate::core::bait::BaitTier::Rare && chosen_tier == crate::core::bait::BaitTier::Common && stock.rare == Some(0) {
+            ctx.log_warn("⚠️ Rare bait depleted! Automatically fell back to Common bait.");
         }
 
         // Check failsafe: if chosen tier has 0 stock while menu is visibly open
@@ -587,35 +594,34 @@ pub fn purchase(ctx: &Ctx) -> bool {
 
     ctx.ensure_roblox_focus();
 
-    // Check if bait menu is already open (e.g. from previous catch or fast reset)
-    let initial_scan = scan_bait_stock_raw(ctx);
-    let stock_result = match initial_scan {
-        Ok((ref stock, true)) if stock.common.is_some() => initial_scan,
-        _ => {
-            // Menu is not open; tap rod key to equip rod and display the bait stock
-            let _ = key_tap(ctx, Key::Char(s.keys.rod));
-            let _ = ctx.sleep_ms(350);
-            scan_bait_stock_raw(ctx)
+    // 1. Ensure fishing rod is equipped so the in-game bait menu is open on screen
+    let mut dummy = false;
+    let _ = ensure_rod_equipped(ctx, &mut dummy);
+    let _ = ctx.sleep_ms(450);
+
+    // 2. Read common bait stock using neural network
+    let to_buy = match scan_bait_stock_raw(ctx) {
+        Ok((stock, visible)) if visible => {
+            if let Some(c_qty) = stock.common {
+                if c_qty >= max_cap {
+                    ctx.log_info(&format!("🛒 Bait stock is already full ({c_qty}/{max_cap}); skipping purchase."));
+                    ctx.session.lock().since_purchase = 0;
+                    ctx.emit_stats();
+                    return true;
+                }
+                let missing = max_cap.saturating_sub(c_qty).clamp(1, max_cap);
+                ctx.log_info(&format!("🛒 Neural model detected {c_qty}/{max_cap} common bait. Purchasing exact missing {missing} bait..."));
+                Some(missing)
+            } else {
+                None
+            }
         }
+        _ => None,
     };
 
-    let to_buy = if let Ok((stock, _)) = stock_result {
-        if let Some(c_qty) = stock.common {
-            if c_qty >= max_cap {
-                ctx.log_info(&format!("🛒 Bait stock is already full ({c_qty}/{max_cap}); skipping purchase."));
-                ctx.session.lock().since_purchase = 0;
-                ctx.emit_stats();
-                return true;
-            }
-            let missing = max_cap.saturating_sub(c_qty).clamp(1, max_cap);
-            ctx.log_info(&format!("🛒 Neural model detected {c_qty}/{max_cap} common bait. Purchasing missing {missing} bait..."));
-            Some(missing)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    if to_buy.is_none() {
+        ctx.log_warn(&format!("🛒 Could not detect common bait count from menu; purchasing configured default amount ({})", s.purchase.amount));
+    }
 
     purchase_amount(ctx, to_buy)
 }

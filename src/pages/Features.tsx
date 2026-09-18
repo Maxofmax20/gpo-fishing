@@ -127,12 +127,31 @@ export default function Features() {
                     ]}
                   />
                   <div className="text-[10px] text-fg-mute mt-1">
-                    {s.purchase.bait_tier === "legendary" && "Uses Legendary bait. Automatically falls back to Rare then Common when empty."}
+                    {s.purchase.bait_tier === "legendary" && "Uses Legendary bait. Automatically falls back to Rare then Common when empty or at reserve."}
                     {s.purchase.bait_tier === "rare" && "Uses Rare bait. Automatically falls back to Common when empty."}
                     {s.purchase.bait_tier === "common" && "Always uses standard Common bait."}
                     {s.purchase.bait_tier === "highest" && "Always uses the highest tier bait currently in inventory (Legendary > Rare > Common)."}
                   </div>
                 </div>
+
+                {(s.purchase.bait_tier === "legendary" || s.purchase.bait_tier === "highest") && (
+                  <div className="flex items-center justify-between pt-2 border-t border-line/60">
+                    <div>
+                      <div className="text-[11px] font-medium text-fg">Legendary Reserve Limit</div>
+                      <div className="text-[10px] text-fg-mute">
+                        Never let Legendary bait drop below this amount. Switches to Rare/Common when reached.
+                      </div>
+                    </div>
+                    <Stepper
+                      value={s.purchase.legendary_reserve ?? 0}
+                      min={0}
+                      max={999}
+                      step={5}
+                      suffix="reserve"
+                      onChange={(v) => update((x) => void (x.purchase.legendary_reserve = v))}
+                    />
+                  </div>
+                )}
 
                 <div className="pt-2 border-t border-line/60">
                   <div className="flex items-center justify-between mb-1.5">
