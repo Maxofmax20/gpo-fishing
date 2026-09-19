@@ -165,6 +165,8 @@ pub struct FruitEventAnalysis {
     pub event: String,
     pub reason: Option<String>,
     pub raw_text: String,
+    #[serde(default)]
+    pub telegram_message: Option<String>,
 }
 
 pub fn analyze_fruit_event_gemini(frame: &Frame, api_key: &str, model: &str) -> Result<FruitEventAnalysis, String> {
@@ -200,6 +202,7 @@ Specifically:
 3. What is the legendary pity count? (e.g. '27/100'). In GPO, pity is always out of 100.
 4. What is the fruit rarity? (Common, Rare, Epic, Legendary, Mythical).
 5. What is the reason or status description?
+6. Write a clean, highly accurate, and attractive notification message in HTML format for Telegram (use <b>bold</b>, <i>italic</i>, and emojis). Include the exact fruit name, rarity tier, pity status, and action taken.
 Respond ONLY with valid JSON in this format:
 {
   \"fruit_name\": <string or null>,
@@ -207,7 +210,8 @@ Respond ONLY with valid JSON in this format:
   \"pity\": <string or null>,
   \"event\": <\"drop\" | \"storage_full\" | \"dropped_ground\" | \"unknown\">,
   \"reason\": <string or null>,
-  \"raw_text\": <string of all text on screen>
+  \"raw_text\": <string of all text on screen>,
+  \"telegram_message\": <string of formatted HTML message or null>
 }";
 
     let payload = json!({
@@ -269,4 +273,86 @@ Respond ONLY with valid JSON in this format:
 
     serde_json::from_str::<FruitEventAnalysis>(clean_json)
         .map_err(|e| format!("Failed to parse FruitEventAnalysis JSON '{clean_json}': {e}"))
+}
+
+pub fn rewrite_fruit_message_gemini(
+    fruit_name: &str,
+    rarity: &str,
+    pity_info: &str,
+    event_status: &str,
+    api_key: &str,
+    model: &str,
+) -> Result<String, String> {
+    let key = api_key.trim();
+    if key.is_empty() {
+        return Err("Gemini API key is empty".into());
+    }
+
+    let model_name = if model.trim().is_empty() {
+        "gemini-3.5-flash-lite"
+    } else {
+        model.trim().strip_prefix("models/").unwrap_or(model.trim())
+    };
+
+    let prompt = format!(
+        "You are an assistant for the Roblox Grand Piece Online (GPO) Autofish macro.\n\
+        Rewrite this devil fruit event into a clean, exciting, and accurate Telegram notification message.\n\
+        Event details:\n\
+        - Fruit Name: {fruit_name}\n\
+        - Rarity: {rarity}\n\
+        - Pity: {pity_info}\n\
+        - Status: {event_status}\n\n\
+        Format Requirements:\n\
+        - Use Telegram HTML tags (<b>bold</b>, <i>italic</i>, <code>code</code>).\n\
+        - Choose appropriate emojis based on rarity (🔥 for Mythical, 🌟 for Legendary, 🍇 for Rare/Common).\n\
+        - Make it clear, exciting, and accurate.\n\
+        - Output ONLY the raw Telegram HTML text without backticks, markdown codeblocks, or explanations."
+    );
+
+    let payload = json!({
+        "contents": [{
+            "parts": [{ "text": prompt }]
+        }]
+    });
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+        model_name, key
+    );
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .map_err(|e| format!("Gemini API request failed: {e}"))?;
+
+    let status = response.status();
+    let body_text = response
+        .text()
+        .map_err(|e| format!("Failed to read Gemini response body: {e}"))?;
+
+    if !status.is_success() {
+        return Err(format!("Gemini API error (status {status}): {body_text}"));
+    }
+
+    let parsed_res: serde_json::Value = serde_json::from_str(&body_text)
+        .map_err(|e| format!("Failed to parse Gemini API response JSON: {e}"))?;
+
+    let text = parsed_res
+        .get("candidates")
+        .and_then(|c| c.get(0))
+        .and_then(|c0| c0.get("content"))
+        .and_then(|cnt| cnt.get("parts"))
+        .and_then(|p| p.get(0))
+        .and_then(|p0| p0.get("text"))
+        .and_then(|t| t.as_str())
+        .ok_or_else(|| format!("Invalid candidate text in Gemini response: {body_text}"))?;
+
+    let clean = text.trim().strip_prefix("```html").unwrap_or(text.trim()).strip_suffix("```").unwrap_or(text.trim()).trim();
+    Ok(clean.to_string())
 }

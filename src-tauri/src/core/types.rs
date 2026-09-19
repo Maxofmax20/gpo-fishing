@@ -235,4 +235,5 @@ pub enum Key {
     Enter,
     Escape,
     Control,
+    Shift,
 }

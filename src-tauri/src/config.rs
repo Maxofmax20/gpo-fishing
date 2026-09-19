@@ -216,10 +216,10 @@ pub struct FruitStorage {
 impl Default for FruitStorage {
     fn default() -> Self {
         Self {
-            key_settle_ms: 500,
-            click_settle_ms: 500,
-            dialog_wait_ms: 800,
-            after_drop_ms: 1200,
+            key_settle_ms: 180,
+            click_settle_ms: 180,
+            dialog_wait_ms: 250,
+            after_drop_ms: 350,
             never_drop_legendary_or_mythical: true,
             pause_on_protected_fruit: false,
         }

@@ -79,6 +79,20 @@ pub fn key_hold(ctx: &Ctx, k: Key, d: Duration) -> bool {
     ok
 }
 
+pub fn align_camera_shift_lock(ctx: &Ctx) -> bool {
+    ctx.log_info("🔄 Snapping character orientation with Shift Lock");
+    if !key_tap(ctx, Key::Shift) {
+        return false;
+    }
+    if !ctx.sleep_ms(100) {
+        return false;
+    }
+    if !key_tap(ctx, Key::Shift) {
+        return false;
+    }
+    ctx.sleep_ms(60)
+}
+
 pub fn wheel_steps(ctx: &Ctx, steps: u32, dir: i32, step_delay_ms: u32) -> bool {
     for _ in 0..steps {
         ctx.platform.input.wheel(WHEEL_STEP * dir);
@@ -636,6 +650,10 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
         return true;
     };
     ctx.set_state(BotState::StoringFruit, None);
+
+    // 1. Instantly snap character orientation with camera using Shift Lock
+    align_camera_shift_lock(ctx);
+
     if protect_drop {
         ctx.log_info(&format!("🛡️ Storing protected {fruit_name} (drop/backspace disabled)"));
     } else {
@@ -643,26 +661,23 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
     }
     let fs = &s.fruit_storage;
 
-    if let Some(fp) = fishing_point(ctx) {
-        if !click(ctx, fp) || !ctx.sleep_ms(1000) {
-            return false;
-        }
-        if !click(ctx, fp) || !ctx.sleep_ms(1000) {
-            return false;
-        }
-    }
-
     let mut detected_banner: Option<crate::core::fruit::StorageBannerResult> = None;
+    let mut gemini_telegram_msg: Option<String> = None;
     let banner_rect = RelRect { x: 0.25, y: 0.04, w: 0.50, h: 0.22 };
 
+    let key_settle = fs.key_settle_ms.min(180);
+    let click_settle = fs.click_settle_ms.min(180);
+    let dialog_wait = fs.dialog_wait_ms.min(250);
+    let after_drop = fs.after_drop_ms.min(350);
+
     for slot in [s.keys.fruit_slot_1, s.keys.fruit_slot_2] {
-        if !key_tap(ctx, Key::Char(slot)) || !ctx.sleep_ms(fs.key_settle_ms) {
+        if !key_tap(ctx, Key::Char(slot)) || !ctx.sleep_ms(key_settle) {
             return false;
         }
-        if !click_pair(ctx, fruit_primary, s.points.fruit[1], fs.click_settle_ms) {
+        if !click_pair(ctx, fruit_primary, s.points.fruit[1], click_settle) {
             return false;
         }
-        if !ctx.sleep_ms(fs.dialog_wait_ms) {
+        if !ctx.sleep_ms(dialog_wait) {
             return false;
         }
 
@@ -674,6 +689,9 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                     if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
                         if let Ok(analysis) = crate::core::gemini::analyze_fruit_event_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
                             ctx.log_info(&format!("✨ Gemini Storage Analysis: event={}, fruit={:?}", analysis.event, analysis.fruit_name));
+                            if let Some(msg) = analysis.telegram_message {
+                                gemini_telegram_msg = Some(msg);
+                            }
                             if let Some(name) = analysis.fruit_name {
                                 if analysis.event == "storage_full" || analysis.event == "dropped_ground" {
                                     detected_banner = Some(crate::core::fruit::StorageBannerResult::DuplicateDropped { fruit_name: name });
@@ -700,7 +718,7 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
             if !key_hold(ctx, Key::Backspace, Duration::from_millis(100)) {
                 return false;
             }
-            if !ctx.sleep_ms(fs.after_drop_ms) {
+            if !ctx.sleep_ms(after_drop) {
                 return false;
             }
 
@@ -712,6 +730,9 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                         if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
                             if let Ok(analysis) = crate::core::gemini::analyze_fruit_event_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
                                 ctx.log_info(&format!("✨ Gemini Drop Analysis: event={}, fruit={:?}", analysis.event, analysis.fruit_name));
+                                if let Some(msg) = analysis.telegram_message {
+                                    gemini_telegram_msg = Some(msg);
+                                }
                                 if let Some(name) = analysis.fruit_name {
                                     if analysis.event == "storage_full" || analysis.event == "dropped_ground" {
                                         detected_banner = Some(crate::core::fruit::StorageBannerResult::DuplicateDropped { fruit_name: name });
@@ -747,6 +768,27 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
         None
     };
 
+    let custom_tg = gemini_telegram_msg.or_else(|| {
+        if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
+            let rarity = crate::core::fruit::fruit_rarity(fruit_name);
+            let status = if detected_banner.is_some() {
+                "Storage full / duplicate - dropped on ground"
+            } else {
+                "Stored safely in inventory"
+            };
+            crate::core::gemini::rewrite_fruit_message_gemini(
+                fruit_name,
+                rarity.as_str(),
+                "N/A",
+                status,
+                &s.gemini.api_key,
+                &s.gemini.model,
+            ).ok()
+        } else {
+            None
+        }
+    });
+
     if let Some(banner) = detected_banner {
         match banner {
             crate::core::fruit::StorageBannerResult::DuplicateDropped { fruit_name: detected_name } => {
@@ -767,6 +809,7 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                     &name,
                     "You can only store one of each fruit (inventory limit reached) - dropped on ground.",
                     photo,
+                    custom_tg,
                 );
             }
             crate::core::fruit::StorageBannerResult::Dropped { fruit_name: detected_name } => {
@@ -787,6 +830,7 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                     &name,
                     "Fruit was dropped on the ground.",
                     photo,
+                    custom_tg,
                 );
             }
             crate::core::fruit::StorageBannerResult::Failed { reason } => {
@@ -795,17 +839,26 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                     fruit_name,
                     &reason,
                     photo,
+                    custom_tg,
                 );
             }
         }
     } else {
-        ctx.webhook.fruit_stored(fruit_name, photo);
+        ctx.webhook.fruit_stored(fruit_name, photo, custom_tg);
+    }
+
+    // Always re-equip rod (key 1) after fruit drop/store
+    let rod_key = s.keys.rod;
+    ctx.log_info(&format!("🎣 Re-equipping rod (key {rod_key})"));
+    key_tap(ctx, Key::Char(rod_key));
+    if !ctx.sleep_ms(150) {
+        return false;
     }
 
     if let Some(fp) = fishing_point(ctx) {
         ctx.platform.input.move_to(fp);
     }
-    ctx.sleep_ms(300)
+    ctx.sleep_ms(150)
 }
 
 fn clean_ocr_digits(s: &str) -> String {

@@ -150,6 +150,8 @@ pub struct DropInfo {
     pub is_legendary: bool,
     pub name: Option<String>,
     pub pity: Option<String>,
+    #[serde(default)]
+    pub custom_telegram_message: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -319,6 +321,7 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
             text,
             name: Some(fruit_name),
             pity,
+            custom_telegram_message: None,
         });
     }
 
@@ -333,6 +336,7 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
         text,
         name: fruit_name,
         pity,
+        custom_telegram_message: None,
     })
 }
 

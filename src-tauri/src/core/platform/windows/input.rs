@@ -4,7 +4,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     KEYEVENTF_UNICODE, MAPVK_VK_TO_VSC, MOUSEEVENTF_ABSOLUTE,
     MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
     MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEINPUT, VIRTUAL_KEY, VK_BACK, VK_CONTROL,
-    VK_DELETE, VK_ESCAPE, VK_RETURN,
+    VK_DELETE, VK_ESCAPE, VK_RETURN, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetSystemMetrics, SetCursorPos, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
@@ -85,6 +85,7 @@ fn key_to_vk(k: Key) -> Option<VIRTUAL_KEY> {
         Key::Enter => Some(VK_RETURN),
         Key::Escape => Some(VK_ESCAPE),
         Key::Control => Some(VK_CONTROL),
+        Key::Shift => Some(VK_SHIFT),
         Key::Char(c) => {
             let scan = unsafe { VkKeyScanW(c as u16) };
             if scan == -1 || (scan >> 8) & 0x07 != 0 {

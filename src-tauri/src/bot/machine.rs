@@ -539,7 +539,10 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         }
     }
     if let Some(mut d) = drop {
-        // Enhance drop detection with Gemini Vision if enabled and configured
+        // 1. Instantly snap character orientation to camera look direction
+        actions::align_camera_shift_lock(ctx);
+
+        // Enhance drop detection and message with Gemini if enabled and configured
         if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
             if let Some(frame) = grab_region(ctx, s.regions.drop) {
                 if let Ok(analysis) = crate::core::gemini::analyze_fruit_event_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
@@ -550,6 +553,25 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
                     if let Some(fn_name) = analysis.fruit_name {
                         d.name = Some(fn_name);
                     }
+                    if let Some(msg) = analysis.telegram_message {
+                        d.custom_telegram_message = Some(msg);
+                    }
+                }
+            }
+            if d.custom_telegram_message.is_none() {
+                let temp_name = d.name.as_deref().unwrap_or("Devil Fruit");
+                let rarity = fruit::fruit_rarity(temp_name);
+                let pity_str = d.pity.as_deref().unwrap_or("Check backpack");
+                if let Ok(rewritten) = crate::core::gemini::rewrite_fruit_message_gemini(
+                    temp_name,
+                    rarity.as_str(),
+                    pity_str,
+                    "Caught from fishing",
+                    &s.gemini.api_key,
+                    &s.gemini.model,
+                ) {
+                    ctx.log_info("✨ Generated accurate fruit Telegram message via Gemini");
+                    d.custom_telegram_message = Some(rewritten);
                 }
             }
         }
@@ -600,7 +622,7 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
             if !actions::store_fruit(ctx, &fruit_name, is_protected) {
                 return false;
             }
-            *rod_equipped = false;
+            *rod_equipped = true;
 
             if s.fruit_storage.pause_on_protected_fruit && is_protected {
                 ctx.log_info(&format!("🚨 Macro paused: Protected {label} caught! Safely inspect your inventory."));

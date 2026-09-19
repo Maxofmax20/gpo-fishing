@@ -22,6 +22,7 @@ pub struct Notification {
     pub color: u32,
     pub fields: Vec<(String, String)>,
     pub photo: Option<Vec<u8>>,
+    pub custom_telegram_html: Option<String>,
 }
 
 pub struct WebhookQueue {
@@ -133,6 +134,7 @@ impl WebhookQueue {
                 ("Success".into(), format!("{:.0}%", st.success_rate * 100.0)),
             ],
             photo: None,
+            custom_telegram_html: None,
         });
     }
 
@@ -170,10 +172,11 @@ impl WebhookQueue {
                 ("Raw OCR".into(), d.text.clone()),
             ],
             photo,
+            custom_telegram_html: d.custom_telegram_message.clone(),
         });
     }
 
-    pub fn fruit_stored(&self, fruit_name: &str, photo: Option<Vec<u8>>) {
+    pub fn fruit_stored(&self, fruit_name: &str, photo: Option<Vec<u8>>, custom_tg: Option<String>) {
         let rarity = crate::core::fruit::fruit_rarity(fruit_name);
         let title = if rarity == crate::core::fruit::FruitRarity::Mythical {
             "🔥 Mythical Devil Fruit Stored!"
@@ -197,10 +200,11 @@ impl WebhookQueue {
                 ("Status".into(), "Stored safely in inventory".into()),
             ],
             photo,
+            custom_telegram_html: custom_tg,
         });
     }
 
-    pub fn fruit_storage_failed(&self, fruit_name: &str, reason: &str, photo: Option<Vec<u8>>) {
+    pub fn fruit_storage_failed(&self, fruit_name: &str, reason: &str, photo: Option<Vec<u8>>, custom_tg: Option<String>) {
         let rarity = crate::core::fruit::fruit_rarity(fruit_name);
         let title = "⚠️ Devil Fruit Storage Full / Dropped!";
         let desc = if rarity != crate::core::fruit::FruitRarity::Unknown {
@@ -218,6 +222,7 @@ impl WebhookQueue {
                 ("Status".into(), "Dropped on ground / Bag full".into()),
             ],
             photo,
+            custom_telegram_html: custom_tg,
         });
     }
 
@@ -232,6 +237,7 @@ impl WebhookQueue {
             color: COLOR_RED,
             fields: vec![("Status".into(), "Paused".into())],
             photo,
+            custom_telegram_html: None,
         });
     }
 
@@ -246,6 +252,7 @@ impl WebhookQueue {
             color: COLOR_GOLD,
             fields: vec![("Action".into(), "Restock bait to continue".into())],
             photo: None,
+            custom_telegram_html: None,
         });
     }
 
@@ -261,6 +268,7 @@ impl WebhookQueue {
             color,
             fields: vec![],
             photo: None,
+            custom_telegram_html: None,
         });
     }
 
@@ -271,6 +279,7 @@ impl WebhookQueue {
             color: COLOR_GREEN,
             fields: vec![],
             photo: None,
+            custom_telegram_html: None,
         });
     }
 
@@ -285,6 +294,7 @@ impl WebhookQueue {
             color: COLOR_RED,
             fields: vec![("Attempt".into(), attempt.to_string())],
             photo: None,
+            custom_telegram_html: None,
         });
     }
 }
@@ -460,17 +470,24 @@ fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>) {
 
         // 2. Telegram delivery
         if (provider == "telegram" || provider == "both") && !tg_token.trim().is_empty() && !tg_chat.trim().is_empty() {
-            let mut tg_text = if notif.desc.is_empty() {
-                format!("<b>{}</b>", escape_html(&notif.title))
+            let tg_text = if let Some(ref custom) = notif.custom_telegram_html {
+                custom.clone()
             } else {
-                format!("<b>{}</b>\n{}", escape_html(&notif.title), escape_html(&notif.desc))
-            };
-            if !notif.fields.is_empty() {
-                tg_text.push_str("\n\n");
-                for (k, v) in &notif.fields {
-                    tg_text.push_str(&format!("• <b>{}</b>: {}\n", escape_html(k), escape_html(v)));
+                let mut text = if notif.desc.is_empty() {
+                    format!("<b>{}</b>", escape_html(&notif.title))
+                } else if notif.desc.contains("<b>") || notif.desc.contains("<i>") || notif.desc.contains("<code>") {
+                    format!("<b>{}</b>\n{}", escape_html(&notif.title), notif.desc)
+                } else {
+                    format!("<b>{}</b>\n{}", escape_html(&notif.title), escape_html(&notif.desc))
+                };
+                if !notif.fields.is_empty() {
+                    text.push_str("\n\n");
+                    for (k, v) in &notif.fields {
+                        text.push_str(&format!("• <b>{}</b>: {}\n", escape_html(k), escape_html(v)));
+                    }
                 }
-            }
+                text
+            };
             let mut delay = Duration::from_secs(1);
             for attempt in 0..3 {
                 let res = if let Some(ref bytes) = notif.photo {
