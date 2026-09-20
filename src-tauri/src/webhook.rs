@@ -473,6 +473,40 @@ pub fn post_telegram(token: &str, chat_id: &str, html: &str) -> Result<u16, Stri
     }
 }
 
+pub fn post_telegram_with_button(
+    token: &str,
+    chat_id: &str,
+    html: &str,
+    btn_text: &str,
+    btn_url: &str,
+) -> Result<u16, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("https://api.telegram.org/bot{token}/sendMessage");
+    let body = json!({
+        "chat_id": chat_id,
+        "text": html,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": true,
+        "reply_markup": {
+            "inline_keyboard": [[
+                { "text": btn_text, "url": btn_url }
+            ]]
+        }
+    });
+    let resp = client.post(&url).json(&body).send().map_err(|e| e.to_string())?;
+    let status = resp.status();
+    if status.is_success() {
+        Ok(status.as_u16())
+    } else {
+        let err_body = resp.text().unwrap_or_default();
+        Err(format!("Telegram error {}: {}", status.as_u16(), err_body))
+    }
+}
+
+
 pub fn post_telegram_photo(token: &str, chat_id: &str, photo: &[u8], caption: &str) -> Result<u16, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(15))

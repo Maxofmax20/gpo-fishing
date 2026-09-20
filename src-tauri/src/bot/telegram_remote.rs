@@ -612,12 +612,73 @@ fn handle_command(
                 }
             }
         }
+        cmd if cmd.starts_with("/brightness") || cmd.starts_with("brightness") || cmd.starts_with("/light") || cmd.starts_with("light") => {
+            let parts: Vec<&str> = text.split_whitespace().collect();
+            if let Some(arg) = parts.get(1) {
+                let arg_low = arg.to_lowercase();
+                if arg_low == "max" || arg_low == "100" {
+                    match crate::core::brightness::set_brightness(100) {
+                        Ok(_) => {
+                            let _ = post_telegram(token, chat_id, "💡 <b>Screen brightness set to MAX (100%)</b>");
+                        }
+                        Err(e) => {
+                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set brightness: {e}"));
+                        }
+                    }
+                } else if arg_low == "0" || arg_low == "zero" || arg_low == "min" {
+                    match crate::core::brightness::set_brightness(0) {
+                        Ok(_) => {
+                            let _ = post_telegram(token, chat_id, "💡 <b>Screen brightness set to MIN (0%)</b>");
+                        }
+                        Err(e) => {
+                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set brightness: {e}"));
+                        }
+                    }
+                } else if let Ok(val) = arg_low.trim_end_matches('%').parse::<u32>() {
+                    let clamped = val.clamp(0, 100);
+                    match crate::core::brightness::set_brightness(clamped) {
+                        Ok(new_b) => {
+                            let emoji = if new_b < 30 { "🌑" } else if new_b < 70 { "🌓" } else { "🌕" };
+                            let _ = post_telegram(token, chat_id, &format!("{emoji} <b>Screen brightness set to {new_b}%</b>"));
+                        }
+                        Err(e) => {
+                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set brightness: {e}"));
+                        }
+                    }
+                } else {
+                    let _ = post_telegram(token, chat_id, "⚠️ Invalid brightness value. Usage: <code>/brightness 0-100</code>, <code>/brightness max</code>, or <code>/brightness min</code>");
+                }
+            } else {
+                let b = crate::core::brightness::get_brightness().unwrap_or(80);
+                let _ = post_telegram(token, chat_id, &format!("💡 <b>Screen Brightness:</b>\n\n• Current Level: <b>{b}%</b>\n\n<i>To change brightness, send:</i>\n<code>/brightness 100</code> (max)\n<code>/brightness 30</code>\n<code>/brightness min</code>"));
+            }
+        }
+        "/web" | "/dashboard" | "web" | "dashboard" => {
+            let local_ip = crate::bot::web_server::get_local_ip().unwrap_or_else(|| "127.0.0.1".into());
+            let lan_url = format!("http://{local_ip}:3888");
+            let local_url = "http://localhost:3888";
+            let reply = format!(
+                "🌐 <b>GPO Autofish Web Dashboard</b>\n\n\
+                 • <b>Local PC</b>: <code>{local_url}</code>\n\
+                 • <b>Mobile (Same Wi-Fi)</b>: <code>{lan_url}</code>\n\n\
+                 <i>Access real-time stats, Roblox live screen, sound & brightness sliders, and 1-tap macro controls from any phone or browser!</i>"
+            );
+            let _ = crate::webhook::post_telegram_with_button(
+                token,
+                chat_id,
+                &reply,
+                "🌐 Open Web Dashboard",
+                &lan_url,
+            );
+        }
         "/help" | "help" => {
             let help_text = "🎮 <b>GPO Autofish Remote Controls</b>\n\n\
                 👑 /bosses - Live Boss & Merchant countdowns\n\
                 🔔 /toggle &lt;boss&gt; - Mute/unmute alerts (e.g. /toggle roger)\n\
                 🔄 /sync - Calibrate timers (/sync read, /sync server, or paste Discord)\n\
+                🌐 /web - Open live Web Dashboard (Mobile & PC)\n\
                 🔊 /volume &lt;0-100|max|zero&gt; - Set sound volume (/volume 0..100)\n\
+                💡 /brightness &lt;0-100|max|min&gt; - Set screen brightness\n\
                 🔇 /mute / /unmute - Mute or unmute Windows PC audio\n\
                 📊 /status - View live stats & screenshot\n\
                 📸 /screenshot - Instant Roblox screenshot on demand\n\
@@ -630,11 +691,224 @@ fn handle_command(
                 🛑 /stop - Pause macro\n\
                 🚀 /update - Check & apply new app update\n\
                 ❓ /help - Show this commands list\n\n\
-                <i>💡 Tip: Tap the <b>[/] Menu</b> button next to the input box for one-tap commands!</i>";
+                <i>💡 Tip: Tap the <b>[/] Menu</b> button next to the input box for one-tap commands! You can also talk to the bot naturally.</i>";
             let _ = post_telegram(token, chat_id, help_text);
         }
-        _ => {}
+        _ => {
+            handle_smart_command(bot, settings, boss_tracker, token, chat_id, text);
+        }
     }
+}
+
+fn handle_smart_command(
+    bot: &Arc<Bot>,
+    settings: &Arc<RwLock<Settings>>,
+    boss_tracker: &mut crate::core::boss_tracker::BossTracker,
+    token: &str,
+    chat_id: &str,
+    text: &str,
+) {
+    let lower = text.to_lowercase();
+    let words: Vec<&str> = lower.split_whitespace().collect();
+
+    // 1. Brightness / Light intent
+    if lower.contains("brightness") || lower.contains("screen light") || lower.contains("light level") || lower.contains("dim screen") || (lower.contains("light") && (lower.contains("screen") || lower.contains("monitor") || lower.contains("display") || words.iter().any(|w| w.parse::<u32>().is_ok()))) {
+        if lower.contains("max") || lower.contains("100") {
+            let _ = crate::core::brightness::set_brightness(100);
+            let _ = post_telegram(token, chat_id, "💡 <b>Screen brightness set to MAX (100%)</b>");
+            return;
+        } else if lower.contains("min") || lower.contains("zero") || words.contains(&"0") {
+            let _ = crate::core::brightness::set_brightness(0);
+            let _ = post_telegram(token, chat_id, "💡 <b>Screen brightness set to MIN (0%)</b>");
+            return;
+        } else if let Some(num) = extract_number(&lower) {
+            let clamped = num.clamp(0, 100);
+            let _ = crate::core::brightness::set_brightness(clamped);
+            let emoji = if clamped < 30 { "🌑" } else if clamped < 70 { "🌓" } else { "🌕" };
+            let _ = post_telegram(token, chat_id, &format!("{emoji} <b>Screen brightness set to {clamped}%</b>"));
+            return;
+        } else {
+            let b = crate::core::brightness::get_brightness().unwrap_or(80);
+            let _ = post_telegram(token, chat_id, &format!("💡 <b>Current Screen Brightness:</b> <b>{b}%</b>\n\n<i>To change:</i> <code>brightness 50</code>, <code>brightness max</code>, <code>dim screen</code>"));
+            return;
+        }
+    }
+
+    // 2. Volume / Sound intent
+    if lower.contains("volume") || lower.contains("sound") || lower.contains("audio") || lower.contains("mute") || lower.contains("unmute") || lower.contains("louder") || lower.contains("quieter") {
+        if lower.contains("unmute") {
+            let _ = crate::core::audio::set_mute(false);
+            let vol = (crate::core::audio::get_volume().unwrap_or(0.5) * 100.0).round() as u32;
+            let _ = post_telegram(token, chat_id, &format!("🔊 <b>Windows Audio UNMUTED!</b> (Volume: <b>{vol}%</b>)"));
+            return;
+        } else if lower.contains("mute") || lower.contains("zero") || words.contains(&"0") {
+            let _ = crate::core::audio::set_mute(true);
+            let _ = post_telegram(token, chat_id, "🔇 <b>Windows Audio MUTED!</b>\nSend <code>unmute</code> or <code>volume max</code> to restore.");
+            return;
+        } else if lower.contains("max") || lower.contains("100") {
+            let _ = crate::core::audio::set_volume(1.0);
+            let _ = post_telegram(token, chat_id, "🔊 <b>Windows Volume set to MAX (100%)</b>");
+            return;
+        } else if let Some(num) = extract_number(&lower) {
+            let clamped = num.clamp(0, 100);
+            let _ = crate::core::audio::set_volume(clamped as f32 / 100.0);
+            let emoji = if clamped == 0 { "🔇" } else if clamped < 50 { "🔉" } else { "🔊" };
+            let _ = post_telegram(token, chat_id, &format!("{emoji} <b>Windows Volume set to {clamped}%</b>"));
+            return;
+        } else {
+            let vol = (crate::core::audio::get_volume().unwrap_or(0.5) * 100.0).round() as u32;
+            let muted = crate::core::audio::is_muted().unwrap_or(false);
+            let state_str = if muted || vol == 0 { "🔇 Muted" } else { "🔊 Unmuted" };
+            let _ = post_telegram(token, chat_id, &format!("🔊 <b>Windows Master Audio:</b> <b>{vol}%</b> ({state_str})\n\n<i>To change:</i> <code>volume 60</code>, <code>volume max</code>, <code>mute</code>"));
+            return;
+        }
+    }
+
+    // 3. Screenshot intent
+    if lower.contains("screenshot") || lower.contains("photo") || lower.contains("pic") || lower.contains("picture") || lower.contains("screen") || lower.contains("show me") || lower.contains("view game") {
+        handle_command(bot, settings, boss_tracker, token, chat_id, "/screenshot");
+        return;
+    }
+
+    // 4. Status / Progress intent
+    if lower.contains("status") || lower.contains("how many fish") || lower.contains("progress") || lower.contains("stats") || lower.contains("how is it going") || lower.contains("what is happening") || lower.contains("runtime") {
+        handle_command(bot, settings, boss_tracker, token, chat_id, "/status");
+        return;
+    }
+
+    // 5. Pity intent
+    if lower.contains("pity") {
+        handle_command(bot, settings, boss_tracker, token, chat_id, "/pity");
+        return;
+    }
+
+    // 6. Bosses / Timers intent
+    if lower.contains("boss") || lower.contains("timer") || lower.contains("roger") || lower.contains("mihawk") || lower.contains("kizaru") || lower.contains("merchant") || lower.contains("brook") || lower.contains("when does") {
+        handle_command(bot, settings, boss_tracker, token, chat_id, "/bosses");
+        return;
+    }
+
+    // 7. Recast intent
+    if lower.contains("recast") || lower.contains("cast again") || lower.contains("reset rod") || lower.contains("throw rod") {
+        handle_command(bot, settings, boss_tracker, token, chat_id, "/recast");
+        return;
+    }
+
+    // 8. Start / Resume intent
+    if lower.contains("start") || lower.contains("resume") || lower.contains("continue") || lower.contains("unpause") {
+        handle_command(bot, settings, boss_tracker, token, chat_id, "/start");
+        return;
+    }
+
+    // 9. Pause / Stop intent
+    if lower.contains("pause") || lower.contains("stop") || lower.contains("halt") || lower.contains("hold on") {
+        handle_command(bot, settings, boss_tracker, token, chat_id, "/stop");
+        return;
+    }
+
+    // 10. Buy bait intent
+    if lower.contains("buy bait") || lower.contains("purchase bait") || lower.contains("get bait") || lower.contains("buy some bait") {
+        handle_command(bot, settings, boss_tracker, token, chat_id, "/buybait");
+        return;
+    }
+
+    // 11. Web App / Dashboard intent
+    if lower.contains("web") || lower.contains("dashboard") || lower.contains("panel") || lower.contains("site") || lower.contains("link") {
+        handle_command(bot, settings, boss_tracker, token, chat_id, "/web");
+        return;
+    }
+
+    // 12. Help intent
+    if lower.contains("help") || lower.contains("commands") || lower.contains("what can you do") {
+        handle_command(bot, settings, boss_tracker, token, chat_id, "/help");
+        return;
+    }
+
+    // 13. Conversational Gemini AI fallback (if enabled)
+    let (gemini_enabled, api_key, model) = {
+        let s = settings.read();
+        (s.gemini.enabled && !s.gemini.api_key.trim().is_empty(), s.gemini.api_key.clone(), s.gemini.model.clone())
+    };
+
+    if gemini_enabled {
+        let stats = bot.ctx().session.lock().stats();
+        let vol = (crate::core::audio::get_volume().unwrap_or(0.5) * 100.0).round() as u32;
+        let brightness = crate::core::brightness::get_brightness().unwrap_or(80);
+        let state = if bot.is_paused() { "Paused" } else if bot.is_running() { "Fishing" } else { "Stopped" };
+        let context_summary = format!(
+            "Macro State: {state}, Runtime: {}s, Fish Caught: {}, Fruits: {}, Fruit Pity: {}, Legendary Pity: {}/100, Master Volume: {}%, Screen Brightness: {}%",
+            stats.runtime_s, stats.fish, stats.fruits, stats.pity_fruit, stats.pity_legendary, vol, brightness
+        );
+
+        if let Ok(res) = crate::core::gemini::interpret_smart_bot_command(text, &context_summary, &api_key, &model) {
+            if let Some(ref act) = res.action {
+                match act.as_str() {
+                    "start" => bot.start(),
+                    "pause" => bot.pause(),
+                    "recast" => bot.recast(),
+                    "buy_bait" => { let _ = crate::bot::actions::purchase(&bot.ctx()); }
+                    "set_volume" => {
+                        if let Some(v) = res.param {
+                            let _ = crate::core::audio::set_volume(v.clamp(0, 100) as f32 / 100.0);
+                        }
+                    }
+                    "set_brightness" => {
+                        if let Some(b) = res.param {
+                            let _ = crate::core::brightness::set_brightness(b.clamp(0, 100));
+                        }
+                    }
+                    "screenshot" => {
+                        handle_command(bot, settings, boss_tracker, token, chat_id, "/screenshot");
+                        return;
+                    }
+                    "status" => {
+                        handle_command(bot, settings, boss_tracker, token, chat_id, "/status");
+                        return;
+                    }
+                    "pity" => {
+                        handle_command(bot, settings, boss_tracker, token, chat_id, "/pity");
+                        return;
+                    }
+                    "bosses" => {
+                        handle_command(bot, settings, boss_tracker, token, chat_id, "/bosses");
+                        return;
+                    }
+                    "web" => {
+                        handle_command(bot, settings, boss_tracker, token, chat_id, "/web");
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+            let _ = post_telegram(token, chat_id, &res.reply);
+            return;
+        }
+    }
+
+    // Final friendly fallback
+    let _ = post_telegram(
+        token,
+        chat_id,
+        "🤖 <b>I didn't quite catch that.</b>\n\n\
+         <i>Try commands like:</i>\n\
+         • <code>status</code> or <code>how many fish</code>\n\
+         • <code>screenshot</code> or <code>show screen</code>\n\
+         • <code>volume 50</code> or <code>mute</code>\n\
+         • <code>brightness 70</code> or <code>dim screen</code>\n\
+         • <code>bosses</code> or <code>when roger</code>\n\
+         • <code>web</code> (open live web dashboard)\n\
+         • <code>help</code> (show all commands)",
+    );
+}
+
+fn extract_number(text: &str) -> Option<u32> {
+    for token in text.split_whitespace() {
+        let clean: String = token.chars().filter(|c| c.is_ascii_digit()).collect();
+        if let Ok(n) = clean.parse::<u32>() {
+            return Some(n);
+        }
+    }
+    None
 }
 
 fn register_bot_commands(client: &reqwest::blocking::Client, token: &str) {
@@ -644,7 +918,9 @@ fn register_bot_commands(client: &reqwest::blocking::Client, token: &str) {
             { "command": "bosses", "description": "👑 Live Boss & Merchant timers" },
             { "command": "toggle", "description": "🔔 Mute/unmute specific boss alerts" },
             { "command": "sync", "description": "🔄 Calibrate boss timers (/sync)" },
+            { "command": "web", "description": "🌐 Open live Web Dashboard (Mobile & PC)" },
             { "command": "volume", "description": "🔊 Set sound volume (/volume 0..100, max, zero)" },
+            { "command": "brightness", "description": "💡 Set screen brightness (/brightness 0..100, min, max)" },
             { "command": "status", "description": "📊 Live stats & Roblox screenshot" },
             { "command": "screenshot", "description": "📸 Instant Roblox screen capture" },
             { "command": "pity", "description": "⚡ Devil fruit pity status" },

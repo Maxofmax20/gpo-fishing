@@ -443,3 +443,110 @@ pub fn rewrite_spawn_message_gemini(
     let clean = text.trim().strip_prefix("```html").unwrap_or(text.trim()).strip_suffix("```").unwrap_or(text.trim()).trim();
     Ok(clean.to_string())
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartCommandResult {
+    pub action: Option<String>,
+    pub param: Option<u32>,
+    pub reply: String,
+}
+
+pub fn interpret_smart_bot_command(
+    user_query: &str,
+    status_summary: &str,
+    api_key: &str,
+    model: &str,
+) -> Result<SmartCommandResult, String> {
+    let key = api_key.trim();
+    if key.is_empty() {
+        return Err("Gemini API key is empty".into());
+    }
+
+    let model_name = if model.trim().is_empty() {
+        "gemini-3.5-flash-lite"
+    } else {
+        model.trim().strip_prefix("models/").unwrap_or(model.trim())
+    };
+
+    let prompt = format!(
+        "You are the intelligent paired assistant for the Grand Piece Online (GPO) Autofish macro.\n\
+        The user sent a message through Telegram: \"{user_query}\"\n\n\
+        Current Macro Live Context:\n\
+        {status_summary}\n\n\
+        Available macro actions:\n\
+        - \"start\": start or resume macro\n\
+        - \"pause\": pause or stop macro\n\
+        - \"recast\": recast the fishing rod\n\
+        - \"buy_bait\": purchase fishing bait from merchant\n\
+        - \"set_volume\": set master volume (param: 0 to 100)\n\
+        - \"set_brightness\": set screen brightness (param: 0 to 100)\n\
+        - \"screenshot\": take and send Roblox screenshot\n\
+        - \"status\": send status report\n\
+        - \"pity\": send devil fruit pity report\n\
+        - \"bosses\": send boss countdowns\n\
+        - \"web\": send web dashboard link\n\
+        - null: if it's a general question or conversation\n\n\
+        Instructions:\n\
+        1. Determine if the user wants to trigger one of the actions above.\n\
+        2. Write a clear, friendly, and helpful reply in Telegram HTML format (use <b>bold</b>, <i>italic</i>, and emojis).\n\
+        3. If the user asked a question (e.g. pity, bosses, fishing performance, advice), answer it accurately using the live context provided.\n\
+        Respond ONLY with valid JSON in this exact structure:\n\
+        {{\n\
+          \"action\": <string or null>,\n\
+          \"param\": <number or null>,\n\
+          \"reply\": <string of HTML response>\n\
+        }}"
+    );
+
+    let payload = json!({
+        "contents": [{
+            "parts": [{ "text": prompt }]
+        }],
+        "generationConfig": {
+            "response_mime_type": "application/json"
+        }
+    });
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+        model_name, key
+    );
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .map_err(|e| format!("Gemini API request failed: {e}"))?;
+
+    let status = response.status();
+    let body_text = response
+        .text()
+        .map_err(|e| format!("Failed to read Gemini response body: {e}"))?;
+
+    if !status.is_success() {
+        return Err(format!("Gemini API error (status {status}): {body_text}"));
+    }
+
+    let parsed_res: serde_json::Value = serde_json::from_str(&body_text)
+        .map_err(|e| format!("Failed to parse Gemini API response JSON: {e}"))?;
+
+    let text = parsed_res
+        .get("candidates")
+        .and_then(|c| c.get(0))
+        .and_then(|c0| c0.get("content"))
+        .and_then(|cnt| cnt.get("parts"))
+        .and_then(|p| p.get(0))
+        .and_then(|p0| p0.get("text"))
+        .and_then(|t| t.as_str())
+        .ok_or_else(|| format!("Invalid candidate text in Gemini response: {body_text}"))?;
+
+    let clean = text.trim().strip_prefix("```json").unwrap_or(text.trim()).strip_suffix("```").unwrap_or(text.trim()).trim();
+    serde_json::from_str::<SmartCommandResult>(clean)
+        .map_err(|e| format!("Failed to parse SmartCommandResult '{clean}': {e}"))
+}
+
