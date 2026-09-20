@@ -359,6 +359,7 @@ fn handle_key(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
             crate::core::types::Key::Char('a'),
             crate::core::types::Key::Char('s'),
             crate::core::types::Key::Char('d'),
+            crate::core::types::Key::Char('t'),
             crate::core::types::Key::Char(' '),
             crate::core::types::Key::Shift,
             crate::core::types::Key::Left,
@@ -374,6 +375,7 @@ fn handle_key(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
             "a" => Some(crate::core::types::Key::Char('a')),
             "s" => Some(crate::core::types::Key::Char('s')),
             "d" => Some(crate::core::types::Key::Char('d')),
+            "t" => Some(crate::core::types::Key::Char('t')),
             "space" | "jump" => Some(crate::core::types::Key::Char(' ')),
             "shift" => Some(crate::core::types::Key::Shift),
             "e" | "interact" => Some(crate::core::types::Key::Char('e')),
@@ -787,6 +789,7 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
           <button class="pad-action-btn" data-key="space">🦘 JUMP (SPACE)</button>
           <button class="pad-action-btn" data-key="1">🎣 EQUIP ROD (1)</button>
           <button class="pad-action-btn" data-key="e">🖐️ INTERACT (E)</button>
+          <button class="pad-action-btn" data-key="t" style="grid-column: span 2;">💬 TALK / ACTION (T)</button>
         </div>
       </div>
     </div>

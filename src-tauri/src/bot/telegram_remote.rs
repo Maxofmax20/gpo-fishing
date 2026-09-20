@@ -304,6 +304,27 @@ fn handle_command(
             bot.recast();
             let _ = post_telegram(token, chat_id, "🔄 <b>Rod recast triggered remotely!</b>");
         }
+        "/t" | "t" => {
+            bot.ctx().ensure_roblox_focus();
+            std::thread::sleep(Duration::from_millis(50));
+            bot.ctx().platform.input.key(crate::core::types::Key::Char('t'), true);
+            std::thread::sleep(Duration::from_millis(70));
+            bot.ctx().platform.input.key(crate::core::types::Key::Char('t'), false);
+            let _ = post_telegram(token, chat_id, "💬 <b>Pressed key [T] in game!</b>");
+        }
+        cmd if cmd.starts_with("/key") || cmd.starts_with("key") => {
+            let ch_opt = cmd.split_whitespace().nth(1).and_then(|s| s.chars().next());
+            if let Some(ch) = ch_opt {
+                bot.ctx().ensure_roblox_focus();
+                std::thread::sleep(Duration::from_millis(50));
+                bot.ctx().platform.input.key(crate::core::types::Key::Char(ch), true);
+                std::thread::sleep(Duration::from_millis(70));
+                bot.ctx().platform.input.key(crate::core::types::Key::Char(ch), false);
+                let _ = post_telegram(token, chat_id, &format!("⌨️ <b>Pressed key [{ch}] in game!</b>"));
+            } else {
+                let _ = post_telegram(token, chat_id, "ℹ️ <b>Usage:</b> <code>/key &lt;letter&gt;</code> (e.g. <code>/key t</code>)");
+            }
+        }
         "/update" | "update" => {
             let _ = post_telegram(token, chat_id, "🔍 <b>Checking for GPO Autofish updates...</b>");
             let cur_ver = env!("CARGO_PKG_VERSION");
@@ -748,6 +769,7 @@ fn handle_command(
                 📸 /screenshot - Instant Roblox screenshot on demand\n\
                 ⚡ /pity - Quick Devil Fruit pity counter\n\
                 🔄 /recast - Reset rod & recast immediately\n\
+                💬 /t - Press key [T] in game (or /key &lt;letter&gt;)\n\
                 🛒 /buybait - Force merchant bait purchase now\n\
                 ⚙️ /setbuy &lt;N&gt; - Set catches between bait buys (e.g. /setbuy 50)\n\
                 📱 /setprogress &lt;N&gt; - Set catches between progress pings (e.g. /setprogress 100)\n\
@@ -989,6 +1011,7 @@ fn register_bot_commands(client: &reqwest::blocking::Client, token: &str) {
             { "command": "screenshot", "description": "📸 Instant Roblox screen capture" },
             { "command": "pity", "description": "⚡ Devil fruit pity status" },
             { "command": "recast", "description": "🔄 Reset rod & recast immediately" },
+            { "command": "t", "description": "💬 Press key [T] in game" },
             { "command": "buybait", "description": "🛒 Buy bait at merchant right now" },
             { "command": "setbuy", "description": "⚙️ Set catches between bait buys (/setbuy N)" },
             { "command": "setprogress", "description": "📱 Set catches between progress pings (/setprogress N)" },

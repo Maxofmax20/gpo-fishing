@@ -83,6 +83,19 @@ pub fn start_auto_craft(ctx: Arc<Ctx>, tier: CraftTier) -> Result<(), String> {
     Ok(())
 }
 
+fn craft_sleep(ms: u64) -> bool {
+    let step = 40;
+    let mut elapsed = 0;
+    while elapsed < ms {
+        if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(step.min(ms - elapsed)));
+        elapsed += step;
+    }
+    !CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst)
+}
+
 fn run_crafting_loop(ctx: &Ctx, tier: CraftTier) -> Result<u32, String> {
     let mut total_crafted = 0u32;
     let tiers_to_run = match tier {
@@ -104,13 +117,13 @@ fn run_crafting_loop(ctx: &Ctx, tier: CraftTier) -> Result<u32, String> {
 
         let mut consecutive_failures = 0;
         loop {
-            if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) || !ctx.alive() {
+            if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) {
                 return Ok(total_crafted);
             }
 
             // 1. Ensure Roblox is focused
             ctx.ensure_roblox_focus();
-            if !ctx.sleep_ms(80) { return Ok(total_crafted); }
+            if !craft_sleep(100) { return Ok(total_crafted); }
 
             // 2. Grab current frame
             let rect = ctx.roblox_rect().ok_or("Roblox window not found")?;
@@ -123,9 +136,9 @@ fn run_crafting_loop(ctx: &Ctx, tier: CraftTier) -> Result<u32, String> {
                     // Try pressing 'E' once to interact if dialog closed
                     ctx.log_info("🔨 Blacksmith Sen UI not visible, pressing 'E' to interact...");
                     ctx.platform.input.key(crate::core::types::Key::Char('e'), true);
-                    ctx.sleep_ms(60);
+                    std::thread::sleep(Duration::from_millis(60));
                     ctx.platform.input.key(crate::core::types::Key::Char('e'), false);
-                    if !ctx.sleep_ms(600) { return Ok(total_crafted); }
+                    if !craft_sleep(600) { return Ok(total_crafted); }
 
                     let frame2 = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
                     match detect_blacksmith_ui(&frame2, &rect) {
@@ -151,13 +164,13 @@ fn run_crafting_loop(ctx: &Ctx, tier: CraftTier) -> Result<u32, String> {
 
             ctx.log_info(&format!("🔨 Selecting {current_tier:?} Fish Bait at ({}, {})", target_bait_pt.x, target_bait_pt.y));
             click_point(ctx, target_bait_pt);
-            if !ctx.sleep_ms(250) { return Ok(total_crafted); }
+            if !craft_sleep(250) { return Ok(total_crafted); }
 
             // 5. Fill material slots:
             // Click the Material List '+' (plus) button to open fish list
             ctx.log_info(&format!("🔨 Clicking Material '+' at ({}, {})", layout.material_plus_pos.x, layout.material_plus_pos.y));
             click_point(ctx, layout.material_plus_pos);
-            if !ctx.sleep_ms(300) { return Ok(total_crafted); }
+            if !craft_sleep(300) { return Ok(total_crafted); }
 
             // Grab updated frame to see right-side fish list
             let frame_after_plus = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
@@ -172,11 +185,11 @@ fn run_crafting_loop(ctx: &Ctx, tier: CraftTier) -> Result<u32, String> {
             let fish_1 = fish_items[0];
             ctx.log_info(&format!("🔨 Selecting fish #1 at ({}, {})", fish_1.x, fish_1.y));
             click_point(ctx, fish_1);
-            if !ctx.sleep_ms(220) { return Ok(total_crafted); }
+            if !craft_sleep(220) { return Ok(total_crafted); }
 
             // For recipes requiring 2 materials (e.g. 0/2), click plus again and select next fish if needed
             click_point(ctx, layout.material_plus_pos);
-            if !ctx.sleep_ms(250) { return Ok(total_crafted); }
+            if !craft_sleep(250) { return Ok(total_crafted); }
 
             let frame_slot2 = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
             let fish_items_slot2 = detect_fish_list(&frame_slot2, &rect, layout.craft_button_pos.x);
@@ -184,13 +197,13 @@ fn run_crafting_loop(ctx: &Ctx, tier: CraftTier) -> Result<u32, String> {
                 let fish_2 = fish_items_slot2[0];
                 ctx.log_info(&format!("🔨 Selecting fish #2 at ({}, {})", fish_2.x, fish_2.y));
                 click_point(ctx, fish_2);
-                if !ctx.sleep_ms(220) { return Ok(total_crafted); }
+                if !craft_sleep(220) { return Ok(total_crafted); }
             }
 
             // 6. Click green CRAFT button
             ctx.log_info(&format!("🔨 Clicking CRAFT button at ({}, {})", layout.craft_button_pos.x, layout.craft_button_pos.y));
             click_point(ctx, layout.craft_button_pos);
-            if !ctx.sleep_ms(400) { return Ok(total_crafted); }
+            if !craft_sleep(400) { return Ok(total_crafted); }
 
             // 7. Check if Quantity Dialog appeared ("Craft Selected" / "Craft 1")
             let frame_popup = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
@@ -198,14 +211,14 @@ fn run_crafting_loop(ctx: &Ctx, tier: CraftTier) -> Result<u32, String> {
                 ctx.log_info("🔨 Quantity dialog detected! Maxing slider and crafting...");
                 // Click right end of slider to select maximum quantity
                 click_point(ctx, q.slider_max_pos);
-                if !ctx.sleep_ms(180) { return Ok(total_crafted); }
+                if !craft_sleep(180) { return Ok(total_crafted); }
 
                 // Click green "Craft Selected" button
                 click_point(ctx, q.craft_selected_pos);
-                if !ctx.sleep_ms(500) { return Ok(total_crafted); }
+                if !craft_sleep(500) { return Ok(total_crafted); }
             } else {
                 ctx.log_info("🔨 Single craft executed directly (no quantity dialog).");
-                if !ctx.sleep_ms(400) { return Ok(total_crafted); }
+                if !craft_sleep(400) { return Ok(total_crafted); }
             }
 
             total_crafted += 1;
@@ -217,7 +230,7 @@ fn run_crafting_loop(ctx: &Ctx, tier: CraftTier) -> Result<u32, String> {
 
             consecutive_failures = 0;
             // Short rest between crafts
-            if !ctx.sleep_ms(350) { return Ok(total_crafted); }
+            if !craft_sleep(350) { return Ok(total_crafted); }
         }
     }
 
@@ -253,8 +266,7 @@ fn detect_blacksmith_ui(frame: &Frame, window: &PxRect) -> Option<BlacksmithUiLa
         return None;
     }
 
-    // Look for bright green CRAFT button: R < 60, G > 190, B < 60
-    // Width is typically 70..160px
+    // Look for green CRAFT button: G is dominant, R and B are significantly lower
     let mut min_x = frame.w;
     let mut max_x = 0;
     let mut min_y = frame.h;
@@ -269,7 +281,7 @@ fn detect_blacksmith_ui(frame: &Frame, window: &PxRect) -> Option<BlacksmithUiLa
             let g = frame.rgba[idx + 1];
             let b = frame.rgba[idx + 2];
 
-            if g > 190 && r < 60 && b < 60 {
+            if g > 150 && (g as u32 > (r as u32 * 3 / 2)) && b < 110 {
                 min_x = min_x.min(x);
                 max_x = max_x.max(x);
                 min_y = min_y.min(y);
@@ -279,7 +291,7 @@ fn detect_blacksmith_ui(frame: &Frame, window: &PxRect) -> Option<BlacksmithUiLa
         }
     }
 
-    if count < 80 || (max_x - min_x) < 40 {
+    if count < 40 || (max_x - min_x) < 30 {
         return None;
     }
 
@@ -287,23 +299,22 @@ fn detect_blacksmith_ui(frame: &Frame, window: &PxRect) -> Option<BlacksmithUiLa
     let craft_cy = ((min_y + max_y) / 2) as i32;
 
     // Relative offsets derived from GPO Blacksmith Sen UI:
-    // Window scale factor based on detected craft button width (standard ~110px)
     let button_w = (max_x - min_x) as f32;
-    let scale = (button_w / 108.0).clamp(0.6, 2.2);
+    let scale = (button_w / 110.0).clamp(0.6, 2.2);
 
     let craft_screen_pt = PxPoint {
         x: window.x + (craft_cx as f32 * (window.w as f32 / frame.w as f32)).round() as i32,
         y: window.y + (craft_cy as f32 * (window.h as f32 / frame.h as f32)).round() as i32,
     };
 
-    // Material '+' is directly above CRAFT button (~340px above at 1.0 scale)
+    // Material '+' is directly above CRAFT button (~380px above at 1.0 scale)
     let plus_screen_pt = PxPoint {
-        x: craft_screen_pt.x,
-        y: craft_screen_pt.y - (340.0 * scale).round() as i32,
+        x: craft_screen_pt.x - (12.0 * scale).round() as i32,
+        y: craft_screen_pt.y - (380.0 * scale).round() as i32,
     };
 
-    // Baits list is in the left pane (~310px to the left of CRAFT button)
-    let list_x = craft_screen_pt.x - (310.0 * scale).round() as i32;
+    // Baits list is in the left pane (~300px to the left of CRAFT button)
+    let list_x = craft_screen_pt.x - (300.0 * scale).round() as i32;
     let rare_screen_pt = PxPoint {
         x: list_x,
         y: craft_screen_pt.y - (70.0 * scale).round() as i32,
@@ -333,12 +344,12 @@ fn detect_fish_list(frame: &Frame, window: &PxRect, craft_button_x: i32) -> Vec<
     }
 
     let rel_craft_x = ((craft_button_x - window.x) as f32 * (frame.w as f32 / window.w as f32)).round() as usize;
-    let search_start_x = (rel_craft_x + 120).min(frame.w.saturating_sub(60));
+    let search_start_x = (rel_craft_x + 90).min(frame.w.saturating_sub(60));
     let search_end_x = frame.w;
 
     let mut item_pts = Vec::new();
 
-    // Fish items are horizontal pills with dark slate/blue background: R: 25..75, G: 45..95, B: 75..145
+    // Fish items are horizontal rows with dark blue/grey background
     let mut in_item = false;
     let mut item_start_y = 0;
 
@@ -352,12 +363,12 @@ fn detect_fish_list(frame: &Frame, window: &PxRect, craft_button_x: i32) -> Vec<
             let g = frame.rgba[idx + 1];
             let b = frame.rgba[idx + 2];
 
-            if r >= 20 && r <= 80 && g >= 40 && g <= 110 && b >= 70 && b <= 160 {
+            if r >= 15 && r <= 110 && g >= 30 && g <= 140 && b >= 55 && b <= 180 {
                 row_blue_count += 1;
             }
         }
 
-        if row_blue_count > 60 {
+        if row_blue_count > 40 {
             if !in_item {
                 in_item = true;
                 item_start_y = y;
@@ -365,7 +376,7 @@ fn detect_fish_list(frame: &Frame, window: &PxRect, craft_button_x: i32) -> Vec<
         } else if in_item {
             in_item = false;
             let item_h = y - item_start_y;
-            if item_h >= 12 && item_h <= 60 {
+            if item_h >= 10 && item_h <= 70 {
                 let center_y = (item_start_y + y) / 2;
                 let center_x = (search_start_x + search_end_x) / 2;
                 let pt = PxPoint {
@@ -377,13 +388,14 @@ fn detect_fish_list(frame: &Frame, window: &PxRect, craft_button_x: i32) -> Vec<
         }
     }
 
-    // Fallback standard points if visual detection finds fewer rows
+    // Fallback standard points on right pane if visual edge detection found nothing
     if item_pts.is_empty() {
-        let fallback_x = craft_button_x + 280;
-        for dy in [125, 160, 195, 230] {
+        let fallback_x = craft_button_x + 230;
+        let scale_y = window.h as f32 / 685.0;
+        for dy in [200.0, 245.0, 290.0, 335.0, 380.0] {
             item_pts.push(PxPoint {
                 x: fallback_x,
-                y: window.y + dy,
+                y: window.y + (dy * scale_y).round() as i32,
             });
         }
     }
@@ -397,14 +409,12 @@ fn detect_quantity_dialog(frame: &Frame, window: &PxRect) -> Option<QuantityDial
         return None;
     }
 
-    // Detect dark green "Craft Selected" button: R < 35, G > 130, B < 35
+    // Detect green "Craft Selected" button and red "Craft 1" button
     let mut min_gx = frame.w;
     let mut max_gx = 0;
     let mut min_gy = frame.h;
     let mut max_gy = 0;
     let mut g_count = 0;
-
-    // Detect dark red "Craft 1" button: R > 130, G < 35, B < 35
     let mut r_count = 0;
 
     for y in (frame.h / 3)..(frame.h * 4 / 5) {
@@ -415,19 +425,19 @@ fn detect_quantity_dialog(frame: &Frame, window: &PxRect) -> Option<QuantityDial
             let g = frame.rgba[idx + 1];
             let b = frame.rgba[idx + 2];
 
-            if g > 130 && r < 35 && b < 35 {
+            if g > 100 && (g as u32 > r as u32 + 20) && (g as u32 > b as u32 + 20) {
                 min_gx = min_gx.min(x);
                 max_gx = max_gx.max(x);
                 min_gy = min_gy.min(y);
                 max_gy = max_gy.max(y);
                 g_count += 1;
-            } else if r > 130 && g < 35 && b < 35 {
+            } else if r > 100 && (r as u32 > g as u32 + 20) && (r as u32 > b as u32 + 20) {
                 r_count += 1;
             }
         }
     }
 
-    if g_count < 40 || r_count < 40 {
+    if g_count < 25 && r_count < 25 {
         return None;
     }
 
@@ -440,9 +450,9 @@ fn detect_quantity_dialog(frame: &Frame, window: &PxRect) -> Option<QuantityDial
     };
 
     // Slider bar is located ~85px above the buttons, spanning horizontally
-    // The right end (maximum quantity) is ~300px to the right of Craft Selected button center
+    // The right end (maximum quantity) is ~260px to the right of Craft Selected button center
     let slider_max_pt = PxPoint {
-        x: craft_selected_pt.x + 300,
+        x: craft_selected_pt.x + 260,
         y: craft_selected_pt.y - 84,
     };
 
