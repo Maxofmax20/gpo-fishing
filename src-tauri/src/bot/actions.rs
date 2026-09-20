@@ -414,16 +414,6 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             return false;
         }
 
-        // If secondary backup point is also set, click it too (legacy support)
-        if let Some(backup) = s.points.bait[1].and_then(|p| rel_to_px(ctx, p)) {
-            if !click(ctx, backup) || !ctx.sleep_ms(30) {
-                return false;
-            }
-            if !click(ctx, target_px) || !ctx.sleep_ms(30) {
-                return false;
-            }
-        }
-
         return true;
     }
 
