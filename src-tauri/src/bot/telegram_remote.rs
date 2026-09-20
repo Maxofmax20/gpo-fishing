@@ -511,6 +511,10 @@ fn handle_command(
                         s.boss_tracker.notify_merchant = !s.boss_tracker.notify_merchant;
                         let state = if s.boss_tracker.notify_merchant { "ENABLED 🔔" } else { "MUTED 🔕" };
                         format!("🛒 <b>Travelling Merchant alerts:</b> {state}")
+                    } else if target_low.contains("fruit") || target_low.contains("spawn") || target_low.contains("ase") {
+                        s.webhook.spawn = !s.webhook.spawn;
+                        let state = if s.webhook.spawn { "ENABLED 🔔 (Active on Roblox)" } else { "STOPPED / MUTED 🔕" };
+                        format!("🍇 <b>Devil Fruit & ASE Spawn Alerts:</b> {state}")
                     } else if target_low == "all" {
                         let any_on = s.boss_tracker.notify_hawkeye || s.boss_tracker.notify_roger || s.boss_tracker.notify_soulking || s.boss_tracker.notify_radiant_admiral || s.boss_tracker.notify_merchant;
                         let new_state = !any_on;

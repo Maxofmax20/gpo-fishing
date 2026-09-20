@@ -180,6 +180,29 @@ impl Frame {
         Ok(bytes)
     }
 
+    pub fn to_jpeg_bytes(&self, quality: u8) -> Result<Vec<u8>, String> {
+        if self.w == 0 || self.h == 0 {
+            return Err("Empty frame".into());
+        }
+        let mut bytes = Vec::new();
+        let mut rgb = Vec::with_capacity(self.w * self.h * 3);
+        for chunk in self.rgba.chunks_exact(4) {
+            rgb.push(chunk[0]);
+            rgb.push(chunk[1]);
+            rgb.push(chunk[2]);
+        }
+        let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut bytes, quality);
+        image::ImageEncoder::write_image(
+            encoder,
+            &rgb,
+            self.w as u32,
+            self.h as u32,
+            image::ExtendedColorType::Rgb8,
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(bytes)
+    }
+
     pub fn average_hash(&self) -> u64 {
         if self.w == 0 || self.h == 0 {
             return 0;

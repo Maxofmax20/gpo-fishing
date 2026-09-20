@@ -104,18 +104,74 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
         send_html(&mut stream);
     } else if raw_path == "/api/status" {
         send_status(&mut stream, bot, settings);
+    } else if raw_path == "/api/stream" {
+        let _ = stream.set_read_timeout(None);
+        let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+        stream_mjpeg(stream, bot);
     } else if raw_path == "/api/screenshot" {
         send_screenshot(&mut stream, bot);
+    } else if raw_path == "/api/click" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_click(&mut stream, bot, body);
+    } else if raw_path == "/api/key" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_key(&mut stream, bot, body);
     } else if raw_path == "/api/action" && method == "POST" {
-        let body = if let Some(idx) = req_str.find("\r\n\r\n") {
-            &req_str[idx + 4..]
-        } else {
-            ""
-        };
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_action(&mut stream, bot, settings, body);
     } else {
         let not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
         let _ = stream.write_all(not_found.as_bytes());
+    }
+}
+
+fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>) {
+    let header = "HTTP/1.1 200 OK\r\n\
+                  Content-Type: multipart/x-mixed-replace; boundary=frame\r\n\
+                  Cache-Control: no-cache, no-store, must-revalidate\r\n\
+                  Access-Control-Allow-Origin: *\r\n\
+                  Connection: close\r\n\r\n";
+    if stream.write_all(header.as_bytes()).is_err() {
+        return;
+    }
+
+    loop {
+        let frame_opt = bot.ctx().roblox_rect()
+            .and_then(|r| bot.ctx().platform.capture.grab(r).ok())
+            .map(|f| f.downscale(720))
+            .and_then(|f| f.to_jpeg_bytes(70).ok());
+
+        let bytes = match frame_opt {
+            Some(b) => {
+                *LAST_FRAME.write() = Some(b.clone());
+                b
+            }
+            None => {
+                match LAST_FRAME.read().as_ref() {
+                    Some(b) => b.clone(),
+                    None => {
+                        std::thread::sleep(Duration::from_millis(100));
+                        continue;
+                    }
+                }
+            }
+        };
+
+        let part_header = format!(
+            "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {}\r\n\r\n",
+            bytes.len()
+        );
+        if stream.write_all(part_header.as_bytes()).is_err() {
+            break;
+        }
+        if stream.write_all(&bytes).is_err() {
+            break;
+        }
+        if stream.write_all(b"\r\n").is_err() {
+            break;
+        }
+
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 
@@ -170,6 +226,7 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
             "name": boss.name(),
             "emoji": boss.emoji(),
             "location": boss.location(),
+            "target_spawn": now + rem,
             "next_spawn_s": rem,
             "next_spawn_fmt": crate::core::boss_tracker::format_duration(rem),
             "is_spawned": rem <= 0,
@@ -193,6 +250,8 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "bait_tier": format!("{:?}", s.purchase.bait_tier),
         "legendary_reserve": s.purchase.legendary_reserve,
         "auto_purchase": s.features.auto_purchase,
+        "spawn_alerts": s.webhook.spawn,
+        "server_time": now,
         "last_fruit": stats.last_fruit,
         "last_spawn": stats.last_spawn,
         "volume": vol,
@@ -217,13 +276,13 @@ fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>) {
         .ctx()
         .roblox_rect()
         .and_then(|r| bot.ctx().platform.capture.grab(r).ok())
-        .map(|f| f.downscale(960))
-        .and_then(|f| f.to_png_bytes().ok());
+        .map(|f| f.downscale(760))
+        .and_then(|f| f.to_jpeg_bytes(75).ok());
 
     if let Some(bytes) = fresh_bytes {
         *LAST_FRAME.write() = Some(bytes.clone());
         let header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             bytes.len()
         );
         let _ = stream.write_all(header.as_bytes());
@@ -233,7 +292,7 @@ fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>) {
 
     if let Some(cached) = LAST_FRAME.read().as_ref() {
         let header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             cached.len()
         );
         let _ = stream.write_all(header.as_bytes());
@@ -247,6 +306,69 @@ fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>) {
         msg.len(),
         msg
     );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_click(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let rx = parsed.get("rel_x").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    let ry = parsed.get("rel_y").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    let btn_str = parsed.get("button").and_then(|v| v.as_str()).unwrap_or("left");
+
+    if let Some(rect) = bot.ctx().roblox_rect() {
+        let px = rect.x + (rx * rect.w as f32).round() as i32;
+        let py = rect.y + (ry * rect.h as f32).round() as i32;
+        let pt = crate::core::types::PxPoint { x: px, y: py };
+
+        bot.ctx().platform.input.move_to(pt);
+        std::thread::sleep(Duration::from_millis(25));
+        let btn = if btn_str == "right" {
+            crate::core::types::MouseButton::Right
+        } else {
+            crate::core::types::MouseButton::Left
+        };
+        bot.ctx().platform.input.button(btn, true);
+        std::thread::sleep(Duration::from_millis(60));
+        bot.ctx().platform.input.button(btn, false);
+    }
+
+    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_key(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let key_str = parsed.get("key").and_then(|v| v.as_str()).unwrap_or("");
+    let is_down = parsed.get("down").and_then(|v| v.as_bool()).unwrap_or(true);
+    let tap = parsed.get("tap").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    let k_opt = match key_str.to_lowercase().as_str() {
+        "w" => Some(crate::core::types::Key::Char('w')),
+        "a" => Some(crate::core::types::Key::Char('a')),
+        "s" => Some(crate::core::types::Key::Char('s')),
+        "d" => Some(crate::core::types::Key::Char('d')),
+        "space" | "jump" => Some(crate::core::types::Key::Char(' ')),
+        "shift" => Some(crate::core::types::Key::Shift),
+        "e" | "interact" => Some(crate::core::types::Key::Char('e')),
+        "1" => Some(crate::core::types::Key::Char('1')),
+        "2" => Some(crate::core::types::Key::Char('2')),
+        "3" => Some(crate::core::types::Key::Char('3')),
+        "4" => Some(crate::core::types::Key::Char('4')),
+        "5" => Some(crate::core::types::Key::Char('5')),
+        _ => None,
+    };
+
+    if let Some(k) = k_opt {
+        if tap {
+            bot.ctx().platform.input.key(k, true);
+            std::thread::sleep(Duration::from_millis(80));
+            bot.ctx().platform.input.key(k, false);
+        } else {
+            bot.ctx().platform.input.key(k, is_down);
+        }
+    }
+
+    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
     let _ = stream.write_all(resp.as_bytes());
 }
 
@@ -293,6 +415,13 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
             }
             "Brightness updated"
         }
+        "toggle_spawn" => {
+            let mut s = settings.write();
+            s.webhook.spawn = !s.webhook.spawn;
+            let enabled = s.webhook.spawn;
+            let _ = bot.ctx().store.save(&s);
+            if enabled { "Fruit Spawn alerts enabled (Active on Roblox)" } else { "Fruit Spawn alerts stopped" }
+        }
         "update" => {
             let bot_clone = Arc::clone(bot);
             let s = settings.read();
@@ -337,7 +466,6 @@ fn send_html(stream: &mut TcpStream) {
 :root {
   --bg: #07090e;
   --card: rgba(16, 22, 34, 0.85);
-  --card-glow: rgba(0, 240, 255, 0.08);
   --border: rgba(30, 41, 59, 0.8);
   --border-focus: #00f0ff;
   --cyan: #00f0ff;
@@ -364,6 +492,7 @@ header {
 .brand h1 { font-size: 1.2rem; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, var(--cyan), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 .brand-sub { font-size: 0.72rem; color: var(--text-mute); font-family: monospace; }
 
+.header-badges { display: flex; align-items: center; gap: 8px; }
 .status-badge {
   padding: 6px 14px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
   letter-spacing: 0.5px; text-transform: uppercase; display: flex; align-items: center; gap: 6px;
@@ -373,7 +502,16 @@ header {
 .badge-paused { background: rgba(245, 158, 11, 0.15); color: var(--amber); border-color: rgba(245, 158, 11, 0.4); box-shadow: 0 0 16px rgba(245, 158, 11, 0.2); }
 .badge-stopped { background: rgba(100, 116, 139, 0.15); color: var(--text-dim); border-color: rgba(100, 116, 139, 0.3); }
 
-/* SCREEN STREAM */
+.toggle-spawn-badge {
+  cursor: pointer; padding: 6px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+  background: rgba(176, 38, 255, 0.15); color: #d8b4fe; border: 1px solid rgba(176, 38, 255, 0.4);
+  transition: all 0.2s ease; user-select: none;
+}
+.toggle-spawn-badge.off {
+  background: rgba(100, 116, 139, 0.15); color: var(--text-mute); border-color: rgba(100, 116, 139, 0.3);
+}
+
+/* SCREEN STREAM & TAP-TO-CONTROL */
 .stream-wrapper {
   background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
   position: relative; box-shadow: 0 12px 36px rgba(0,0,0,0.5);
@@ -385,20 +523,24 @@ header {
 .stream-indicator { display: flex; align-items: center; gap: 8px; }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; transition: all 0.3s; }
 .live-dot.on { background: var(--emerald); box-shadow: 0 0 10px var(--emerald); animation: pulseDot 1.5s infinite; }
-.live-dot.reconnecting { background: var(--amber); box-shadow: 0 0 10px var(--amber); }
 @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
 .screen-box {
   width: 100%; min-height: 240px; background: #030508; display: flex; align-items: center; justify-content: center;
-  position: relative; overflow: hidden;
+  position: relative; overflow: hidden; cursor: crosshair;
 }
 .screen-img {
-  width: 100%; max-height: 480px; object-fit: contain; display: block;
-  transition: opacity 0.2s ease;
+  width: 100%; max-height: 480px; object-fit: contain; display: block; user-select: none;
 }
-.screen-loader {
-  position: absolute; color: var(--text-mute); font-size: 0.85rem; font-weight: 600;
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
+.click-ripple {
+  position: absolute; width: 24px; height: 24px; border-radius: 50%;
+  border: 2px solid var(--cyan); background: rgba(0, 240, 255, 0.3);
+  transform: translate(-50%, -50%) scale(0.2); pointer-events: none;
+  animation: ripple 0.4s ease-out forwards;
+}
+@keyframes ripple {
+  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
 }
 
 /* ACTIONS */
@@ -414,7 +556,34 @@ header {
 .btn-sub { background: rgba(30, 41, 59, 0.6); color: var(--text); border-color: var(--border); }
 .btn-sub:hover { background: rgba(51, 65, 85, 0.8); border-color: rgba(255,255,255,0.1); }
 .btn-update { background: rgba(176, 38, 255, 0.15); color: #d8b4fe; border-color: rgba(176, 38, 255, 0.4); }
-.btn-update:hover { background: rgba(176, 38, 255, 0.3); }
+
+/* VIRTUAL CONTROLLER */
+.controller-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.controller-layout {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;
+}
+.dpad {
+  display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); gap: 6px;
+}
+.dpad-btn {
+  background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 10px; color: var(--text);
+  font-weight: 800; font-size: 1rem; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; user-select: none; transition: all 0.1s;
+}
+.dpad-btn:active, .dpad-btn.pressed { background: var(--cyan); color: #000; box-shadow: 0 0 16px var(--cyan); }
+
+.action-buttons-pad {
+  display: flex; flex-wrap: wrap; gap: 8px; flex: 1; justify-content: flex-end;
+}
+.pad-action-btn {
+  padding: 10px 16px; background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-weight: 700; font-size: 0.82rem; cursor: pointer; user-select: none;
+  transition: all 0.1s; display: flex; align-items: center; gap: 6px;
+}
+.pad-action-btn:active, .pad-action-btn.pressed { background: var(--purple); color: #fff; box-shadow: 0 0 16px var(--purple); }
 
 /* STATS */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; }
@@ -424,7 +593,7 @@ header {
   backdrop-filter: blur(12px);
 }
 .card-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
-.card-val { font-size: 1.45rem; font-weight: 800; color: var(--text); font-family: -apple-system, sans-serif; }
+.card-val { font-size: 1.45rem; font-weight: 800; color: var(--text); }
 .card-val.fruit { color: #d8b4fe; text-shadow: 0 0 16px rgba(176, 38, 255, 0.3); }
 .card-meta { font-size: 0.72rem; color: var(--text-mute); }
 
@@ -475,28 +644,49 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
         <div class="brand-sub" id="host-sub">CONNECTING...</div>
       </div>
     </div>
-    <div id="status-pill" class="status-badge badge-stopped">STOPPED</div>
+    <div class="header-badges">
+      <div id="badge-fruit" class="toggle-spawn-badge" onclick="toggleSpawnAlerts()" title="Toggle fruit spawn alerts on/off">🍇 FRUIT ALERTS: ON</div>
+      <div id="status-pill" class="status-badge badge-stopped">STOPPED</div>
+    </div>
   </header>
 
-  <!-- LIVE STREAM -->
+  <!-- LIVE VIDEO STREAM & SCREEN TOUCH -->
   <div class="stream-wrapper">
     <div class="stream-bar">
       <div class="stream-indicator">
         <div id="stream-dot" class="live-dot on"></div>
-        <span id="stream-status-text">LIVE FEED</span>
+        <span>MJPEG LIVE STREAM (TAP TO CLICK)</span>
       </div>
-      <div id="stream-fps" style="font-family: monospace; color: var(--text-mute);">ROBLOX MIRROR</div>
+      <div id="stream-fps" style="font-family: monospace; color: var(--cyan);">LIVE 20 FPS</div>
     </div>
-    <div class="screen-box">
-      <div id="screen-placeholder" class="screen-loader">
-        <span style="font-size: 1.5rem;">🎮</span>
-        <span>Awaiting Game Frame...</span>
-      </div>
-      <img id="screen-img" class="screen-img" alt="" style="opacity: 0;" />
+    <div id="screen-container" class="screen-box" onclick="handleScreenTap(event)">
+      <img id="screen-img" class="screen-img" src="/api/stream" alt="" onerror="fallbackSnapshot()" />
     </div>
   </div>
 
-  <!-- ACTION BUTTONS -->
+  <!-- REMOTE GAMEPAD / MOVEMENT CONTROLLER -->
+  <div class="controller-card">
+    <div class="card-label">🎮 REMOTE GAMEPAD & CHARACTER MOVEMENT</div>
+    <div class="controller-layout">
+      <div class="dpad">
+        <div></div>
+        <button class="dpad-btn" onmousedown="keyEvent('w', true)" onmouseup="keyEvent('w', false)" ontouchstart="keyEvent('w', true)" ontouchend="keyEvent('w', false)">W</button>
+        <div></div>
+        <button class="dpad-btn" onmousedown="keyEvent('a', true)" onmouseup="keyEvent('a', false)" ontouchstart="keyEvent('a', true)" ontouchend="keyEvent('a', false)">A</button>
+        <button class="dpad-btn" onmousedown="keyEvent('s', true)" onmouseup="keyEvent('s', false)" ontouchstart="keyEvent('s', true)" ontouchend="keyEvent('s', false)">S</button>
+        <button class="dpad-btn" onmousedown="keyEvent('d', true)" onmouseup="keyEvent('d', false)" ontouchstart="keyEvent('d', true)" ontouchend="keyEvent('d', false)">D</button>
+      </div>
+
+      <div class="action-buttons-pad">
+        <button class="pad-action-btn" onclick="keyTap('space')">🦘 JUMP (SPACE)</button>
+        <button class="pad-action-btn" onclick="keyTap('shift')">⚡ SHIFT-LOCK</button>
+        <button class="pad-action-btn" onclick="keyTap('1')">🎣 EQUIP ROD (1)</button>
+        <button class="pad-action-btn" onclick="keyTap('e')">🖐️ INTERACT (E)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MACRO ACTIONS -->
   <div class="action-grid">
     <button id="btn-toggle" class="btn btn-toggle" onclick="togglePlay()">
       <span id="toggle-icon">▶️</span>
@@ -556,7 +746,7 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
     </div>
   </div>
 
-  <!-- SLIDERS: VOLUME & BRIGHTNESS -->
+  <!-- TOUCH-RELEASE SLIDERS: VOLUME & BRIGHTNESS -->
   <div class="card">
     <div class="sliders-grid">
       <div class="slider-group">
@@ -564,7 +754,11 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
           <span>🔊 WINDOWS AUDIO VOLUME</span>
           <span id="lbl-volume" class="slider-val">50%</span>
         </div>
-        <input id="rng-volume" type="range" min="0" max="100" value="50" oninput="onVolInput(this.value)" onchange="onVolChange(this.value)" />
+        <input id="rng-volume" type="range" min="0" max="100" value="50"
+               oninput="onVolInput(this.value)"
+               onchange="onVolRelease(this.value)"
+               onpointerup="onVolRelease(this.value)"
+               ontouchend="onVolRelease(this.value)" />
       </div>
 
       <div class="slider-group">
@@ -572,7 +766,11 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
           <span>💡 SCREEN BRIGHTNESS</span>
           <span id="lbl-brightness" class="slider-val">80%</span>
         </div>
-        <input id="rng-brightness" type="range" min="0" max="100" value="80" oninput="onBrightInput(this.value)" onchange="onBrightChange(this.value)" />
+        <input id="rng-brightness" type="range" min="0" max="100" value="80"
+               oninput="onBrightInput(this.value)"
+               onchange="onBrightRelease(this.value)"
+               onpointerup="onBrightRelease(this.value)"
+               ontouchend="onBrightRelease(this.value)" />
       </div>
     </div>
   </div>
@@ -592,11 +790,13 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
 let isRunning = false;
 let isPaused = false;
 let isMuted = false;
-let screenLoading = false;
-let userAdjustingVol = false;
-let userAdjustingBright = false;
+let spawnAlerts = true;
+let userSlidingVol = false;
+let userSlidingBright = false;
+let localRuntimeSec = 0;
+let bossesState = [];
+let serverTimeDelta = 0;
 
-// Initialize Telegram Web App SDK if opened inside Telegram
 if (window.Telegram && window.Telegram.WebApp) {
   const twa = window.Telegram.WebApp;
   twa.ready();
@@ -615,8 +815,20 @@ function showToast(msg) {
 function fmtSec(s) {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
+  const sec = Math.floor(s % 60);
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+}
+
+function formatDuration(sec) {
+  if (sec <= 0) return '00:00';
+  let m = Math.floor(sec / 60);
+  let s = Math.floor(sec % 60);
+  if (m >= 60) {
+    let h = Math.floor(m / 60);
+    m = m % 60;
+    return `${h}h ${String(m).padStart(2,'0')}m`;
+  }
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
 async function fetchStatus() {
@@ -627,8 +839,21 @@ async function fetchStatus() {
     isRunning = d.is_running;
     isPaused = d.paused;
     isMuted = d.muted;
+    spawnAlerts = d.spawn_alerts;
+    localRuntimeSec = d.runtime_s;
+    serverTimeDelta = d.server_time - Math.floor(Date.now() / 1000);
+    bossesState = d.bosses || [];
 
     document.getElementById('host-sub').innerText = `${d.local_ip}:3888 • v${d.version}`;
+
+    const fruitBadge = document.getElementById('badge-fruit');
+    if (spawnAlerts) {
+      fruitBadge.className = 'toggle-spawn-badge';
+      fruitBadge.innerText = '🍇 FRUIT ALERTS: ON';
+    } else {
+      fruitBadge.className = 'toggle-spawn-badge off';
+      fruitBadge.innerText = '🍇 FRUIT ALERTS: OFF';
+    }
 
     const pill = document.getElementById('status-pill');
     pill.innerText = d.state.toUpperCase();
@@ -660,7 +885,6 @@ async function fetchStatus() {
     document.getElementById('val-fruits').innerText = d.fruits;
     document.getElementById('val-pity').innerText = `Pity: ⚡ ${d.pity_fruit}`;
     document.getElementById('val-leg-pity').innerText = d.pity_legendary;
-    document.getElementById('val-runtime').innerText = fmtSec(d.runtime_s);
 
     document.getElementById('val-orders').innerText = d.bait_purchased;
     document.getElementById('val-auto-buy').innerText = d.auto_purchase ? 'Auto-buy ON' : 'Auto-buy OFF';
@@ -668,38 +892,100 @@ async function fetchStatus() {
     document.getElementById('val-tier').innerText = d.bait_tier;
     document.getElementById('val-reserve').innerText = d.legendary_reserve;
 
-    if (!userAdjustingVol) {
+    if (!userSlidingVol) {
       document.getElementById('rng-volume').value = d.volume;
       document.getElementById('lbl-volume').innerText = `${d.volume}%`;
     }
-    if (!userAdjustingBright) {
+    if (!userSlidingBright) {
       document.getElementById('rng-brightness').value = d.brightness;
       document.getElementById('lbl-brightness').innerText = `${d.brightness}%`;
     }
 
-    if (d.bosses && d.bosses.length > 0) {
-      let bHtml = '';
-      for (const b of d.bosses) {
-        let tClass = 'boss-countdown';
-        let tText = b.next_spawn_fmt;
-        if (b.is_spawned) {
-          tClass += ' boss-spawned';
-          tText = 'SPAWNED NOW!';
-        } else if (b.is_soon) {
-          tClass += ' boss-soon';
-          tText = `SOON (${b.next_spawn_fmt})`;
-        }
-        bHtml += `
-          <div class="boss-card">
-            <div class="boss-title"><span>${b.emoji}</span><span>${b.name}</span></div>
-            <div class="${tClass}">${tText}</div>
-          </div>`;
-      }
-      document.getElementById('boss-list').innerHTML = bHtml;
-    }
+    renderTimers();
   } catch (e) {
     console.warn('Status poll failed:', e);
   }
+}
+
+// SMOOTH HIGH-FREQUENCY CLIENT TIMER TICK (1s)
+function tickTimersLocally() {
+  if (isRunning && !isPaused) {
+    localRuntimeSec += 1;
+    document.getElementById('val-runtime').innerText = fmtSec(localRuntimeSec);
+  }
+  renderTimers();
+}
+
+function renderTimers() {
+  if (!bossesState || bossesState.length === 0) return;
+  const currentUnix = Math.floor(Date.now() / 1000) + serverTimeDelta;
+  let bHtml = '';
+  for (const b of bossesState) {
+    let rem = Math.max(0, b.target_spawn - currentUnix);
+    let tClass = 'boss-countdown';
+    let tText = formatDuration(rem);
+    if (rem <= 0) {
+      tClass += ' boss-spawned';
+      tText = 'SPAWNED NOW!';
+    } else if (rem <= 300) {
+      tClass += ' boss-soon';
+      tText = `SOON (${formatDuration(rem)})`;
+    }
+    bHtml += `
+      <div class="boss-card">
+        <div class="boss-title"><span>${b.emoji}</span><span>${b.name}</span></div>
+        <div class="${tClass}">${tText}</div>
+      </div>`;
+  }
+  document.getElementById('boss-list').innerHTML = bHtml;
+}
+
+// TAP TO CLICK DIRECTLY ON GAME SCREEN
+function handleScreenTap(e) {
+  const container = document.getElementById('screen-container');
+  const img = document.getElementById('screen-img');
+  const rect = img.getBoundingClientRect();
+
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+
+  if (clickX < 0 || clickY < 0 || clickX > rect.width || clickY > rect.height) {
+    return;
+  }
+
+  const relX = clickX / rect.width;
+  const relY = clickY / rect.height;
+
+  // Visual Ripple
+  const ripple = document.createElement('div');
+  ripple.className = 'click-ripple';
+  ripple.style.left = `${e.clientX - container.getBoundingClientRect().left}px`;
+  ripple.style.top = `${e.clientY - container.getBoundingClientRect().top}px`;
+  container.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 450);
+
+  fetch('/api/click', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rel_x: relX, rel_y: relY, button: 'left' })
+  }).catch(() => {});
+}
+
+// REMOTE KEYBOARD / CHARACTER CONTROLLER
+function keyEvent(k, down) {
+  fetch('/api/key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: k, down })
+  }).catch(() => {});
+}
+
+function keyTap(k) {
+  fetch('/api/key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: k, tap: true })
+  }).catch(() => {});
 }
 
 async function doAction(act, val = null) {
@@ -733,63 +1019,43 @@ function toggleMute() {
   }
 }
 
+function toggleSpawnAlerts() {
+  doAction('toggle_spawn');
+}
+
 function doUpdate() {
   if (confirm('Check for update and restart macro? (If running, it will automatically resume fishing!)')) {
     doAction('update');
   }
 }
 
+// TOUCH-RELEASE SLIDERS
 function onVolInput(val) {
-  userAdjustingVol = true;
+  userSlidingVol = true;
   document.getElementById('lbl-volume').innerText = `${val}%`;
 }
-function onVolChange(val) {
-  userAdjustingVol = false;
+function onVolRelease(val) {
+  userSlidingVol = false;
   doAction('set_volume', val);
 }
 
 function onBrightInput(val) {
-  userAdjustingBright = true;
+  userSlidingBright = true;
   document.getElementById('lbl-brightness').innerText = `${val}%`;
 }
-function onBrightChange(val) {
-  userAdjustingBright = false;
+function onBrightRelease(val) {
+  userSlidingBright = false;
   doAction('set_brightness', val);
 }
 
-// DOUBLE-BUFFERED IMAGE PRELOADER: NEVER GOES BLACK
-function refreshScreen() {
-  if (screenLoading) return;
-  screenLoading = true;
-
-  const preloader = new Image();
-  preloader.onload = () => {
-    const target = document.getElementById('screen-img');
-    target.src = preloader.src;
-    target.style.opacity = '1';
-    document.getElementById('screen-placeholder').style.display = 'none';
-
-    const dot = document.getElementById('stream-dot');
-    dot.className = 'live-dot on';
-    document.getElementById('stream-status-text').innerText = 'LIVE FEED';
-    screenLoading = false;
-  };
-
-  preloader.onerror = () => {
-    // Keep old frame visible! Do NOT clear canvas or show black screen
-    const dot = document.getElementById('stream-dot');
-    dot.className = 'live-dot reconnecting';
-    document.getElementById('stream-status-text').innerText = 'STANDBY';
-    screenLoading = false;
-  };
-
-  preloader.src = '/api/screenshot?t=' + Date.now();
+function fallbackSnapshot() {
+  const img = document.getElementById('screen-img');
+  img.src = '/api/screenshot?t=' + Date.now();
 }
 
-setInterval(fetchStatus, 1000);
-setInterval(refreshScreen, 1500);
+setInterval(fetchStatus, 1500);
+setInterval(tickTimersLocally, 1000);
 fetchStatus();
-refreshScreen();
 </script>
 </body>
 </html>

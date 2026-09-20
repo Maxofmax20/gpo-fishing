@@ -110,6 +110,17 @@ fn spawn_fruit_spawn_watcher(bot: Arc<Bot>) {
             loop {
                 std::thread::sleep(Duration::from_millis(1500));
                 let ctx = bot.ctx();
+
+                // 1. Only run if user has enabled fruit spawn alerts
+                if !ctx.settings.read().webhook.spawn {
+                    continue;
+                }
+
+                // 2. Only work when Roblox is visible and in the foreground
+                if !ctx.roblox_in_front() {
+                    continue;
+                }
+
                 if ctx.roblox_rect().is_some() {
                     crate::bot::machine::check_spawn(&ctx, &mut last_hash);
                 }
