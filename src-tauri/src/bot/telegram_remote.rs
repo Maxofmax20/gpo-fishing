@@ -412,10 +412,83 @@ fn handle_command(
             };
             let _ = post_telegram(token, chat_id, &msg);
         }
+        cmd if cmd.starts_with("/volume") || cmd.starts_with("volume") || cmd.starts_with("/sound") || cmd.starts_with("sound") => {
+            let parts: Vec<&str> = text.split_whitespace().collect();
+            if let Some(arg) = parts.get(1) {
+                let arg_low = arg.to_lowercase();
+                if arg_low == "max" || arg_low == "100" {
+                    match crate::core::audio::set_volume(1.0) {
+                        Ok(_) => {
+                            let _ = post_telegram(token, chat_id, "🔊 <b>Windows Volume set to MAX (100%)</b>");
+                        }
+                        Err(e) => {
+                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set volume: {e}"));
+                        }
+                    }
+                } else if arg_low == "0" || arg_low == "zero" || arg_low == "min" || arg_low == "mute" {
+                    match crate::core::audio::set_volume(0.0) {
+                        Ok(_) => {
+                            let _ = post_telegram(token, chat_id, "🔇 <b>Windows Volume set to ZERO (0% - Muted)</b>");
+                        }
+                        Err(e) => {
+                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set volume: {e}"));
+                        }
+                    }
+                } else if let Ok(val) = arg_low.trim_end_matches('%').parse::<f32>() {
+                    let clamped = val.clamp(0.0, 100.0);
+                    let scalar = clamped / 100.0;
+                    match crate::core::audio::set_volume(scalar) {
+                        Ok(new_vol) => {
+                            let pct = (new_vol * 100.0).round() as u32;
+                            let emoji = if pct == 0 { "🔇" } else if pct < 50 { "🔉" } else { "🔊" };
+                            let _ = post_telegram(token, chat_id, &format!("{emoji} <b>Windows Volume set to {pct}%</b>"));
+                        }
+                        Err(e) => {
+                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set volume: {e}"));
+                        }
+                    }
+                } else {
+                    let _ = post_telegram(token, chat_id, "⚠️ Invalid volume value. Usage: <code>/volume 0-100</code>, <code>/volume max</code>, or <code>/volume zero</code>");
+                }
+            } else {
+                let vol_res = crate::core::audio::get_volume();
+                let mute_res = crate::core::audio::is_muted();
+                match (vol_res, mute_res) {
+                    (Ok(vol), Ok(muted)) => {
+                        let pct = (vol * 100.0).round() as u32;
+                        let status_str = if muted || pct == 0 { "🔇 Muted" } else { "🔊 Unmuted" };
+                        let _ = post_telegram(token, chat_id, &format!("🔊 <b>Windows Master Audio:</b>\n\n• Current Volume: <b>{pct}%</b>\n• State: {status_str}\n\n<i>To change volume, send:</i>\n<code>/volume 100</code> (max)\n<code>/volume 0</code> (zero/mute)\n<code>/volume 50</code> (50%)"));
+                    }
+                    _ => {
+                        let _ = post_telegram(token, chat_id, "⚠️ Could not retrieve audio device status.");
+                    }
+                }
+            }
+        }
+        "/unmute" | "unmute" => {
+            match crate::core::audio::set_mute(false) {
+                Ok(_) => {
+                    let vol = crate::core::audio::get_volume().unwrap_or(0.5);
+                    if vol <= 0.01 {
+                        let _ = crate::core::audio::set_volume(0.5);
+                    }
+                    let current = (crate::core::audio::get_volume().unwrap_or(0.5) * 100.0).round() as u32;
+                    let _ = post_telegram(token, chat_id, &format!("🔊 <b>Windows Audio UNMUTED!</b> (Volume: <b>{current}%</b>)"));
+                }
+                Err(e) => {
+                    let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to unmute audio: {e}"));
+                }
+            }
+        }
         cmd if cmd.starts_with("/toggle") || cmd.starts_with("toggle") || cmd.starts_with("/mute") || cmd.starts_with("mute") => {
             let parts: Vec<&str> = text.split_whitespace().collect();
             if let Some(target) = parts.get(1) {
                 let target_low = target.to_lowercase();
+                if target_low == "sound" || target_low == "audio" || target_low == "pc" || target_low == "windows" {
+                    let _ = crate::core::audio::set_mute(true);
+                    let _ = post_telegram(token, chat_id, "🔇 <b>Windows Audio MUTED!</b>\nSend <code>/unmute</code> or <code>/volume max</code> to restore.");
+                    return;
+                }
                 let reply = {
                     let mut s = settings.write();
                     let res = if target_low.contains("hawk") || target_low.contains("mihawk") {
@@ -449,12 +522,15 @@ fn handle_command(
                         let text_state = if new_state { "ALL ENABLED 🔔" } else { "ALL MUTED 🔕" };
                         format!("🔔 <b>Boss Alerts:</b> {text_state}")
                     } else {
-                        format!("⚠️ Unknown boss <b>{target}</b>.\nValid options: <code>hawkeye</code>, <code>roger</code>, <code>soulking</code>, <code>kizaru</code>, <code>merchant</code>, <code>all</code>")
+                        format!("⚠️ Unknown boss <b>{target}</b>.\nValid options: <code>hawkeye</code>, <code>roger</code>, <code>soulking</code>, <code>kizaru</code>, <code>merchant</code>, <code>all</code>, <code>sound</code>")
                     };
                     let _ = bot.ctx().store.save(&s);
                     res
                 };
                 let _ = post_telegram(token, chat_id, &reply);
+            } else if cmd_clean == "/mute" || cmd_clean == "mute" {
+                let _ = crate::core::audio::set_mute(true);
+                let _ = post_telegram(token, chat_id, "🔇 <b>Windows Audio MUTED!</b>\nSend <code>/unmute</code> or <code>/volume max</code> to restore.");
             } else {
                 let s = settings.read();
                 let fmt_badge = |en: bool| if en { "ON 🔔" } else { "OFF 🔕" };
@@ -541,6 +617,8 @@ fn handle_command(
                 👑 /bosses - Live Boss & Merchant countdowns\n\
                 🔔 /toggle &lt;boss&gt; - Mute/unmute alerts (e.g. /toggle roger)\n\
                 🔄 /sync - Calibrate timers (/sync read, /sync server, or paste Discord)\n\
+                🔊 /volume &lt;0-100|max|zero&gt; - Set sound volume (/volume 0..100)\n\
+                🔇 /mute / /unmute - Mute or unmute Windows PC audio\n\
                 📊 /status - View live stats & screenshot\n\
                 📸 /screenshot - Instant Roblox screenshot on demand\n\
                 ⚡ /pity - Quick Devil Fruit pity counter\n\
@@ -566,6 +644,7 @@ fn register_bot_commands(client: &reqwest::blocking::Client, token: &str) {
             { "command": "bosses", "description": "👑 Live Boss & Merchant timers" },
             { "command": "toggle", "description": "🔔 Mute/unmute specific boss alerts" },
             { "command": "sync", "description": "🔄 Calibrate boss timers (/sync)" },
+            { "command": "volume", "description": "🔊 Set sound volume (/volume 0..100, max, zero)" },
             { "command": "status", "description": "📊 Live stats & Roblox screenshot" },
             { "command": "screenshot", "description": "📸 Instant Roblox screen capture" },
             { "command": "pity", "description": "⚡ Devil fruit pity status" },

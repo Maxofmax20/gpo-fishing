@@ -356,3 +356,90 @@ pub fn rewrite_fruit_message_gemini(
     let clean = text.trim().strip_prefix("```html").unwrap_or(text.trim()).strip_suffix("```").unwrap_or(text.trim()).trim();
     Ok(clean.to_string())
 }
+
+pub fn rewrite_spawn_message_gemini(
+    fruit_name: Option<&str>,
+    location: Option<&str>,
+    is_ase: bool,
+    raw_banner: &str,
+    api_key: &str,
+    model: &str,
+) -> Result<String, String> {
+    let key = api_key.trim();
+    if key.is_empty() {
+        return Err("Gemini API key is empty".into());
+    }
+
+    let model_name = if model.trim().is_empty() {
+        "gemini-3.5-flash-lite"
+    } else {
+        model.trim().strip_prefix("models/").unwrap_or(model.trim())
+    };
+
+    let f_str = fruit_name.unwrap_or("Unknown Devil Fruit");
+    let loc_str = location.unwrap_or("Unknown Location");
+    let ase_str = if is_ase { "Yes (All-Seeing Eye)" } else { "No" };
+
+    let prompt = format!(
+        "You are an assistant for the Roblox Grand Piece Online (GPO) Autofish macro.\n\
+        A devil fruit has spawned in the game server! Format an exciting, clear, and attractive Telegram notification alert in HTML.\n\
+        Details:\n\
+        - Fruit Name: {f_str}\n\
+        - Location: {loc_str}\n\
+        - All-Seeing Eye (ASE): {ase_str}\n\
+        - Raw Banner: {raw_banner}\n\n\
+        Format Requirements:\n\
+        - Use Telegram HTML tags (<b>bold</b>, <i>italic</i>, <code>code</code>).\n\
+        - If All-Seeing Eye is detected, highlight it with 👁️ <b>ALL-SEEING EYE SPAWN ALERT!</b>\n\
+        - Use appropriate fruit emojis (🔥 Mythical, 🌟 Legendary, 🍇 Rare, 🍎 Common).\n\
+        - Include fruit name, rarity tier, location, and tip for the player.\n\
+        - Output ONLY the raw Telegram HTML text without markdown code blocks, backticks, or extra commentary."
+    );
+
+    let payload = json!({
+        "contents": [{
+            "parts": [{ "text": prompt }]
+        }]
+    });
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+        model_name, key
+    );
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .map_err(|e| format!("Gemini API request failed: {e}"))?;
+
+    let status = response.status();
+    let body_text = response
+        .text()
+        .map_err(|e| format!("Failed to read Gemini response body: {e}"))?;
+
+    if !status.is_success() {
+        return Err(format!("Gemini API error (status {status}): {body_text}"));
+    }
+
+    let parsed_res: serde_json::Value = serde_json::from_str(&body_text)
+        .map_err(|e| format!("Failed to parse Gemini API response JSON: {e}"))?;
+
+    let text = parsed_res
+        .get("candidates")
+        .and_then(|c| c.get(0))
+        .and_then(|c0| c0.get("content"))
+        .and_then(|cnt| cnt.get("parts"))
+        .and_then(|p| p.get(0))
+        .and_then(|p0| p0.get("text"))
+        .and_then(|t| t.as_str())
+        .ok_or_else(|| format!("Invalid candidate text in Gemini response: {body_text}"))?;
+
+    let clean = text.trim().strip_prefix("```html").unwrap_or(text.trim()).strip_suffix("```").unwrap_or(text.trim()).trim();
+    Ok(clean.to_string())
+}

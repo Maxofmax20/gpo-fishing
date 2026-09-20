@@ -451,8 +451,9 @@ fn check_spawn(ctx: &Ctx, last_hash: &mut u64) {
             return;
         }
     }
-    let region = ctx.settings.read().regions.drop;
-    let Some(frame) = grab_region(ctx, region) else { return };
+    // Use wide banner region across top of screen (15% to 85% width) to ensure wide ASE text is captured
+    let banner_region = RelRect { x: 0.15, y: 0.02, w: 0.70, h: 0.16 };
+    let Some(frame) = grab_region(ctx, banner_region) else { return };
     let hash = frame.average_hash();
     if hash == *last_hash {
         return;
@@ -462,19 +463,42 @@ fn check_spawn(ctx: &Ctx, last_hash: &mut u64) {
     if text.trim().is_empty() {
         return;
     }
-    ctx.log_debug(&format!("OCR: {}", text.trim()));
+    ctx.log_debug(&format!("Spawn banner OCR: {}", text.trim()));
     let lex = ctx.settings.read().lexicon.clone();
-    if let Some(info) = fruit::detect_spawn(&lex, &text) {
+    if let Some(mut info) = fruit::detect_spawn(&lex, &text) {
         ctx.log_info(&format!("Fruit spawned: {}", info.label()));
         {
             let mut s = ctx.session.lock();
             s.last_spawn = Some(info.label());
             s.last_spawn_alert = Some(Instant::now());
         }
+
+        let photo_bytes = if ctx.settings.read().webhook.send_screenshot {
+            frame.to_png_bytes().ok()
+        } else {
+            None
+        };
+
+        // If Gemini is enabled, rewrite message or resolve fruit name with Gemini
+        let s = ctx.settings.read();
+        if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
+            if let Ok(gemini_msg) = crate::core::gemini::rewrite_spawn_message_gemini(
+                info.name.as_deref(),
+                info.location.as_deref(),
+                info.is_ase,
+                &text,
+                &s.gemini.api_key,
+                &s.gemini.model,
+            ) {
+                info.custom_telegram_message = Some(gemini_msg);
+            }
+        }
+        drop(s);
+
         ctx.emit_stats();
         ctx.emit(BotEvent::FruitSpawn(info.clone()));
         if ctx.settings.read().webhook.spawn {
-            ctx.webhook.spawn(&info);
+            ctx.webhook.spawn(&info, photo_bytes);
         }
     }
 }

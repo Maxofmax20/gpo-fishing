@@ -256,19 +256,87 @@ impl WebhookQueue {
         });
     }
 
-    pub fn spawn(&self, info: &SpawnInfo) {
+    pub fn spawn(&self, info: &SpawnInfo, photo: Option<Vec<u8>>) {
         let at = info.location.as_deref().map(|l| format!(" at {l}")).unwrap_or_default();
-        let (title, desc, color) = match &info.name {
-            Some(n) => ("🌀 Devil fruit spawned", format!("{n} has spawned{at}."), COLOR_PURPLE),
-            None => ("🌀 Devil fruit spawned", format!("A devil fruit has spawned{at}!"), COLOR_BLUE),
+        let rarity = info.name.as_deref().map(crate::core::fruit::fruit_rarity).unwrap_or(crate::core::fruit::FruitRarity::Unknown);
+
+        let (title, desc, color) = match (&info.name, info.is_ase) {
+            (Some(n), true) => {
+                let badge = match rarity {
+                    crate::core::fruit::FruitRarity::Mythical => "🔥 MYTHICAL",
+                    crate::core::fruit::FruitRarity::Legendary => "🌟 LEGENDARY",
+                    crate::core::fruit::FruitRarity::Epic => "💎 EPIC",
+                    crate::core::fruit::FruitRarity::Rare => "🍇 RARE",
+                    _ => "👁️ ALL-SEEING EYE",
+                };
+                (
+                    format!("{badge} FRUIT SPAWNED!"),
+                    format!("👁️ All-Seeing Eye detected: <b>{n}</b> ({}) has spawned{at}!", rarity.as_str()),
+                    if rarity.is_high_tier() { COLOR_GOLD } else { COLOR_PURPLE },
+                )
+            }
+            (Some(n), false) => {
+                (
+                    "🌀 Devil Fruit Spawned!".into(),
+                    format!("<b>{n}</b> ({}) has spawned{at}!", rarity.as_str()),
+                    if rarity.is_high_tier() { COLOR_GOLD } else { COLOR_PURPLE },
+                )
+            }
+            (None, true) => {
+                (
+                    "👁️ All-Seeing Eye: Fruit Spawned!".into(),
+                    format!("A devil fruit has spawned{at}!"),
+                    COLOR_GOLD,
+                )
+            }
+            (None, false) => {
+                (
+                    "🌀 Devil Fruit Spawned!".into(),
+                    format!("A devil fruit has spawned{at}!"),
+                    COLOR_BLUE,
+                )
+            }
         };
+
+        // If custom_telegram_message is provided (e.g. from Gemini), use it; otherwise build rich HTML
+        let tg_html = info.custom_telegram_message.clone().unwrap_or_else(|| {
+            let mut h = String::new();
+            if info.is_ase {
+                h.push_str("👁️ <b>ALL-SEEING EYE SPAWN ALERT!</b>\n\n");
+            } else {
+                h.push_str("🌀 <b>DEVIL FRUIT SPAWN ALERT!</b>\n\n");
+            }
+            if let Some(ref n) = info.name {
+                let icon = match rarity {
+                    crate::core::fruit::FruitRarity::Mythical => "🔥",
+                    crate::core::fruit::FruitRarity::Legendary => "🌟",
+                    crate::core::fruit::FruitRarity::Epic => "💎",
+                    crate::core::fruit::FruitRarity::Rare => "🍇",
+                    _ => "🍎",
+                };
+                h.push_str(&format!("• <b>Fruit</b>: {icon} <b>{n}</b> (<i>{}</i>)\n", rarity.as_str()));
+            } else {
+                h.push_str("• <b>Fruit</b>: ❓ Unknown Fruit\n");
+            }
+            if let Some(ref l) = info.location {
+                h.push_str(&format!("• <b>Location</b>: 📍 <b>{l}</b>\n"));
+            }
+            h.push_str(&format!("• <b>Banner Text</b>: <code>{}</code>", escape_html(&info.text)));
+            h
+        });
+
         self.send(Notification {
-            title: title.into(),
+            title,
             desc,
             color,
-            fields: vec![],
-            photo: None,
-            custom_telegram_html: None,
+            fields: vec![
+                ("Fruit Name".into(), info.name.clone().unwrap_or_else(|| "Unknown".into())),
+                ("Rarity".into(), rarity.as_str().to_string()),
+                ("Location".into(), info.location.clone().unwrap_or_else(|| "Unknown".into())),
+                ("All-Seeing Eye".into(), if info.is_ase { "Yes 👁️".into() } else { "No".into() }),
+            ],
+            photo,
+            custom_telegram_html: Some(tg_html),
         });
     }
 

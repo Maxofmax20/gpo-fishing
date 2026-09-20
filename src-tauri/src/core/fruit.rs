@@ -9,6 +9,7 @@ pub const DEFAULT_FRUITS: &[&str] = &[
     "Sand", "Gravity", "Tremor", "Rumble", "Clear", "Barrier", "Love", "Rubber", "Bomu",
     "Revive", "Chiyu", "Guru", "Glint", "Soru", "Soul", "Leopard", "Neko", "Lucci", "Bisu",
     "Biscuit", "Moku", "Plume", "Bane", "Doku", "Daibutsu", "Hito", "Seiryu", "Nikyu", "Kaido",
+    "Gas", "Gasu", "Mammoth", "T-Rex", "Trex",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -42,17 +43,17 @@ impl FruitRarity {
 pub fn fruit_rarity(name: &str) -> FruitRarity {
     let lower = name.trim().to_lowercase();
     match lower.as_str() {
-        // Mythical (9)
+        // Mythical (12)
         "tori" | "phoenix" | "mochi" | "ope" | "venom" | "doku" | "buddha" | "daibutsu" | "hito"
         | "pteranodon" | "ryu" | "ptera" | "dragon" | "seiryu" | "uo" | "kaido" | "soru" | "soul"
-        | "leopard" | "neko" | "lucci" => FruitRarity::Mythical,
+        | "leopard" | "neko" | "lucci" | "mammoth" | "t-rex" | "trex" => FruitRarity::Mythical,
 
-        // Legendary (16)
+        // Legendary (18)
         "pika" | "glint" | "magu" | "magma" | "hie" | "ice" | "goro" | "rumble" | "lightning"
         | "mera" | "flame" | "fire" | "suna" | "sand" | "yami" | "dark" | "darkness" | "yuki"
         | "snow" | "moku" | "smoke" | "plume" | "gura" | "tremor" | "quake" | "zushi" | "gravity"
         | "paw" | "nikyu" | "ito" | "string" | "kage" | "shadow" | "goru" | "gold" | "bisu"
-        | "biscuit" => FruitRarity::Legendary,
+        | "biscuit" | "gas" | "gasu" => FruitRarity::Legendary,
 
         // Epic (3)
         "yomi" | "revive" | "skeleton" | "spring" | "bane" | "kira" | "diamond" => FruitRarity::Epic,
@@ -71,14 +72,16 @@ pub fn fruit_rarity(name: &str) -> FruitRarity {
                 || lower.contains("ope") || lower.contains("venom") || lower.contains("doku")
                 || lower.contains("buddha") || lower.contains("daibutsu") || lower.contains("pteranodon")
                 || lower.contains("dragon") || lower.contains("seiryu") || lower.contains("soru")
-                || lower.contains("leopard") {
+                || lower.contains("leopard") || lower.contains("mammoth") || lower.contains("trex")
+                || lower.contains("t-rex") {
                 FruitRarity::Mythical
             } else if lower.contains("pika") || lower.contains("magu") || lower.contains("hie")
                 || lower.contains("goro") || lower.contains("mera") || lower.contains("suna")
                 || lower.contains("yami") || lower.contains("yuki") || lower.contains("smoke")
                 || lower.contains("moku") || lower.contains("gura") || lower.contains("zushi")
                 || lower.contains("nikyu") || lower.contains("paw") || lower.contains("ito")
-                || lower.contains("kage") || lower.contains("goru") || lower.contains("bisu") {
+                || lower.contains("kage") || lower.contains("goru") || lower.contains("bisu")
+                || lower.contains("gas") {
                 FruitRarity::Legendary
             } else if lower.contains("yomi") || lower.contains("bane") || lower.contains("kira") {
                 FruitRarity::Epic
@@ -159,15 +162,20 @@ pub struct SpawnInfo {
     pub text: String,
     pub name: Option<String>,
     pub location: Option<String>,
+    #[serde(default)]
+    pub is_ase: bool,
+    #[serde(default)]
+    pub custom_telegram_message: Option<String>,
 }
 
 impl SpawnInfo {
     pub fn label(&self) -> String {
+        let prefix = if self.is_ase { "[ASE] " } else { "" };
         match (&self.name, &self.location) {
-            (Some(n), Some(l)) => format!("{n} at {l}"),
-            (Some(n), None) => n.clone(),
-            (None, Some(l)) => format!("Unknown fruit at {l}"),
-            (None, None) => "Unknown fruit".into(),
+            (Some(n), Some(l)) => format!("{prefix}{n} at {l}"),
+            (Some(n), None) => format!("{prefix}{n}"),
+            (None, Some(l)) => format!("{prefix}Unknown fruit at {l}"),
+            (None, None) => format!("{prefix}Unknown fruit"),
         }
     }
 }
@@ -230,6 +238,18 @@ pub fn is_known_fish_or_item(raw: &str) -> bool {
     false
 }
 
+pub fn clean_ocr_word(w: &str) -> String {
+    w.chars()
+        .map(|c| match c {
+            '0' => 'o',
+            '1' | '|' | 'l' => 'i',
+            '@' => 'a',
+            '5' => 's',
+            other => other.to_ascii_lowercase(),
+        })
+        .collect()
+}
+
 fn match_fruit(lex: &Lexicon, word: &str) -> Option<String> {
     if word.len() < 3 {
         return None;
@@ -238,17 +258,22 @@ fn match_fruit(lex: &Lexicon, word: &str) -> Option<String> {
     if let Some(f) = lex.fruits.iter().find(|f| f.eq_ignore_ascii_case(word)) {
         return Some(f.clone());
     }
-    if STOPWORDS.contains(&lower.as_str()) {
+    let cleaned = clean_ocr_word(word);
+    if let Some(f) = lex.fruits.iter().find(|f| f.eq_ignore_ascii_case(&cleaned)) {
+        return Some(f.clone());
+    }
+    if STOPWORDS.contains(&lower.as_str()) || STOPWORDS.contains(&cleaned.as_str()) {
         return None;
     }
-    // Short fruit names (<= 4 characters like Suna, Tori, Ope, Paw) MUST be exact matches.
+    // Short fruit names (<= 4 characters like Suna, Tori, Ope, Paw) MUST be exact matches or cleaned matches.
     // Fuzzy matching a 3-letter OCR fragment (e.g. "sna" from "Snapper") falsely matches "Suna"!
     if lower.len() <= 4 {
         return None;
     }
     let mut best: Option<(f64, &String)> = None;
     for f in &lex.fruits {
-        let s = jaro_winkler(&lower, &f.to_lowercase());
+        let f_low = f.to_lowercase();
+        let s = jaro_winkler(&lower, &f_low).max(jaro_winkler(&cleaned, &f_low));
         if best.is_none_or(|(b, _)| s > b) {
             best = Some((s, f));
         }
@@ -476,29 +501,84 @@ pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
         return None;
     }
 
+    let lower_raw = raw.to_lowercase();
+    let is_ase = lower_raw.contains("all-seeing")
+        || lower_raw.contains("all seeing")
+        || lower_raw.contains("allseeing")
+        || lower_raw.contains("all-seclng")
+        || lower_raw.contains("all seclng")
+        || lower_raw.contains("[ase]")
+        || lower_raw.contains("ase:");
+
     let has_keyword = lex.spawn_keywords.iter().any(|k| words.iter().any(|w| similar(w, k, thr)) || text.replace(' ', "").contains(k.as_str()));
     let has_i = word_at(&words, "has", 0.9);
     let at_i = has_i.and_then(|h| words[h + 1..].iter().position(|w| *w == "at").map(|p| h + 1 + p));
 
+    // 1. Try to extract fruit from brackets [ ] or < > in raw (ignoring [All-Seeing Eye])
+    let mut extracted_name = None;
+    if let Some(start) = raw.find('[').or_else(|| raw.find('<')) {
+        if let Some(end) = raw[start + 1..].find(']').or_else(|| raw[start + 1..].find('>')) {
+            let inside = raw[start + 1..start + 1 + end].trim();
+            let inside_norm = normalize(inside);
+            let inside_words: Vec<&str> = inside_norm.split_whitespace().collect();
+            if !inside_norm.contains("all") && !inside_norm.contains("seeing") && !inside_norm.contains("eye") {
+                if let Some(f) = first_fruit(lex, inside_words.iter().copied()) {
+                    extracted_name = Some(f);
+                }
+            }
+        }
+    }
+
+    // 2. Extract fruit before "has" (e.g. "All-Seeing Eye: Tori has spawned" -> "Tori")
     let name_before_has = has_i.and_then(|h| {
-        let start = words[..h].iter().rposition(|w| *w == "a" || *w == "an").map(|p| p + 1).unwrap_or(h.saturating_sub(2));
-        first_fruit(lex, words[start..h].iter().rev().copied())
+        let candidate_words: Vec<&str> = words[..h]
+            .iter()
+            .filter(|w| !matches!(**w, "all" | "seeing" | "eye" | "a" | "an" | "the" | "fruit" | "devil" | "ase"))
+            .copied()
+            .collect();
+        first_fruit(lex, candidate_words.iter().rev().copied())
     });
-    let structural = name_before_has.is_some() && has_i.is_some();
+
+    let structural = (name_before_has.is_some() || is_ase) && has_i.is_some();
     if !has_keyword && !structural {
         return None;
     }
-    let name = name_before_has.or_else(|| first_fruit(lex, words.iter().copied()));
+
+    if extracted_name.is_none() {
+        extracted_name = name_before_has;
+    }
+
+    // 3. Fallback: check all words in sentence (excluding non-fruit keywords)
+    if extracted_name.is_none() {
+        let filtered: Vec<&str> = words
+            .iter()
+            .filter(|w| !matches!(**w, "all" | "seeing" | "eye" | "a" | "an" | "the" | "fruit" | "devil" | "has" | "spawned" | "at" | "ase"))
+            .copied()
+            .collect();
+        extracted_name = first_fruit(lex, filtered.iter().copied());
+    }
+
     let location = at_i.and_then(|a| {
         let loc: Vec<&str> = words[a + 1..]
             .iter()
-            .take_while(|w| w.chars().all(|c| c.is_ascii_alphabetic()) && !matches!(**w, "studs" | "none" | "has" | "spawned"))
+            .take_while(|w| {
+                let lower = w.to_lowercase();
+                !matches!(lower.as_str(), "studs" | "none" | "has" | "spawned" | "all" | "seeing" | "eye" | "ase")
+                    && !w.chars().all(|c| c.is_ascii_digit())
+            })
             .copied()
             .take(3)
             .collect();
         (!loc.is_empty()).then(|| title_case(&loc))
     });
-    Some(SpawnInfo { text, name, location })
+
+    Some(SpawnInfo {
+        text,
+        name: extracted_name,
+        location,
+        is_ase,
+        custom_telegram_message: None,
+    })
 }
 
 /// Detects if an on-screen dialog indicates a Roblox disconnection or kick.
@@ -821,5 +901,29 @@ mod tests {
 
         let fish_text = "You caught a Tuna!";
         assert_eq!(parse_storage_banner(&l, fish_text), None);
+    }
+
+    #[test]
+    fn spawn_all_seeing_eye_formats() {
+        let l = lex();
+        let s1 = detect_spawn(&l, "All-Seeing Eye: Tori has spawned at Shells Town").unwrap();
+        assert!(s1.is_ase);
+        assert_eq!(s1.name.as_deref(), Some("Tori"));
+        assert_eq!(s1.location.as_deref(), Some("Shells Town"));
+
+        let s2 = detect_spawn(&l, "[All-Seeing Eye]: Mochi has spawned at Desert Kingdom").unwrap();
+        assert!(s2.is_ase);
+        assert_eq!(s2.name.as_deref(), Some("Mochi"));
+        assert_eq!(s2.location.as_deref(), Some("Desert Kingdom"));
+
+        let s3 = detect_spawn(&l, "All Seeing Eye Pika has spawned at Sphinx Island").unwrap();
+        assert!(s3.is_ase);
+        assert_eq!(s3.name.as_deref(), Some("Pika"));
+        assert_eq!(s3.location.as_deref(), Some("Sphinx Island"));
+
+        let s4 = detect_spawn(&l, "[All-Seeing Eye] A Mythical Fruit [Buddha] has spawned at Marine Ford").unwrap();
+        assert!(s4.is_ase);
+        assert_eq!(s4.name.as_deref(), Some("Buddha"));
+        assert_eq!(s4.location.as_deref(), Some("Marine Ford"));
     }
 }
