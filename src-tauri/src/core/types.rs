@@ -259,4 +259,8 @@ pub enum Key {
     Escape,
     Control,
     Shift,
+    Left,
+    Right,
+    Up,
+    Down,
 }

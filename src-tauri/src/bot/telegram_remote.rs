@@ -657,6 +657,65 @@ fn handle_command(
                 let _ = post_telegram(token, chat_id, &format!("💡 <b>Screen Brightness:</b>\n\n• Current Level: <b>{b}%</b>\n\n<i>To change brightness, send:</i>\n<code>/brightness 100</code> (max)\n<code>/brightness 30</code>\n<code>/brightness min</code>"));
             }
         }
+        cmd if cmd.starts_with("/craft") || cmd.starts_with("craft") => {
+            let parts: Vec<&str> = text.split_whitespace().collect();
+            let sub = parts.get(1).map(|s| s.to_lowercase()).unwrap_or_else(|| "status".into());
+
+            if sub == "stop" || sub == "cancel" {
+                crate::bot::crafting::stop_auto_craft();
+                let _ = post_telegram(token, chat_id, "🛑 <b>Auto-craft stopped.</b>");
+            } else if sub == "rare" {
+                let ctx_clone = bot.ctx().clone();
+                match crate::bot::crafting::start_auto_craft(ctx_clone, crate::bot::crafting::CraftTier::Rare) {
+                    Ok(_) => {
+                        let _ = post_telegram(token, chat_id, "🔨 <b>Started Auto-Craft for Rare Fish Bait!</b>\nMake sure you are standing at Blacksmith Sen.");
+                    }
+                    Err(e) => {
+                        let _ = post_telegram(token, chat_id, &format!("⚠️ {e}"));
+                    }
+                }
+            } else if sub == "legendary" || sub == "leg" {
+                let ctx_clone = bot.ctx().clone();
+                match crate::bot::crafting::start_auto_craft(ctx_clone, crate::bot::crafting::CraftTier::Legendary) {
+                    Ok(_) => {
+                        let _ = post_telegram(token, chat_id, "🔨 <b>Started Auto-Craft for Legendary Fish Bait!</b>\nMake sure you are standing at Blacksmith Sen.");
+                    }
+                    Err(e) => {
+                        let _ = post_telegram(token, chat_id, &format!("⚠️ {e}"));
+                    }
+                }
+            } else if sub == "all" {
+                let ctx_clone = bot.ctx().clone();
+                match crate::bot::crafting::start_auto_craft(ctx_clone, crate::bot::crafting::CraftTier::All) {
+                    Ok(_) => {
+                        let _ = post_telegram(token, chat_id, "🔨 <b>Started Auto-Craft for ALL Baits (Legendary & Rare)!</b>\nMake sure you are standing at Blacksmith Sen.");
+                    }
+                    Err(e) => {
+                        let _ = post_telegram(token, chat_id, &format!("⚠️ {e}"));
+                    }
+                }
+            } else {
+                let st = crate::bot::crafting::get_craft_status();
+                let run_status = if st.is_crafting {
+                    format!("🟢 <b>Running</b> ({})\nBatches crafted: {}\nStatus: {}", st.tier, st.crafted_count, st.message)
+                } else {
+                    format!("⏹️ <b>Idle</b>\nLast status: {}", if st.message.is_empty() { "Ready" } else { &st.message })
+                };
+                let _ = post_telegram(
+                    token,
+                    chat_id,
+                    &format!(
+                        "🔨 <b>Auto-Craft Bait Status</b>\n\n\
+                         {run_status}\n\n\
+                         <b>Commands:</b>\n\
+                         • <code>/craft rare</code> - Craft Rare Fish Bait\n\
+                         • <code>/craft legendary</code> - Craft Legendary Fish Bait\n\
+                         • <code>/craft all</code> - Craft Legendary then Rare Bait\n\
+                         • <code>/craft stop</code> - Stop Auto-Craft"
+                    ),
+                );
+            }
+        }
         "/web" | "/dashboard" | "web" | "dashboard" => {
             let local_ip = crate::bot::web_server::get_local_ip().unwrap_or_else(|| "127.0.0.1".into());
             let lan_url = format!("http://{local_ip}:3888");
@@ -678,7 +737,8 @@ fn handle_command(
         "/help" | "help" => {
             let help_text = "🎮 <b>GPO Autofish Remote Controls</b>\n\n\
                 👑 /bosses - Live Boss & Merchant countdowns\n\
-                🔔 /toggle &lt;boss&gt; - Mute/unmute alerts (e.g. /toggle roger)\n\
+                🔨 /craft &lt;rare|legendary|all|stop&gt; - Auto craft fish bait at Blacksmith Sen\n\
+                🔔 /toggle &lt;boss|spawn&gt; - Mute/unmute alerts (e.g. /toggle roger, /toggle spawn)\n\
                 🔄 /sync - Calibrate timers (/sync read, /sync server, or paste Discord)\n\
                 🌐 /web - Open live Web Dashboard (Mobile & PC)\n\
                 🔊 /volume &lt;0-100|max|zero&gt; - Set sound volume (/volume 0..100)\n\

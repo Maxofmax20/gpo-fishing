@@ -119,6 +119,9 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     } else if raw_path == "/api/action" && method == "POST" {
         let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_action(&mut stream, bot, settings, body);
+    } else if raw_path == "/api/craft" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_craft(&mut stream, bot, body);
     } else {
         let not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
         let _ = stream.write_all(not_found.as_bytes());
@@ -260,6 +263,7 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "local_ip": local_ip,
         "version": env!("CARGO_PKG_VERSION"),
         "bosses": bosses_data,
+        "crafting": crate::bot::crafting::get_craft_status(),
     });
 
     let body = payload.to_string();
@@ -315,9 +319,13 @@ fn handle_click(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let ry = parsed.get("rel_y").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
     let btn_str = parsed.get("button").and_then(|v| v.as_str()).unwrap_or("left");
 
+    // Ensure Roblox has window focus before sending click
+    let _ = bot.ctx().platform.window.focus();
+    std::thread::sleep(Duration::from_millis(20));
+
     if let Some(rect) = bot.ctx().roblox_rect() {
-        let px = rect.x + (rx * rect.w as f32).round() as i32;
-        let py = rect.y + (ry * rect.h as f32).round() as i32;
+        let px = rect.x + (rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
+        let py = rect.y + (ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
         let pt = crate::core::types::PxPoint { x: px, y: py };
 
         bot.ctx().platform.input.move_to(pt);
@@ -328,7 +336,7 @@ fn handle_click(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
             crate::core::types::MouseButton::Left
         };
         bot.ctx().platform.input.button(btn, true);
-        std::thread::sleep(Duration::from_millis(60));
+        std::thread::sleep(Duration::from_millis(50));
         bot.ctx().platform.input.button(btn, false);
     }
 
@@ -342,29 +350,61 @@ fn handle_key(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let is_down = parsed.get("down").and_then(|v| v.as_bool()).unwrap_or(true);
     let tap = parsed.get("tap").and_then(|v| v.as_bool()).unwrap_or(false);
 
-    let k_opt = match key_str.to_lowercase().as_str() {
-        "w" => Some(crate::core::types::Key::Char('w')),
-        "a" => Some(crate::core::types::Key::Char('a')),
-        "s" => Some(crate::core::types::Key::Char('s')),
-        "d" => Some(crate::core::types::Key::Char('d')),
-        "space" | "jump" => Some(crate::core::types::Key::Char(' ')),
-        "shift" => Some(crate::core::types::Key::Shift),
-        "e" | "interact" => Some(crate::core::types::Key::Char('e')),
-        "1" => Some(crate::core::types::Key::Char('1')),
-        "2" => Some(crate::core::types::Key::Char('2')),
-        "3" => Some(crate::core::types::Key::Char('3')),
-        "4" => Some(crate::core::types::Key::Char('4')),
-        "5" => Some(crate::core::types::Key::Char('5')),
-        _ => None,
-    };
+    // Ensure Roblox has window focus before sending keystroke
+    let _ = bot.ctx().platform.window.focus();
 
-    if let Some(k) = k_opt {
-        if tap {
-            bot.ctx().platform.input.key(k, true);
-            std::thread::sleep(Duration::from_millis(80));
+    if key_str == "release_all" {
+        for k in [
+            crate::core::types::Key::Char('w'),
+            crate::core::types::Key::Char('a'),
+            crate::core::types::Key::Char('s'),
+            crate::core::types::Key::Char('d'),
+            crate::core::types::Key::Char(' '),
+            crate::core::types::Key::Shift,
+            crate::core::types::Key::Left,
+            crate::core::types::Key::Right,
+            crate::core::types::Key::Up,
+            crate::core::types::Key::Down,
+        ] {
             bot.ctx().platform.input.key(k, false);
-        } else {
-            bot.ctx().platform.input.key(k, is_down);
+        }
+    } else {
+        let k_opt = match key_str.to_lowercase().as_str() {
+            "w" => Some(crate::core::types::Key::Char('w')),
+            "a" => Some(crate::core::types::Key::Char('a')),
+            "s" => Some(crate::core::types::Key::Char('s')),
+            "d" => Some(crate::core::types::Key::Char('d')),
+            "space" | "jump" => Some(crate::core::types::Key::Char(' ')),
+            "shift" => Some(crate::core::types::Key::Shift),
+            "e" | "interact" => Some(crate::core::types::Key::Char('e')),
+            "1" => Some(crate::core::types::Key::Char('1')),
+            "2" => Some(crate::core::types::Key::Char('2')),
+            "3" => Some(crate::core::types::Key::Char('3')),
+            "4" => Some(crate::core::types::Key::Char('4')),
+            "5" => Some(crate::core::types::Key::Char('5')),
+            "left" | "arrowleft" => Some(crate::core::types::Key::Left),
+            "right" | "arrowright" => Some(crate::core::types::Key::Right),
+            "up" | "arrowup" => Some(crate::core::types::Key::Up),
+            "down" | "arrowdown" => Some(crate::core::types::Key::Down),
+            _ => None,
+        };
+
+        if let Some(k) = k_opt {
+            if tap {
+                bot.ctx().platform.input.key(k, true);
+                std::thread::sleep(Duration::from_millis(80));
+                bot.ctx().platform.input.key(k, false);
+            } else {
+                bot.ctx().platform.input.key(k, is_down);
+                // Safety watchdog: auto-release held key after 5s to avoid permanent stuck walking
+                if is_down {
+                    let ctx_clone = bot.ctx().clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(Duration::from_secs(5));
+                        ctx_clone.platform.input.key(k, false);
+                    });
+                }
+            }
         }
     }
 
@@ -446,6 +486,37 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
     };
 
     let reply = json!({ "ok": true, "message": res_msg }).to_string();
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        reply.len(),
+        reply
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_craft(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let act = parsed.get("action").and_then(|a| a.as_str()).unwrap_or("");
+    let tier_str = parsed.get("tier").and_then(|t| t.as_str()).unwrap_or("rare");
+
+    let (ok, msg) = if act == "stop" {
+        crate::bot::crafting::stop_auto_craft();
+        (true, "Auto-craft stop requested".to_string())
+    } else {
+        let tier = match tier_str.to_lowercase().as_str() {
+            "legendary" | "leg" => crate::bot::crafting::CraftTier::Legendary,
+            "all" => crate::bot::crafting::CraftTier::All,
+            "common" => crate::bot::crafting::CraftTier::Common,
+            _ => crate::bot::crafting::CraftTier::Rare,
+        };
+        let ctx = bot.ctx().clone();
+        match crate::bot::crafting::start_auto_craft(ctx, tier) {
+            Ok(_) => (true, format!("Started auto-crafting {tier:?} Fish Bait!")),
+            Err(e) => (false, e),
+        }
+    };
+
+    let reply = json!({ "ok": ok, "message": msg }).to_string();
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         reply.len(),
@@ -560,30 +631,45 @@ header {
 /* VIRTUAL CONTROLLER */
 .controller-card {
   background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px;
-  display: flex; flex-direction: column; gap: 12px;
+  display: flex; flex-direction: column; gap: 10px;
 }
 .controller-layout {
-  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;
+  display: flex; flex-wrap: wrap; justify-content: space-around; align-items: flex-start; gap: 14px;
 }
-.dpad {
-  display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(3, 46px); gap: 6px;
+.pad-cluster {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.cluster-label {
+  font-size: 0.68rem; font-weight: 800; color: var(--text-dim); letter-spacing: 0.5px;
+}
+.dpad-grid {
+  display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(2, 44px); gap: 6px;
 }
 .dpad-btn {
   background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 10px; color: var(--text);
   font-weight: 800; font-size: 1rem; display: flex; align-items: center; justify-content: center;
-  cursor: pointer; user-select: none; transition: all 0.1s;
+  cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; -webkit-touch-callout: none;
+  transition: all 0.1s;
 }
 .dpad-btn:active, .dpad-btn.pressed { background: var(--cyan); color: #000; box-shadow: 0 0 16px var(--cyan); }
+.pad-arrow-btn {
+  font-size: 1.15rem; color: #60a5fa; border-color: rgba(96, 165, 250, 0.3);
+}
+.pad-arrow-btn:active, .pad-arrow-btn.pressed {
+  background: #3b82f6; color: #fff; box-shadow: 0 0 16px #3b82f6;
+}
 
 .action-buttons-pad {
-  display: flex; flex-wrap: wrap; gap: 8px; flex: 1; justify-content: flex-end;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; width: 100%;
 }
 .pad-action-btn {
-  padding: 10px 16px; background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 10px;
-  color: var(--text); font-weight: 700; font-size: 0.82rem; cursor: pointer; user-select: none;
-  transition: all 0.1s; display: flex; align-items: center; gap: 6px;
+  padding: 10px 12px; background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-weight: 700; font-size: 0.78rem; cursor: pointer; user-select: none;
+  -webkit-user-select: none; touch-action: none; -webkit-touch-callout: none;
+  transition: all 0.1s; display: flex; align-items: center; justify-content: center; gap: 6px;
 }
 .pad-action-btn:active, .pad-action-btn.pressed { background: var(--purple); color: #fff; box-shadow: 0 0 16px var(--purple); }
+.btn-shift { border-color: rgba(176, 38, 255, 0.4); color: #d8b4fe; }
 
 /* STATS */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; }
@@ -659,29 +745,49 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
       </div>
       <div id="stream-fps" style="font-family: monospace; color: var(--cyan);">LIVE 20 FPS</div>
     </div>
-    <div id="screen-container" class="screen-box" onclick="handleScreenTap(event)">
+    <div id="screen-container" class="screen-box">
       <img id="screen-img" class="screen-img" src="/api/stream" alt="" onerror="fallbackSnapshot()" />
     </div>
   </div>
 
   <!-- REMOTE GAMEPAD / MOVEMENT CONTROLLER -->
   <div class="controller-card">
-    <div class="card-label">🎮 REMOTE GAMEPAD & CHARACTER MOVEMENT</div>
     <div class="controller-layout">
-      <div class="dpad">
-        <div></div>
-        <button class="dpad-btn" onmousedown="keyEvent('w', true)" onmouseup="keyEvent('w', false)" ontouchstart="keyEvent('w', true)" ontouchend="keyEvent('w', false)">W</button>
-        <div></div>
-        <button class="dpad-btn" onmousedown="keyEvent('a', true)" onmouseup="keyEvent('a', false)" ontouchstart="keyEvent('a', true)" ontouchend="keyEvent('a', false)">A</button>
-        <button class="dpad-btn" onmousedown="keyEvent('s', true)" onmouseup="keyEvent('s', false)" ontouchstart="keyEvent('s', true)" ontouchend="keyEvent('s', false)">S</button>
-        <button class="dpad-btn" onmousedown="keyEvent('d', true)" onmouseup="keyEvent('d', false)" ontouchstart="keyEvent('d', true)" ontouchend="keyEvent('d', false)">D</button>
+      <!-- 1. Movement WASD -->
+      <div class="pad-cluster">
+        <div class="cluster-label">🏃 WALK (WASD)</div>
+        <div class="dpad-grid">
+          <div></div>
+          <button class="dpad-btn" data-key="w" title="Walk Forward (W)">W</button>
+          <div></div>
+          <button class="dpad-btn" data-key="a" title="Walk Left (A)">A</button>
+          <button class="dpad-btn" data-key="s" title="Walk Backward (S)">S</button>
+          <button class="dpad-btn" data-key="d" title="Walk Right (D)">D</button>
+        </div>
       </div>
 
-      <div class="action-buttons-pad">
-        <button class="pad-action-btn" onclick="keyTap('space')">🦘 JUMP (SPACE)</button>
-        <button class="pad-action-btn" onclick="keyTap('shift')">⚡ SHIFT-LOCK</button>
-        <button class="pad-action-btn" onclick="keyTap('1')">🎣 EQUIP ROD (1)</button>
-        <button class="pad-action-btn" onclick="keyTap('e')">🖐️ INTERACT (E)</button>
+      <!-- 2. Face / Look (Arrow Controls) -->
+      <div class="pad-cluster">
+        <div class="cluster-label">👀 FACE / TURN (ARROWS)</div>
+        <div class="dpad-grid">
+          <div></div>
+          <button class="dpad-btn pad-arrow-btn" data-key="up" title="Face / Tilt Up (↑)">▲</button>
+          <div></div>
+          <button class="dpad-btn pad-arrow-btn" data-key="left" title="Turn Left (←)">◀</button>
+          <button class="dpad-btn pad-arrow-btn" data-key="down" title="Face / Tilt Down (↓)">▼</button>
+          <button class="dpad-btn pad-arrow-btn" data-key="right" title="Turn Right (→)">▶</button>
+        </div>
+      </div>
+
+      <!-- 3. Actions -->
+      <div class="pad-cluster" style="flex: 1; min-width: 140px;">
+        <div class="cluster-label">⚡ ACTIONS & VIEW</div>
+        <div class="action-buttons-pad">
+          <button class="pad-action-btn btn-shift" data-key="shift">⚡ SHIFT-LOCK</button>
+          <button class="pad-action-btn" data-key="space">🦘 JUMP (SPACE)</button>
+          <button class="pad-action-btn" data-key="1">🎣 EQUIP ROD (1)</button>
+          <button class="pad-action-btn" data-key="e">🖐️ INTERACT (E)</button>
+        </div>
       </div>
     </div>
   </div>
@@ -696,6 +802,26 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
     <button class="btn btn-sub" onclick="doAction('buy_bait')">🛒 BUY BAIT</button>
     <button id="btn-mute" class="btn btn-sub" onclick="toggleMute()">🔇 MUTE</button>
     <button class="btn btn-update" onclick="doUpdate()">🚀 UPDATE</button>
+  </div>
+
+  <!-- AUTO CRAFT BAIT (BLACKSMITH SEN) -->
+  <div class="card" style="border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.04);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <div class="card-label" style="color: var(--amber);">🔨 AUTO CRAFT BAIT (BLACKSMITH SEN)</div>
+      <div id="craft-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+      <select id="sel-craft-tier" style="background: #1e293b; color: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 0.85rem; font-weight: 700; outline: none; cursor: pointer; flex: 1; min-width: 160px;">
+        <option value="rare">🍇 Rare Fish Bait</option>
+        <option value="legendary">👑 Legendary Fish Bait</option>
+        <option value="all">🌟 All (Legendary &amp; Rare)</option>
+      </select>
+      <button id="btn-craft-toggle" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; flex: 1; min-width: 160px;" onclick="toggleAutoCraft()">
+        <span id="craft-btn-icon">🔨</span>
+        <span id="craft-btn-label">START AUTO CRAFT</span>
+      </button>
+    </div>
+    <div id="craft-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 6px;">Stand at Blacksmith Sen with caught fish, then tap Start.</div>
   </div>
 
   <!-- PRIMARY STATS -->
@@ -901,6 +1027,8 @@ async function fetchStatus() {
       document.getElementById('lbl-brightness').innerText = `${d.brightness}%`;
     }
 
+    updateCraftUi(d.crafting);
+
     renderTimers();
   } catch (e) {
     console.warn('Status poll failed:', e);
@@ -940,28 +1068,51 @@ function renderTimers() {
   document.getElementById('boss-list').innerHTML = bHtml;
 }
 
-// TAP TO CLICK DIRECTLY ON GAME SCREEN
-function handleScreenTap(e) {
-  const container = document.getElementById('screen-container');
-  const img = document.getElementById('screen-img');
-  const rect = img.getBoundingClientRect();
+// TAP TO CLICK DIRECTLY ON GAME SCREEN (ACCOUNTS FOR LETTERBOXING/PILLARBOXING)
+const screenContainer = document.getElementById('screen-container');
+screenContainer.addEventListener('pointerdown', handleScreenTap);
 
+function handleScreenTap(e) {
+  e.preventDefault();
+  const img = document.getElementById('screen-img');
+  if (!img) return;
+
+  const rect = img.getBoundingClientRect();
   const clickX = e.clientX - rect.left;
   const clickY = e.clientY - rect.top;
 
-  if (clickX < 0 || clickY < 0 || clickX > rect.width || clickY > rect.height) {
+  const naturalW = img.naturalWidth || 1280;
+  const naturalH = img.naturalHeight || 720;
+  const imageAspect = naturalW / naturalH;
+  const elementAspect = rect.width / rect.height;
+
+  let renderW = rect.width;
+  let renderH = rect.height;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (elementAspect > imageAspect) {
+    renderW = rect.height * imageAspect;
+    offsetX = (rect.width - renderW) / 2;
+  } else {
+    renderH = rect.width / imageAspect;
+    offsetY = (rect.height - renderH) / 2;
+  }
+
+  if (clickX < offsetX || clickX > (offsetX + renderW) ||
+      clickY < offsetY || clickY > (offsetY + renderH)) {
     return;
   }
 
-  const relX = clickX / rect.width;
-  const relY = clickY / rect.height;
+  const relX = Math.max(0, Math.min(1, (clickX - offsetX) / renderW));
+  const relY = Math.max(0, Math.min(1, (clickY - offsetY) / renderH));
 
   // Visual Ripple
   const ripple = document.createElement('div');
   ripple.className = 'click-ripple';
-  ripple.style.left = `${e.clientX - container.getBoundingClientRect().left}px`;
-  ripple.style.top = `${e.clientY - container.getBoundingClientRect().top}px`;
-  container.appendChild(ripple);
+  ripple.style.left = `${e.clientX - screenContainer.getBoundingClientRect().left}px`;
+  ripple.style.top = `${e.clientY - screenContainer.getBoundingClientRect().top}px`;
+  screenContainer.appendChild(ripple);
   setTimeout(() => ripple.remove(), 450);
 
   fetch('/api/click', {
@@ -971,22 +1122,80 @@ function handleScreenTap(e) {
   }).catch(() => {});
 }
 
-// REMOTE KEYBOARD / CHARACTER CONTROLLER
-function keyEvent(k, down) {
+// BULLETPROOF REMOTE CONTROLLER WITH POINTER CAPTURE & AUTO-RELEASE
+const activeKeys = new Set();
+
+function sendKey(k, down, tap = false) {
   fetch('/api/key', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key: k, down })
+    body: JSON.stringify({ key: k, down, tap })
   }).catch(() => {});
 }
 
-function keyTap(k) {
-  fetch('/api/key', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key: k, tap: true })
-  }).catch(() => {});
+function releaseAllKeys() {
+  if (activeKeys.size === 0) return;
+  activeKeys.clear();
+  document.querySelectorAll('.dpad-btn.pressed, .pad-action-btn.pressed').forEach(b => b.classList.remove('pressed'));
+  sendKey('release_all', false);
 }
+
+document.querySelectorAll('.dpad-btn').forEach(btn => {
+  const key = btn.getAttribute('data-key');
+  const isTap = btn.getAttribute('data-tap') === 'true';
+  if (!key) return;
+
+  if (isTap) {
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      btn.classList.add('pressed');
+      sendKey(key, true, true);
+      setTimeout(() => btn.classList.remove('pressed'), 140);
+    });
+    return;
+  }
+
+  btn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+    btn.classList.add('pressed');
+    activeKeys.add(key);
+    sendKey(key, true);
+  });
+
+  const onRelease = (e) => {
+    e.preventDefault();
+    try { btn.releasePointerCapture(e.pointerId); } catch (_) {}
+    btn.classList.remove('pressed');
+    if (activeKeys.has(key)) {
+      activeKeys.delete(key);
+      sendKey(key, false);
+    }
+  };
+
+  btn.addEventListener('pointerup', onRelease);
+  btn.addEventListener('pointercancel', onRelease);
+  btn.addEventListener('pointerleave', onRelease);
+});
+
+document.querySelectorAll('.pad-action-btn').forEach(btn => {
+  const key = btn.getAttribute('data-key');
+  if (!key) return;
+
+  btn.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    btn.classList.add('pressed');
+    sendKey(key, true, true);
+    setTimeout(() => btn.classList.remove('pressed'), 140);
+  });
+});
+
+window.addEventListener('pointerup', releaseAllKeys);
+window.addEventListener('pointercancel', releaseAllKeys);
+window.addEventListener('blur', releaseAllKeys);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) releaseAllKeys();
+});
 
 async function doAction(act, val = null) {
   try {
@@ -1026,6 +1235,54 @@ function toggleSpawnAlerts() {
 function doUpdate() {
   if (confirm('Check for update and restart macro? (If running, it will automatically resume fishing!)')) {
     doAction('update');
+  }
+}
+
+let isCrafting = false;
+
+function updateCraftUi(c) {
+  if (!c) return;
+  isCrafting = c.is_crafting;
+  const badge = document.getElementById('craft-status-badge');
+  const btn = document.getElementById('btn-craft-toggle');
+  const label = document.getElementById('craft-btn-label');
+  const icon = document.getElementById('craft-btn-icon');
+  const msg = document.getElementById('craft-msg');
+
+  if (!badge || !btn) return;
+
+  if (isCrafting) {
+    badge.className = 'status-badge badge-running';
+    badge.innerText = `CRAFTING (${c.crafted_count})`;
+    btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+    btn.style.color = '#fff';
+    label.innerText = 'STOP AUTO CRAFT';
+    icon.innerText = '🛑';
+    if (c.message) msg.innerText = c.message;
+  } else {
+    badge.className = 'status-badge badge-stopped';
+    badge.innerText = 'IDLE';
+    btn.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+    btn.style.color = '#000';
+    label.innerText = 'START AUTO CRAFT';
+    icon.innerText = '🔨';
+    if (c.message) msg.innerText = c.message;
+  }
+}
+
+async function toggleAutoCraft() {
+  const tier = document.getElementById('sel-craft-tier').value;
+  try {
+    const res = await fetch('/api/craft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: isCrafting ? 'stop' : 'start', tier })
+    });
+    const data = await res.json();
+    showToast(data.message || (isCrafting ? 'Auto-craft stop requested' : 'Auto-craft started'));
+    fetchStatus();
+  } catch (e) {
+    showToast('Failed: ' + e);
   }
 }
 

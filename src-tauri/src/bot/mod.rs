@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod crafting;
 pub mod ctx;
 pub mod machine;
 pub mod session;

@@ -4,7 +4,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     KEYEVENTF_UNICODE, MAPVK_VK_TO_VSC, MOUSEEVENTF_ABSOLUTE,
     MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
     MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEINPUT, VIRTUAL_KEY, VK_BACK, VK_CONTROL,
-    VK_DELETE, VK_ESCAPE, VK_RETURN, VK_SHIFT,
+    VK_DELETE, VK_ESCAPE, VK_RETURN, VK_SHIFT, VK_SPACE, VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetSystemMetrics, SetCursorPos, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
@@ -49,7 +49,7 @@ fn vk(key: VIRTUAL_KEY, up: bool) -> INPUT {
     if scan != 0 {
         flags |= KEYEVENTF_SCANCODE;
     }
-    if matches!(key, VK_DELETE) {
+    if matches!(key, VK_DELETE | VK_LEFT | VK_RIGHT | VK_UP | VK_DOWN) {
         flags |= KEYEVENTF_EXTENDEDKEY;
     }
     if up {
@@ -86,12 +86,22 @@ fn key_to_vk(k: Key) -> Option<VIRTUAL_KEY> {
         Key::Escape => Some(VK_ESCAPE),
         Key::Control => Some(VK_CONTROL),
         Key::Shift => Some(VK_SHIFT),
+        Key::Left => Some(VK_LEFT),
+        Key::Right => Some(VK_RIGHT),
+        Key::Up => Some(VK_UP),
+        Key::Down => Some(VK_DOWN),
         Key::Char(c) => {
-            let scan = unsafe { VkKeyScanW(c as u16) };
-            if scan == -1 || (scan >> 8) & 0x07 != 0 {
-                None
+            if c.is_ascii_alphanumeric() {
+                Some(VIRTUAL_KEY(c.to_ascii_uppercase() as u16))
+            } else if c == ' ' {
+                Some(VK_SPACE)
             } else {
-                Some(VIRTUAL_KEY((scan & 0xff) as u16))
+                let scan = unsafe { VkKeyScanW(c as u16) };
+                if scan == -1 || (scan >> 8) & 0x07 != 0 {
+                    None
+                } else {
+                    Some(VIRTUAL_KEY((scan & 0xff) as u16))
+                }
             }
         }
     }
