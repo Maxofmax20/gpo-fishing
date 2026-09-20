@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { BookOpen, Download, Gauge, ListChecks, Minus, Settings2, SlidersHorizontal, X } from "lucide-react";
+import { BookOpen, Download, Gauge, Globe, ListChecks, Minus, Settings2, SlidersHorizontal, X } from "lucide-react";
 import { api, on } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { cx, Dot } from "../components/primitives";
@@ -121,6 +121,14 @@ export default function Panel() {
           <header className="h-11 flex items-center px-4 border-b border-line drag shrink-0">
             <div className="font-semibold">{gated ? "GPO Autofish" : TABS.find((t) => t.id === tab)?.label}</div>
             <div className="ml-auto flex items-center gap-1 no-drag">
+              <button
+                className="h-7 px-2.5 mr-1 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-medium bg-white/[0.06] text-fg-dim hover:bg-white/[0.12] hover:text-fg transition-colors"
+                onClick={() => api.openUrl("http://localhost:3888")}
+                title="Open Web Dashboard in Browser (http://localhost:3888)"
+              >
+                <Globe size={12} className="text-accent" />
+                Web UI
+              </button>
               {update && (
                 <button
                   className="h-7 px-2.5 mr-1 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-medium bg-accent-soft text-accent hover:bg-accent/30 disabled:opacity-60"

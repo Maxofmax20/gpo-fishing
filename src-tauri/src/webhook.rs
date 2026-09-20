@@ -365,6 +365,17 @@ impl WebhookQueue {
             custom_telegram_html: None,
         });
     }
+
+    pub fn notify_message(&self, title: &str, msg: &str) {
+        self.send(Notification {
+            title: title.into(),
+            desc: msg.into(),
+            color: COLOR_GREEN,
+            fields: vec![],
+            photo: None,
+            custom_telegram_html: Some(msg.into()),
+        });
+    }
 }
 
 fn embed(title: &str, desc: &str, color: u32, fields: Vec<Value>) -> Value {

@@ -71,6 +71,24 @@ pub fn setup(app: &AppHandle, st: &AppState) -> Result<(), Box<dyn std::error::E
     crate::bot::web_server::spawn(Arc::clone(&st.bot), Arc::clone(&st.settings));
     crate::discord_rpc::spawn(Arc::clone(&st.bot), Arc::clone(&st.settings));
 
+    spawn_fruit_spawn_watcher(Arc::clone(&st.bot));
+
+    // Check if macro was running prior to update/restart
+    if st.store.take_resume_state() {
+        tracing::info!("Found resume_state! Auto-resuming macro after update...");
+        let bot = Arc::clone(&st.bot);
+        let webhook = Arc::clone(&st.webhook);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(3));
+            bot.start();
+            let cur_ver = env!("CARGO_PKG_VERSION");
+            webhook.notify_message(
+                "🚀 Auto-Resumed Fishing",
+                &format!("🚀 <b>GPO Autofish updated to v{cur_ver} and automatically resumed fishing!</b>"),
+            );
+        });
+    }
+
     tray::build(app)?;
     if let Err(e) = hotkeys::register(app, &st.settings.read().hotkeys) {
         tracing::warn!("hotkeys: {e}");
@@ -82,6 +100,22 @@ pub fn setup(app: &AppHandle, st: &AppState) -> Result<(), Box<dyn std::error::E
     }
     tracing::info!("GPO Autofish started");
     Ok(())
+}
+
+fn spawn_fruit_spawn_watcher(bot: Arc<Bot>) {
+    std::thread::Builder::new()
+        .name("fruit-spawn-watcher".into())
+        .spawn(move || {
+            let mut last_hash = 0u64;
+            loop {
+                std::thread::sleep(Duration::from_millis(1500));
+                let ctx = bot.ctx();
+                if ctx.roblox_rect().is_some() {
+                    crate::bot::machine::check_spawn(&ctx, &mut last_hash);
+                }
+            }
+        })
+        .expect("spawn fruit spawn watcher");
 }
 
 fn init_logging(dir: &std::path::Path) {

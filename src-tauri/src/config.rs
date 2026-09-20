@@ -606,6 +606,33 @@ impl Store {
         Ok(())
     }
 
+    pub fn resume_state_path(&self) -> PathBuf {
+        self.dir.join("resume_state.json")
+    }
+
+    pub fn save_resume_state(&self, running: bool) -> Result<(), ConfigError> {
+        fs::create_dir_all(&self.dir)?;
+        let data = serde_json::json!({
+            "should_resume": running,
+            "saved_at": current_time_str()
+        });
+        write_atomic(&self.resume_state_path(), &serde_json::to_vec(&data)?)
+    }
+
+    pub fn take_resume_state(&self) -> bool {
+        let path = self.resume_state_path();
+        if !path.exists() {
+            return false;
+        }
+        let should_resume = fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+            .and_then(|v| v.get("should_resume").and_then(|b| b.as_bool()))
+            .unwrap_or(false);
+        let _ = fs::remove_file(path);
+        should_resume
+    }
+
     pub fn open_catches_file(&self) -> Result<(), String> {
         let csv_path = self.dir.join("catches.csv");
         if !csv_path.exists() {

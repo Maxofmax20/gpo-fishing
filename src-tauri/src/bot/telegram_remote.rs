@@ -307,7 +307,7 @@ fn handle_command(
         "/update" | "update" => {
             let _ = post_telegram(token, chat_id, "🔍 <b>Checking for GPO Autofish updates...</b>");
             let cur_ver = env!("CARGO_PKG_VERSION");
-            match check_and_apply_update(token, chat_id, cur_ver) {
+            match check_and_apply_update(Some(bot), Some(token), Some(chat_id), cur_ver) {
                 Ok(msg) => {
                     let _ = post_telegram(token, chat_id, &msg);
                 }
@@ -941,9 +941,10 @@ fn register_bot_commands(client: &reqwest::blocking::Client, token: &str) {
     }
 }
 
-fn check_and_apply_update(
-    token: &str,
-    chat_id: &str,
+pub fn check_and_apply_update(
+    bot: Option<&Arc<Bot>>,
+    token: Option<&str>,
+    chat_id: Option<&str>,
     cur_ver: &str,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let client = reqwest::blocking::Client::builder()
@@ -976,13 +977,15 @@ fn check_and_apply_update(
         .ok_or("No download URL for windows-x86_64")?;
 
     let notes = resp.get("notes").and_then(|n| n.as_str()).unwrap_or("");
-    let _ = post_telegram(
-        token,
-        chat_id,
-        &format!(
-            "🚀 <b>New Version Found: v{remote_ver}!</b>\n\n<i>{notes}</i>\n\n⬇️ Downloading installer in the background..."
-        ),
-    );
+    if let (Some(tok), Some(cid)) = (token, chat_id) {
+        let _ = post_telegram(
+            tok,
+            cid,
+            &format!(
+                "🚀 <b>New Version Found: v{remote_ver}!</b>\n\n<i>{notes}</i>\n\n⬇️ Downloading installer in the background..."
+            ),
+        );
+    }
 
     let temp_dir = std::env::temp_dir();
     let installer_path = temp_dir.join(format!("GPO.Autofish_{remote_ver}_setup.exe"));
@@ -995,15 +998,37 @@ fn check_and_apply_update(
     std::io::copy(&mut exe_resp, &mut file)?;
     drop(file);
 
-    let _ = post_telegram(
-        token,
-        chat_id,
-        "📦 <b>Update downloaded successfully!</b>\nLaunching installer and restarting GPO Autofish...",
+    if let (Some(tok), Some(cid)) = (token, chat_id) {
+        let _ = post_telegram(
+            tok,
+            cid,
+            "📦 <b>Update downloaded successfully!</b>\nInstalling update and restarting GPO Autofish...",
+        );
+    }
+
+    // If bot was running, persist state so it auto-resumes after update
+    if let Some(b) = bot {
+        let was_running = b.is_running();
+        if was_running {
+            let _ = b.ctx().store.save_resume_state(true);
+        }
+    }
+
+    let current_exe = std::env::current_exe()?;
+    let current_exe_str = current_exe.to_string_lossy();
+    let installer_str = installer_path.to_string_lossy();
+
+    // Hidden PowerShell supervisor: waits for silent installer to finish, then restarts the app!
+    let ps_cmd = format!(
+        "Start-Sleep -Milliseconds 800; Start-Process -FilePath '{}' -ArgumentList '/S' -Wait; Start-Process -FilePath '{}'",
+        installer_str, current_exe_str
     );
 
-    // Launch installer and exit current process so file is replaced cleanly
-    std::process::Command::new(&installer_path)
-        .args(["/S"])
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+    std::process::Command::new("powershell")
+        .args(["-WindowStyle", "Hidden", "-Command", &ps_cmd])
+        .creation_flags(CREATE_NO_WINDOW)
         .spawn()?;
 
     std::thread::sleep(Duration::from_millis(600));

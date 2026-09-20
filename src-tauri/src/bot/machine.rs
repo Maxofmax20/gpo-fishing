@@ -441,7 +441,7 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_check
     }
 }
 
-fn check_spawn(ctx: &Ctx, last_hash: &mut u64) {
+pub(crate) fn check_spawn(ctx: &Ctx, last_hash: &mut u64) {
     if !ctx.platform.ocr.available() {
         return;
     }
