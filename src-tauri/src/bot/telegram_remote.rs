@@ -755,10 +755,150 @@ fn handle_command(
                 &lan_url,
             );
         }
+        cmd if cmd.starts_with("/macro") || cmd.starts_with("macro") => {
+            let parts: Vec<&str> = text.split_whitespace().collect();
+            let sub = parts.get(1).map(|s| s.to_lowercase()).unwrap_or_else(|| "status".into());
+
+            if sub == "stop" || sub == "cancel" {
+                crate::bot::recorder::stop_playback();
+                crate::bot::recorder::cancel_recording();
+                let _ = post_telegram(token, chat_id, "🛑 <b>Macro playback & recording stopped.</b>");
+            } else if sub == "list" {
+                let list = crate::bot::recorder::load_macros(&bot.ctx().store);
+                if list.is_empty() {
+                    let _ = post_telegram(
+                        token,
+                        chat_id,
+                        "📼 <b>No custom macros recorded yet.</b>\n\nTo record one, open <code>/web</code> and tap <b>Record Via Screen</b>, or send <code>/macro record start</code>.",
+                    );
+                } else {
+                    let mut lines = Vec::new();
+                    for (i, m) in list.iter().enumerate() {
+                        lines.push(format!("{}. 📋 <b>{}</b> ({} steps)", i + 1, m.name, m.steps.len()));
+                    }
+                    let reply = format!(
+                        "📼 <b>Saved Custom Macros ({} total):</b>\n\n\
+                         {}\n\n\
+                         <i>To play, send:</i>\n\
+                         • <code>/macro play &lt;name&gt;</code>\n\
+                         • <code>/macro loop &lt;name&gt;</code>\n\
+                         • <code>/macro delete &lt;name&gt;</code>",
+                        list.len(),
+                        lines.join("\n")
+                    );
+                    let _ = post_telegram(token, chat_id, &reply);
+                }
+            } else if sub == "play" || sub == "run" {
+                let target_name = parts[2..].join(" ");
+                if target_name.trim().is_empty() {
+                    let _ = post_telegram(token, chat_id, "⚠️ <b>Usage:</b> <code>/macro play &lt;name&gt;</code> (e.g. <code>/macro play Craft Rare</code>)");
+                } else {
+                    match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), &target_name, false) {
+                        Ok(_) => {
+                            let _ = post_telegram(token, chat_id, &format!("▶️ <b>Started playing macro:</b> <code>{target_name}</code> (1 cycle)"));
+                        }
+                        Err(e) => {
+                            let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Playback failed:</b> {e}"));
+                        }
+                    }
+                }
+            } else if sub == "loop" {
+                let target_name = parts[2..].join(" ");
+                if target_name.trim().is_empty() {
+                    let _ = post_telegram(token, chat_id, "⚠️ <b>Usage:</b> <code>/macro loop &lt;name&gt;</code> (e.g. <code>/macro loop Craft Rare</code>)");
+                } else {
+                    match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), &target_name, true) {
+                        Ok(_) => {
+                            let _ = post_telegram(token, chat_id, &format!("🔁 <b>Started LOOP playback for macro:</b> <code>{target_name}</code>\nSend <code>/macro stop</code> to halt."));
+                        }
+                        Err(e) => {
+                            let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Playback failed:</b> {e}"));
+                        }
+                    }
+                }
+            } else if sub == "record" {
+                let action = parts.get(2).map(|s| s.to_lowercase()).unwrap_or_else(|| "status".into());
+                if action == "start" {
+                    match crate::bot::recorder::start_recording(crate::bot::recorder::RecordMode::WebScreen) {
+                        Ok(_) => {
+                            let _ = post_telegram(
+                                token,
+                                chat_id,
+                                "⏺️ <b>Macro Step Recording Started!</b>\n\nOpen the Web Dashboard (<code>/web</code>) and tap the live game screen and buttons in order.\nWhen finished, send: <code>/macro record stop &lt;name&gt;</code>",
+                            );
+                        }
+                        Err(e) => {
+                            let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Cannot start recording:</b> {e}"));
+                        }
+                    }
+                } else if action == "stop" {
+                    let custom_name = parts[3..].join(" ");
+                    match crate::bot::recorder::stop_recording(&custom_name, &bot.ctx().store) {
+                        Ok(m) => {
+                            let _ = post_telegram(
+                                token,
+                                chat_id,
+                                &format!("✅ <b>Macro '{}' saved successfully!</b>\nCaptured <b>{}</b> steps.\nSend <code>/macro play {}</code> or <code>/macro loop {}</code> to run it anytime.", m.name, m.steps.len(), m.name, m.name)
+                            );
+                        }
+                        Err(e) => {
+                            let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Save failed:</b> {e}"));
+                        }
+                    }
+                } else if action == "cancel" {
+                    crate::bot::recorder::cancel_recording();
+                    let _ = post_telegram(token, chat_id, "❌ <b>Macro recording discarded.</b>");
+                } else {
+                    let _ = post_telegram(token, chat_id, "ℹ️ <b>Record usage:</b>\n• <code>/macro record start</code>\n• <code>/macro record stop &lt;name&gt;</code>\n• <code>/macro record cancel</code>");
+                }
+            } else if sub == "delete" || sub == "del" {
+                let target_name = parts[2..].join(" ");
+                if target_name.trim().is_empty() {
+                    let _ = post_telegram(token, chat_id, "⚠️ <b>Usage:</b> <code>/macro delete &lt;name&gt;</code>");
+                } else {
+                    match crate::bot::recorder::delete_macro(&bot.ctx().store, &target_name) {
+                        Ok(_) => {
+                            let _ = post_telegram(token, chat_id, &format!("🗑️ <b>Deleted macro:</b> <code>{target_name}</code>"));
+                        }
+                        Err(e) => {
+                            let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Delete failed:</b> {e}"));
+                        }
+                    }
+                }
+            } else {
+                let st = crate::bot::recorder::get_status();
+                let list = crate::bot::recorder::load_macros(&bot.ctx().store);
+                let cur_state = if st.is_recording {
+                    format!("⏺️ <b>RECORDING</b> ({} steps captured)", st.recorded_steps_count)
+                } else if st.is_playing {
+                    let loop_txt = if st.is_looping { format!("(Loop #{})", st.current_loop) } else { "(Single cycle)".into() };
+                    format!("▶️ <b>PLAYING:</b> {} {}", st.playing_macro_name.as_deref().unwrap_or("Custom"), loop_txt)
+                } else {
+                    "⏹️ <b>IDLE</b>".to_string()
+                };
+
+                let reply = format!(
+                    "📼 <b>Step Recorder &amp; Custom Macro Player</b>\n\n\
+                     • <b>Status:</b> {cur_state}\n\
+                     • <b>Saved Macros:</b> {} macros\n\n\
+                     <b>Commands:</b>\n\
+                     • <code>/macro list</code> - List all saved macros\n\
+                     • <code>/macro play &lt;name&gt;</code> - Play macro once\n\
+                     • <code>/macro loop &lt;name&gt;</code> - Loop macro continuously\n\
+                     • <code>/macro stop</code> - Stop running playback\n\
+                     • <code>/macro record start</code> - Start recording steps\n\
+                     • <code>/macro record stop &lt;name&gt;</code> - Save recorded macro\n\
+                     • <code>/macro delete &lt;name&gt;</code> - Delete macro",
+                    list.len()
+                );
+                let _ = post_telegram(token, chat_id, &reply);
+            }
+        }
         "/help" | "help" => {
             let help_text = "🎮 <b>GPO Autofish Remote Controls</b>\n\n\
                 👑 /bosses - Live Boss & Merchant countdowns\n\
                 🔨 /craft &lt;rare|legendary|all|stop&gt; - Auto craft fish bait at Blacksmith Sen\n\
+                📼 /macro &lt;list|play|loop|stop|record&gt; - Custom Step Recorder & Macro Playback\n\
                 🔔 /toggle &lt;boss|spawn&gt; - Mute/unmute alerts (e.g. /toggle roger, /toggle spawn)\n\
                 🔄 /sync - Calibrate timers (/sync read, /sync server, or paste Discord)\n\
                 🌐 /web - Open live Web Dashboard (Mobile & PC)\n\
@@ -1005,6 +1145,7 @@ fn register_bot_commands(client: &reqwest::blocking::Client, token: &str) {
             { "command": "toggle", "description": "🔔 Mute/unmute specific boss alerts" },
             { "command": "sync", "description": "🔄 Calibrate boss timers (/sync)" },
             { "command": "web", "description": "🌐 Open live Web Dashboard (Mobile & PC)" },
+            { "command": "macro", "description": "📼 Custom Step Recorder & Playback" },
             { "command": "volume", "description": "🔊 Set sound volume (/volume 0..100, max, zero)" },
             { "command": "brightness", "description": "💡 Set screen brightness (/brightness 0..100, min, max)" },
             { "command": "status", "description": "📊 Live stats & Roblox screenshot" },

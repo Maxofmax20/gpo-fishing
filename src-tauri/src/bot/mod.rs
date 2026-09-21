@@ -7,6 +7,7 @@ pub mod trace;
 pub mod watchdog;
 pub mod telegram_remote;
 pub mod web_server;
+pub mod recorder;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};

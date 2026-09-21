@@ -8,7 +8,44 @@ use serde_json::json;
 use crate::bot::Bot;
 use crate::config::Settings;
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 static LAST_FRAME: parking_lot::RwLock<Option<Vec<u8>>> = parking_lot::RwLock::new(None);
+static HELD_KEYS: parking_lot::RwLock<Vec<crate::core::types::Key>> = parking_lot::RwLock::new(Vec::new());
+static LAST_KEY_ACTIVITY: parking_lot::RwLock<Option<std::time::Instant>> = parking_lot::RwLock::new(None);
+static KEY_WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
+
+fn ensure_key_watchdog(bot: &Arc<Bot>) {
+    if KEY_WATCHDOG_STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let bot_clone = Arc::clone(bot);
+    thread::Builder::new()
+        .name("key-watchdog".into())
+        .spawn(move || loop {
+            thread::sleep(Duration::from_millis(500));
+            let should_release = {
+                let keys = HELD_KEYS.read();
+                if keys.is_empty() {
+                    false
+                } else if let Some(last) = *LAST_KEY_ACTIVITY.read() {
+                    last.elapsed() >= Duration::from_secs(30)
+                } else {
+                    false
+                }
+            };
+
+            if should_release {
+                let mut keys = HELD_KEYS.write();
+                for &k in keys.iter() {
+                    bot_clone.ctx().platform.input.key(k, false);
+                }
+                keys.clear();
+                tracing::info!("Auto-released held keys after 30s inactivity");
+            }
+        })
+        .expect("spawn key-watchdog thread");
+}
 
 pub fn get_local_ip() -> Option<String> {
     #[cfg(windows)]
@@ -122,6 +159,17 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     } else if raw_path == "/api/craft" && method == "POST" {
         let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_craft(&mut stream, bot, body);
+    } else if raw_path == "/api/macro/record" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_macro_record(&mut stream, bot, body);
+    } else if raw_path == "/api/macro/play" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_macro_play(&mut stream, bot, body);
+    } else if raw_path == "/api/macro/list" {
+        handle_macro_list(&mut stream, bot);
+    } else if raw_path == "/api/macro/delete" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_macro_delete(&mut stream, bot, body);
     } else {
         let not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
         let _ = stream.write_all(not_found.as_bytes());
@@ -264,6 +312,8 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "version": env!("CARGO_PKG_VERSION"),
         "bosses": bosses_data,
         "crafting": crate::bot::crafting::get_craft_status(),
+        "recorder": crate::bot::recorder::get_status(),
+        "macros": crate::bot::recorder::load_macros(&bot.ctx().store),
     });
 
     let body = payload.to_string();
@@ -319,6 +369,9 @@ fn handle_click(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let ry = parsed.get("rel_y").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
     let btn_str = parsed.get("button").and_then(|v| v.as_str()).unwrap_or("left");
 
+    // Record step if macro recorder is active
+    crate::bot::recorder::record_click(rx, ry, btn_str);
+
     // Ensure Roblox has window focus before sending click
     let _ = bot.ctx().platform.window.focus();
     std::thread::sleep(Duration::from_millis(20));
@@ -345,15 +398,36 @@ fn handle_click(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
 }
 
 fn handle_key(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
+    ensure_key_watchdog(bot);
+
     let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
     let key_str = parsed.get("key").and_then(|v| v.as_str()).unwrap_or("");
     let is_down = parsed.get("down").and_then(|v| v.as_bool()).unwrap_or(true);
     let tap = parsed.get("tap").and_then(|v| v.as_bool()).unwrap_or(false);
 
+    *LAST_KEY_ACTIVITY.write() = Some(std::time::Instant::now());
+
+    if key_str == "heartbeat" {
+        // Just refresh the activity timestamp, keys remain held!
+        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+        let _ = stream.write_all(resp.as_bytes());
+        return;
+    }
+
+    // Record step if macro recorder is active and key is tapped/pressed
+    if is_down && key_str != "release_all" && !key_str.is_empty() {
+        crate::bot::recorder::record_key(key_str);
+    }
+
     // Ensure Roblox has window focus before sending keystroke
     let _ = bot.ctx().platform.window.focus();
 
     if key_str == "release_all" {
+        let mut held = HELD_KEYS.write();
+        for &k in held.iter() {
+            bot.ctx().platform.input.key(k, false);
+        }
+        held.clear();
         for k in [
             crate::core::types::Key::Char('w'),
             crate::core::types::Key::Char('a'),
@@ -396,16 +470,16 @@ fn handle_key(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
                 bot.ctx().platform.input.key(k, true);
                 std::thread::sleep(Duration::from_millis(80));
                 bot.ctx().platform.input.key(k, false);
-            } else {
-                bot.ctx().platform.input.key(k, is_down);
-                // Safety watchdog: auto-release held key after 5s to avoid permanent stuck walking
-                if is_down {
-                    let ctx_clone = bot.ctx().clone();
-                    std::thread::spawn(move || {
-                        std::thread::sleep(Duration::from_secs(5));
-                        ctx_clone.platform.input.key(k, false);
-                    });
+                HELD_KEYS.write().retain(|&x| x != k);
+            } else if is_down {
+                bot.ctx().platform.input.key(k, true);
+                let mut held = HELD_KEYS.write();
+                if !held.contains(&k) {
+                    held.push(k);
                 }
+            } else {
+                bot.ctx().platform.input.key(k, false);
+                HELD_KEYS.write().retain(|&x| x != k);
             }
         }
     }
@@ -526,6 +600,94 @@ fn handle_craft(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     );
     let _ = stream.write_all(resp.as_bytes());
 }
+
+fn handle_macro_record(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let act = parsed.get("action").and_then(|a| a.as_str()).unwrap_or("");
+    let name = parsed.get("name").and_then(|n| n.as_str()).unwrap_or("");
+
+    let (ok, msg) = match act {
+        "start" => {
+            match crate::bot::recorder::start_recording(crate::bot::recorder::RecordMode::WebScreen) {
+                Ok(_) => (true, "Recording started! Tap on the game screen & controls to record steps.".into()),
+                Err(e) => (false, e),
+            }
+        }
+        "stop" => {
+            match crate::bot::recorder::stop_recording(name, &bot.ctx().store) {
+                Ok(m) => (true, format!("Successfully saved macro '{}' ({} steps)!", m.name, m.steps.len())),
+                Err(e) => (false, e),
+            }
+        }
+        "cancel" => {
+            crate::bot::recorder::cancel_recording();
+            (true, "Recording cancelled.".into())
+        }
+        _ => (false, "Unknown recording action".into()),
+    };
+
+    let reply = json!({ "ok": ok, "message": msg }).to_string();
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        reply.len(),
+        reply
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_macro_play(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let act = parsed.get("action").and_then(|a| a.as_str()).unwrap_or("play");
+    let name = parsed.get("name").and_then(|n| n.as_str()).unwrap_or("");
+    let loop_mode = act == "loop" || parsed.get("loop").and_then(|l| l.as_bool()).unwrap_or(false);
+
+    let (ok, msg) = if act == "stop" {
+        crate::bot::recorder::stop_playback();
+        (true, "Macro playback stop requested.".into())
+    } else {
+        match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), name, loop_mode) {
+            Ok(_) => (true, format!("Playing macro '{name}'{}!", if loop_mode { " in loop" } else { "" })),
+            Err(e) => (false, e),
+        }
+    };
+
+    let reply = json!({ "ok": ok, "message": msg }).to_string();
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        reply.len(),
+        reply
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_macro_list(stream: &mut TcpStream, bot: &Arc<Bot>) {
+    let macros = crate::bot::recorder::load_macros(&bot.ctx().store);
+    let status = crate::bot::recorder::get_status();
+    let reply = json!({ "ok": true, "macros": macros, "status": status }).to_string();
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        reply.len(),
+        reply
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_macro_delete(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let id_or_name = parsed.get("name").or_else(|| parsed.get("id")).and_then(|v| v.as_str()).unwrap_or("");
+    let (ok, msg) = match crate::bot::recorder::delete_macro(&bot.ctx().store, id_or_name) {
+        Ok(_) => (true, format!("Deleted macro '{id_or_name}'")),
+        Err(e) => (false, e),
+    };
+    let reply = json!({ "ok": ok, "message": msg }).to_string();
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        reply.len(),
+        reply
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
 
 fn send_html(stream: &mut TcpStream) {
     let html = r#"<!DOCTYPE html>
@@ -827,6 +989,62 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
     <div id="craft-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 6px;">Stand at Blacksmith Sen with caught fish, then tap Start.</div>
   </div>
 
+  <!-- CUSTOM STEP RECORDER & MACRO PLAYER -->
+  <div class="card" style="border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.03);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <div class="card-label" style="color: var(--cyan); display: flex; align-items: center; gap: 6px;">
+        <span>📼 STEP RECORDER &amp; MACRO PLAYER</span>
+      </div>
+      <div id="macro-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
+    </div>
+
+    <!-- 1. RECORD CONTROLS -->
+    <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">1. RECORD NEW WORKFLOW</span>
+        <span id="record-count-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--amber); font-weight: 800;">READY</span>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <input id="txt-macro-name" type="text" placeholder="Macro Name (e.g. Craft Rare Bait)" value="Craft Rare Bait"
+               style="background: #1e293b; color: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 0.85rem; font-weight: 700; flex: 1; min-width: 160px; outline: none;" />
+        <button id="btn-record-toggle" class="btn" style="background: linear-gradient(135deg, #00f0ff, #0284c7); color: #000; flex: 1; min-width: 140px; padding: 10px 14px;" onclick="toggleRecord()">
+          <span id="record-btn-icon">⏺️</span>
+          <span id="record-btn-label">RECORD VIA SCREEN</span>
+        </button>
+        <button id="btn-record-cancel" class="btn btn-sub" style="display: none; padding: 10px 14px;" onclick="cancelRecord()">❌ CANCEL</button>
+      </div>
+      <div id="record-hint" style="font-size: 0.72rem; color: var(--text-mute);">
+        Tap <b>Record</b>, then tap the live video screen and press controls (T, E, WASD). Every click &amp; key with timing is captured!
+      </div>
+    </div>
+
+    <!-- 2. PLAYBACK CONTROLS -->
+    <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">2. PLAY OR LOOP SAVED MACRO</span>
+        <span id="play-loop-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--cyan); font-weight: 800;">READY</span>
+      </div>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <select id="sel-macro-list" style="background: #1e293b; color: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 0.85rem; font-weight: 700; flex: 1; min-width: 160px; outline: none; cursor: pointer;">
+          <option value="">(No macros saved yet)</option>
+        </select>
+        <button id="btn-macro-play" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; flex: 1; min-width: 110px; padding: 10px 12px;" onclick="playMacro(false)">
+          ▶️ PLAY ONCE
+        </button>
+        <button id="btn-macro-loop" class="btn" style="background: linear-gradient(135deg, #b026ff, #7c3aed); color: #fff; flex: 1; min-width: 110px; padding: 10px 12px;" onclick="playMacro(true)">
+          🔁 LOOP PLAY
+        </button>
+        <button id="btn-macro-stop" class="btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; padding: 10px 14px; display: none;" onclick="stopMacro()">
+          🛑 STOP
+        </button>
+        <button class="btn btn-sub" style="padding: 10px 12px;" onclick="deleteSelectedMacro()" title="Delete selected macro">
+          🗑️
+        </button>
+      </div>
+    </div>
+    <div id="macro-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 4px;">Record any workflow once and replay or loop it smoothly!</div>
+  </div>
+
   <!-- PRIMARY STATS -->
   <div class="stat-grid">
     <div class="card">
@@ -1031,6 +1249,7 @@ async function fetchStatus() {
     }
 
     updateCraftUi(d.crafting);
+    updateMacroUi(d.recorder, d.macros);
 
     renderTimers();
   } catch (e) {
@@ -1125,8 +1344,11 @@ function handleScreenTap(e) {
   }).catch(() => {});
 }
 
-// BULLETPROOF REMOTE CONTROLLER WITH POINTER CAPTURE & AUTO-RELEASE
+// MULTI-TOUCH REMOTE CONTROLLER ENGINE WITH INDEPENDENT POINTER TRACKING & HEARTBEAT
+// Map of active pointerId -> { key: string, btn: HTMLElement }
+const activePointers = new Map();
 const activeKeys = new Set();
+let heartbeatInterval = null;
 
 function sendKey(k, down, tap = false) {
   fetch('/api/key', {
@@ -1136,65 +1358,119 @@ function sendKey(k, down, tap = false) {
   }).catch(() => {});
 }
 
+function startKeyHeartbeat() {
+  if (heartbeatInterval) return;
+  heartbeatInterval = setInterval(() => {
+    if (activeKeys.size === 0) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+      return;
+    }
+    // Refresh server activity watchdog so long holds are never interrupted
+    fetch('/api/key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'heartbeat', down: true, tap: false })
+    }).catch(() => {});
+  }, 1500);
+}
+
 function releaseAllKeys() {
-  if (activeKeys.size === 0) return;
+  if (activeKeys.size === 0 && activePointers.size === 0) return;
+  activePointers.clear();
   activeKeys.clear();
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
   document.querySelectorAll('.dpad-btn.pressed, .pad-action-btn.pressed').forEach(b => b.classList.remove('pressed'));
   sendKey('release_all', false);
 }
 
+// DIRECTIONAL & ARROW CONTROLS (Hold or simultaneous multi-touch)
 document.querySelectorAll('.dpad-btn').forEach(btn => {
   const key = btn.getAttribute('data-key');
-  const isTap = btn.getAttribute('data-tap') === 'true';
   if (!key) return;
-
-  if (isTap) {
-    btn.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      btn.classList.add('pressed');
-      sendKey(key, true, true);
-      setTimeout(() => btn.classList.remove('pressed'), 140);
-    });
-    return;
-  }
 
   btn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     try { btn.setPointerCapture(e.pointerId); } catch (_) {}
     btn.classList.add('pressed');
+    activePointers.set(e.pointerId, { key, btn });
     activeKeys.add(key);
     sendKey(key, true);
+    startKeyHeartbeat();
   });
 
-  const onRelease = (e) => {
+  const onPointerRelease = (e) => {
+    if (!activePointers.has(e.pointerId)) return;
     e.preventDefault();
     try { btn.releasePointerCapture(e.pointerId); } catch (_) {}
-    btn.classList.remove('pressed');
-    if (activeKeys.has(key)) {
-      activeKeys.delete(key);
-      sendKey(key, false);
+    const entry = activePointers.get(e.pointerId);
+    activePointers.delete(e.pointerId);
+
+    // Check if any other touch pointer is holding the same button
+    let stillHeld = false;
+    for (const p of activePointers.values()) {
+      if (p.key === entry.key) { stillHeld = true; break; }
+    }
+    if (!stillHeld) {
+      entry.btn.classList.remove('pressed');
+      activeKeys.delete(entry.key);
+      sendKey(entry.key, false);
+    }
+    if (activeKeys.size === 0 && heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
     }
   };
 
-  btn.addEventListener('pointerup', onRelease);
-  btn.addEventListener('pointercancel', onRelease);
-  btn.addEventListener('pointerleave', onRelease);
+  btn.addEventListener('pointerup', onPointerRelease);
+  btn.addEventListener('pointercancel', onPointerRelease);
 });
 
+// ACTION BUTTONS (Shift, Space, 1, E, T)
 document.querySelectorAll('.pad-action-btn').forEach(btn => {
   const key = btn.getAttribute('data-key');
   if (!key) return;
 
   btn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
     btn.classList.add('pressed');
-    sendKey(key, true, true);
-    setTimeout(() => btn.classList.remove('pressed'), 140);
+    activePointers.set(e.pointerId, { key, btn });
+    activeKeys.add(key);
+    sendKey(key, true);
+    startKeyHeartbeat();
   });
+
+  const onPointerRelease = (e) => {
+    if (!activePointers.has(e.pointerId)) return;
+    e.preventDefault();
+    try { btn.releasePointerCapture(e.pointerId); } catch (_) {}
+    const entry = activePointers.get(e.pointerId);
+    activePointers.delete(e.pointerId);
+
+    let stillHeld = false;
+    for (const p of activePointers.values()) {
+      if (p.key === entry.key) { stillHeld = true; break; }
+    }
+    if (!stillHeld) {
+      entry.btn.classList.remove('pressed');
+      activeKeys.delete(entry.key);
+      sendKey(entry.key, false);
+    }
+    if (activeKeys.size === 0 && heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+  };
+
+  btn.addEventListener('pointerup', onPointerRelease);
+  btn.addEventListener('pointercancel', onPointerRelease);
 });
 
-window.addEventListener('pointerup', releaseAllKeys);
-window.addEventListener('pointercancel', releaseAllKeys);
+// Failsafe auto-release ONLY if browser window loses focus or tab is hidden
 window.addEventListener('blur', releaseAllKeys);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) releaseAllKeys();
@@ -1286,6 +1562,188 @@ async function toggleAutoCraft() {
     fetchStatus();
   } catch (e) {
     showToast('Failed: ' + e);
+  }
+}
+
+let isRecordingMacro = false;
+let isPlayingMacro = false;
+
+function updateMacroUi(rec, macros) {
+  if (!rec) return;
+  isRecordingMacro = rec.is_recording;
+  isPlayingMacro = rec.is_playing;
+
+  const stBadge = document.getElementById('macro-status-badge');
+  const countBadge = document.getElementById('record-count-badge');
+  const recToggle = document.getElementById('btn-record-toggle');
+  const recCancel = document.getElementById('btn-record-cancel');
+  const recIcon = document.getElementById('record-btn-icon');
+  const recLabel = document.getElementById('record-btn-label');
+  const recHint = document.getElementById('record-hint');
+
+  const playBadge = document.getElementById('play-loop-badge');
+  const btnPlay = document.getElementById('btn-macro-play');
+  const btnLoop = document.getElementById('btn-macro-loop');
+  const btnStop = document.getElementById('btn-macro-stop');
+  const macroMsg = document.getElementById('macro-msg');
+
+  if (isRecordingMacro) {
+    stBadge.className = 'status-badge badge-running';
+    stBadge.innerText = 'RECORDING';
+    countBadge.innerText = `${rec.recorded_steps_count} STEPS`;
+    recToggle.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+    recToggle.style.color = '#fff';
+    recIcon.innerText = '⏹️';
+    recLabel.innerText = 'FINISH & SAVE';
+    recCancel.style.display = 'inline-flex';
+    recHint.innerText = 'Tap live screen or controls (T, E, WASD, 1-5). Each action & delay is saved!';
+  } else {
+    countBadge.innerText = rec.recorded_steps_count > 0 ? `${rec.recorded_steps_count} STEPS` : 'READY';
+    recToggle.style.background = 'linear-gradient(135deg, #00f0ff, #0284c7)';
+    recToggle.style.color = '#000';
+    recIcon.innerText = '⏺️';
+    recLabel.innerText = 'RECORD VIA SCREEN';
+    recCancel.style.display = 'none';
+    recHint.innerText = 'Tap Record, then tap live screen and press controls. Captures timing automatically!';
+  }
+
+  if (isPlayingMacro) {
+    stBadge.className = 'status-badge badge-running';
+    stBadge.innerText = rec.is_looping ? `LOOP #${rec.current_loop}` : 'PLAYING';
+    playBadge.innerText = rec.is_looping ? `LOOPING (#${rec.current_loop})` : 'PLAYING ONCE';
+    btnPlay.style.display = 'none';
+    btnLoop.style.display = 'none';
+    btnStop.style.display = 'inline-flex';
+  } else {
+    if (!isRecordingMacro) {
+      stBadge.className = 'status-badge badge-stopped';
+      stBadge.innerText = 'IDLE';
+    }
+    playBadge.innerText = 'READY';
+    btnPlay.style.display = 'inline-flex';
+    btnLoop.style.display = 'inline-flex';
+    btnStop.style.display = 'none';
+  }
+
+  if (rec.message) {
+    macroMsg.innerText = rec.message;
+  }
+
+  // Update Macro Dropdown
+  const sel = document.getElementById('sel-macro-list');
+  if (macros && Array.isArray(macros)) {
+    const curVal = sel.value;
+    if (macros.length === 0) {
+      sel.innerHTML = '<option value="">(No macros saved yet)</option>';
+    } else {
+      let optHtml = '';
+      for (const m of macros) {
+        const selected = (m.name === curVal || m.id === curVal) ? 'selected' : '';
+        optHtml += `<option value="${m.name}" ${selected}>📋 ${m.name} (${m.steps.length} steps)</option>`;
+      }
+      sel.innerHTML = optHtml;
+    }
+  }
+}
+
+async function toggleRecord() {
+  if (isRecordingMacro) {
+    const name = document.getElementById('txt-macro-name').value.trim() || 'My Macro';
+    try {
+      const res = await fetch('/api/macro/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop', name })
+      });
+      const data = await res.json();
+      showToast(data.message || 'Macro saved!');
+      fetchStatus();
+    } catch (e) {
+      showToast('Save failed: ' + e);
+    }
+  } else {
+    try {
+      const res = await fetch('/api/macro/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start', mode: 'web' })
+      });
+      const data = await res.json();
+      showToast(data.message || 'Recording started!');
+      fetchStatus();
+    } catch (e) {
+      showToast('Record failed: ' + e);
+    }
+  }
+}
+
+async function cancelRecord() {
+  try {
+    const res = await fetch('/api/macro/record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'cancel' })
+    });
+    const data = await res.json();
+    showToast(data.message || 'Recording cancelled');
+    fetchStatus();
+  } catch (e) {
+    showToast('Cancel failed: ' + e);
+  }
+}
+
+async function playMacro(isLoop) {
+  const sel = document.getElementById('sel-macro-list');
+  const name = sel.value;
+  if (!name) {
+    showToast('Please record or select a macro first!');
+    return;
+  }
+  try {
+    const res = await fetch('/api/macro/play', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: isLoop ? 'loop' : 'play', name })
+    });
+    const data = await res.json();
+    showToast(data.message || (isLoop ? 'Started loop playback' : 'Started playing macro'));
+    fetchStatus();
+  } catch (e) {
+    showToast('Play failed: ' + e);
+  }
+}
+
+async function stopMacro() {
+  try {
+    const res = await fetch('/api/macro/play', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'stop' })
+    });
+    const data = await res.json();
+    showToast(data.message || 'Playback stopped');
+    fetchStatus();
+  } catch (e) {
+    showToast('Stop failed: ' + e);
+  }
+}
+
+async function deleteSelectedMacro() {
+  const sel = document.getElementById('sel-macro-list');
+  const name = sel.value;
+  if (!name) return;
+  if (!confirm(`Delete macro "${name}"?`)) return;
+  try {
+    const res = await fetch('/api/macro/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const data = await res.json();
+    showToast(data.message || 'Macro deleted');
+    fetchStatus();
+  } catch (e) {
+    showToast('Delete failed: ' + e);
   }
 }
 
