@@ -766,6 +766,9 @@ fn send_html(stream: &mut TcpStream) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>GPO Autofish CyberDeck</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
@@ -954,6 +957,73 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
 }
 #toast.show { transform: translateX(-50%) translateY(0); }
 
+/* TOP NAVIGATION TABS */
+.nav-tabs {
+  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
+  border-bottom: 1px solid var(--border); margin-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.nav-tab-btn {
+  padding: 8px 16px; border-radius: 10px; background: rgba(30, 41, 59, 0.5);
+  border: 1px solid var(--border); color: var(--text-dim); font-size: 0.8rem;
+  font-weight: 700; cursor: pointer; white-space: nowrap; transition: all 0.18s ease;
+}
+.nav-tab-btn:hover { background: rgba(51, 65, 85, 0.8); color: var(--text); }
+.nav-tab-btn.active {
+  background: rgba(0, 240, 255, 0.18); border-color: var(--cyan); color: var(--cyan);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.3);
+}
+
+/* CUSTOM NON-NATIVE DROPDOWN */
+.custom-dropdown {
+  position: relative; display: inline-block; flex: 1; min-width: 160px;
+}
+.custom-dropdown-btn {
+  width: 100%; height: 42px; padding: 0 14px;
+  background: #14151a; border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px; color: var(--text); font-size: 0.84rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  cursor: pointer; transition: all 0.18s ease; user-select: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.custom-dropdown-btn:hover {
+  background: #1a1d24; border-color: rgba(255, 255, 255, 0.28);
+}
+.custom-dropdown.open .custom-dropdown-btn {
+  border-color: var(--cyan); box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
+}
+.custom-dropdown.open .dropdown-chevron {
+  transform: rotate(180deg);
+}
+.dropdown-chevron {
+  font-size: 0.72rem; color: var(--text-dim); transition: transform 0.2s ease;
+}
+.custom-dropdown-menu {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0;
+  min-width: 100%; max-width: 320px; max-height: 240px; overflow-y: auto;
+  background: #14151a; border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8);
+  z-index: 1000; padding: 6px; backdrop-filter: blur(20px);
+}
+.custom-dropdown.open .custom-dropdown-menu {
+  display: flex; flex-direction: column; gap: 3px;
+}
+.custom-dropdown-item {
+  padding: 8px 12px; border-radius: 8px; font-size: 0.82rem;
+  color: var(--text-dim); cursor: pointer; display: flex; align-items: center;
+  justify-content: space-between; gap: 8px; transition: background 0.12s ease;
+  user-select: none;
+}
+.custom-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.08); color: #fff;
+}
+.custom-dropdown-item.active {
+  background: rgba(0, 240, 255, 0.15); color: var(--cyan); font-weight: 700;
+}
+.dropdown-item-sub {
+  font-size: 0.68rem; color: var(--text-mute); font-family: monospace;
+}
+
 /* MACRO UPGRADE STYLES */
 .macro-pill-group {
   display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
@@ -972,13 +1042,6 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
   background: rgba(176, 38, 255, 0.18); border-color: #c084fc; color: #e9d5ff;
   box-shadow: 0 0 12px rgba(176, 38, 255, 0.3);
 }
-.macro-select-custom {
-  background: #14151a; color: #fff; border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 10px; padding: 10px 14px; font-size: 0.85rem; font-weight: 700;
-  outline: none; cursor: pointer; flex: 1; min-width: 160px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-}
-.macro-select-custom:focus { border-color: var(--cyan); }
 .macro-hotkey-box {
   background: rgba(0, 240, 255, 0.05); border: 1px dashed rgba(0, 240, 255, 0.3);
   border-radius: 8px; padding: 8px 12px; font-size: 0.73rem; color: #94a3b8;
@@ -1012,200 +1075,240 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
     </div>
   </header>
 
-  <!-- LIVE VIDEO STREAM & SCREEN TOUCH -->
-  <div class="stream-wrapper">
-    <div class="stream-bar">
-      <div class="stream-indicator">
-        <div id="stream-dot" class="live-dot on"></div>
-        <span>MJPEG LIVE STREAM (TAP TO CLICK)</span>
-      </div>
-      <div id="stream-fps" style="font-family: monospace; color: var(--cyan);">LIVE 20 FPS</div>
-    </div>
-    <div id="screen-container" class="screen-box">
-      <img id="screen-img" class="screen-img" src="/api/stream" alt="" onerror="fallbackSnapshot()" />
-    </div>
+  <!-- TOP NAVIGATION TABS -->
+  <div class="nav-tabs">
+    <button class="nav-tab-btn active" onclick="switchTab('all', this)">📑 Show All</button>
+    <button class="nav-tab-btn" onclick="switchTab('remote', this)">🎮 Remote &amp; Gamepad</button>
+    <button class="nav-tab-btn" onclick="switchTab('macro', this)">📼 Macro Studio</button>
+    <button class="nav-tab-btn" onclick="switchTab('craft', this)">🔨 Auto Craft</button>
+    <button class="nav-tab-btn" onclick="switchTab('stats', this)">📊 Stats &amp; Restock</button>
   </div>
 
-  <!-- REMOTE GAMEPAD / MOVEMENT CONTROLLER -->
-  <div class="controller-card">
-    <div class="controller-layout">
-      <!-- 1. Movement WASD -->
-      <div class="pad-cluster">
-        <div class="cluster-label">🏃 WALK (WASD)</div>
-        <div class="dpad-grid">
-          <div></div>
-          <button class="dpad-btn" data-key="w" title="Walk Forward (W)">W</button>
-          <div></div>
-          <button class="dpad-btn" data-key="a" title="Walk Left (A)">A</button>
-          <button class="dpad-btn" data-key="s" title="Walk Backward (S)">S</button>
-          <button class="dpad-btn" data-key="d" title="Walk Right (D)">D</button>
+  <!-- SECTION 1: REMOTE CONTROLS & STREAM -->
+  <div id="sec-remote" style="display: flex; flex-direction: column; gap: 14px;">
+    <!-- LIVE VIDEO STREAM & SCREEN TOUCH -->
+    <div class="stream-wrapper">
+      <div class="stream-bar">
+        <div class="stream-indicator">
+          <div id="stream-dot" class="live-dot on"></div>
+          <span>MJPEG LIVE STREAM (TAP TO CLICK)</span>
         </div>
+        <div id="stream-fps" style="font-family: monospace; color: var(--cyan);">LIVE 20 FPS</div>
       </div>
+      <div id="screen-container" class="screen-box">
+        <img id="screen-img" class="screen-img" src="/api/stream" alt="" onerror="fallbackSnapshot()" />
+      </div>
+    </div>
 
-      <!-- 2. Face / Look (Arrow Controls) -->
-      <div class="pad-cluster">
-        <div class="cluster-label">👀 FACE / TURN (ARROWS)</div>
-        <div class="dpad-grid">
-          <div></div>
-          <button class="dpad-btn pad-arrow-btn" data-key="up" title="Face / Tilt Up (↑)">▲</button>
-          <div></div>
-          <button class="dpad-btn pad-arrow-btn" data-key="left" title="Turn Left (←)">◀</button>
-          <button class="dpad-btn pad-arrow-btn" data-key="down" title="Face / Tilt Down (↓)">▼</button>
-          <button class="dpad-btn pad-arrow-btn" data-key="right" title="Turn Right (→)">▶</button>
+    <!-- REMOTE GAMEPAD / MOVEMENT CONTROLLER -->
+    <div class="controller-card">
+      <div class="controller-layout">
+        <!-- 1. Movement WASD -->
+        <div class="pad-cluster">
+          <div class="cluster-label">🏃 WALK (WASD)</div>
+          <div class="dpad-grid">
+            <div></div>
+            <button class="dpad-btn" data-key="w" title="Walk Forward (W)">W</button>
+            <div></div>
+            <button class="dpad-btn" data-key="a" title="Walk Left (A)">A</button>
+            <button class="dpad-btn" data-key="s" title="Walk Backward (S)">S</button>
+            <button class="dpad-btn" data-key="d" title="Walk Right (D)">D</button>
+          </div>
         </div>
-      </div>
 
-      <!-- 3. Actions -->
-      <div class="pad-cluster" style="flex: 1; min-width: 140px;">
-        <div class="cluster-label">⚡ ACTIONS & VIEW</div>
-        <div class="action-buttons-pad">
-          <button class="pad-action-btn btn-shift" data-key="shift">⚡ SHIFT-LOCK</button>
-          <button class="pad-action-btn" data-key="space">🦘 JUMP (SPACE)</button>
-          <button class="pad-action-btn" data-key="1">🎣 EQUIP ROD (1)</button>
-          <button class="pad-action-btn" data-key="e">🖐️ INTERACT (E)</button>
-          <button class="pad-action-btn" data-key="t" style="grid-column: span 2;">💬 TALK / ACTION (T)</button>
+        <!-- 2. Face / Look (Arrow Controls) -->
+        <div class="pad-cluster">
+          <div class="cluster-label">👀 FACE / TURN (ARROWS)</div>
+          <div class="dpad-grid">
+            <div></div>
+            <button class="dpad-btn pad-arrow-btn" data-key="up" title="Face / Tilt Up (↑)">▲</button>
+            <div></div>
+            <button class="dpad-btn pad-arrow-btn" data-key="left" title="Turn Left (←)">◀</button>
+            <button class="dpad-btn pad-arrow-btn" data-key="down" title="Face / Tilt Down (↓)">▼</button>
+            <button class="dpad-btn pad-arrow-btn" data-key="right" title="Turn Right (→)">▶</button>
+          </div>
+        </div>
+
+        <!-- 3. Actions -->
+        <div class="pad-cluster" style="flex: 1; min-width: 140px;">
+          <div class="cluster-label">⚡ ACTIONS & VIEW</div>
+          <div class="action-buttons-pad">
+            <button class="pad-action-btn btn-shift" data-key="shift">⚡ SHIFT-LOCK</button>
+            <button class="pad-action-btn" data-key="space">🦘 JUMP (SPACE)</button>
+            <button class="pad-action-btn" data-key="1">🎣 EQUIP ROD (1)</button>
+            <button class="pad-action-btn" data-key="e">🖐️ INTERACT (E)</button>
+            <button class="pad-action-btn" data-key="t" style="grid-column: span 2;">💬 TALK / ACTION (T)</button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- MACRO ACTIONS -->
-  <div class="action-grid">
-    <button id="btn-toggle" class="btn btn-toggle" onclick="togglePlay()">
-      <span id="toggle-icon">▶️</span>
-      <span id="toggle-label">START MACRO</span>
-    </button>
-    <button class="btn btn-sub" onclick="doAction('recast')">🔄 RECAST</button>
-    <button class="btn btn-sub" onclick="doAction('buy_bait')">🛒 BUY BAIT</button>
-    <button id="btn-mute" class="btn btn-sub" onclick="toggleMute()">🔇 MUTE</button>
-    <button class="btn btn-update" onclick="doUpdate()">🚀 UPDATE</button>
-  </div>
-
-  <!-- AUTO CRAFT BAIT (BLACKSMITH SEN) -->
-  <div class="card" style="border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.04);">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-      <div class="card-label" style="color: var(--amber);">🔨 AUTO CRAFT BAIT (BLACKSMITH SEN)</div>
-      <div id="craft-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
-    </div>
-    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
-      <select id="sel-craft-tier" style="background: #1e293b; color: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; font-size: 0.85rem; font-weight: 700; outline: none; cursor: pointer; flex: 1; min-width: 160px;">
-        <option value="rare">🍇 Rare Fish Bait</option>
-        <option value="legendary">👑 Legendary Fish Bait</option>
-        <option value="all">🌟 All (Legendary &amp; Rare)</option>
-      </select>
-      <button id="btn-craft-toggle" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; flex: 1; min-width: 160px;" onclick="toggleAutoCraft()">
-        <span id="craft-btn-icon">🔨</span>
-        <span id="craft-btn-label">START AUTO CRAFT</span>
+    <!-- MACRO ACTIONS -->
+    <div class="action-grid">
+      <button id="btn-toggle" class="btn btn-toggle" onclick="togglePlay()">
+        <span id="toggle-icon">▶️</span>
+        <span id="toggle-label">START MACRO</span>
       </button>
+      <button class="btn btn-sub" onclick="doAction('recast')">🔄 RECAST</button>
+      <button class="btn btn-sub" onclick="doAction('buy_bait')">🛒 BUY BAIT</button>
+      <button id="btn-mute" class="btn btn-sub" onclick="toggleMute()">🔇 MUTE</button>
+      <button class="btn btn-update" onclick="doUpdate()">🚀 UPDATE</button>
     </div>
-    <div id="craft-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 6px;">Stand at Blacksmith Sen with caught fish, then tap Start.</div>
   </div>
 
-  <!-- CUSTOM STEP RECORDER & MACRO PLAYER -->
-  <div class="card" style="border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.03);">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-      <div class="card-label" style="color: var(--cyan); display: flex; align-items: center; gap: 6px;">
-        <span>📼 STEP RECORDER &amp; MACRO PLAYER</span>
+  <!-- SECTION 2: AUTO CRAFT BAIT (BLACKSMITH SEN) -->
+  <div id="sec-craft" style="display: flex; flex-direction: column; gap: 14px;">
+    <div class="card" style="border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.04);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div class="card-label" style="color: var(--amber);">🔨 AUTO CRAFT BAIT (BLACKSMITH SEN)</div>
+        <div id="craft-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
       </div>
-      <div id="macro-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
-    </div>
-
-    <!-- 1. RECORD CONTROLS -->
-    <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">1. RECORD NEW WORKFLOW</span>
-        <span id="record-count-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--amber); font-weight: 800;">READY</span>
-      </div>
-      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <input id="txt-macro-name" type="text" placeholder="Macro Name (e.g. Craft Rare Bait)" value="Craft Rare Bait"
-               style="background: #1e293b; color: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 0.85rem; font-weight: 700; flex: 1; min-width: 160px; outline: none;" />
-        <button id="btn-record-toggle" class="btn" style="background: linear-gradient(135deg, #00f0ff, #0284c7); color: #000; flex: 1; min-width: 140px; padding: 10px 14px;" onclick="toggleRecord()">
-          <span id="record-btn-icon">⏺️</span>
-          <span id="record-btn-label">RECORD VIA SCREEN</span>
-        </button>
-        <button id="btn-record-cancel" class="btn btn-sub" style="display: none; padding: 10px 14px;" onclick="cancelRecord()">❌ CANCEL</button>
-      </div>
-      <div id="record-hint" style="font-size: 0.72rem; color: var(--text-mute);">
-        Tap <b>Record</b>, then tap the live video screen and press controls (T, E, WASD). Every click &amp; key with timing is captured!
-      </div>
-    </div>
-
-    <!-- 2. PLAYBACK CONTROLS -->
-    <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">2. PLAY OR LOOP SAVED MACRO</span>
-        <span id="play-loop-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--cyan); font-weight: 800;">READY</span>
-      </div>
-
-      <!-- Macro Selector + Rename + Delete -->
-      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-        <select id="sel-macro-list" class="macro-select-custom" onchange="onSelectMacroChange()">
-          <option value="">(No macros saved yet)</option>
-        </select>
-        <button class="btn btn-sub" style="padding: 10px 14px; font-size: 0.8rem;" onclick="renameSelectedMacro()" title="Rename selected macro">
-          ✏️ RENAME
-        </button>
-        <button class="btn btn-sub" style="padding: 10px 12px; font-size: 0.8rem;" onclick="deleteSelectedMacro()" title="Delete selected macro">
-          🗑️
-        </button>
-      </div>
-
-      <!-- Loop Repetition Pills -->
-      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding-top: 2px;">
-        <span style="font-size: 0.74rem; font-weight: 700; color: var(--text-dim);">🔁 Loop Count:</span>
-        <div class="macro-pill-group" id="loop-pills">
-          <button class="macro-pill-btn active-purple" onclick="setWebLoopCount(1, this)">1x</button>
-          <button class="macro-pill-btn" onclick="setWebLoopCount(5, this)">5x</button>
-          <button class="macro-pill-btn" onclick="setWebLoopCount(10, this)">10x</button>
-          <button class="macro-pill-btn" onclick="setWebLoopCount(25, this)">25x</button>
-          <button class="macro-pill-btn" onclick="setWebLoopCount(0, this)">∞ Endless</button>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+        <!-- Custom Craft Dropdown (Non-Native) -->
+        <div class="custom-dropdown" id="dropdown-craft" style="flex: 1; min-width: 170px;">
+          <button type="button" class="custom-dropdown-btn" onclick="toggleDropdown('dropdown-craft')">
+            <span class="dropdown-label" id="dropdown-craft-label">🍇 Rare Fish Bait</span>
+            <span class="dropdown-chevron">▼</span>
+          </button>
+          <div class="custom-dropdown-menu" id="dropdown-craft-menu">
+            <div class="custom-dropdown-item active" data-val="rare" onclick="selectCraftTier('rare', '🍇 Rare Fish Bait')">
+              <span>🍇 Rare Fish Bait</span>
+              <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
+            </div>
+            <div class="custom-dropdown-item" data-val="legendary" onclick="selectCraftTier('legendary', '👑 Legendary Fish Bait')">
+              <span>👑 Legendary Fish Bait</span>
+            </div>
+            <div class="custom-dropdown-item" data-val="all" onclick="selectCraftTier('all', '🌟 All (Legendary &amp; Rare)')">
+              <span>🌟 All (Legendary &amp; Rare)</span>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <!-- Playback Speed Pills -->
-      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-        <span style="font-size: 0.74rem; font-weight: 700; color: var(--text-dim);">⚡ Playback Speed:</span>
-        <div class="macro-pill-group" id="speed-pills">
-          <button class="macro-pill-btn" onclick="setWebSpeed(0.75, this)">0.75x</button>
-          <button class="macro-pill-btn active" onclick="setWebSpeed(1.0, this)">1.0x</button>
-          <button class="macro-pill-btn" onclick="setWebSpeed(1.25, this)">1.25x</button>
-          <button class="macro-pill-btn" onclick="setWebSpeed(1.5, this)">1.5x</button>
-          <button class="macro-pill-btn" onclick="setWebSpeed(2.0, this)">2.0x</button>
-          <button class="macro-pill-btn" onclick="setWebSpeed(3.0, this)">3.0x</button>
-        </div>
-      </div>
-
-      <!-- Play / Loop / Stop Action Buttons -->
-      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 2px;">
-        <button id="btn-macro-play" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; flex: 1; min-width: 110px; padding: 10px 12px;" onclick="playMacro(false)">
-          ▶️ PLAY ONCE
-        </button>
-        <button id="btn-macro-loop" class="btn" style="background: linear-gradient(135deg, #b026ff, #7c3aed); color: #fff; flex: 1; min-width: 110px; padding: 10px 12px;" onclick="playMacro(true)">
-          🔁 LOOP PLAY
-        </button>
-        <button id="btn-macro-stop" class="btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; flex: 1; padding: 10px 14px; display: none;" onclick="stopMacro()">
-          🛑 STOP PLAYBACK
+        <button id="btn-craft-toggle" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; flex: 1; min-width: 160px;" onclick="toggleAutoCraft()">
+          <span id="craft-btn-icon">🔨</span>
+          <span id="craft-btn-label">START AUTO CRAFT</span>
         </button>
       </div>
-
-      <!-- Laptop Hotkey Banner -->
-      <div class="macro-hotkey-box">
-        <span style="font-size: 1rem;">💻</span>
-        <div><b>Laptop Stop Hotkeys:</b> Tap <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F8</code> or <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F9</code> on your PC keyboard anytime to halt playback instantly.</div>
-      </div>
-
-      <!-- Step Inspector Preview -->
-      <details id="macro-steps-details" style="margin-top: 2px;">
-        <summary style="font-size: 0.74rem; font-weight: 700; color: var(--cyan); cursor: pointer; user-select: none;">
-          🎞️ Step Inspector (<span id="macro-steps-count">0</span> steps)
-        </summary>
-        <div id="macro-steps-list" class="macro-steps-box" style="margin-top: 6px;">
-          <div style="color: var(--text-mute);">Select a macro to inspect steps...</div>
-        </div>
-      </details>
+      <div id="craft-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 6px;">Stand at Blacksmith Sen with caught fish, then tap Start.</div>
     </div>
-    <div id="macro-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 4px;">Record any workflow once and replay or loop it smoothly!</div>
   </div>
+
+  <!-- SECTION 3: CUSTOM STEP RECORDER & MACRO STUDIO -->
+  <div id="sec-macro" style="display: flex; flex-direction: column; gap: 14px;">
+    <div class="card" style="border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.03);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div class="card-label" style="color: var(--cyan); display: flex; align-items: center; gap: 6px;">
+          <span>📼 STEP RECORDER &amp; MACRO STUDIO</span>
+        </div>
+        <div id="macro-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
+      </div>
+
+      <!-- 1. RECORD CONTROLS -->
+      <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">1. RECORD NEW WORKFLOW</span>
+          <span id="record-count-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--amber); font-weight: 800;">READY</span>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <input id="txt-macro-name" type="text" placeholder="Macro Name (e.g. Craft Rare Bait)" value="Craft Rare Bait"
+                 style="background: #14151a; color: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 0.85rem; font-weight: 700; flex: 1; min-width: 160px; outline: none;" />
+          <button id="btn-record-toggle" class="btn" style="background: linear-gradient(135deg, #00f0ff, #0284c7); color: #000; flex: 1; min-width: 140px; padding: 10px 14px;" onclick="toggleRecord()">
+            <span id="record-btn-icon">⏺️</span>
+            <span id="record-btn-label">RECORD VIA SCREEN</span>
+          </button>
+          <button id="btn-record-cancel" class="btn btn-sub" style="display: none; padding: 10px 14px;" onclick="cancelRecord()">❌ CANCEL</button>
+        </div>
+        <div id="record-hint" style="font-size: 0.72rem; color: var(--text-mute);">
+          Tap <b>Record</b>, then tap the live video screen and press controls (T, E, WASD). Every click &amp; key with timing is captured!
+        </div>
+      </div>
+
+      <!-- 2. PLAYBACK CONTROLS -->
+      <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">2. PLAY OR LOOP SAVED MACRO</span>
+          <span id="play-loop-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--cyan); font-weight: 800;">READY</span>
+        </div>
+
+        <!-- Custom Macro Dropdown (Non-Native) + Rename + Delete -->
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          <div class="custom-dropdown" id="dropdown-macro" style="flex: 1; min-width: 170px;">
+            <button type="button" class="custom-dropdown-btn" onclick="toggleDropdown('dropdown-macro')">
+              <span class="dropdown-label" id="dropdown-macro-label">(No macros saved yet)</span>
+              <span class="dropdown-chevron">▼</span>
+            </button>
+            <div class="custom-dropdown-menu" id="dropdown-macro-menu">
+              <div class="custom-dropdown-item" style="color:var(--text-mute);cursor:default;">(No macros saved yet)</div>
+            </div>
+          </div>
+          <button class="btn btn-sub" style="padding: 10px 14px; font-size: 0.8rem;" onclick="renameSelectedMacro()" title="Rename selected macro">
+            ✏️ RENAME
+          </button>
+          <button class="btn btn-sub" style="padding: 10px 12px; font-size: 0.8rem;" onclick="deleteSelectedMacro()" title="Delete selected macro">
+            🗑️
+          </button>
+        </div>
+
+        <!-- Loop Repetition Pills -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding-top: 2px;">
+          <span style="font-size: 0.74rem; font-weight: 700; color: var(--text-dim);">🔁 Loop Count:</span>
+          <div class="macro-pill-group" id="loop-pills">
+            <button class="macro-pill-btn active-purple" onclick="setWebLoopCount(1, this)">1x</button>
+            <button class="macro-pill-btn" onclick="setWebLoopCount(5, this)">5x</button>
+            <button class="macro-pill-btn" onclick="setWebLoopCount(10, this)">10x</button>
+            <button class="macro-pill-btn" onclick="setWebLoopCount(25, this)">25x</button>
+            <button class="macro-pill-btn" onclick="setWebLoopCount(0, this)">∞ Endless</button>
+          </div>
+        </div>
+
+        <!-- Playback Speed Pills -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+          <span style="font-size: 0.74rem; font-weight: 700; color: var(--text-dim);">⚡ Playback Speed:</span>
+          <div class="macro-pill-group" id="speed-pills">
+            <button class="macro-pill-btn" onclick="setWebSpeed(0.75, this)">0.75x</button>
+            <button class="macro-pill-btn active" onclick="setWebSpeed(1.0, this)">1.0x</button>
+            <button class="macro-pill-btn" onclick="setWebSpeed(1.25, this)">1.25x</button>
+            <button class="macro-pill-btn" onclick="setWebSpeed(1.5, this)">1.5x</button>
+            <button class="macro-pill-btn" onclick="setWebSpeed(2.0, this)">2.0x</button>
+            <button class="macro-pill-btn" onclick="setWebSpeed(3.0, this)">3.0x</button>
+          </div>
+        </div>
+
+        <!-- Play / Loop / Stop Action Buttons -->
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 2px;">
+          <button id="btn-macro-play" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; flex: 1; min-width: 110px; padding: 10px 12px;" onclick="playMacro(false)">
+            ▶️ PLAY ONCE
+          </button>
+          <button id="btn-macro-loop" class="btn" style="background: linear-gradient(135deg, #b026ff, #7c3aed); color: #fff; flex: 1; min-width: 110px; padding: 10px 12px;" onclick="playMacro(true)">
+            🔁 LOOP PLAY
+          </button>
+          <button id="btn-macro-stop" class="btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; flex: 1; padding: 10px 14px; display: none;" onclick="stopMacro()">
+            🛑 STOP PLAYBACK
+          </button>
+        </div>
+
+        <!-- Laptop Hotkey Banner -->
+        <div class="macro-hotkey-box">
+          <span style="font-size: 1rem;">💻</span>
+          <div><b>Laptop Stop Hotkeys:</b> Tap <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F8</code> or <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F9</code> on your PC keyboard anytime to halt playback instantly.</div>
+        </div>
+
+        <!-- Step Inspector Preview -->
+        <details id="macro-steps-details" style="margin-top: 2px;" open>
+          <summary style="font-size: 0.74rem; font-weight: 700; color: var(--cyan); cursor: pointer; user-select: none;">
+            🎞️ Step Inspector (<span id="macro-steps-count">0</span> steps)
+          </summary>
+          <div id="macro-steps-list" class="macro-steps-box" style="margin-top: 6px;">
+            <div style="color: var(--text-mute);">Select a macro to inspect steps...</div>
+          </div>
+        </details>
+      </div>
+      <div id="macro-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 4px;">Record any workflow once and replay or loop it smoothly!</div>
+    </div>
+  </div>
+
+  <!-- SECTION 4: STATS & RESTOCK -->
+  <div id="sec-stats" style="display: flex; flex-direction: column; gap: 14px;">
 
   <!-- PRIMARY STATS -->
   <div class="stat-grid">
@@ -1291,6 +1394,7 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
       <div style="font-size: 0.8rem; color: var(--text-mute);">Loading timers...</div>
     </div>
   </div>
+</div>
 </div>
 
 <div id="toast"></div>
@@ -1711,8 +1815,90 @@ function updateCraftUi(c) {
   }
 }
 
+let selectedCraftTier = "rare";
+let selectedMacroValue = "";
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  const remoteSec = document.getElementById('sec-remote');
+  const macroSec = document.getElementById('sec-macro');
+  const craftSec = document.getElementById('sec-craft');
+  const statsSec = document.getElementById('sec-stats');
+
+  if (tab === 'all') {
+    if (remoteSec) remoteSec.style.display = 'flex';
+    if (macroSec) macroSec.style.display = 'flex';
+    if (craftSec) craftSec.style.display = 'flex';
+    if (statsSec) statsSec.style.display = 'flex';
+  } else if (tab === 'remote') {
+    if (remoteSec) remoteSec.style.display = 'flex';
+    if (macroSec) macroSec.style.display = 'none';
+    if (craftSec) craftSec.style.display = 'none';
+    if (statsSec) statsSec.style.display = 'none';
+  } else if (tab === 'macro') {
+    if (remoteSec) remoteSec.style.display = 'none';
+    if (macroSec) macroSec.style.display = 'flex';
+    if (craftSec) craftSec.style.display = 'none';
+    if (statsSec) statsSec.style.display = 'none';
+  } else if (tab === 'craft') {
+    if (remoteSec) remoteSec.style.display = 'none';
+    if (macroSec) macroSec.style.display = 'none';
+    if (craftSec) craftSec.style.display = 'flex';
+    if (statsSec) statsSec.style.display = 'none';
+  } else if (tab === 'stats') {
+    if (remoteSec) remoteSec.style.display = 'none';
+    if (macroSec) macroSec.style.display = 'none';
+    if (craftSec) craftSec.style.display = 'none';
+    if (statsSec) statsSec.style.display = 'flex';
+  }
+}
+
+function toggleDropdown(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isOpen = el.classList.contains('open');
+  document.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
+  if (!isOpen) {
+    el.classList.add('open');
+  }
+}
+
+window.addEventListener('click', (e) => {
+  if (!e.target.closest('.custom-dropdown')) {
+    document.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
+  }
+});
+
+function selectCraftTier(val, label) {
+  selectedCraftTier = val;
+  const lbl = document.getElementById('dropdown-craft-label');
+  if (lbl) lbl.innerText = label;
+  document.querySelectorAll('#dropdown-craft-menu .custom-dropdown-item').forEach(it => {
+    it.classList.toggle('active', it.getAttribute('data-val') === val);
+  });
+  const dd = document.getElementById('dropdown-craft');
+  if (dd) dd.classList.remove('open');
+}
+
+function selectMacroItem(val) {
+  selectedMacroValue = val;
+  const m = cachedMacros.find(x => x.name === val || x.id === val);
+  const lbl = document.getElementById('dropdown-macro-label');
+  if (lbl) {
+    lbl.innerText = m ? `📋 ${m.name} (${m.steps.length} steps)` : val;
+  }
+  document.querySelectorAll('#dropdown-macro-menu .custom-dropdown-item').forEach(it => {
+    it.classList.toggle('active', it.getAttribute('data-val') === val);
+  });
+  const dd = document.getElementById('dropdown-macro');
+  if (dd) dd.classList.remove('open');
+  renderMacroSteps(m);
+}
+
 async function toggleAutoCraft() {
-  const tier = document.getElementById('sel-craft-tier').value;
+  const tier = selectedCraftTier || 'rare';
   try {
     const res = await fetch('/api/craft', {
       method: 'POST',
@@ -1776,13 +1962,6 @@ function renderMacroSteps(m) {
   if (listEl) listEl.innerHTML = html;
 }
 
-function onSelectMacroChange() {
-  const sel = document.getElementById('sel-macro-list');
-  const val = sel.value;
-  const m = cachedMacros.find(x => x.name === val || x.id === val);
-  renderMacroSteps(m);
-}
-
 function updateMacroUi(rec, macros) {
   if (!rec) return;
   isRecordingMacro = rec.is_recording;
@@ -1844,23 +2023,37 @@ function updateMacroUi(rec, macros) {
     macroMsg.innerText = rec.message;
   }
 
-  // Update Macro Dropdown and cache
+  // Update Custom Macro Dropdown
   cachedMacros = macros || [];
-  const sel = document.getElementById('sel-macro-list');
-  if (macros && Array.isArray(macros)) {
-    const curVal = sel.value;
-    if (macros.length === 0) {
-      sel.innerHTML = '<option value="">(No macros saved yet)</option>';
+  const menu = document.getElementById('dropdown-macro-menu');
+  const labelEl = document.getElementById('dropdown-macro-label');
+  if (menu) {
+    if (!macros || macros.length === 0) {
+      menu.innerHTML = '<div class="custom-dropdown-item" style="color:var(--text-mute);cursor:default;">(No macros saved yet)</div>';
+      if (labelEl) labelEl.innerText = '(No macros saved yet)';
+      selectedMacroValue = '';
       renderMacroSteps(null);
     } else {
-      let optHtml = '';
-      for (const m of macros) {
-        const selected = (m.name === curVal || m.id === curVal) ? 'selected' : '';
-        optHtml += `<option value="${m.name}" ${selected}>📋 ${m.name} (${m.steps.length} steps)</option>`;
+      let itemsHtml = '';
+      if (!selectedMacroValue || !macros.some(m => m.name === selectedMacroValue || m.id === selectedMacroValue)) {
+        selectedMacroValue = macros[0].name;
       }
-      sel.innerHTML = optHtml;
-      const active = macros.find(m => m.name === sel.value || m.id === sel.value) || macros[0];
-      renderMacroSteps(active);
+      for (const m of macros) {
+        const isSel = (m.name === selectedMacroValue || m.id === selectedMacroValue);
+        itemsHtml += `<div class="custom-dropdown-item ${isSel ? 'active' : ''}" data-val="${m.name}" onclick="selectMacroItem('${m.name.replace(/'/g, "\\'")}')">
+          <div style="flex:1;min-width:0;text-align:left;">
+            <div style="font-weight:700;color:#fff;">${m.name}</div>
+            <div class="dropdown-item-sub">${m.steps.length} steps</div>
+          </div>
+          ${isSel ? '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>' : ''}
+        </div>`;
+      }
+      menu.innerHTML = itemsHtml;
+      const activeM = macros.find(m => m.name === selectedMacroValue || m.id === selectedMacroValue) || macros[0];
+      if (labelEl && activeM) {
+        labelEl.innerText = `📋 ${activeM.name} (${activeM.steps.length} steps)`;
+      }
+      renderMacroSteps(activeM);
     }
   }
 }
@@ -1912,8 +2105,7 @@ async function cancelRecord() {
 }
 
 async function renameSelectedMacro() {
-  const sel = document.getElementById('sel-macro-list');
-  const currentName = sel.value;
+  const currentName = selectedMacroValue;
   if (!currentName) {
     showToast('Please select a macro to rename.');
     return;
@@ -1928,6 +2120,7 @@ async function renameSelectedMacro() {
     });
     const data = await res.json();
     showToast(data.message || 'Macro renamed');
+    selectedMacroValue = newName.trim();
     fetchStatus();
   } catch (e) {
     showToast('Rename failed: ' + e);
@@ -1935,8 +2128,7 @@ async function renameSelectedMacro() {
 }
 
 async function playMacro(isLoop) {
-  const sel = document.getElementById('sel-macro-list');
-  const name = sel.value;
+  const name = selectedMacroValue;
   if (!name) {
     showToast('Please record or select a macro first!');
     return;
@@ -1977,8 +2169,7 @@ async function stopMacro() {
 }
 
 async function deleteSelectedMacro() {
-  const sel = document.getElementById('sel-macro-list');
-  const name = sel.value;
+  const name = selectedMacroValue;
   if (!name) return;
   if (!confirm(`Delete macro "${name}"?`)) return;
   try {
@@ -1989,6 +2180,7 @@ async function deleteSelectedMacro() {
     });
     const data = await res.json();
     showToast(data.message || 'Macro deleted');
+    selectedMacroValue = '';
     fetchStatus();
   } catch (e) {
     showToast('Delete failed: ' + e);
@@ -2028,7 +2220,7 @@ fetchStatus();
 "#;
 
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         html.len(),
         html
     );
