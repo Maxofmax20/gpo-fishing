@@ -185,25 +185,29 @@ fn run_crafting_loop(ctx: &Ctx, tier: CraftTier) -> Result<u32, String> {
             let fish_1 = fish_items[0];
             ctx.log_info(&format!("🔨 Selecting fish #1 at ({}, {})", fish_1.x, fish_1.y));
             click_point(ctx, fish_1);
-            if !craft_sleep(220) { return Ok(total_crafted); }
-
-            // For recipes requiring 2 materials (e.g. 0/2), click plus again and select next fish if needed
-            click_point(ctx, layout.material_plus_pos);
             if !craft_sleep(250) { return Ok(total_crafted); }
 
-            let frame_slot2 = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
-            let fish_items_slot2 = detect_fish_list(&frame_slot2, &rect, layout.craft_button_pos.x);
+            // For recipes requiring 2 materials (e.g. 0/2), check if second fish needed
+            let frame_check = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
+            let mut fish_items_slot2 = detect_fish_list(&frame_check, &rect, layout.craft_button_pos.x);
+            if fish_items_slot2.is_empty() {
+                // List closed after first fish, click '+' again to reopen for slot 2
+                click_point(ctx, layout.material_plus_pos);
+                if !craft_sleep(250) { return Ok(total_crafted); }
+                let frame_after_plus2 = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
+                fish_items_slot2 = detect_fish_list(&frame_after_plus2, &rect, layout.craft_button_pos.x);
+            }
             if !fish_items_slot2.is_empty() {
                 let fish_2 = fish_items_slot2[0];
                 ctx.log_info(&format!("🔨 Selecting fish #2 at ({}, {})", fish_2.x, fish_2.y));
                 click_point(ctx, fish_2);
-                if !craft_sleep(220) { return Ok(total_crafted); }
+                if !craft_sleep(250) { return Ok(total_crafted); }
             }
 
             // 6. Click green CRAFT button
             ctx.log_info(&format!("🔨 Clicking CRAFT button at ({}, {})", layout.craft_button_pos.x, layout.craft_button_pos.y));
             click_point(ctx, layout.craft_button_pos);
-            if !craft_sleep(400) { return Ok(total_crafted); }
+            if !craft_sleep(500) { return Ok(total_crafted); }
 
             // 7. Check if Quantity Dialog appeared ("Craft Selected" / "Craft 1")
             let frame_popup = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
@@ -215,7 +219,7 @@ fn run_crafting_loop(ctx: &Ctx, tier: CraftTier) -> Result<u32, String> {
 
                 // Click green "Craft Selected" button
                 click_point(ctx, q.craft_selected_pos);
-                if !craft_sleep(500) { return Ok(total_crafted); }
+                if !craft_sleep(600) { return Ok(total_crafted); }
             } else {
                 ctx.log_info("🔨 Single craft executed directly (no quantity dialog).");
                 if !craft_sleep(400) { return Ok(total_crafted); }
@@ -266,66 +270,150 @@ fn detect_blacksmith_ui(frame: &Frame, window: &PxRect) -> Option<BlacksmithUiLa
         return None;
     }
 
-    // Look for green CRAFT button: G is dominant, R and B are significantly lower
-    let mut min_x = frame.w;
-    let mut max_x = 0;
-    let mut min_y = frame.h;
-    let mut max_y = 0;
-    let mut count = 0;
+    let search_top = frame.h / 3;
+    let search_left = frame.w / 4;
 
-    for y in (frame.h / 3)..frame.h {
-        let row_start = y * frame.w * 4;
-        for x in (frame.w / 4)..frame.w {
-            let idx = row_start + x * 4;
-            let r = frame.rgba[idx];
-            let g = frame.rgba[idx + 1];
-            let b = frame.rgba[idx + 2];
+    // Mask green pixels: bright green CRAFT button
+    // CRAFT button has G > 175, R < 90, B < 80, and G > R * 2
+    let mut visited = vec![false; frame.w * frame.h];
+    let mut best_craft: Option<(usize, usize, usize, usize, usize)> = None;
+    let mut best_count = 0;
 
-            if g > 150 && (g as u32 > (r as u32 * 3 / 2)) && b < 110 {
-                min_x = min_x.min(x);
-                max_x = max_x.max(x);
-                min_y = min_y.min(y);
-                max_y = max_y.max(y);
-                count += 1;
+    for y in search_top..frame.h {
+        let row_start = y * frame.w;
+        for x in search_left..frame.w {
+            let idx = row_start + x;
+            if visited[idx] {
+                continue;
+            }
+
+            let p_idx = idx * 4;
+            let r = frame.rgba[p_idx];
+            let g = frame.rgba[p_idx + 1];
+            let b = frame.rgba[p_idx + 2];
+
+            if g > 170 && r < 95 && b < 85 && (g as u32 > r as u32 * 2) {
+                // BFS to find connected component
+                let mut queue = Vec::with_capacity(256);
+                queue.push((y, x));
+                visited[idx] = true;
+
+                let mut min_x = x;
+                let mut max_x = x;
+                let mut min_y = y;
+                let mut max_y = y;
+                let mut count = 0;
+
+                while let Some((cy, cx)) = queue.pop() {
+                    count += 1;
+                    min_x = min_x.min(cx);
+                    max_x = max_x.max(cx);
+                    min_y = min_y.min(cy);
+                    max_y = max_y.max(cy);
+
+                    // 4-neighborhood
+                    for (dy, dx) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                        let ny = cy as i32 + dy;
+                        let nx = cx as i32 + dx;
+                        if ny >= search_top as i32 && ny < frame.h as i32 && nx >= search_left as i32 && nx < frame.w as i32 {
+                            let n_idx = (ny as usize) * frame.w + (nx as usize);
+                            if !visited[n_idx] {
+                                visited[n_idx] = true;
+                                let np_idx = n_idx * 4;
+                                let nr = frame.rgba[np_idx];
+                                let ng = frame.rgba[np_idx + 1];
+                                let nb = frame.rgba[np_idx + 2];
+                                if ng > 170 && nr < 95 && nb < 85 && (ng as u32 > nr as u32 * 2) {
+                                    queue.push((ny as usize, nx as usize));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let w = max_x - min_x + 1;
+                let h = max_y - min_y + 1;
+                let ar = w as f32 / h.max(1) as f32;
+                let density = count as f32 / (w * h) as f32;
+
+                // Button criteria: width 60..220px, height 10..40px, aspect ratio 3.0..9.5, solid density > 0.55
+                if (60..=220).contains(&w) && (10..=40).contains(&h) && ar >= 3.0 && ar <= 9.5 && density > 0.55 {
+                    if count > best_count {
+                        best_count = count;
+                        best_craft = Some((min_x, max_x, min_y, max_y, count));
+                    }
+                }
             }
         }
     }
 
-    if count < 40 || (max_x - min_x) < 30 {
-        return None;
-    }
-
+    let (min_x, max_x, min_y, max_y, _) = best_craft?;
     let craft_cx = ((min_x + max_x) / 2) as i32;
     let craft_cy = ((min_y + max_y) / 2) as i32;
+    let craft_w = (max_x - min_x + 1) as f32;
 
-    // Relative offsets derived from GPO Blacksmith Sen UI:
-    let button_w = (max_x - min_x) as f32;
-    let scale = (button_w / 110.0).clamp(0.6, 2.2);
+    let scale_x = window.w as f32 / frame.w as f32;
+    let scale_y = window.h as f32 / frame.h as f32;
 
     let craft_screen_pt = PxPoint {
-        x: window.x + (craft_cx as f32 * (window.w as f32 / frame.w as f32)).round() as i32,
-        y: window.y + (craft_cy as f32 * (window.h as f32 / frame.h as f32)).round() as i32,
+        x: window.x + (craft_cx as f32 * scale_x).round() as i32,
+        y: window.y + (craft_cy as f32 * scale_y).round() as i32,
     };
 
-    // Material '+' is directly above CRAFT button (~380px above at 1.0 scale)
+    // Material '+' is directly above CRAFT button: cy - (craft_w * 3.66)
+    let raw_plus_y = (craft_cy as f32 - craft_w * 3.66).round() as i32;
+    let raw_plus_x = craft_cx;
+
+    // Visual snap: search a 35x35 neighborhood around raw_plus in frame for white '+' pixels
+    let mut snap_x = raw_plus_x;
+    let mut snap_y = raw_plus_y;
+    let mut white_pts = Vec::new();
+    let r_min_y = (raw_plus_y - 18).max(0) as usize;
+    let r_max_y = (raw_plus_y + 18).min(frame.h as i32 - 1) as usize;
+    let r_min_x = (raw_plus_x - 18).max(0) as usize;
+    let r_max_x = (raw_plus_x + 18).min(frame.w as i32 - 1) as usize;
+
+    for y in r_min_y..=r_max_y {
+        for x in r_min_x..=r_max_x {
+            let idx = (y * frame.w + x) * 4;
+            let r = frame.rgba[idx];
+            let g = frame.rgba[idx + 1];
+            let b = frame.rgba[idx + 2];
+            if r > 200 && g > 200 && b > 200 {
+                white_pts.push((x, y));
+            }
+        }
+    }
+    if !white_pts.is_empty() {
+        let avg_x = white_pts.iter().map(|p| p.0).sum::<usize>() / white_pts.len();
+        let avg_y = white_pts.iter().map(|p| p.1).sum::<usize>() / white_pts.len();
+        snap_x = avg_x as i32;
+        snap_y = avg_y as i32;
+    }
+
     let plus_screen_pt = PxPoint {
-        x: craft_screen_pt.x - (12.0 * scale).round() as i32,
-        y: craft_screen_pt.y - (380.0 * scale).round() as i32,
+        x: window.x + (snap_x as f32 * scale_x).round() as i32,
+        y: window.y + (snap_y as f32 * scale_y).round() as i32,
     };
 
-    // Baits list is in the left pane (~300px to the left of CRAFT button)
-    let list_x = craft_screen_pt.x - (300.0 * scale).round() as i32;
+    // Left pane bait selection list:
+    // cx - (craft_w * 2.82)
+    let list_frame_x = (craft_cx as f32 - craft_w * 2.82).round() as i32;
+    let rare_frame_y = (craft_cy as f32 - craft_w * 0.84).round() as i32;
+    let common_frame_y = (craft_cy as f32 - craft_w * 0.48).round() as i32;
+    let leg_frame_y = (craft_cy as f32 - craft_w * 0.08).round() as i32;
+
     let rare_screen_pt = PxPoint {
-        x: list_x,
-        y: craft_screen_pt.y - (70.0 * scale).round() as i32,
+        x: window.x + (list_frame_x as f32 * scale_x).round() as i32,
+        y: window.y + (rare_frame_y as f32 * scale_y).round() as i32,
     };
     let common_screen_pt = PxPoint {
-        x: list_x,
-        y: craft_screen_pt.y - (36.0 * scale).round() as i32,
+        x: window.x + (list_frame_x as f32 * scale_x).round() as i32,
+        y: window.y + (common_frame_y as f32 * scale_y).round() as i32,
     };
     let leg_screen_pt = PxPoint {
-        x: list_x,
-        y: craft_screen_pt.y,
+        x: window.x + (list_frame_x as f32 * scale_x).round() as i32,
+        y: window.y + (leg_frame_y as f32 * scale_y).round() as i32,
     };
 
     Some(BlacksmithUiLayout {
@@ -343,13 +431,17 @@ fn detect_fish_list(frame: &Frame, window: &PxRect, craft_button_x: i32) -> Vec<
         return vec![];
     }
 
-    let rel_craft_x = ((craft_button_x - window.x) as f32 * (frame.w as f32 / window.w as f32)).round() as usize;
-    let search_start_x = (rel_craft_x + 90).min(frame.w.saturating_sub(60));
-    let search_end_x = frame.w;
+    let scale_x = window.w as f32 / frame.w as f32;
+    let scale_y = window.h as f32 / frame.h as f32;
+
+    let rel_craft_x = ((craft_button_x - window.x) as f32 / scale_x).round() as i32;
+
+    // Right-panel fish rows are centered ~256px to the right of CRAFT button
+    let fish_frame_x = rel_craft_x + 256;
+    let search_start_x = (fish_frame_x - 80).clamp(0, frame.w as i32 - 1) as usize;
+    let search_end_x = (fish_frame_x + 80).clamp(0, frame.w as i32 - 1) as usize;
 
     let mut item_pts = Vec::new();
-
-    // Fish items are horizontal rows with dark blue/grey background
     let mut in_item = false;
     let mut item_start_y = 0;
 
@@ -363,12 +455,13 @@ fn detect_fish_list(frame: &Frame, window: &PxRect, craft_button_x: i32) -> Vec<
             let g = frame.rgba[idx + 1];
             let b = frame.rgba[idx + 2];
 
-            if r >= 15 && r <= 110 && g >= 30 && g <= 140 && b >= 55 && b <= 180 {
+            // Slate/blue pill background of fish rows
+            if (15..=110).contains(&r) && (30..=140).contains(&g) && (55..=180).contains(&b) {
                 row_blue_count += 1;
             }
         }
 
-        if row_blue_count > 40 {
+        if row_blue_count > 30 {
             if !in_item {
                 in_item = true;
                 item_start_y = y;
@@ -376,26 +469,27 @@ fn detect_fish_list(frame: &Frame, window: &PxRect, craft_button_x: i32) -> Vec<
         } else if in_item {
             in_item = false;
             let item_h = y - item_start_y;
-            if item_h >= 10 && item_h <= 70 {
+            if (10..=65).contains(&item_h) {
                 let center_y = (item_start_y + y) / 2;
                 let center_x = (search_start_x + search_end_x) / 2;
                 let pt = PxPoint {
-                    x: window.x + (center_x as f32 * (window.w as f32 / frame.w as f32)).round() as i32,
-                    y: window.y + (center_y as f32 * (window.h as f32 / frame.h as f32)).round() as i32,
+                    x: window.x + (center_x as f32 * scale_x).round() as i32,
+                    y: window.y + (center_y as f32 * scale_y).round() as i32,
                 };
                 item_pts.push(pt);
             }
         }
     }
 
-    // Fallback standard points on right pane if visual edge detection found nothing
+    // If visual contour didn't separate rows, generate standard rows on right panel
     if item_pts.is_empty() {
-        let fallback_x = craft_button_x + 230;
-        let scale_y = window.h as f32 / 685.0;
-        for dy in [200.0, 245.0, 290.0, 335.0, 380.0] {
+        let base_y = (window.h as f32 * 0.18).round() as i32;
+        let step_y = (window.h as f32 * 0.08).round() as i32;
+        let screen_fish_x = window.x + (fish_frame_x as f32 * scale_x).round() as i32;
+        for i in 0..5 {
             item_pts.push(PxPoint {
-                x: fallback_x,
-                y: window.y + (dy * scale_y).round() as i32,
+                x: screen_fish_x,
+                y: window.y + base_y + (i * step_y),
             });
         }
     }
@@ -409,51 +503,101 @@ fn detect_quantity_dialog(frame: &Frame, window: &PxRect) -> Option<QuantityDial
         return None;
     }
 
-    // Detect green "Craft Selected" button and red "Craft 1" button
-    let mut min_gx = frame.w;
-    let mut max_gx = 0;
-    let mut min_gy = frame.h;
-    let mut max_gy = 0;
-    let mut g_count = 0;
-    let mut r_count = 0;
+    let search_top = frame.h / 3;
+    let search_bottom = frame.h * 4 / 5;
+    let search_left = frame.w / 4;
+    let search_right = frame.w * 3 / 4;
 
-    for y in (frame.h / 3)..(frame.h * 4 / 5) {
-        let row_start = y * frame.w * 4;
-        for x in (frame.w / 4)..(frame.w * 3 / 4) {
-            let idx = row_start + x * 4;
-            let r = frame.rgba[idx];
-            let g = frame.rgba[idx + 1];
-            let b = frame.rgba[idx + 2];
+    let mut visited = vec![false; frame.w * frame.h];
+    let mut best_btn: Option<(usize, usize, usize, usize)> = None;
+    let mut best_count = 0;
 
-            if g > 100 && (g as u32 > r as u32 + 20) && (g as u32 > b as u32 + 20) {
-                min_gx = min_gx.min(x);
-                max_gx = max_gx.max(x);
-                min_gy = min_gy.min(y);
-                max_gy = max_gy.max(y);
-                g_count += 1;
-            } else if r > 100 && (r as u32 > g as u32 + 20) && (r as u32 > b as u32 + 20) {
-                r_count += 1;
+    for y in search_top..search_bottom {
+        let row_start = y * frame.w;
+        for x in search_left..search_right {
+            let idx = row_start + x;
+            if visited[idx] {
+                continue;
+            }
+
+            let p_idx = idx * 4;
+            let r = frame.rgba[p_idx];
+            let g = frame.rgba[p_idx + 1];
+            let b = frame.rgba[p_idx + 2];
+
+            // Green button "Craft Selected": G is significantly higher than R and B
+            if g > 110 && (g as u32 > r as u32 + 25) && (g as u32 > b as u32 + 25) {
+                let mut queue = Vec::with_capacity(256);
+                queue.push((y, x));
+                visited[idx] = true;
+
+                let mut min_x = x;
+                let mut max_x = x;
+                let mut min_y = y;
+                let mut max_y = y;
+                let mut count = 0;
+
+                while let Some((cy, cx)) = queue.pop() {
+                    count += 1;
+                    min_x = min_x.min(cx);
+                    max_x = max_x.max(cx);
+                    min_y = min_y.min(cy);
+                    max_y = max_y.max(cy);
+
+                    for (dy, dx) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+                        let ny = cy as i32 + dy;
+                        let nx = cx as i32 + dx;
+                        if ny >= search_top as i32 && ny < search_bottom as i32 && nx >= search_left as i32 && nx < search_right as i32 {
+                            let n_idx = (ny as usize) * frame.w + (nx as usize);
+                            if !visited[n_idx] {
+                                visited[n_idx] = true;
+                                let np_idx = n_idx * 4;
+                                let nr = frame.rgba[np_idx];
+                                let ng = frame.rgba[np_idx + 1];
+                                let nb = frame.rgba[np_idx + 2];
+                                if ng > 110 && (ng as u32 > nr as u32 + 25) && (ng as u32 > nb as u32 + 25) {
+                                    queue.push((ny as usize, nx as usize));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let w = max_x - min_x + 1;
+                let h = max_y - min_y + 1;
+                let ar = w as f32 / h.max(1) as f32;
+
+                // "Craft Selected" button: width 80..180px, height 20..50px, ar 2.2..5.0
+                if (80..=180).contains(&w) && (20..=50).contains(&h) && ar >= 2.2 && ar <= 5.0 {
+                    if count > best_count {
+                        best_count = count;
+                        best_btn = Some((min_x, max_x, min_y, max_y));
+                    }
+                }
             }
         }
     }
 
-    if g_count < 25 && r_count < 25 {
-        return None;
-    }
+    let (min_x, max_x, min_y, max_y) = best_btn?;
+    let sel_cx = ((min_x + max_x) / 2) as i32;
+    let sel_cy = ((min_y + max_y) / 2) as i32;
 
-    let craft_sel_cx = ((min_gx + max_gx) / 2) as i32;
-    let craft_sel_cy = ((min_gy + max_gy) / 2) as i32;
+    let scale_x = window.w as f32 / frame.w as f32;
+    let scale_y = window.h as f32 / frame.h as f32;
 
     let craft_selected_pt = PxPoint {
-        x: window.x + (craft_sel_cx as f32 * (window.w as f32 / frame.w as f32)).round() as i32,
-        y: window.y + (craft_sel_cy as f32 * (window.h as f32 / frame.h as f32)).round() as i32,
+        x: window.x + (sel_cx as f32 * scale_x).round() as i32,
+        y: window.y + (sel_cy as f32 * scale_y).round() as i32,
     };
 
-    // Slider bar is located ~85px above the buttons, spanning horizontally
-    // The right end (maximum quantity) is ~260px to the right of Craft Selected button center
+    // Slider track is ~85px above the buttons in frame coordinates.
+    // The far right end of the slider track is ~290px to the right of Craft Selected center.
+    let slider_frame_x = sel_cx + 290;
+    let slider_frame_y = sel_cy - 85;
+
     let slider_max_pt = PxPoint {
-        x: craft_selected_pt.x + 260,
-        y: craft_selected_pt.y - 84,
+        x: window.x + (slider_frame_x as f32 * scale_x).round() as i32,
+        y: window.y + (slider_frame_y as f32 * scale_y).round() as i32,
     };
 
     Some(QuantityDialogLayout {
