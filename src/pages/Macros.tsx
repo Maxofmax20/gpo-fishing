@@ -297,6 +297,7 @@ export default function Macros() {
                       if (m) setSelectedMacroName(m.name);
                     }}
                     disabled={status.is_playing || busy}
+                    align="right"
                   />
                   <Button
                     size="sm"

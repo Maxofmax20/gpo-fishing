@@ -311,6 +311,7 @@ export function CustomSelect<T extends string>({
   placeholder,
   className,
   disabled,
+  align = "left",
 }: {
   value: T;
   options: { value: T; label: ReactNode; sub?: ReactNode }[];
@@ -318,9 +319,15 @@ export function CustomSelect<T extends string>({
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  align?: "left" | "right";
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const [dropdownAlign, setDropdownAlign] = useState<"left" | "right">(align);
+
+  useEffect(() => {
+    setDropdownAlign(align);
+  }, [align]);
 
   useEffect(() => {
     if (!open) return;
@@ -332,6 +339,25 @@ export function CustomSelect<T extends string>({
     window.addEventListener("mousedown", handleClick);
     return () => window.removeEventListener("mousedown", handleClick);
   }, [open]);
+
+  useEffect(() => {
+    if (open && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      if (align === "left") {
+        if (rect.left + 220 > window.innerWidth - 12) {
+          setDropdownAlign("right");
+        } else {
+          setDropdownAlign("left");
+        }
+      } else {
+        if (rect.right - 220 < 12) {
+          setDropdownAlign("left");
+        } else {
+          setDropdownAlign("right");
+        }
+      }
+    }
+  }, [open, align]);
 
   const selected = options.find((o) => o.value === value);
 
@@ -354,7 +380,8 @@ export function CustomSelect<T extends string>({
       {open && (
         <div
           className={cx(
-            "absolute right-0 z-50 mt-1 min-w-[180px] max-w-[280px] max-h-56 overflow-y-auto py-1 rounded-xl",
+            "absolute z-50 mt-1 min-w-[160px] max-w-[280px] max-h-56 overflow-y-auto py-1 rounded-xl",
+            dropdownAlign === "right" ? "right-0" : "left-0",
             "bg-[#14151a]/95 backdrop-blur-xl border border-line-strong shadow-2xl rise",
           )}
         >
