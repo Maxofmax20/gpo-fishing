@@ -44,6 +44,14 @@ pub enum MacroStep {
         button: String,
         delay_ms: u64,
     },
+    Drag {
+        start_rx: f32,
+        start_ry: f32,
+        end_rx: f32,
+        end_ry: f32,
+        duration_ms: u64,
+        delay_ms: u64,
+    },
     KeyTap {
         key: String,
         delay_ms: u64,
@@ -168,8 +176,6 @@ fn spawn_pc_recorder_thread() {
                 use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
                 use windows::Win32::Foundation::POINT;
 
-                let mut prev_l_down = false;
-                let mut prev_r_down = false;
                 let mut prev_f8_down = false;
 
                 struct KeyState {
@@ -199,6 +205,33 @@ fn spawn_pc_recorder_thread() {
                     KeyState { vk: 0x35, name: "5", down: false, pressed_at: Instant::now() },
                 ];
 
+                struct MouseBtnTracker {
+                    down: bool,
+                    start_time: Instant,
+                    start_pt: POINT,
+                    start_rx: f32,
+                    start_ry: f32,
+                    max_dist_px: f32,
+                }
+
+                let mut l_tracker = MouseBtnTracker {
+                    down: false,
+                    start_time: Instant::now(),
+                    start_pt: POINT::default(),
+                    start_rx: 0.0,
+                    start_ry: 0.0,
+                    max_dist_px: 0.0,
+                };
+
+                let mut r_tracker = MouseBtnTracker {
+                    down: false,
+                    start_time: Instant::now(),
+                    start_pt: POINT::default(),
+                    start_rx: 0.0,
+                    start_ry: 0.0,
+                    max_dist_px: 0.0,
+                };
+
                 while IS_RECORDING.load(Ordering::SeqCst) {
                     // Hotkey F8 (0x77) finishes recording from within Roblox
                     let f8_down = unsafe { (GetAsyncKeyState(0x77) as u16 & 0x8000) != 0 };
@@ -225,19 +258,68 @@ fn spawn_pc_recorder_thread() {
                             let r_down = unsafe { (GetAsyncKeyState(0x02) as u16 & 0x8000) != 0 };
 
                             if inside_roblox {
-                                if l_down && !prev_l_down {
-                                    let rx = (pt.x - info.client.x) as f32 / info.client.w.max(1) as f32;
-                                    let ry = (pt.y - info.client.y) as f32 / info.client.h.max(1) as f32;
-                                    record_click(rx.clamp(0.0, 1.0), ry.clamp(0.0, 1.0), "left");
+                                let rx = ((pt.x - info.client.x) as f32 / info.client.w.max(1) as f32).clamp(0.0, 1.0);
+                                let ry = ((pt.y - info.client.y) as f32 / info.client.h.max(1) as f32).clamp(0.0, 1.0);
+
+                                // Left Button (Clicks and Drag & Drop)
+                                if l_down && !l_tracker.down {
+                                    l_tracker.down = true;
+                                    l_tracker.start_time = Instant::now();
+                                    l_tracker.start_pt = pt;
+                                    l_tracker.start_rx = rx;
+                                    l_tracker.start_ry = ry;
+                                    l_tracker.max_dist_px = 0.0;
+                                } else if l_down && l_tracker.down {
+                                    let dx = (pt.x - l_tracker.start_pt.x) as f32;
+                                    let dy = (pt.y - l_tracker.start_pt.y) as f32;
+                                    let dist = (dx * dx + dy * dy).sqrt();
+                                    l_tracker.max_dist_px = l_tracker.max_dist_px.max(dist);
+                                } else if !l_down && l_tracker.down {
+                                    l_tracker.down = false;
+                                    let dur = l_tracker.start_time.elapsed().as_millis() as u64;
+                                    let dx = (pt.x - l_tracker.start_pt.x) as f32;
+                                    let dy = (pt.y - l_tracker.start_pt.y) as f32;
+                                    let final_dist = (dx * dx + dy * dy).sqrt();
+                                    if l_tracker.max_dist_px >= 16.0 || final_dist >= 16.0 {
+                                        record_drag(l_tracker.start_rx, l_tracker.start_ry, rx, ry, dur);
+                                    } else {
+                                        record_click(l_tracker.start_rx, l_tracker.start_ry, "left");
+                                    }
                                 }
-                                if r_down && !prev_r_down {
-                                    let rx = (pt.x - info.client.x) as f32 / info.client.w.max(1) as f32;
-                                    let ry = (pt.y - info.client.y) as f32 / info.client.h.max(1) as f32;
-                                    record_click(rx.clamp(0.0, 1.0), ry.clamp(0.0, 1.0), "right");
+
+                                // Right Button
+                                if r_down && !r_tracker.down {
+                                    r_tracker.down = true;
+                                    r_tracker.start_time = Instant::now();
+                                    r_tracker.start_pt = pt;
+                                    r_tracker.start_rx = rx;
+                                    r_tracker.start_ry = ry;
+                                    r_tracker.max_dist_px = 0.0;
+                                } else if r_down && r_tracker.down {
+                                    let dx = (pt.x - r_tracker.start_pt.x) as f32;
+                                    let dy = (pt.y - r_tracker.start_pt.y) as f32;
+                                    let dist = (dx * dx + dy * dy).sqrt();
+                                    r_tracker.max_dist_px = r_tracker.max_dist_px.max(dist);
+                                } else if !r_down && r_tracker.down {
+                                    r_tracker.down = false;
+                                    let dur = r_tracker.start_time.elapsed().as_millis() as u64;
+                                    let dx = (pt.x - r_tracker.start_pt.x) as f32;
+                                    let dy = (pt.y - r_tracker.start_pt.y) as f32;
+                                    let final_dist = (dx * dx + dy * dy).sqrt();
+                                    if r_tracker.max_dist_px >= 16.0 || final_dist >= 16.0 {
+                                        record_drag(r_tracker.start_rx, r_tracker.start_ry, rx, ry, dur);
+                                    } else {
+                                        record_click(r_tracker.start_rx, r_tracker.start_ry, "right");
+                                    }
+                                }
+                            } else {
+                                if !l_down && l_tracker.down {
+                                    l_tracker.down = false;
+                                }
+                                if !r_down && r_tracker.down {
+                                    r_tracker.down = false;
                                 }
                             }
-                            prev_l_down = l_down;
-                            prev_r_down = r_down;
 
                             for k in &mut monitored {
                                 let is_down = unsafe { (GetAsyncKeyState(k.vk) as u16 & 0x8000) != 0 };
@@ -262,6 +344,29 @@ fn spawn_pc_recorder_thread() {
             }
         })
         .expect("spawn pc recorder thread");
+}
+
+pub fn record_drag(start_rx: f32, start_ry: f32, end_rx: f32, end_ry: f32, duration_ms: u64) {
+    if !IS_RECORDING.load(Ordering::SeqCst) {
+        return;
+    }
+    let mut rec_lock = ACTIVE_RECORDING.write();
+    if let Some(rec) = rec_lock.as_mut() {
+        let now = Instant::now();
+        let delay_ms = now.duration_since(rec.last_action_time).as_millis().clamp(20, 10000) as u64;
+        rec.last_action_time = now;
+        rec.steps.push(MacroStep::Drag {
+            start_rx,
+            start_ry,
+            end_rx,
+            end_ry,
+            duration_ms: duration_ms.max(50),
+            delay_ms,
+        });
+        let mut st = STATUS.write();
+        st.recorded_steps_count = rec.steps.len();
+        st.message = format!("Recorded Drag & Drop ({}ms) (#{})", duration_ms, rec.steps.len());
+    }
 }
 
 pub fn record_click(rx: f32, ry: f32, button: &str) {
@@ -396,7 +501,13 @@ pub fn stop_playback() {
     }
 }
 
-pub fn play_macro(ctx: Arc<Ctx>, store: Arc<Store>, name_or_id: &str, loop_mode: bool) -> Result<(), String> {
+pub fn play_macro(
+    ctx: Arc<Ctx>,
+    store: Arc<Store>,
+    name_or_id: &str,
+    loop_mode: bool,
+    speed: Option<f32>,
+) -> Result<(), String> {
     if IS_PLAYING.swap(true, Ordering::SeqCst) {
         return Err("A macro is already playing".into());
     }
@@ -407,6 +518,7 @@ pub fn play_macro(ctx: Arc<Ctx>, store: Arc<Store>, name_or_id: &str, loop_mode:
         .find(|m| m.id == name_or_id || m.name.eq_ignore_ascii_case(name_or_id))
         .ok_or_else(|| format!("Macro '{name_or_id}' not found"))?;
 
+    let sp = speed.unwrap_or(1.0).clamp(0.25, 6.0);
     STOP_PLAYBACK_REQUESTED.store(false, Ordering::SeqCst);
 
     {
@@ -415,12 +527,19 @@ pub fn play_macro(ctx: Arc<Ctx>, store: Arc<Store>, name_or_id: &str, loop_mode:
         st.playing_macro_name = Some(target.name.clone());
         st.current_loop = 1;
         st.is_looping = loop_mode;
-        st.message = format!("Playing '{}' (Loop 1)", target.name);
+        st.message = if (sp - 1.0).abs() > 0.05 {
+            format!("Playing '{}' ({:.2}x speed, Loop 1)", target.name, sp)
+        } else {
+            format!("Playing '{}' (Loop 1)", target.name)
+        };
     }
 
     std::thread::spawn(move || {
         let mut loop_count = 1u32;
-        ctx.log_info(&format!("📼 Starting playback of macro '{}' (loop={loop_mode})", target.name));
+        ctx.log_info(&format!(
+            "📼 Starting playback of macro '{}' (speed={:.2}x, loop={loop_mode})",
+            target.name, sp
+        ));
 
         loop {
             if STOP_PLAYBACK_REQUESTED.load(Ordering::SeqCst) {
@@ -430,7 +549,11 @@ pub fn play_macro(ctx: Arc<Ctx>, store: Arc<Store>, name_or_id: &str, loop_mode:
             {
                 let mut st = STATUS.write();
                 st.current_loop = loop_count;
-                st.message = format!("Playing '{}' (Iteration #{loop_count})", target.name);
+                st.message = if (sp - 1.0).abs() > 0.05 {
+                    format!("Playing '{}' ({:.2}x, Iteration #{loop_count})", target.name, sp)
+                } else {
+                    format!("Playing '{}' (Iteration #{loop_count})", target.name)
+                };
             }
 
             let mut finished_steps = true;
@@ -442,7 +565,8 @@ pub fn play_macro(ctx: Arc<Ctx>, store: Arc<Store>, name_or_id: &str, loop_mode:
 
                 match step {
                     MacroStep::Click { rx, ry, button, delay_ms } => {
-                        if !sleep_responsive(*delay_ms) {
+                        let scaled_delay = ((*delay_ms as f32) / sp).round().max(10.0) as u64;
+                        if !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
@@ -451,38 +575,87 @@ pub fn play_macro(ctx: Arc<Ctx>, store: Arc<Store>, name_or_id: &str, loop_mode:
                             let px = rect.x + (rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
                             let py = rect.y + (ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
                             ctx.platform.input.move_to(PxPoint { x: px, y: py });
-                            std::thread::sleep(Duration::from_millis(25));
+                            std::thread::sleep(Duration::from_millis((20.0 / sp).round().max(10.0) as u64));
                             let btn = if button == "right" {
                                 MouseButton::Right
                             } else {
                                 MouseButton::Left
                             };
                             ctx.platform.input.button(btn, true);
-                            std::thread::sleep(Duration::from_millis(50));
+                            std::thread::sleep(Duration::from_millis((40.0 / sp).round().max(15.0) as u64));
                             ctx.platform.input.button(btn, false);
                         }
                     }
+                    MacroStep::Drag { start_rx, start_ry, end_rx, end_ry, duration_ms, delay_ms } => {
+                        let scaled_delay = ((*delay_ms as f32) / sp).round().max(10.0) as u64;
+                        let scaled_duration = ((*duration_ms as f32) / sp).round().max(40.0) as u64;
+                        if !sleep_responsive(scaled_delay) {
+                            finished_steps = false;
+                            break;
+                        }
+                        ctx.ensure_roblox_focus();
+                        if let Some(rect) = ctx.roblox_rect() {
+                            let start_px = rect.x + (start_rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
+                            let start_py = rect.y + (start_ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
+                            let end_px = rect.x + (end_rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
+                            let end_py = rect.y + (end_ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
+
+                            // 1. Move to start position
+                            ctx.platform.input.move_to(PxPoint { x: start_px, y: start_py });
+                            std::thread::sleep(Duration::from_millis((30.0 / sp).round().max(15.0) as u64));
+
+                            // 2. Mouse button DOWN
+                            ctx.platform.input.button(MouseButton::Left, true);
+                            std::thread::sleep(Duration::from_millis((40.0 / sp).round().max(20.0) as u64));
+
+                            // 3. Smooth micro-step interpolation
+                            let num_steps = ((scaled_duration as f32 / 12.0).round() as i32).clamp(8, 40);
+                            let step_delay = (scaled_duration / num_steps as u64).max(8);
+                            for i in 1..=num_steps {
+                                if STOP_PLAYBACK_REQUESTED.load(Ordering::SeqCst) {
+                                    break;
+                                }
+                                let t = i as f32 / num_steps as f32;
+                                let ease = t * t * (3.0 - 2.0 * t); // smooth ease in-out
+                                let cur_x = (start_px as f32 + (end_px - start_px) as f32 * ease).round() as i32;
+                                let cur_y = (start_py as f32 + (end_py - start_py) as f32 * ease).round() as i32;
+                                ctx.platform.input.move_to(PxPoint { x: cur_x, y: cur_y });
+                                std::thread::sleep(Duration::from_millis(step_delay));
+                            }
+
+                            // 4. Ensure at target position
+                            ctx.platform.input.move_to(PxPoint { x: end_px, y: end_py });
+                            std::thread::sleep(Duration::from_millis((40.0 / sp).round().max(20.0) as u64));
+
+                            // 5. Mouse button UP
+                            ctx.platform.input.button(MouseButton::Left, false);
+                            std::thread::sleep(Duration::from_millis((25.0 / sp).round().max(10.0) as u64));
+                        }
+                    }
                     MacroStep::KeyTap { key, delay_ms } => {
-                        if !sleep_responsive(*delay_ms) {
+                        let scaled_delay = ((*delay_ms as f32) / sp).round().max(10.0) as u64;
+                        if !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
                         ctx.ensure_roblox_focus();
                         if let Some(k) = parse_key(key) {
                             ctx.platform.input.key(k, true);
-                            std::thread::sleep(Duration::from_millis(60));
+                            std::thread::sleep(Duration::from_millis((50.0 / sp).round().max(20.0) as u64));
                             ctx.platform.input.key(k, false);
                         }
                     }
                     MacroStep::KeyHold { key, duration_ms, delay_ms } => {
-                        if !sleep_responsive(*delay_ms) {
+                        let scaled_delay = ((*delay_ms as f32) / sp).round().max(10.0) as u64;
+                        let scaled_duration = ((*duration_ms as f32) / sp).round().max(30.0) as u64;
+                        if !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
                         ctx.ensure_roblox_focus();
                         if let Some(k) = parse_key(key) {
                             ctx.platform.input.key(k, true);
-                            if !sleep_responsive(*duration_ms) {
+                            if !sleep_responsive(scaled_duration) {
                                 ctx.platform.input.key(k, false);
                                 finished_steps = false;
                                 break;
@@ -491,7 +664,8 @@ pub fn play_macro(ctx: Arc<Ctx>, store: Arc<Store>, name_or_id: &str, loop_mode:
                         }
                     }
                     MacroStep::MouseMove { rx, ry, delay_ms } => {
-                        if !sleep_responsive(*delay_ms) {
+                        let scaled_delay = ((*delay_ms as f32) / sp).round().max(10.0) as u64;
+                        if !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
@@ -503,7 +677,8 @@ pub fn play_macro(ctx: Arc<Ctx>, store: Arc<Store>, name_or_id: &str, loop_mode:
                         }
                     }
                     MacroStep::Sleep { ms } => {
-                        if !sleep_responsive(*ms) {
+                        let scaled_ms = ((*ms as f32) / sp).round().max(10.0) as u64;
+                        if !sleep_responsive(scaled_ms) {
                             finished_steps = false;
                             break;
                         }
@@ -516,7 +691,8 @@ pub fn play_macro(ctx: Arc<Ctx>, store: Arc<Store>, name_or_id: &str, loop_mode:
             }
 
             loop_count += 1;
-            if !sleep_responsive(300) {
+            let loop_delay = (250.0 / sp).round().max(80.0) as u64;
+            if !sleep_responsive(loop_delay) {
                 break;
             }
         }

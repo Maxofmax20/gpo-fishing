@@ -276,6 +276,7 @@ export const TARGET_LABEL: Record<OverlayTarget, string> = {
 
 export type MacroStep =
   | { type: "Click"; rx: number; ry: number; button: string; delay_ms: number }
+  | { type: "Drag"; start_rx: number; start_ry: number; end_rx: number; end_ry: number; duration_ms: number; delay_ms: number }
   | { type: "KeyTap"; key: string; delay_ms: number }
   | { type: "KeyHold"; key: string; duration_ms: number; delay_ms: number }
   | { type: "MouseMove"; rx: number; ry: number; delay_ms: number }

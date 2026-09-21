@@ -12,7 +12,7 @@ import Journal from "../pages/Journal";
 import Setup from "../pages/Setup";
 import Features from "../pages/Features";
 import SettingsPage from "../pages/Settings";
-import { MacroManager } from "../components/MacroManager";
+import Macros from "../pages/Macros";
 
 type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "settings";
 
@@ -155,15 +155,11 @@ export default function Panel() {
             {gated && <ConnectGate onSkip={() => setSkipGate(true)} />}
             {ready && !gated && (
               <>
-                {tab === "dashboard" && <Dashboard />}
+                {tab === "dashboard" && <Dashboard onNavigate={setTab} />}
                 {tab === "journal" && <Journal />}
                 {tab === "setup" && <Setup />}
                 {tab === "features" && <Features />}
-                {tab === "macros" && (
-                  <div className="p-4">
-                    <MacroManager />
-                  </div>
-                )}
+                {tab === "macros" && <Macros />}
                 {tab === "settings" && <SettingsPage />}
               </>
             )}

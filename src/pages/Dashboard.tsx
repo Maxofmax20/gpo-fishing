@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pause, Play, Square } from "lucide-react";
+import { Pause, Play, Repeat, Square } from "lucide-react";
 import { api } from "../lib/ipc";
 import { useStore, isActive } from "../lib/store";
 import { STATE_LABEL } from "../lib/types";
@@ -7,9 +7,13 @@ import { Button, Pill, Section, cx, fmtRuntime } from "../components/primitives"
 import { StateBadge } from "../components/StateIcon";
 import { LogList } from "../components/LogList";
 import { LiveAreas } from "../components/LiveAreas";
-import { MacroManager } from "../components/MacroManager";
+import type { CustomMacro, RecorderStatus } from "../lib/types";
 
-export default function Dashboard() {
+export default function Dashboard({
+  onNavigate,
+}: {
+  onNavigate?: (tab: "dashboard" | "journal" | "setup" | "features" | "macros" | "settings") => void;
+}) {
   const state = useStore((s) => s.state);
   const detail = useStore((s) => s.detail);
   const stats = useStore((s) => s.stats);
@@ -52,10 +56,20 @@ export default function Dashboard() {
         Press <span className="font-mono text-fg-dim">{hk}</span> anywhere to start or pause.
       </div>
 
-      <Section title="Custom Macros & Step Recorder">
-        <div className="p-3">
-          <MacroManager />
-        </div>
+      <Section
+        title="Custom Automation"
+        action={
+          onNavigate && (
+            <button
+              onClick={() => onNavigate("macros")}
+              className="text-[11px] text-accent hover:underline flex items-center gap-1 font-medium cursor-pointer"
+            >
+              Open Studio →
+            </button>
+          )
+        }
+      >
+        <QuickMacroRow onNavigate={onNavigate} />
       </Section>
 
       <Section title="All time">
@@ -165,6 +179,146 @@ function Bar({ pct }: { pct: number }) {
   return (
     <div className="w-24 h-1.5 rounded-full bg-white/10 overflow-hidden">
       <div className={cx("h-full rounded-full", pct > 0.7 ? "bg-ok" : pct > 0.4 ? "bg-warn" : "bg-bad")} style={{ width: `${pct * 100}%` }} />
+    </div>
+  );
+}
+
+function QuickMacroRow({
+  onNavigate,
+}: {
+  onNavigate?: (tab: "dashboard" | "journal" | "setup" | "features" | "macros" | "settings") => void;
+}) {
+  const [macros, setMacros] = useState<CustomMacro[]>([]);
+  const [status, setStatus] = useState<RecorderStatus | null>(null);
+  const [selectedName, setSelectedName] = useState("");
+  const [speed, setSpeed] = useState("1.0");
+
+  const refresh = () => {
+    Promise.all([api.macroList(), api.macroStatus()])
+      .then(([list, st]) => {
+        setMacros(list);
+        setStatus(st);
+        if (!selectedName && list.length > 0) {
+          setSelectedName(list[0].name);
+        }
+      })
+      .catch(() => undefined);
+  };
+
+  useEffect(() => {
+    refresh();
+    const t = setInterval(
+      refresh,
+      status?.is_recording || status?.is_playing ? 800 : 2500,
+    );
+    return () => clearInterval(t);
+  }, [status?.is_recording, status?.is_playing]);
+
+  const activeMacro =
+    macros.find((m) => m.name === selectedName || m.id === selectedName) || macros[0];
+
+  if (status?.is_recording) {
+    return (
+      <div className="flex items-center px-4 h-12 border-b border-line bg-bad-soft/20">
+        <div className="flex items-center gap-2">
+          <Pill tone="bad">🔴 Recording ({status.recorded_steps_count} steps)</Pill>
+          <span className="text-[12px] text-fg-dim">Press F8 in Roblox to finish</span>
+        </div>
+        <div className="ml-auto flex items-center gap-1.5">
+          <Button size="sm" kind="primary" onClick={() => api.macroRecord("stop", "").then(refresh)}>
+            Save (F8)
+          </Button>
+          <Button size="sm" kind="danger" onClick={() => api.macroRecord("cancel").then(refresh)}>
+            Cancel
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (status?.is_playing) {
+    return (
+      <div className="flex items-center px-4 h-12 border-b border-line bg-white/[0.02]">
+        <div className="flex items-center gap-2">
+          <Pill tone="fruit">▶️ Playing &ldquo;{status.playing_macro_name}&rdquo;</Pill>
+          <span className="text-[12px] text-fg-dim font-mono">
+            {status.is_looping ? `Loop #${status.current_loop}` : "1x"}
+          </span>
+        </div>
+        <div className="ml-auto">
+          <Button size="sm" kind="danger" icon={<Square size={12} />} onClick={() => api.macroPlay("stop").then(refresh)}>
+            Stop
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (macros.length === 0) {
+    return (
+      <div className="flex items-center justify-between px-4 h-12 border-b border-line text-[12px] text-fg-dim">
+        <span>No custom macros recorded yet.</span>
+        {onNavigate && (
+          <Button size="sm" kind="default" onClick={() => onNavigate("macros")}>
+            Record in Studio →
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center px-4 h-12 border-b border-line">
+      <div className="flex items-center gap-2">
+        <select
+          value={activeMacro?.name || ""}
+          onChange={(e) => setSelectedName(e.target.value)}
+          className="h-7 px-2.5 rounded-md bg-white/[0.06] border border-line-strong text-[12px] text-fg outline-none focus:border-accent"
+        >
+          {macros.map((m) => (
+            <option key={m.id || m.name} value={m.name} className="bg-bg-elev text-fg">
+              {m.name} ({m.steps.length} steps)
+            </option>
+          ))}
+        </select>
+        <select
+          value={speed}
+          onChange={(e) => setSpeed(e.target.value)}
+          className="h-7 px-1.5 rounded-md bg-white/[0.04] border border-line-strong text-[11px] text-fg-dim font-mono outline-none"
+          title="Playback speed"
+        >
+          <option value="0.75" className="bg-bg-elev">0.75x</option>
+          <option value="1.0" className="bg-bg-elev">1.0x</option>
+          <option value="1.25" className="bg-bg-elev">1.25x</option>
+          <option value="1.5" className="bg-bg-elev">1.5x</option>
+          <option value="2.0" className="bg-bg-elev">2.0x</option>
+          <option value="3.0" className="bg-bg-elev">3.0x</option>
+        </select>
+      </div>
+      <div className="ml-auto flex items-center gap-1.5">
+        <Button
+          size="sm"
+          kind="primary"
+          icon={<Play size={12} />}
+          onClick={() =>
+            activeMacro &&
+            api.macroPlay("play", activeMacro.name, false, parseFloat(speed)).then(refresh)
+          }
+        >
+          Play
+        </Button>
+        <Button
+          size="sm"
+          kind="default"
+          icon={<Repeat size={12} />}
+          onClick={() =>
+            activeMacro &&
+            api.macroPlay("loop", activeMacro.name, true, parseFloat(speed)).then(refresh)
+          }
+        >
+          Loop
+        </Button>
+      </div>
     </div>
   );
 }

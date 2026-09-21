@@ -150,6 +150,9 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     } else if raw_path == "/api/click" && method == "POST" {
         let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_click(&mut stream, bot, body);
+    } else if raw_path == "/api/drag" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_drag(&mut stream, bot, body);
     } else if raw_path == "/api/key" && method == "POST" {
         let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_key(&mut stream, bot, body);
@@ -391,6 +394,52 @@ fn handle_click(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
         bot.ctx().platform.input.button(btn, true);
         std::thread::sleep(Duration::from_millis(50));
         bot.ctx().platform.input.button(btn, false);
+    }
+
+    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_drag(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let start_rx = parsed.get("start_x").or_else(|| parsed.get("start_rx")).and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    let start_ry = parsed.get("start_y").or_else(|| parsed.get("start_ry")).and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    let end_rx = parsed.get("end_x").or_else(|| parsed.get("end_rx")).and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    let end_ry = parsed.get("end_y").or_else(|| parsed.get("end_ry")).and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    let duration_ms = parsed.get("duration_ms").and_then(|v| v.as_u64()).unwrap_or(300);
+
+    // Record step if macro recorder is active
+    crate::bot::recorder::record_drag(start_rx, start_ry, end_rx, end_ry, duration_ms);
+
+    // Execute drag in game
+    let _ = bot.ctx().platform.window.focus();
+    std::thread::sleep(Duration::from_millis(20));
+
+    if let Some(rect) = bot.ctx().roblox_rect() {
+        let start_px = rect.x + (start_rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
+        let start_py = rect.y + (start_ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
+        let end_px = rect.x + (end_rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
+        let end_py = rect.y + (end_ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
+
+        bot.ctx().platform.input.move_to(crate::core::types::PxPoint { x: start_px, y: start_py });
+        std::thread::sleep(Duration::from_millis(30));
+        bot.ctx().platform.input.button(crate::core::types::MouseButton::Left, true);
+        std::thread::sleep(Duration::from_millis(40));
+
+        let num_steps = ((duration_ms as f32 / 15.0).round() as i32).clamp(8, 30);
+        let step_delay = (duration_ms / num_steps as u64).max(10);
+        for i in 1..=num_steps {
+            let t = i as f32 / num_steps as f32;
+            let ease = t * t * (3.0 - 2.0 * t);
+            let cur_x = (start_px as f32 + (end_px - start_px) as f32 * ease).round() as i32;
+            let cur_y = (start_py as f32 + (end_py - start_py) as f32 * ease).round() as i32;
+            bot.ctx().platform.input.move_to(crate::core::types::PxPoint { x: cur_x, y: cur_y });
+            std::thread::sleep(Duration::from_millis(step_delay));
+        }
+
+        bot.ctx().platform.input.move_to(crate::core::types::PxPoint { x: end_px, y: end_py });
+        std::thread::sleep(Duration::from_millis(40));
+        bot.ctx().platform.input.button(crate::core::types::MouseButton::Left, false);
     }
 
     let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
@@ -640,12 +689,13 @@ fn handle_macro_play(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let act = parsed.get("action").and_then(|a| a.as_str()).unwrap_or("play");
     let name = parsed.get("name").and_then(|n| n.as_str()).unwrap_or("");
     let loop_mode = act == "loop" || parsed.get("loop").and_then(|l| l.as_bool()).unwrap_or(false);
+    let speed = parsed.get("speed").and_then(|s| s.as_f64()).map(|s| s as f32);
 
     let (ok, msg) = if act == "stop" {
         crate::bot::recorder::stop_playback();
         (true, "Macro playback stop requested.".into())
     } else {
-        match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), name, loop_mode) {
+        match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), name, loop_mode, speed) {
             Ok(_) => (true, format!("Playing macro '{name}'{}!", if loop_mode { " in loop" } else { "" })),
             Err(e) => (false, e),
         }

@@ -605,6 +605,7 @@ pub fn macro_play(
     action: String,
     name: Option<String>,
     loop_mode: Option<bool>,
+    speed: Option<f32>,
 ) -> Result<serde_json::Value, String> {
     if action == "stop" {
         crate::bot::recorder::stop_playback();
@@ -612,7 +613,7 @@ pub fn macro_play(
     } else {
         let n = name.ok_or_else(|| "Macro name required".to_string())?;
         let is_loop = loop_mode.unwrap_or(false) || action == "loop";
-        crate::bot::recorder::play_macro(st.bot.ctx().clone(), st.store.clone(), &n, is_loop)?;
+        crate::bot::recorder::play_macro(st.bot.ctx().clone(), st.store.clone(), &n, is_loop, speed)?;
         Ok(serde_json::json!({ "ok": true, "message": format!("Started playing '{n}'") }))
     }
 }
