@@ -74,8 +74,10 @@ export const api = {
   macroStatus: () => invoke<RecorderStatus>("macro_status"),
   macroRecord: (action: string, name?: string, mode?: string) =>
     invoke<{ ok: boolean; message: string; macro?: CustomMacro }>("macro_record", { action, name, mode }),
-  macroPlay: (action: string, name?: string, loopMode?: boolean, speed?: number) =>
-    invoke<{ ok: boolean; message: string }>("macro_play", { action, name, loopMode, speed }),
+  macroPlay: (action: string, name?: string, loopMode?: boolean, speed?: number, maxLoops?: number) =>
+    invoke<{ ok: boolean; message: string }>("macro_play", { action, name, loopMode, speed, maxLoops }),
+  macroRename: (idOrName: string, newName: string) =>
+    invoke<{ ok: boolean; message: string }>("macro_rename", { idOrName, newName }),
   macroDelete: (name: string) => invoke<{ ok: boolean; message: string }>("macro_delete", { name }),
 };
 

@@ -87,6 +87,7 @@ pub fn run() {
             commands::macro_status,
             commands::macro_record,
             commands::macro_play,
+            commands::macro_rename,
             commands::macro_delete,
         ])
         .build(tauri::generate_context!())

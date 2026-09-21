@@ -3,7 +3,7 @@ import { Pause, Play, Repeat, Square } from "lucide-react";
 import { api } from "../lib/ipc";
 import { useStore, isActive } from "../lib/store";
 import { STATE_LABEL } from "../lib/types";
-import { Button, Pill, Section, cx, fmtRuntime } from "../components/primitives";
+import { Button, CustomSelect, Pill, Section, cx, fmtRuntime } from "../components/primitives";
 import { StateBadge } from "../components/StateIcon";
 import { LogList } from "../components/LogList";
 import { LiveAreas } from "../components/LiveAreas";
@@ -270,30 +270,27 @@ function QuickMacroRow({
   return (
     <div className="flex items-center px-4 h-12 border-b border-line">
       <div className="flex items-center gap-2">
-        <select
+        <CustomSelect
           value={activeMacro?.name || ""}
-          onChange={(e) => setSelectedName(e.target.value)}
-          className="h-7 px-2.5 rounded-md bg-white/[0.06] border border-line-strong text-[12px] text-fg outline-none focus:border-accent"
-        >
-          {macros.map((m) => (
-            <option key={m.id || m.name} value={m.name} className="bg-bg-elev text-fg">
-              {m.name} ({m.steps.length} steps)
-            </option>
-          ))}
-        </select>
-        <select
+          options={macros.map((m) => ({
+            value: m.name,
+            label: m.name,
+            sub: `${m.steps.length} steps`,
+          }))}
+          onChange={(v) => setSelectedName(v)}
+        />
+        <CustomSelect
           value={speed}
-          onChange={(e) => setSpeed(e.target.value)}
-          className="h-7 px-1.5 rounded-md bg-white/[0.04] border border-line-strong text-[11px] text-fg-dim font-mono outline-none"
-          title="Playback speed"
-        >
-          <option value="0.75" className="bg-bg-elev">0.75x</option>
-          <option value="1.0" className="bg-bg-elev">1.0x</option>
-          <option value="1.25" className="bg-bg-elev">1.25x</option>
-          <option value="1.5" className="bg-bg-elev">1.5x</option>
-          <option value="2.0" className="bg-bg-elev">2.0x</option>
-          <option value="3.0" className="bg-bg-elev">3.0x</option>
-        </select>
+          options={[
+            { value: "0.75", label: "0.75x" },
+            { value: "1.0", label: "1.0x" },
+            { value: "1.25", label: "1.25x" },
+            { value: "1.5", label: "1.5x" },
+            { value: "2.0", label: "2.0x" },
+            { value: "3.0", label: "3.0x" },
+          ]}
+          onChange={(v) => setSpeed(v)}
+        />
       </div>
       <div className="ml-auto flex items-center gap-1.5">
         <Button
@@ -302,7 +299,7 @@ function QuickMacroRow({
           icon={<Play size={12} />}
           onClick={() =>
             activeMacro &&
-            api.macroPlay("play", activeMacro.name, false, parseFloat(speed)).then(refresh)
+            api.macroPlay("play", activeMacro.name, false, parseFloat(speed), 1).then(refresh)
           }
         >
           Play
@@ -313,7 +310,7 @@ function QuickMacroRow({
           icon={<Repeat size={12} />}
           onClick={() =>
             activeMacro &&
-            api.macroPlay("loop", activeMacro.name, true, parseFloat(speed)).then(refresh)
+            api.macroPlay("loop", activeMacro.name, true, parseFloat(speed), undefined).then(refresh)
           }
         >
           Loop

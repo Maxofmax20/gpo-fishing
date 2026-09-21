@@ -170,6 +170,9 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
         handle_macro_play(&mut stream, bot, body);
     } else if raw_path == "/api/macro/list" {
         handle_macro_list(&mut stream, bot);
+    } else if raw_path == "/api/macro/rename" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_macro_rename(&mut stream, bot, body);
     } else if raw_path == "/api/macro/delete" && method == "POST" {
         let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_macro_delete(&mut stream, bot, body);
@@ -690,12 +693,13 @@ fn handle_macro_play(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let name = parsed.get("name").and_then(|n| n.as_str()).unwrap_or("");
     let loop_mode = act == "loop" || parsed.get("loop").and_then(|l| l.as_bool()).unwrap_or(false);
     let speed = parsed.get("speed").and_then(|s| s.as_f64()).map(|s| s as f32);
+    let max_loops = parsed.get("max_loops").and_then(|m| m.as_u64()).map(|m| m as u32);
 
     let (ok, msg) = if act == "stop" {
         crate::bot::recorder::stop_playback();
         (true, "Macro playback stop requested.".into())
     } else {
-        match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), name, loop_mode, speed) {
+        match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), name, loop_mode, speed, max_loops) {
             Ok(_) => (true, format!("Playing macro '{name}'{}!", if loop_mode { " in loop" } else { "" })),
             Err(e) => (false, e),
         }
@@ -714,6 +718,23 @@ fn handle_macro_list(stream: &mut TcpStream, bot: &Arc<Bot>) {
     let macros = crate::bot::recorder::load_macros(&bot.ctx().store);
     let status = crate::bot::recorder::get_status();
     let reply = json!({ "ok": true, "macros": macros, "status": status }).to_string();
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        reply.len(),
+        reply
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_macro_rename(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let id_or_name = parsed.get("name").or_else(|| parsed.get("id")).and_then(|v| v.as_str()).unwrap_or("");
+    let new_name = parsed.get("new_name").and_then(|v| v.as_str()).unwrap_or("");
+    let (ok, msg) = match crate::bot::recorder::rename_macro(&bot.ctx().store, id_or_name, new_name) {
+        Ok(_) => (true, format!("Renamed macro to '{new_name}'")),
+        Err(e) => (false, e),
+    };
+    let reply = json!({ "ok": ok, "message": msg }).to_string();
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         reply.len(),
@@ -932,6 +953,47 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
   pointer-events: none; z-index: 999;
 }
 #toast.show { transform: translateX(-50%) translateY(0); }
+
+/* MACRO UPGRADE STYLES */
+.macro-pill-group {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+}
+.macro-pill-btn {
+  background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); color: var(--text-dim);
+  padding: 6px 12px; border-radius: 8px; font-size: 0.76rem; font-weight: 700; cursor: pointer;
+  transition: all 0.15s ease; user-select: none;
+}
+.macro-pill-btn:hover { background: rgba(51, 65, 85, 0.9); color: #fff; }
+.macro-pill-btn.active {
+  background: rgba(0, 240, 255, 0.16); border-color: var(--cyan); color: var(--cyan);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
+}
+.macro-pill-btn.active-purple {
+  background: rgba(176, 38, 255, 0.18); border-color: #c084fc; color: #e9d5ff;
+  box-shadow: 0 0 12px rgba(176, 38, 255, 0.3);
+}
+.macro-select-custom {
+  background: #14151a; color: #fff; border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 10px; padding: 10px 14px; font-size: 0.85rem; font-weight: 700;
+  outline: none; cursor: pointer; flex: 1; min-width: 160px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+.macro-select-custom:focus { border-color: var(--cyan); }
+.macro-hotkey-box {
+  background: rgba(0, 240, 255, 0.05); border: 1px dashed rgba(0, 240, 255, 0.3);
+  border-radius: 8px; padding: 8px 12px; font-size: 0.73rem; color: #94a3b8;
+  display: flex; align-items: center; gap: 8px;
+}
+.macro-steps-box {
+  background: rgba(3, 5, 8, 0.7); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px; padding: 10px; max-height: 200px; overflow-y: auto;
+  font-family: monospace; font-size: 0.72rem; display: flex; flex-direction: column; gap: 4px;
+}
+.macro-step-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.03);
+}
 </style>
 </head>
 <body>
@@ -1074,23 +1136,73 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
         <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">2. PLAY OR LOOP SAVED MACRO</span>
         <span id="play-loop-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--cyan); font-weight: 800;">READY</span>
       </div>
+
+      <!-- Macro Selector + Rename + Delete -->
       <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-        <select id="sel-macro-list" style="background: #1e293b; color: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 0.85rem; font-weight: 700; flex: 1; min-width: 160px; outline: none; cursor: pointer;">
+        <select id="sel-macro-list" class="macro-select-custom" onchange="onSelectMacroChange()">
           <option value="">(No macros saved yet)</option>
         </select>
+        <button class="btn btn-sub" style="padding: 10px 14px; font-size: 0.8rem;" onclick="renameSelectedMacro()" title="Rename selected macro">
+          ✏️ RENAME
+        </button>
+        <button class="btn btn-sub" style="padding: 10px 12px; font-size: 0.8rem;" onclick="deleteSelectedMacro()" title="Delete selected macro">
+          🗑️
+        </button>
+      </div>
+
+      <!-- Loop Repetition Pills -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding-top: 2px;">
+        <span style="font-size: 0.74rem; font-weight: 700; color: var(--text-dim);">🔁 Loop Count:</span>
+        <div class="macro-pill-group" id="loop-pills">
+          <button class="macro-pill-btn active-purple" onclick="setWebLoopCount(1, this)">1x</button>
+          <button class="macro-pill-btn" onclick="setWebLoopCount(5, this)">5x</button>
+          <button class="macro-pill-btn" onclick="setWebLoopCount(10, this)">10x</button>
+          <button class="macro-pill-btn" onclick="setWebLoopCount(25, this)">25x</button>
+          <button class="macro-pill-btn" onclick="setWebLoopCount(0, this)">∞ Endless</button>
+        </div>
+      </div>
+
+      <!-- Playback Speed Pills -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+        <span style="font-size: 0.74rem; font-weight: 700; color: var(--text-dim);">⚡ Playback Speed:</span>
+        <div class="macro-pill-group" id="speed-pills">
+          <button class="macro-pill-btn" onclick="setWebSpeed(0.75, this)">0.75x</button>
+          <button class="macro-pill-btn active" onclick="setWebSpeed(1.0, this)">1.0x</button>
+          <button class="macro-pill-btn" onclick="setWebSpeed(1.25, this)">1.25x</button>
+          <button class="macro-pill-btn" onclick="setWebSpeed(1.5, this)">1.5x</button>
+          <button class="macro-pill-btn" onclick="setWebSpeed(2.0, this)">2.0x</button>
+          <button class="macro-pill-btn" onclick="setWebSpeed(3.0, this)">3.0x</button>
+        </div>
+      </div>
+
+      <!-- Play / Loop / Stop Action Buttons -->
+      <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 2px;">
         <button id="btn-macro-play" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; flex: 1; min-width: 110px; padding: 10px 12px;" onclick="playMacro(false)">
           ▶️ PLAY ONCE
         </button>
         <button id="btn-macro-loop" class="btn" style="background: linear-gradient(135deg, #b026ff, #7c3aed); color: #fff; flex: 1; min-width: 110px; padding: 10px 12px;" onclick="playMacro(true)">
           🔁 LOOP PLAY
         </button>
-        <button id="btn-macro-stop" class="btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; padding: 10px 14px; display: none;" onclick="stopMacro()">
-          🛑 STOP
-        </button>
-        <button class="btn btn-sub" style="padding: 10px 12px;" onclick="deleteSelectedMacro()" title="Delete selected macro">
-          🗑️
+        <button id="btn-macro-stop" class="btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; flex: 1; padding: 10px 14px; display: none;" onclick="stopMacro()">
+          🛑 STOP PLAYBACK
         </button>
       </div>
+
+      <!-- Laptop Hotkey Banner -->
+      <div class="macro-hotkey-box">
+        <span style="font-size: 1rem;">💻</span>
+        <div><b>Laptop Stop Hotkeys:</b> Tap <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F8</code> or <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F9</code> on your PC keyboard anytime to halt playback instantly.</div>
+      </div>
+
+      <!-- Step Inspector Preview -->
+      <details id="macro-steps-details" style="margin-top: 2px;">
+        <summary style="font-size: 0.74rem; font-weight: 700; color: var(--cyan); cursor: pointer; user-select: none;">
+          🎞️ Step Inspector (<span id="macro-steps-count">0</span> steps)
+        </summary>
+        <div id="macro-steps-list" class="macro-steps-box" style="margin-top: 6px;">
+          <div style="color: var(--text-mute);">Select a macro to inspect steps...</div>
+        </div>
+      </details>
     </div>
     <div id="macro-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 4px;">Record any workflow once and replay or loop it smoothly!</div>
   </div>
@@ -1617,6 +1729,59 @@ async function toggleAutoCraft() {
 
 let isRecordingMacro = false;
 let isPlayingMacro = false;
+let webSpeed = 1.0;
+let webLoopCount = 1;
+let cachedMacros = [];
+
+function setWebSpeed(val, btn) {
+  webSpeed = Number(val);
+  document.querySelectorAll('#speed-pills .macro-pill-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+function setWebLoopCount(val, btn) {
+  webLoopCount = Number(val);
+  document.querySelectorAll('#loop-pills .macro-pill-btn').forEach(b => b.classList.remove('active-purple'));
+  if (btn) btn.classList.add('active-purple');
+}
+
+function renderMacroSteps(m) {
+  const countEl = document.getElementById('macro-steps-count');
+  const listEl = document.getElementById('macro-steps-list');
+  if (!m || !m.steps || m.steps.length === 0) {
+    if (countEl) countEl.innerText = '0';
+    if (listEl) listEl.innerHTML = '<div style="color: var(--text-mute);">No steps recorded for this macro.</div>';
+    return;
+  }
+  if (countEl) countEl.innerText = m.steps.length;
+  let html = '';
+  m.steps.forEach((s, i) => {
+    let desc = '';
+    if (s.type === 'Drag') {
+      desc = `<span style="color:#6ee7b7">🖱️ DRAG (${(s.start_rx*100).toFixed(0)}%, ${(s.start_ry*100).toFixed(0)}%) ➔ (${(s.end_rx*100).toFixed(0)}%, ${(s.end_ry*100).toFixed(0)}%) [${s.duration_ms}ms]</span>`;
+    } else if (s.type === 'Click') {
+      desc = `<span style="color:#67e8f9">👆 ${s.button.toUpperCase()} CLICK (${(s.rx*100).toFixed(0)}%, ${(s.ry*100).toFixed(0)}%)</span>`;
+    } else if (s.type === 'KeyHold') {
+      desc = `<span style="color:#fcd34d">⌨️ HOLD [${s.key.toUpperCase()}] for ${s.duration_ms}ms</span>`;
+    } else if (s.type === 'KeyTap') {
+      desc = `<span style="color:#d8b4fe">⌨️ TAP [${s.key.toUpperCase()}]</span>`;
+    } else if (s.type === 'MouseMove') {
+      desc = `<span style="color:#93c5fd">🖱️ MOVE (${(s.rx*100).toFixed(0)}%, ${(s.ry*100).toFixed(0)}%)</span>`;
+    } else {
+      desc = `<span style="color:#94a3b8">⏳ SLEEP ${s.ms || 0}ms</span>`;
+    }
+    const delay = s.delay_ms ? `<span style="color:#64748b;font-size:0.68rem;">+${s.delay_ms}ms</span>` : '';
+    html += `<div class="macro-step-row"><div><span style="color:#64748b;margin-right:6px;">#${i+1}</span>${desc}</div>${delay}</div>`;
+  });
+  if (listEl) listEl.innerHTML = html;
+}
+
+function onSelectMacroChange() {
+  const sel = document.getElementById('sel-macro-list');
+  const val = sel.value;
+  const m = cachedMacros.find(x => x.name === val || x.id === val);
+  renderMacroSteps(m);
+}
 
 function updateMacroUi(rec, macros) {
   if (!rec) return;
@@ -1660,7 +1825,7 @@ function updateMacroUi(rec, macros) {
   if (isPlayingMacro) {
     stBadge.className = 'status-badge badge-running';
     stBadge.innerText = rec.is_looping ? `LOOP #${rec.current_loop}` : 'PLAYING';
-    playBadge.innerText = rec.is_looping ? `LOOPING (#${rec.current_loop})` : 'PLAYING ONCE';
+    playBadge.innerText = rec.is_looping ? `LOOPING (#${rec.current_loop}) [${webSpeed}x]` : `PLAYING ONCE [${webSpeed}x]`;
     btnPlay.style.display = 'none';
     btnLoop.style.display = 'none';
     btnStop.style.display = 'inline-flex';
@@ -1679,12 +1844,14 @@ function updateMacroUi(rec, macros) {
     macroMsg.innerText = rec.message;
   }
 
-  // Update Macro Dropdown
+  // Update Macro Dropdown and cache
+  cachedMacros = macros || [];
   const sel = document.getElementById('sel-macro-list');
   if (macros && Array.isArray(macros)) {
     const curVal = sel.value;
     if (macros.length === 0) {
       sel.innerHTML = '<option value="">(No macros saved yet)</option>';
+      renderMacroSteps(null);
     } else {
       let optHtml = '';
       for (const m of macros) {
@@ -1692,6 +1859,8 @@ function updateMacroUi(rec, macros) {
         optHtml += `<option value="${m.name}" ${selected}>📋 ${m.name} (${m.steps.length} steps)</option>`;
       }
       sel.innerHTML = optHtml;
+      const active = macros.find(m => m.name === sel.value || m.id === sel.value) || macros[0];
+      renderMacroSteps(active);
     }
   }
 }
@@ -1742,6 +1911,29 @@ async function cancelRecord() {
   }
 }
 
+async function renameSelectedMacro() {
+  const sel = document.getElementById('sel-macro-list');
+  const currentName = sel.value;
+  if (!currentName) {
+    showToast('Please select a macro to rename.');
+    return;
+  }
+  const newName = prompt(`Enter new name for "${currentName}":`, currentName);
+  if (!newName || newName.trim() === '' || newName.trim() === currentName) return;
+  try {
+    const res = await fetch('/api/macro/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: currentName, new_name: newName.trim() })
+    });
+    const data = await res.json();
+    showToast(data.message || 'Macro renamed');
+    fetchStatus();
+  } catch (e) {
+    showToast('Rename failed: ' + e);
+  }
+}
+
 async function playMacro(isLoop) {
   const sel = document.getElementById('sel-macro-list');
   const name = sel.value;
@@ -1750,10 +1942,16 @@ async function playMacro(isLoop) {
     return;
   }
   try {
+    const maxLoops = isLoop ? (webLoopCount === 0 ? undefined : webLoopCount) : 1;
     const res = await fetch('/api/macro/play', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: isLoop ? 'loop' : 'play', name })
+      body: JSON.stringify({
+        action: isLoop ? 'loop' : 'play',
+        name,
+        speed: webSpeed,
+        max_loops: maxLoops
+      })
     });
     const data = await res.json();
     showToast(data.message || (isLoop ? 'Started loop playback' : 'Started playing macro'));

@@ -11,11 +11,16 @@ import {
   MoveRight,
   CheckCircle2,
   Plus,
+  Pencil,
+  Check,
+  X,
+  Laptop,
 } from "lucide-react";
 import { api } from "../lib/ipc";
 import type { CustomMacro, RecorderStatus } from "../lib/types";
 import {
   Button,
+  CustomSelect,
   Kbd,
   Pill,
   Row,
@@ -40,6 +45,9 @@ export default function Macros() {
   const [recordName, setRecordName] = useState("Craft Rare Bait");
   const [recordMode, setRecordMode] = useState<"pc" | "web">("pc");
   const [speed, setSpeed] = useState("1.0");
+  const [loopCount, setLoopCount] = useState("1");
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameInput, setRenameInput] = useState("");
   const [openSection, setOpenSection] = useState<string | null>("steps");
   const [busy, setBusy] = useState(false);
 
@@ -117,7 +125,25 @@ export default function Macros() {
     setBusy(true);
     try {
       const sp = parseFloat(speed) || 1.0;
-      await api.macroPlay(loop ? "loop" : "play", activeMacro.name, loop, sp);
+      const parsedLoops = parseInt(loopCount, 10);
+      const maxLoops = loop ? (parsedLoops === 0 ? undefined : parsedLoops) : 1;
+      await api.macroPlay(loop ? "loop" : "play", activeMacro.name, loop, sp, maxLoops);
+      await refresh();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSaveRename = async () => {
+    if (!activeMacro || !renameInput.trim()) return;
+    setBusy(true);
+    try {
+      const newName = renameInput.trim();
+      await api.macroRename(activeMacro.id || activeMacro.name, newName);
+      setSelectedMacroName(newName);
+      setIsRenaming(false);
       await refresh();
     } catch (e) {
       console.error(e);
@@ -259,18 +285,31 @@ export default function Macros() {
               sub="Choose which recorded workflow to inspect or replay."
               right={
                 <div className="flex items-center gap-2">
-                  <select
+                  <CustomSelect
                     value={activeMacro?.id || activeMacro?.name || ""}
-                    onChange={(e) => setSelectedMacroName(e.target.value)}
+                    options={macros.map((m) => ({
+                      value: m.id || m.name,
+                      label: m.name,
+                      sub: `${m.steps.length} steps`,
+                    }))}
+                    onChange={(val) => {
+                      const m = macros.find((x) => (x.id || x.name) === val);
+                      if (m) setSelectedMacroName(m.name);
+                    }}
                     disabled={status.is_playing || busy}
-                    className="h-8 px-3 rounded-lg bg-white/[0.06] border border-line-strong text-[12px] text-fg outline-none focus:border-accent"
+                  />
+                  <Button
+                    size="sm"
+                    kind="default"
+                    disabled={status.is_playing || busy || !activeMacro}
+                    onClick={() => {
+                      setRenameInput(activeMacro.name);
+                      setIsRenaming(true);
+                    }}
+                    icon={<Pencil size={13} />}
                   >
-                    {macros.map((m) => (
-                      <option key={m.id || m.name} value={m.id || m.name} className="bg-bg-elev text-fg">
-                        {m.name} ({m.steps.length} steps)
-                      </option>
-                    ))}
-                  </select>
+                    Rename
+                  </Button>
                   <Button
                     size="sm"
                     kind="ghost"
@@ -281,6 +320,64 @@ export default function Macros() {
                     Delete
                   </Button>
                 </div>
+              }
+            />
+
+            {isRenaming && activeMacro && (
+              <Row
+                title="Rename Macro"
+                sub={`Updating label for "${activeMacro.name}".`}
+                right={
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={renameInput}
+                      onChange={(e) => setRenameInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveRename();
+                        if (e.key === "Escape") setIsRenaming(false);
+                      }}
+                      className="h-8 px-3 rounded-lg bg-white/[0.08] border border-accent text-[12px] text-fg outline-none w-48"
+                      autoFocus
+                    />
+                    <Button
+                      size="sm"
+                      kind="primary"
+                      disabled={busy || !renameInput.trim()}
+                      onClick={handleSaveRename}
+                      icon={<Check size={13} />}
+                    >
+                      Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      kind="ghost"
+                      disabled={busy}
+                      onClick={() => setIsRenaming(false)}
+                      icon={<X size={13} />}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                }
+              />
+            )}
+
+            <Row
+              title="Loop Repetitions"
+              sub="Set loop iterations (or ∞ for continuous non-stop loop)."
+              right={
+                <Segmented
+                  value={loopCount}
+                  options={[
+                    { value: "1", label: "1x" },
+                    { value: "5", label: "5x" },
+                    { value: "10", label: "10x" },
+                    { value: "25", label: "25x" },
+                    { value: "0", label: "∞ Loop" },
+                  ]}
+                  onChange={setLoopCount}
+                />
               }
             />
 
@@ -300,6 +397,20 @@ export default function Macros() {
                   ]}
                   onChange={setSpeed}
                 />
+              }
+            />
+
+            <Row
+              title={
+                <span className="flex items-center gap-1.5 text-[12px] text-fg-dim">
+                  <Laptop size={13} className="text-accent" />
+                  Laptop Keyboard Stop Hotkeys
+                </span>
+              }
+              sub={
+                <span>
+                  Tap <Kbd>F8</Kbd> or <Kbd>F9</Kbd> anywhere on your keyboard (even while playing Roblox) to immediately cancel macro playback or loops.
+                </span>
               }
             />
 

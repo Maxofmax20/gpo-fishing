@@ -606,6 +606,7 @@ pub fn macro_play(
     name: Option<String>,
     loop_mode: Option<bool>,
     speed: Option<f32>,
+    max_loops: Option<u32>,
 ) -> Result<serde_json::Value, String> {
     if action == "stop" {
         crate::bot::recorder::stop_playback();
@@ -613,9 +614,19 @@ pub fn macro_play(
     } else {
         let n = name.ok_or_else(|| "Macro name required".to_string())?;
         let is_loop = loop_mode.unwrap_or(false) || action == "loop";
-        crate::bot::recorder::play_macro(st.bot.ctx().clone(), st.store.clone(), &n, is_loop, speed)?;
+        crate::bot::recorder::play_macro(st.bot.ctx().clone(), st.store.clone(), &n, is_loop, speed, max_loops)?;
         Ok(serde_json::json!({ "ok": true, "message": format!("Started playing '{n}'") }))
     }
+}
+
+#[tauri::command]
+pub fn macro_rename(
+    st: State<'_, AppState>,
+    id_or_name: String,
+    new_name: String,
+) -> Result<serde_json::Value, String> {
+    crate::bot::recorder::rename_macro(&st.store, &id_or_name, &new_name)?;
+    Ok(serde_json::json!({ "ok": true, "message": format!("Renamed macro to '{new_name}'") }))
 }
 
 #[tauri::command]

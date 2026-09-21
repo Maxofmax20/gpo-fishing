@@ -793,7 +793,7 @@ fn handle_command(
                 if target_name.trim().is_empty() {
                     let _ = post_telegram(token, chat_id, "⚠️ <b>Usage:</b> <code>/macro play &lt;name&gt;</code> (e.g. <code>/macro play Craft Rare</code>)");
                 } else {
-                    match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), &target_name, false, None) {
+                    match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), &target_name, false, None, None) {
                         Ok(_) => {
                             let _ = post_telegram(token, chat_id, &format!("▶️ <b>Started playing macro:</b> <code>{target_name}</code> (1 cycle)"));
                         }
@@ -807,7 +807,7 @@ fn handle_command(
                 if target_name.trim().is_empty() {
                     let _ = post_telegram(token, chat_id, "⚠️ <b>Usage:</b> <code>/macro loop &lt;name&gt;</code> (e.g. <code>/macro loop Craft Rare</code>)");
                 } else {
-                    match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), &target_name, true, None) {
+                    match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), &target_name, true, None, None) {
                         Ok(_) => {
                             let _ = post_telegram(token, chat_id, &format!("🔁 <b>Started LOOP playback for macro:</b> <code>{target_name}</code>\nSend <code>/macro stop</code> to halt."));
                         }

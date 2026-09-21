@@ -493,6 +493,26 @@ pub fn delete_macro(store: &Store, id_or_name: &str) -> Result<(), String> {
     save_macros(store, &list)
 }
 
+pub fn rename_macro(store: &Store, id_or_name: &str, new_name: &str) -> Result<(), String> {
+    let trimmed = new_name.trim();
+    if trimmed.is_empty() {
+        return Err("New macro name cannot be empty".into());
+    }
+    let mut list = load_macros(store);
+    let mut found = false;
+    for m in &mut list {
+        if m.id == id_or_name || m.name.eq_ignore_ascii_case(id_or_name) {
+            m.name = trimmed.to_string();
+            found = true;
+            break;
+        }
+    }
+    if !found {
+        return Err(format!("Macro '{id_or_name}' not found"));
+    }
+    save_macros(store, &list)
+}
+
 pub fn stop_playback() {
     if IS_PLAYING.load(Ordering::SeqCst) {
         STOP_PLAYBACK_REQUESTED.store(true, Ordering::SeqCst);
@@ -507,6 +527,7 @@ pub fn play_macro(
     name_or_id: &str,
     loop_mode: bool,
     speed: Option<f32>,
+    max_loops: Option<u32>,
 ) -> Result<(), String> {
     if IS_PLAYING.swap(true, Ordering::SeqCst) {
         return Err("A macro is already playing".into());
@@ -519,6 +540,11 @@ pub fn play_macro(
         .ok_or_else(|| format!("Macro '{name_or_id}' not found"))?;
 
     let sp = speed.unwrap_or(1.0).clamp(0.25, 6.0);
+    let target_loops = if loop_mode {
+        max_loops.unwrap_or(0)
+    } else {
+        1
+    };
     STOP_PLAYBACK_REQUESTED.store(false, Ordering::SeqCst);
 
     {
@@ -527,17 +553,21 @@ pub fn play_macro(
         st.playing_macro_name = Some(target.name.clone());
         st.current_loop = 1;
         st.is_looping = loop_mode;
-        st.message = if (sp - 1.0).abs() > 0.05 {
-            format!("Playing '{}' ({:.2}x speed, Loop 1)", target.name, sp)
+        st.message = if target_loops > 1 {
+            format!("Playing '{}' (Loop 1 of {target_loops})", target.name)
+        } else if loop_mode && target_loops == 0 {
+            format!("Playing '{}' (Infinite Loop)", target.name)
+        } else if (sp - 1.0).abs() > 0.05 {
+            format!("Playing '{}' ({:.2}x speed)", target.name, sp)
         } else {
-            format!("Playing '{}' (Loop 1)", target.name)
+            format!("Playing '{}'", target.name)
         };
     }
 
     std::thread::spawn(move || {
         let mut loop_count = 1u32;
         ctx.log_info(&format!(
-            "📼 Starting playback of macro '{}' (speed={:.2}x, loop={loop_mode})",
+            "📼 Starting playback of macro '{}' (speed={:.2}x, loop={loop_mode}, max_loops={target_loops})",
             target.name, sp
         ));
 
@@ -549,10 +579,12 @@ pub fn play_macro(
             {
                 let mut st = STATUS.write();
                 st.current_loop = loop_count;
-                st.message = if (sp - 1.0).abs() > 0.05 {
-                    format!("Playing '{}' ({:.2}x, Iteration #{loop_count})", target.name, sp)
+                st.message = if target_loops > 1 {
+                    format!("Playing '{}' (Loop {loop_count} of {target_loops})", target.name)
+                } else if loop_mode && target_loops == 0 {
+                    format!("Playing '{}' (Loop #{loop_count})", target.name)
                 } else {
-                    format!("Playing '{}' (Iteration #{loop_count})", target.name)
+                    format!("Playing '{}'", target.name)
                 };
             }
 
@@ -690,6 +722,10 @@ pub fn play_macro(
                 break;
             }
 
+            if target_loops > 0 && loop_count >= target_loops {
+                break;
+            }
+
             loop_count += 1;
             let loop_delay = (250.0 / sp).round().max(80.0) as u64;
             if !sleep_responsive(loop_delay) {
@@ -734,11 +770,22 @@ fn parse_key(key_str: &str) -> Option<Key> {
 }
 
 fn sleep_responsive(ms: u64) -> bool {
-    let step = 30;
+    let step = 25;
     let mut elapsed = 0;
     while elapsed < ms {
         if STOP_PLAYBACK_REQUESTED.load(Ordering::SeqCst) {
             return false;
+        }
+        #[cfg(windows)]
+        {
+            use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+            // Hotkey F8 (0x77) or F9 (0x78) halts macro playback directly from laptop keyboard
+            let f8 = (unsafe { GetAsyncKeyState(0x77) } as u16 & 0x8000) != 0;
+            let f9 = (unsafe { GetAsyncKeyState(0x78) } as u16 & 0x8000) != 0;
+            if f8 || f9 {
+                STOP_PLAYBACK_REQUESTED.store(true, Ordering::SeqCst);
+                return false;
+            }
         }
         std::thread::sleep(Duration::from_millis(step.min(ms - elapsed)));
         elapsed += step;

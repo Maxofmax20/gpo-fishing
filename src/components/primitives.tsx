@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 
 export function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -300,6 +300,87 @@ export function Segmented<T extends string>({
           {o.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+export function CustomSelect<T extends string>({
+  value,
+  options,
+  onChange,
+  placeholder,
+  className,
+  disabled,
+}: {
+  value: T;
+  options: { value: T; label: ReactNode; sub?: ReactNode }[];
+  onChange: (v: T) => void;
+  placeholder?: string;
+  className?: string;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", handleClick);
+    return () => window.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <div ref={ref} className={cx("relative inline-block", className)}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className={cx(
+          "h-8 px-3 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] border border-line-strong hover:border-white/20",
+          "flex items-center justify-between gap-2 text-[12px] text-fg font-medium transition-colors outline-none",
+          "focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-40 select-none",
+        )}
+      >
+        <span className="truncate">{selected ? selected.label : placeholder || "Select..."}</span>
+        <ChevronDown size={13} className={cx("text-fg-mute transition-transform duration-200 shrink-0", open && "rotate-180")} />
+      </button>
+
+      {open && (
+        <div
+          className={cx(
+            "absolute right-0 z-50 mt-1 min-w-[180px] max-w-[280px] max-h-56 overflow-y-auto py-1 rounded-xl",
+            "bg-[#14151a]/95 backdrop-blur-xl border border-line-strong shadow-2xl rise",
+          )}
+        >
+          {options.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              onClick={() => {
+                onChange(o.value);
+                setOpen(false);
+              }}
+              className={cx(
+                "w-full px-3 py-1.5 text-left text-[12px] flex items-center justify-between gap-2.5",
+                "hover:bg-white/[0.08] transition-colors select-none",
+                o.value === value ? "text-accent font-medium bg-accent-soft/30" : "text-fg-dim hover:text-fg",
+              )}
+            >
+              <div className="truncate flex-1 min-w-0">
+                <div className="truncate leading-snug">{o.label}</div>
+                {o.sub && <div className="text-[10px] text-fg-mute leading-tight truncate">{o.sub}</div>}
+              </div>
+              {o.value === value && <Check size={12} className="shrink-0 text-accent" />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
