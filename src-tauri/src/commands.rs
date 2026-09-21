@@ -559,3 +559,67 @@ pub fn test_gemini(api_key: String, model: String) -> Result<String, String> {
     crate::core::gemini::test_gemini_connection(&api_key, &model)
 }
 
+#[tauri::command]
+pub fn macro_list(st: State<'_, AppState>) -> Vec<crate::bot::recorder::CustomMacro> {
+    crate::bot::recorder::load_macros(&st.store)
+}
+
+#[tauri::command]
+pub fn macro_status() -> crate::bot::recorder::RecorderStatus {
+    crate::bot::recorder::get_status()
+}
+
+#[tauri::command]
+pub fn macro_record(
+    st: State<'_, AppState>,
+    action: String,
+    name: Option<String>,
+    mode: Option<String>,
+) -> Result<serde_json::Value, String> {
+    match action.as_str() {
+        "start" => {
+            let m = if mode.as_deref() == Some("web") {
+                crate::bot::recorder::RecordMode::WebScreen
+            } else {
+                crate::bot::recorder::RecordMode::PcWindow
+            };
+            crate::bot::recorder::start_recording(m)?;
+            Ok(serde_json::json!({ "ok": true, "message": "Recording started" }))
+        }
+        "stop" => {
+            let m_name = name.unwrap_or_else(|| "My Macro".into());
+            let m = crate::bot::recorder::stop_recording(&m_name, &st.store)?;
+            Ok(serde_json::json!({ "ok": true, "message": format!("Saved macro '{}' ({} steps)", m.name, m.steps.len()), "macro": m }))
+        }
+        "cancel" => {
+            crate::bot::recorder::cancel_recording();
+            Ok(serde_json::json!({ "ok": true, "message": "Recording cancelled" }))
+        }
+        _ => Err("Unknown action".into()),
+    }
+}
+
+#[tauri::command]
+pub fn macro_play(
+    st: State<'_, AppState>,
+    action: String,
+    name: Option<String>,
+    loop_mode: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    if action == "stop" {
+        crate::bot::recorder::stop_playback();
+        Ok(serde_json::json!({ "ok": true, "message": "Playback stopped" }))
+    } else {
+        let n = name.ok_or_else(|| "Macro name required".to_string())?;
+        let is_loop = loop_mode.unwrap_or(false) || action == "loop";
+        crate::bot::recorder::play_macro(st.bot.ctx().clone(), st.store.clone(), &n, is_loop)?;
+        Ok(serde_json::json!({ "ok": true, "message": format!("Started playing '{n}'") }))
+    }
+}
+
+#[tauri::command]
+pub fn macro_delete(st: State<'_, AppState>, name: String) -> Result<serde_json::Value, String> {
+    crate::bot::recorder::delete_macro(&st.store, &name)?;
+    Ok(serde_json::json!({ "ok": true, "message": format!("Deleted macro '{name}'") }))
+}
+

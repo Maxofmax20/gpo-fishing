@@ -8,11 +8,26 @@ use serde::{Deserialize, Serialize};
 
 use crate::bot::ctx::Ctx;
 use crate::config::Store;
-use crate::core::types::{Key, MouseButton, PxPoint};
+use crate::core::types::{Key, MouseButton, PxPoint, WindowInfo};
 
 static IS_RECORDING: AtomicBool = AtomicBool::new(false);
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 static STOP_PLAYBACK_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+static ROBLOX_REF: RwLock<Option<Arc<RwLock<Option<WindowInfo>>>>> = RwLock::new(None);
+static STORE_REF: RwLock<Option<Arc<Store>>> = RwLock::new(None);
+
+pub fn init_roblox_ref(roblox: Arc<RwLock<Option<WindowInfo>>>, store: Arc<Store>) {
+    *ROBLOX_REF.write() = Some(roblox);
+    *STORE_REF.write() = Some(store);
+}
+
+fn get_roblox_window_info() -> Option<WindowInfo> {
+    if let Some(r) = ROBLOX_REF.read().as_ref() {
+        return *r.read();
+    }
+    None
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RecordMode {
@@ -31,6 +46,16 @@ pub enum MacroStep {
     },
     KeyTap {
         key: String,
+        delay_ms: u64,
+    },
+    KeyHold {
+        key: String,
+        duration_ms: u64,
+        delay_ms: u64,
+    },
+    MouseMove {
+        rx: f32,
+        ry: f32,
         delay_ms: u64,
     },
     Sleep {
@@ -118,8 +143,125 @@ pub fn start_recording(mode: RecordMode) -> Result<(), String> {
     st.is_recording = true;
     st.record_mode = Some(mode);
     st.recorded_steps_count = 0;
-    st.message = format!("Recording started ({mode:?})");
+    st.message = match mode {
+        RecordMode::PcWindow => "Recording PC window... Click & move in Roblox. Press F8 to save!".into(),
+        RecordMode::WebScreen => "Recording via live screen... Tap buttons and controls.".into(),
+    };
+
+    if mode == RecordMode::PcWindow {
+        spawn_pc_recorder_thread();
+    }
+
     Ok(())
+}
+
+fn spawn_pc_recorder_thread() {
+    std::thread::Builder::new()
+        .name("macro-pc-recorder".into())
+        .spawn(move || {
+            // Short grace period so clicking "Record" on UI isn't captured
+            std::thread::sleep(Duration::from_millis(400));
+
+            #[cfg(windows)]
+            {
+                use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+                use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+                use windows::Win32::Foundation::POINT;
+
+                let mut prev_l_down = false;
+                let mut prev_r_down = false;
+                let mut prev_f8_down = false;
+
+                struct KeyState {
+                    vk: i32,
+                    name: &'static str,
+                    down: bool,
+                    pressed_at: Instant,
+                }
+
+                let mut monitored = vec![
+                    KeyState { vk: 0x57, name: "w", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x41, name: "a", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x53, name: "s", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x44, name: "d", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x45, name: "e", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x54, name: "t", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x20, name: "space", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x10, name: "shift", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x26, name: "up", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x28, name: "down", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x25, name: "left", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x27, name: "right", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x31, name: "1", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x32, name: "2", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x33, name: "3", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x34, name: "4", down: false, pressed_at: Instant::now() },
+                    KeyState { vk: 0x35, name: "5", down: false, pressed_at: Instant::now() },
+                ];
+
+                while IS_RECORDING.load(Ordering::SeqCst) {
+                    // Hotkey F8 (0x77) finishes recording from within Roblox
+                    let f8_down = unsafe { (GetAsyncKeyState(0x77) as u16 & 0x8000) != 0 };
+                    if f8_down && !prev_f8_down {
+                        if let Some(store) = STORE_REF.read().as_ref() {
+                            let _ = stop_recording("", store);
+                            break;
+                        }
+                    }
+                    prev_f8_down = f8_down;
+
+                    let info_opt = get_roblox_window_info();
+                    if let Some(info) = info_opt {
+                        if info.is_foreground && info.visible {
+                            let mut pt = POINT::default();
+                            let _ = unsafe { GetCursorPos(&mut pt) };
+
+                            let inside_roblox = pt.x >= info.client.x
+                                && pt.x < info.client.x + info.client.w
+                                && pt.y >= info.client.y
+                                && pt.y < info.client.y + info.client.h;
+
+                            let l_down = unsafe { (GetAsyncKeyState(0x01) as u16 & 0x8000) != 0 };
+                            let r_down = unsafe { (GetAsyncKeyState(0x02) as u16 & 0x8000) != 0 };
+
+                            if inside_roblox {
+                                if l_down && !prev_l_down {
+                                    let rx = (pt.x - info.client.x) as f32 / info.client.w.max(1) as f32;
+                                    let ry = (pt.y - info.client.y) as f32 / info.client.h.max(1) as f32;
+                                    record_click(rx.clamp(0.0, 1.0), ry.clamp(0.0, 1.0), "left");
+                                }
+                                if r_down && !prev_r_down {
+                                    let rx = (pt.x - info.client.x) as f32 / info.client.w.max(1) as f32;
+                                    let ry = (pt.y - info.client.y) as f32 / info.client.h.max(1) as f32;
+                                    record_click(rx.clamp(0.0, 1.0), ry.clamp(0.0, 1.0), "right");
+                                }
+                            }
+                            prev_l_down = l_down;
+                            prev_r_down = r_down;
+
+                            for k in &mut monitored {
+                                let is_down = unsafe { (GetAsyncKeyState(k.vk) as u16 & 0x8000) != 0 };
+                                if is_down && !k.down {
+                                    k.down = true;
+                                    k.pressed_at = Instant::now();
+                                } else if !is_down && k.down {
+                                    k.down = false;
+                                    let dur = k.pressed_at.elapsed().as_millis() as u64;
+                                    if dur >= 150 {
+                                        record_key_hold(k.name, dur);
+                                    } else {
+                                        record_key(k.name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    std::thread::sleep(Duration::from_millis(15));
+                }
+            }
+        })
+        .expect("spawn pc recorder thread");
 }
 
 pub fn record_click(rx: f32, ry: f32, button: &str) {
@@ -159,6 +301,26 @@ pub fn record_key(key: &str) {
         let mut st = STATUS.write();
         st.recorded_steps_count = rec.steps.len();
         st.message = format!("Recorded key [{key}] (#{})", rec.steps.len());
+    }
+}
+
+pub fn record_key_hold(key: &str, duration_ms: u64) {
+    if !IS_RECORDING.load(Ordering::SeqCst) {
+        return;
+    }
+    let mut rec_lock = ACTIVE_RECORDING.write();
+    if let Some(rec) = rec_lock.as_mut() {
+        let now = Instant::now();
+        let delay_ms = now.duration_since(rec.last_action_time).as_millis().clamp(20, 10000) as u64;
+        rec.last_action_time = now;
+        rec.steps.push(MacroStep::KeyHold {
+            key: key.to_string(),
+            duration_ms,
+            delay_ms,
+        });
+        let mut st = STATUS.write();
+        st.recorded_steps_count = rec.steps.len();
+        st.message = format!("Recorded move/hold [{key}] ({}ms) (#{})", duration_ms, rec.steps.len());
     }
 }
 
@@ -312,6 +474,34 @@ pub fn play_macro(ctx: Arc<Ctx>, store: Arc<Store>, name_or_id: &str, loop_mode:
                             ctx.platform.input.key(k, false);
                         }
                     }
+                    MacroStep::KeyHold { key, duration_ms, delay_ms } => {
+                        if !sleep_responsive(*delay_ms) {
+                            finished_steps = false;
+                            break;
+                        }
+                        ctx.ensure_roblox_focus();
+                        if let Some(k) = parse_key(key) {
+                            ctx.platform.input.key(k, true);
+                            if !sleep_responsive(*duration_ms) {
+                                ctx.platform.input.key(k, false);
+                                finished_steps = false;
+                                break;
+                            }
+                            ctx.platform.input.key(k, false);
+                        }
+                    }
+                    MacroStep::MouseMove { rx, ry, delay_ms } => {
+                        if !sleep_responsive(*delay_ms) {
+                            finished_steps = false;
+                            break;
+                        }
+                        ctx.ensure_roblox_focus();
+                        if let Some(rect) = ctx.roblox_rect() {
+                            let px = rect.x + (rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
+                            let py = rect.y + (ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
+                            ctx.platform.input.move_to(PxPoint { x: px, y: py });
+                        }
+                    }
                     MacroStep::Sleep { ms } => {
                         if !sleep_responsive(*ms) {
                             finished_steps = false;
@@ -326,7 +516,6 @@ pub fn play_macro(ctx: Arc<Ctx>, store: Arc<Store>, name_or_id: &str, loop_mode:
             }
 
             loop_count += 1;
-            // Short breathing room between loops
             if !sleep_responsive(300) {
                 break;
             }

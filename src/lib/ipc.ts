@@ -19,6 +19,8 @@ import type {
   Snapshot,
   Stats,
   WindowInfo,
+  CustomMacro,
+  RecorderStatus,
 } from "./types";
 
 export const api = {
@@ -68,6 +70,13 @@ export const api = {
     invoke<{ success: boolean; uptime_sec: number; time_str: string; remaining_sec: number; is_spawned: boolean; message: string }>("boss_tracker_sync_server_age", { timeStr }),
   scanBaitStock: () => invoke<BaitStock>("scan_bait_stock"),
   testGemini: (apiKey: string, model: string) => invoke<string>("test_gemini", { apiKey, model }),
+  macroList: () => invoke<CustomMacro[]>("macro_list"),
+  macroStatus: () => invoke<RecorderStatus>("macro_status"),
+  macroRecord: (action: string, name?: string, mode?: string) =>
+    invoke<{ ok: boolean; message: string; macro?: CustomMacro }>("macro_record", { action, name, mode }),
+  macroPlay: (action: string, name?: string, loopMode?: boolean) =>
+    invoke<{ ok: boolean; message: string }>("macro_play", { action, name, loopMode }),
+  macroDelete: (name: string) => invoke<{ ok: boolean; message: string }>("macro_delete", { name }),
 };
 
 type Events = {

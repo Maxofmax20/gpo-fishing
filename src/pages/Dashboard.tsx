@@ -7,6 +7,7 @@ import { Button, Pill, Section, cx, fmtRuntime } from "../components/primitives"
 import { StateBadge } from "../components/StateIcon";
 import { LogList } from "../components/LogList";
 import { LiveAreas } from "../components/LiveAreas";
+import { MacroManager } from "../components/MacroManager";
 
 export default function Dashboard() {
   const state = useStore((s) => s.state);
@@ -50,6 +51,12 @@ export default function Dashboard() {
       <div className="px-4 pb-3 text-[11px] text-fg-mute">
         Press <span className="font-mono text-fg-dim">{hk}</span> anywhere to start or pause.
       </div>
+
+      <Section title="Custom Macros & Step Recorder">
+        <div className="p-3">
+          <MacroManager />
+        </div>
+      </Section>
 
       <Section title="All time">
         <Stat

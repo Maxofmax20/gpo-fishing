@@ -273,3 +273,29 @@ export const TARGET_LABEL: Record<OverlayTarget, string> = {
   bait2: "Bait slot (backup)",
   rod_slot: "Rod slot indicator (optional)",
 };
+
+export type MacroStep =
+  | { type: "Click"; rx: number; ry: number; button: string; delay_ms: number }
+  | { type: "KeyTap"; key: string; delay_ms: number }
+  | { type: "KeyHold"; key: string; duration_ms: number; delay_ms: number }
+  | { type: "MouseMove"; rx: number; ry: number; delay_ms: number }
+  | { type: "Sleep"; ms: number };
+
+export type CustomMacro = {
+  id: string;
+  name: string;
+  created_at: string;
+  steps: MacroStep[];
+};
+
+export type RecorderStatus = {
+  is_recording: boolean;
+  record_mode: "WebScreen" | "PcWindow" | null;
+  recorded_steps_count: number;
+  is_playing: boolean;
+  playing_macro_name: string | null;
+  current_loop: number;
+  is_looping: boolean;
+  message: string;
+};
+

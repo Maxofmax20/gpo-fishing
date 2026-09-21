@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { BookOpen, Download, Gauge, Globe, ListChecks, Minus, Settings2, SlidersHorizontal, X } from "lucide-react";
+import { BookOpen, Download, Film, Gauge, Globe, ListChecks, Minus, Settings2, SlidersHorizontal, X } from "lucide-react";
 import { api, on } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { cx, Dot } from "../components/primitives";
@@ -12,14 +12,16 @@ import Journal from "../pages/Journal";
 import Setup from "../pages/Setup";
 import Features from "../pages/Features";
 import SettingsPage from "../pages/Settings";
+import { MacroManager } from "../components/MacroManager";
 
-type Tab = "dashboard" | "journal" | "setup" | "features" | "settings";
+type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "settings";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "Dashboard", icon: <Gauge size={17} /> },
   { id: "journal", label: "Journal", icon: <BookOpen size={17} /> },
   { id: "setup", label: "Setup", icon: <ListChecks size={17} /> },
   { id: "features", label: "Features", icon: <SlidersHorizontal size={17} /> },
+  { id: "macros", label: "Macros", icon: <Film size={17} /> },
   { id: "settings", label: "Settings", icon: <Settings2 size={17} /> },
 ];
 
@@ -157,6 +159,11 @@ export default function Panel() {
                 {tab === "journal" && <Journal />}
                 {tab === "setup" && <Setup />}
                 {tab === "features" && <Features />}
+                {tab === "macros" && (
+                  <div className="p-4">
+                    <MacroManager />
+                  </div>
+                )}
                 {tab === "settings" && <SettingsPage />}
               </>
             )}
