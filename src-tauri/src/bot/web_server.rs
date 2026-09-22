@@ -136,6 +136,7 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     }
 
     let raw_path = path.split('?').next().unwrap_or(path);
+    let query = path.split('?').nth(1).unwrap_or("");
 
     if raw_path == "/" || raw_path == "/index.html" {
         send_html(&mut stream);
@@ -144,9 +145,9 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     } else if raw_path == "/api/stream" {
         let _ = stream.set_read_timeout(None);
         let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
-        stream_mjpeg(stream, bot);
+        stream_mjpeg(stream, bot, query);
     } else if raw_path == "/api/screenshot" {
-        send_screenshot(&mut stream, bot);
+        send_screenshot(&mut stream, bot, query);
     } else if raw_path == "/api/click" && method == "POST" {
         let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_click(&mut stream, bot, body);
@@ -182,7 +183,37 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     }
 }
 
-fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>) {
+fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>, query: &str) {
+    let mut fps: u32 = 20;
+    let mut scale: usize = 720;
+    let mut quality: u8 = 70;
+
+    for param in query.split('&') {
+        let mut kv = param.split('=');
+        if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
+            match k {
+                "fps" => {
+                    if let Ok(n) = v.parse::<u32>() {
+                        fps = n.clamp(5, 60);
+                    }
+                }
+                "scale" => {
+                    if let Ok(n) = v.parse::<usize>() {
+                        scale = n;
+                    }
+                }
+                "q" | "quality" => {
+                    if let Ok(n) = v.parse::<u8>() {
+                        quality = n.clamp(20, 95);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let sleep_dur = Duration::from_millis((1000 / fps).max(15) as u64);
+
     let header = "HTTP/1.1 200 OK\r\n\
                   Content-Type: multipart/x-mixed-replace; boundary=frame\r\n\
                   Cache-Control: no-cache, no-store, must-revalidate\r\n\
@@ -195,8 +226,8 @@ fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>) {
     loop {
         let frame_opt = bot.ctx().roblox_rect()
             .and_then(|r| bot.ctx().platform.capture.grab(r).ok())
-            .map(|f| f.downscale(720))
-            .and_then(|f| f.to_jpeg_bytes(70).ok());
+            .map(|f| if scale > 0 { f.downscale(scale) } else { f })
+            .and_then(|f| f.to_jpeg_bytes(quality).ok());
 
         let bytes = match frame_opt {
             Some(b) => {
@@ -228,7 +259,7 @@ fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>) {
             break;
         }
 
-        std::thread::sleep(Duration::from_millis(50));
+        std::thread::sleep(sleep_dur);
     }
 }
 
@@ -331,13 +362,35 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
     let _ = stream.write_all(resp.as_bytes());
 }
 
-fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>) {
+fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>, query: &str) {
+    let mut scale: usize = 760;
+    let mut quality: u8 = 75;
+
+    for param in query.split('&') {
+        let mut kv = param.split('=');
+        if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
+            match k {
+                "scale" => {
+                    if let Ok(n) = v.parse::<usize>() {
+                        scale = n;
+                    }
+                }
+                "q" | "quality" => {
+                    if let Ok(n) = v.parse::<u8>() {
+                        quality = n.clamp(20, 95);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     let fresh_bytes = bot
         .ctx()
         .roblox_rect()
         .and_then(|r| bot.ctx().platform.capture.grab(r).ok())
-        .map(|f| f.downscale(760))
-        .and_then(|f| f.to_jpeg_bytes(75).ok());
+        .map(|f| if scale > 0 { f.downscale(scale) } else { f })
+        .and_then(|f| f.to_jpeg_bytes(quality).ok());
 
     if let Some(bytes) = fresh_bytes {
         *LAST_FRAME.write() = Some(bytes.clone());
@@ -823,16 +876,27 @@ header {
 /* SCREEN STREAM & TAP-TO-CONTROL */
 .stream-wrapper {
   background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
-  position: relative; box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+  position: relative; box-shadow: 0 12px 36px rgba(0,0,0,0.5); transition: all 0.25s ease;
 }
 .stream-bar {
   display: flex; justify-content: space-between; align-items: center; padding: 10px 16px;
   background: rgba(0,0,0,0.4); border-bottom: 1px solid var(--border); font-size: 0.75rem; font-weight: 600;
+  gap: 8px; flex-wrap: wrap;
 }
-.stream-indicator { display: flex; align-items: center; gap: 8px; }
+.stream-indicator { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; transition: all 0.3s; }
 .live-dot.on { background: var(--emerald); box-shadow: 0 0 10px var(--emerald); animation: pulseDot 1.5s infinite; }
 @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+.stream-tool-btn {
+  height: 32px; padding: 0 10px; font-size: 0.74rem; font-weight: 700; border-radius: 8px;
+  background: rgba(30, 41, 59, 0.8); border: 1px solid var(--border); color: var(--text);
+  display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+  user-select: none; transition: all 0.15s ease; white-space: nowrap;
+}
+.stream-tool-btn:hover {
+  background: rgba(51, 65, 85, 0.9); border-color: rgba(255,255,255,0.25);
+}
 
 .screen-box {
   width: 100%; min-height: 240px; background: #030508; display: flex; align-items: center; justify-content: center;
@@ -845,11 +909,105 @@ header {
   position: absolute; width: 24px; height: 24px; border-radius: 50%;
   border: 2px solid var(--cyan); background: rgba(0, 240, 255, 0.3);
   transform: translate(-50%, -50%) scale(0.2); pointer-events: none;
-  animation: ripple 0.4s ease-out forwards;
+  animation: ripple 0.4s ease-out forwards; z-index: 9999;
 }
 @keyframes ripple {
   0% { transform: translate(-50%, -50%) scale(0.2); opacity: 1; }
   100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+}
+
+/* FULLSCREEN IMMERSIVE MODE & FLOATING CONTROLS */
+.stream-wrapper.fullscreen-active {
+  position: fixed !important; top: 0 !important; left: 0 !important;
+  width: 100vw !important; height: 100vh !important; max-width: 100vw !important; max-height: 100vh !important;
+  border-radius: 0 !important; border: none !important; z-index: 999999 !important;
+  background: #000 !important; display: flex !important; flex-direction: column !important;
+  margin: 0 !important; padding: 0 !important;
+}
+.stream-wrapper.fullscreen-active .stream-bar {
+  display: none !important;
+}
+.stream-wrapper.fullscreen-active .screen-box {
+  flex: 1 !important; width: 100vw !important; height: 100vh !important;
+  max-height: 100vh !important; min-height: 100vh !important; border-radius: 0 !important;
+}
+.stream-wrapper.fullscreen-active .screen-img {
+  width: 100vw !important; height: 100vh !important; max-height: 100vh !important;
+  object-fit: contain !important;
+}
+
+.fs-floating-bar {
+  display: none; position: absolute; top: 12px; left: 12px; right: 12px;
+  z-index: 100000; pointer-events: none; justify-content: space-between; align-items: center;
+}
+.stream-wrapper.fullscreen-active .fs-floating-bar {
+  display: flex;
+}
+.fs-badge-group {
+  display: flex; align-items: center; gap: 8px; pointer-events: auto;
+}
+.fs-stream-pill {
+  background: rgba(16, 22, 34, 0.85); border: 1px solid var(--border); padding: 4px 10px;
+  border-radius: 999px; font-size: 0.7rem; font-family: monospace; font-weight: 800;
+  color: var(--cyan); backdrop-filter: blur(10px); box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+.fs-btn {
+  pointer-events: auto; background: rgba(16, 22, 34, 0.85); border: 1px solid var(--border);
+  color: var(--text); padding: 6px 14px; border-radius: 999px; font-size: 0.74rem; font-weight: 800;
+  cursor: pointer; backdrop-filter: blur(10px); transition: all 0.18s; display: flex; align-items: center;
+  gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); user-select: none;
+}
+.fs-btn:hover { background: rgba(30, 41, 59, 0.95); border-color: var(--cyan); }
+.fs-btn:active { transform: scale(0.96); }
+.fs-btn-close {
+  background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.5); color: #fca5a5;
+}
+.fs-btn-close:hover { background: rgba(239, 68, 68, 0.5); color: #fff; }
+
+.fs-controls-overlay {
+  display: none; position: absolute; inset: 0; z-index: 99999;
+  pointer-events: none; flex-direction: column; justify-content: space-between;
+  padding: 58px 16px 20px 16px;
+}
+.stream-wrapper.fullscreen-active .fs-controls-overlay.visible {
+  display: flex;
+}
+.fs-quick-bar {
+  display: flex; justify-content: center; gap: 8px; pointer-events: none; flex-wrap: wrap;
+}
+.fs-mini-btn {
+  pointer-events: auto; background: rgba(16, 22, 34, 0.78); border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--text); padding: 6px 14px; border-radius: 8px; font-size: 0.74rem; font-weight: 700;
+  cursor: pointer; backdrop-filter: blur(10px); box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  transition: all 0.15s; user-select: none;
+}
+.fs-mini-btn:hover { background: rgba(30, 41, 59, 0.9); border-color: var(--cyan); color: #fff; }
+.fs-mini-btn:active { transform: scale(0.95); }
+
+.fs-bottom-controls {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  pointer-events: none; gap: 12px; width: 100%;
+}
+.fs-pad-cluster {
+  display: flex; flex-direction: column; gap: 6px; pointer-events: none;
+}
+.fs-cluster-label {
+  font-size: 0.65rem; font-weight: 800; color: var(--text-dim); letter-spacing: 0.5px;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+.fs-pad-btn {
+  pointer-events: auto; backdrop-filter: blur(12px);
+  background: rgba(16, 22, 34, 0.72) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.6);
+}
+.fs-dpad-grid {
+  grid-template-columns: repeat(3, 46px);
+  grid-template-rows: repeat(2, 46px);
+  gap: 6px;
+}
+.fs-action-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;
 }
 
 /* ACTIONS */
@@ -1087,16 +1245,156 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
   <!-- SECTION 1: REMOTE CONTROLS & STREAM -->
   <div id="sec-remote" style="display: flex; flex-direction: column; gap: 14px;">
     <!-- LIVE VIDEO STREAM & SCREEN TOUCH -->
-    <div class="stream-wrapper">
-      <div class="stream-bar">
+    <!-- LIVE VIDEO STREAM & SCREEN TOUCH -->
+    <div class="stream-wrapper" id="stream-wrapper">
+      <div class="stream-bar" id="stream-bar">
         <div class="stream-indicator">
           <div id="stream-dot" class="live-dot on"></div>
-          <span>MJPEG LIVE STREAM (TAP TO CLICK)</span>
+          <span style="font-weight: 800;">LIVE STREAM</span>
+          <span id="stream-fps-badge" style="font-family: monospace; color: var(--cyan); font-size: 0.72rem; font-weight: 800;">20 FPS</span>
+          <span id="stream-res-badge" style="font-family: monospace; color: var(--amber); font-size: 0.72rem; font-weight: 800;">720p</span>
         </div>
-        <div id="stream-fps" style="font-family: monospace; color: var(--cyan);">LIVE 20 FPS</div>
+
+        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+          <!-- FPS Selector Dropdown -->
+          <div class="custom-dropdown" id="dropdown-fps" style="min-width: 96px; flex: initial;">
+            <button type="button" class="stream-tool-btn" onclick="toggleDropdown('dropdown-fps')" title="Change Frame Rate">
+              <span id="dropdown-fps-label">⚡ 20 FPS</span>
+              <span class="dropdown-chevron">▼</span>
+            </button>
+            <div class="custom-dropdown-menu" id="dropdown-fps-menu" style="min-width: 140px;">
+              <div class="custom-dropdown-item" data-val="10" onclick="setStreamFps(10)">
+                <span>10 FPS (Eco)</span>
+              </div>
+              <div class="custom-dropdown-item" data-val="15" onclick="setStreamFps(15)">
+                <span>15 FPS</span>
+              </div>
+              <div class="custom-dropdown-item active" data-val="20" onclick="setStreamFps(20)">
+                <span>20 FPS (Default)</span>
+                <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
+              </div>
+              <div class="custom-dropdown-item" data-val="30" onclick="setStreamFps(30)">
+                <span>30 FPS (Smooth)</span>
+              </div>
+              <div class="custom-dropdown-item" data-val="60" onclick="setStreamFps(60)">
+                <span>60 FPS (Ultra)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quality Selector Dropdown -->
+          <div class="custom-dropdown" id="dropdown-quality" style="min-width: 96px; flex: initial;">
+            <button type="button" class="stream-tool-btn" onclick="toggleDropdown('dropdown-quality')" title="Change Resolution &amp; Quality">
+              <span id="dropdown-quality-label">📺 720p</span>
+              <span class="dropdown-chevron">▼</span>
+            </button>
+            <div class="custom-dropdown-menu" id="dropdown-quality-menu" style="min-width: 160px;">
+              <div class="custom-dropdown-item" data-val="480" onclick="setStreamQuality(480, 50, '480p (Low)')">
+                <div style="flex:1;text-align:left;">
+                  <div style="font-weight:700;">480p (Low)</div>
+                  <div class="dropdown-item-sub">Fast &amp; Data Saver</div>
+                </div>
+              </div>
+              <div class="custom-dropdown-item active" data-val="720" onclick="setStreamQuality(720, 70, '720p (Balanced)')">
+                <div style="flex:1;text-align:left;">
+                  <div style="font-weight:700;">720p (Balanced)</div>
+                  <div class="dropdown-item-sub">Default HD</div>
+                </div>
+                <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
+              </div>
+              <div class="custom-dropdown-item" data-val="1080" onclick="setStreamQuality(1080, 85, '1080p (Crisp)')">
+                <div style="flex:1;text-align:left;">
+                  <div style="font-weight:700;">1080p (Crisp)</div>
+                  <div class="dropdown-item-sub">High Detail</div>
+                </div>
+              </div>
+              <div class="custom-dropdown-item" data-val="0" onclick="setStreamQuality(0, 92, 'Original (Max)')">
+                <div style="flex:1;text-align:left;">
+                  <div style="font-weight:700;">Original (Max)</div>
+                  <div class="dropdown-item-sub">Native Resolution</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fullscreen Button -->
+          <button type="button" class="stream-tool-btn" onclick="toggleFullscreen()" title="Full Screen View" style="background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(176, 38, 255, 0.2)); border-color: var(--cyan); color: #fff; font-weight: 800;">
+            <span>⛶ FULLSCREEN</span>
+          </button>
+        </div>
       </div>
+
       <div id="screen-container" class="screen-box">
         <img id="screen-img" class="screen-img" src="/api/stream" alt="" onerror="fallbackSnapshot()" />
+
+        <!-- Fullscreen Top Floating Bar -->
+        <div id="fs-floating-bar" class="fs-floating-bar">
+          <div class="fs-badge-group">
+            <div id="fs-status-pill" class="status-badge badge-stopped" style="font-size: 0.68rem; padding: 4px 10px;">STOPPED</div>
+            <div id="fs-stream-info" class="fs-stream-pill">20 FPS • 720p</div>
+          </div>
+          <div style="display: flex; gap: 8px; align-items: center; pointer-events: auto;">
+            <button class="fs-btn" id="btn-fs-overlay-toggle" onclick="toggleFullscreenControls()" title="Show/Hide On-Screen Controller">
+              <span id="fs-ctrl-icon">🎮</span>
+              <span id="fs-ctrl-label">CONTROLS: ON</span>
+            </button>
+            <button class="fs-btn fs-btn-close" onclick="exitFullscreen()" title="Exit Fullscreen Mode">
+              <span>✖ EXIT</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Fullscreen Floating Controller Overlay -->
+        <div id="fs-controls-overlay" class="fs-controls-overlay visible">
+          <!-- Top Mini Quick Bar -->
+          <div class="fs-quick-bar">
+            <button class="fs-mini-btn" id="btn-fs-toggle" onclick="togglePlay()">▶ START</button>
+            <button class="fs-mini-btn" onclick="doAction('recast')">🔄 RECAST</button>
+            <button class="fs-mini-btn" onclick="doAction('buy_bait')">🛒 BUY BAIT</button>
+            <button class="fs-mini-btn" id="btn-fs-mute" onclick="toggleMute()">🔇 MUTE</button>
+          </div>
+
+          <!-- Bottom Floating Controls: Left Walk D-Pad, Right Actions -->
+          <div class="fs-bottom-controls">
+            <!-- Left: Walk WASD -->
+            <div class="fs-pad-cluster">
+              <div class="fs-cluster-label">🏃 WALK (WASD)</div>
+              <div class="dpad-grid fs-dpad-grid">
+                <div></div>
+                <button class="dpad-btn fs-pad-btn" data-key="w" title="Walk Forward">W</button>
+                <div></div>
+                <button class="dpad-btn fs-pad-btn" data-key="a" title="Walk Left">A</button>
+                <button class="dpad-btn fs-pad-btn" data-key="s" title="Walk Backward">S</button>
+                <button class="dpad-btn fs-pad-btn" data-key="d" title="Walk Right">D</button>
+              </div>
+            </div>
+
+            <!-- Right: Camera & Actions -->
+            <div class="fs-pad-cluster" style="align-items: flex-end;">
+              <div class="fs-cluster-label">⚡ ACTIONS &amp; CAMERA</div>
+              <div style="display: flex; gap: 10px; align-items: flex-end;">
+                <!-- Camera Arrows -->
+                <div class="dpad-grid fs-dpad-grid" style="grid-template-columns: repeat(3, 40px); grid-template-rows: repeat(2, 40px);">
+                  <div></div>
+                  <button class="dpad-btn fs-pad-btn pad-arrow-btn" data-key="up" title="Look Up">▲</button>
+                  <div></div>
+                  <button class="dpad-btn fs-pad-btn pad-arrow-btn" data-key="left" title="Turn Left">◀</button>
+                  <button class="dpad-btn fs-pad-btn pad-arrow-btn" data-key="down" title="Look Down">▼</button>
+                  <button class="dpad-btn fs-pad-btn pad-arrow-btn" data-key="right" title="Turn Right">▶</button>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="fs-action-grid">
+                  <button class="pad-action-btn fs-pad-btn btn-shift" data-key="shift">⚡ SHIFT</button>
+                  <button class="pad-action-btn fs-pad-btn" data-key="space">🦘 JUMP</button>
+                  <button class="pad-action-btn fs-pad-btn" data-key="1">🎣 ROD</button>
+                  <button class="pad-action-btn fs-pad-btn" data-key="e">🖐️ E</button>
+                  <button class="pad-action-btn fs-pad-btn" data-key="t" style="grid-column: span 2;">💬 TALK (T)</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1478,20 +1776,31 @@ async function fetchStatus() {
       pill.className = 'status-badge badge-running';
     }
 
+    const fsPill = document.getElementById('fs-status-pill');
+    if (fsPill) {
+      fsPill.innerText = d.state.toUpperCase();
+      fsPill.className = pill.className;
+    }
+
     const tBtn = document.getElementById('btn-toggle');
     const tLabel = document.getElementById('toggle-label');
     const tIcon = document.getElementById('toggle-icon');
+    const fsToggleBtn = document.getElementById('btn-fs-toggle');
     if (isRunning && !isPaused) {
       tBtn.className = 'btn btn-toggle paused';
       tLabel.innerText = 'PAUSE MACRO';
       tIcon.innerText = '⏸️';
+      if (fsToggleBtn) fsToggleBtn.innerText = '⏸ PAUSE';
     } else {
       tBtn.className = 'btn btn-toggle';
       tLabel.innerText = isPaused ? 'RESUME MACRO' : 'START MACRO';
       tIcon.innerText = '▶️';
+      if (fsToggleBtn) fsToggleBtn.innerText = isPaused ? '▶ RESUME' : '▶ START';
     }
 
     document.getElementById('btn-mute').innerText = isMuted ? '🔊 UNMUTE' : '🔇 MUTE';
+    const fsMuteBtn = document.getElementById('btn-fs-mute');
+    if (fsMuteBtn) fsMuteBtn.innerText = isMuted ? '🔊 UNMUTE' : '🔇 MUTE';
 
     document.getElementById('val-fish').innerText = d.fish;
     document.getElementById('val-rate').innerText = `${d.success_rate}% catch rate`;
@@ -1556,11 +1865,168 @@ function renderTimers() {
   document.getElementById('boss-list').innerHTML = bHtml;
 }
 
+// STREAM QUALITY, FPS & FULLSCREEN MANAGEMENT
+let currentFps = parseInt(localStorage.getItem('gpo_stream_fps') || '20', 10);
+let currentScale = parseInt(localStorage.getItem('gpo_stream_scale') || '720', 10);
+let currentQuality = parseInt(localStorage.getItem('gpo_stream_quality') || '70', 10);
+let currentQualityLabel = localStorage.getItem('gpo_stream_quality_label') || '720p (Balanced)';
+let isFullscreen = false;
+let isControlsOverlayVisible = true;
+
+function setStreamFps(fps) {
+  currentFps = fps;
+  localStorage.setItem('gpo_stream_fps', fps);
+  updateStreamLabels();
+  reloadStream();
+  showToast(`Stream set to ${fps} FPS`);
+  const dd = document.getElementById('dropdown-fps');
+  if (dd) dd.classList.remove('open');
+}
+
+function setStreamQuality(scale, q, label) {
+  currentScale = scale;
+  currentQuality = q;
+  currentQualityLabel = label;
+  localStorage.setItem('gpo_stream_scale', scale);
+  localStorage.setItem('gpo_stream_quality', q);
+  localStorage.setItem('gpo_stream_quality_label', label);
+  updateStreamLabels();
+  reloadStream();
+  showToast(`Stream set to ${label}`);
+  const dd = document.getElementById('dropdown-quality');
+  if (dd) dd.classList.remove('open');
+}
+
+function updateStreamLabels() {
+  const fpsLbl = document.getElementById('dropdown-fps-label');
+  if (fpsLbl) fpsLbl.innerText = `⚡ ${currentFps} FPS`;
+  const fpsBadge = document.getElementById('stream-fps-badge');
+  if (fpsBadge) fpsBadge.innerText = `${currentFps} FPS`;
+
+  const qLbl = document.getElementById('dropdown-quality-label');
+  if (qLbl) {
+    let shortName = currentScale === 0 ? 'Original' : `${currentScale}p`;
+    qLbl.innerText = `📺 ${shortName}`;
+  }
+  const resBadge = document.getElementById('stream-res-badge');
+  if (resBadge) {
+    resBadge.innerText = currentScale === 0 ? 'Original' : `${currentScale}p`;
+  }
+
+  const fsInfo = document.getElementById('fs-stream-info');
+  if (fsInfo) {
+    fsInfo.innerText = `${currentFps} FPS • ${currentScale === 0 ? 'Original' : currentScale + 'p'}`;
+  }
+
+  // Update checkmarks in menus
+  document.querySelectorAll('#dropdown-fps-menu .custom-dropdown-item').forEach(it => {
+    const val = parseInt(it.getAttribute('data-val'), 10);
+    const isAct = val === currentFps;
+    it.classList.toggle('active', isAct);
+    let check = it.querySelector('.item-check');
+    if (isAct && !check) {
+      it.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
+    } else if (!isAct && check) {
+      check.remove();
+    }
+  });
+
+  document.querySelectorAll('#dropdown-quality-menu .custom-dropdown-item').forEach(it => {
+    const val = parseInt(it.getAttribute('data-val'), 10);
+    const isAct = val === currentScale;
+    it.classList.toggle('active', isAct);
+    let check = it.querySelector('.item-check');
+    if (isAct && !check) {
+      it.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
+    } else if (!isAct && check) {
+      check.remove();
+    }
+  });
+}
+
+function reloadStream() {
+  const img = document.getElementById('screen-img');
+  if (img) {
+    img.src = `/api/stream?fps=${currentFps}&scale=${currentScale}&q=${currentQuality}&t=${Date.now()}`;
+  }
+}
+
+function toggleFullscreen() {
+  if (isFullscreen) {
+    exitFullscreen();
+  } else {
+    enterFullscreen();
+  }
+}
+
+function enterFullscreen() {
+  isFullscreen = true;
+  const wrapper = document.getElementById('stream-wrapper');
+  if (wrapper) wrapper.classList.add('fullscreen-active');
+
+  const docEl = document.documentElement;
+  if (docEl.requestFullscreen) {
+    docEl.requestFullscreen().catch(() => {});
+  } else if (docEl.webkitRequestFullscreen) {
+    docEl.webkitRequestFullscreen();
+  }
+  document.body.style.overflow = 'hidden';
+}
+
+function exitFullscreen() {
+  isFullscreen = false;
+  const wrapper = document.getElementById('stream-wrapper');
+  if (wrapper) wrapper.classList.remove('fullscreen-active');
+
+  if (document.exitFullscreen && document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  } else if (document.webkitExitFullscreen && document.webkitFullscreenElement) {
+    document.webkitExitFullscreen();
+  }
+  document.body.style.overflow = '';
+}
+
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) {
+    exitFullscreen();
+  }
+});
+document.addEventListener('webkitfullscreenchange', () => {
+  if (!document.webkitFullscreenElement) {
+    exitFullscreen();
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && isFullscreen) {
+    exitFullscreen();
+  }
+});
+
+function toggleFullscreenControls() {
+  isControlsOverlayVisible = !isControlsOverlayVisible;
+  const overlay = document.getElementById('fs-controls-overlay');
+  const label = document.getElementById('fs-ctrl-label');
+  const icon = document.getElementById('fs-ctrl-icon');
+  if (overlay) {
+    overlay.classList.toggle('visible', isControlsOverlayVisible);
+  }
+  if (label) {
+    label.innerText = isControlsOverlayVisible ? 'CONTROLS: ON' : 'CONTROLS: OFF';
+  }
+  if (icon) {
+    icon.innerText = isControlsOverlayVisible ? '🎮' : '👁️';
+  }
+}
+
 // TAP TO CLICK DIRECTLY ON GAME SCREEN (ACCOUNTS FOR LETTERBOXING/PILLARBOXING)
 const screenContainer = document.getElementById('screen-container');
 screenContainer.addEventListener('pointerdown', handleScreenTap);
 
 function handleScreenTap(e) {
+  if (e.target.closest('.dpad-btn') || e.target.closest('.pad-action-btn') || e.target.closest('.btn') || e.target.closest('.fs-btn') || e.target.closest('.fs-mini-btn') || e.target.closest('.custom-dropdown') || e.target.closest('.stream-tool-btn')) {
+    return;
+  }
   e.preventDefault();
   const img = document.getElementById('screen-img');
   if (!img) return;
@@ -1660,6 +2126,7 @@ document.querySelectorAll('.dpad-btn').forEach(btn => {
 
   btn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     try { btn.setPointerCapture(e.pointerId); } catch (_) {}
     btn.classList.add('pressed');
     activePointers.set(e.pointerId, { key, btn });
@@ -1671,6 +2138,7 @@ document.querySelectorAll('.dpad-btn').forEach(btn => {
   const onPointerRelease = (e) => {
     if (!activePointers.has(e.pointerId)) return;
     e.preventDefault();
+    e.stopPropagation();
     try { btn.releasePointerCapture(e.pointerId); } catch (_) {}
     const entry = activePointers.get(e.pointerId);
     activePointers.delete(e.pointerId);
@@ -1702,6 +2170,7 @@ document.querySelectorAll('.pad-action-btn').forEach(btn => {
 
   btn.addEventListener('pointerdown', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     try { btn.setPointerCapture(e.pointerId); } catch (_) {}
     btn.classList.add('pressed');
     activePointers.set(e.pointerId, { key, btn });
@@ -1713,6 +2182,7 @@ document.querySelectorAll('.pad-action-btn').forEach(btn => {
   const onPointerRelease = (e) => {
     if (!activePointers.has(e.pointerId)) return;
     e.preventDefault();
+    e.stopPropagation();
     try { btn.releasePointerCapture(e.pointerId); } catch (_) {}
     const entry = activePointers.get(e.pointerId);
     activePointers.delete(e.pointerId);
@@ -2208,8 +2678,13 @@ function onBrightRelease(val) {
 
 function fallbackSnapshot() {
   const img = document.getElementById('screen-img');
-  img.src = '/api/screenshot?t=' + Date.now();
+  if (img) {
+    img.src = `/api/screenshot?scale=${currentScale}&q=${currentQuality}&t=` + Date.now();
+  }
 }
+
+updateStreamLabels();
+reloadStream();
 
 setInterval(fetchStatus, 1500);
 setInterval(tickTimersLocally, 1000);
