@@ -467,6 +467,7 @@ fn handle_drag(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let end_ry = parsed.get("end_y").or_else(|| parsed.get("end_ry")).and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
     let duration_ms = parsed.get("duration_ms").and_then(|v| v.as_u64()).unwrap_or(200);
     let btn_str = parsed.get("button").and_then(|v| v.as_str()).unwrap_or("left");
+    let record_only = parsed.get("record_only").and_then(|v| v.as_bool()).unwrap_or(false);
 
     let btn = if btn_str == "right" {
         crate::core::types::MouseButton::Right
@@ -476,6 +477,12 @@ fn handle_drag(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
 
     // Record step if macro recorder is active
     crate::bot::recorder::record_drag(start_rx, start_ry, end_rx, end_ry, duration_ms);
+
+    if record_only {
+        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+        let _ = stream.write_all(resp.as_bytes());
+        return;
+    }
 
     // Execute drag in game
     let _ = bot.ctx().platform.window.focus();
@@ -524,6 +531,14 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     } else {
         crate::core::types::MouseButton::Left
     };
+
+    if act == "release_all" || act == "reset" {
+        bot.ctx().platform.input.button(crate::core::types::MouseButton::Left, false);
+        bot.ctx().platform.input.button(crate::core::types::MouseButton::Right, false);
+        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+        let _ = stream.write_all(resp.as_bytes());
+        return;
+    }
 
     let _ = bot.ctx().platform.window.focus();
 
@@ -987,6 +1002,28 @@ header {
 @keyframes ripple {
   0% { transform: translate(-50%, -50%) scale(0.2); opacity: 1; }
   100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+}
+
+/* TOUCH HOLD & DRAG RETICLE */
+.touch-drag-indicator {
+  position: absolute; width: 50px; height: 50px; border-radius: 50%;
+  border: 2px solid var(--cyan); background: rgba(0, 240, 255, 0.2);
+  transform: translate(-50%, -50%) scale(0.9); pointer-events: none; z-index: 10000;
+  box-shadow: 0 0 18px rgba(0, 240, 255, 0.6), inset 0 0 14px rgba(0, 240, 255, 0.35);
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color 0.15s, background 0.15s, transform 0.08s ease-out;
+}
+.touch-drag-indicator.right-mode {
+  border-color: var(--purple); background: rgba(176, 38, 255, 0.22);
+  box-shadow: 0 0 18px rgba(176, 38, 255, 0.6), inset 0 0 14px rgba(176, 38, 255, 0.35);
+}
+.touch-drag-indicator.dragging {
+  transform: translate(-50%, -50%) scale(1.22);
+  border-width: 2.5px;
+}
+.touch-drag-indicator-core {
+  width: 10px; height: 10px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 8px #fff; pointer-events: none;
 }
 
 /* FULLSCREEN IMMERSIVE MODE & FLOATING CONTROLS */
@@ -1464,6 +1501,11 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
             </div>
           </div>
 
+          <!-- Hold & Drag Toggle Button -->
+          <button type="button" class="stream-tool-btn active" id="stream-tool-drag" onclick="toggleHoldDragMode()" title="Toggle Touch Hold & Drag vs Tap">
+            <span id="stream-drag-label">🖐️ HOLD &amp; DRAG</span>
+          </button>
+
           <!-- Rotate Button -->
           <button type="button" class="stream-tool-btn" id="stream-tool-rotate" onclick="toggleRotate()" title="Rotate Screen 90° Landscape">
             <span>🔄 ROTATE</span>
@@ -1486,6 +1528,10 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
             <div id="fs-stream-info" class="fs-stream-pill">20 FPS • 720p</div>
           </div>
           <div style="display: flex; gap: 6px; align-items: center; pointer-events: auto;">
+            <button class="fs-btn active" id="btn-fs-drag" onclick="toggleHoldDragMode()" title="Toggle Touch Hold & Drag vs Tap Mode">
+              <span id="fs-drag-icon">🖐️</span>
+              <span id="fs-drag-label">HOLD/DRAG</span>
+            </button>
             <button class="fs-btn" id="btn-click-mode" onclick="toggleClickMode()" title="Toggle Left Click vs Right/Camera Look">
               <span id="click-mode-icon">🎯</span>
               <span id="click-mode-label">CLICK</span>
@@ -2243,29 +2289,41 @@ function toggleFullscreenControls() {
   }
 }
 
-// TAP TO CLICK DIRECTLY ON GAME SCREEN (ACCOUNTS FOR ROTATION & LETTERBOXING)
-const screenContainer = document.getElementById('screen-container');
-screenContainer.addEventListener('pointerdown', handleScreenTap);
+// HOLD & DRAG / TOUCH CONTROL ENGINE
+let isHoldDragEnabled = true;
 
-function handleScreenTap(e) {
-  if (e.target.closest('.dpad-btn') || e.target.closest('.pad-action-btn') || e.target.closest('.btn') || e.target.closest('.fs-btn') || e.target.closest('.fs-mini-btn') || e.target.closest('.custom-dropdown') || e.target.closest('.stream-tool-btn') || e.target.closest('.cam-touchpad')) {
-    return;
-  }
-  e.preventDefault();
+function toggleHoldDragMode() {
+  isHoldDragEnabled = !isHoldDragEnabled;
+  const sLabel = document.getElementById('stream-drag-label');
+  const sBtn = document.getElementById('stream-tool-drag');
+  const fsLabel = document.getElementById('fs-drag-label');
+  const fsIcon = document.getElementById('fs-drag-icon');
+  const fsBtn = document.getElementById('btn-fs-drag');
+
+  if (sLabel) sLabel.innerText = isHoldDragEnabled ? '🖐️ HOLD & DRAG' : '👆 TAP ONLY';
+  if (sBtn) sBtn.classList.toggle('active', isHoldDragEnabled);
+  if (fsLabel) fsLabel.innerText = isHoldDragEnabled ? 'HOLD/DRAG' : 'TAP ONLY';
+  if (fsIcon) fsIcon.innerText = isHoldDragEnabled ? '🖐️' : '👆';
+  if (fsBtn) fsBtn.classList.toggle('active', isHoldDragEnabled);
+
+  showToast(isHoldDragEnabled ? '🖐️ Touch Hold & Drag enabled' : '👆 Instant Tap mode enabled');
+}
+
+function getScreenRelCoords(clientX, clientY) {
   const img = document.getElementById('screen-img');
-  if (!img) return;
+  if (!img) return null;
 
   const rect = img.getBoundingClientRect();
   let clickX, clickY, elemW, elemH;
 
   if (isRotatedLandscape) {
-    clickX = e.clientY - rect.top;
-    clickY = rect.right - e.clientX;
+    clickX = clientY - rect.top;
+    clickY = rect.right - clientX;
     elemW = rect.height;
     elemH = rect.width;
   } else {
-    clickX = e.clientX - rect.left;
-    clickY = e.clientY - rect.top;
+    clickX = clientX - rect.left;
+    clickY = clientY - rect.top;
     elemW = rect.width;
     elemH = rect.height;
   }
@@ -2290,26 +2348,192 @@ function handleScreenTap(e) {
 
   if (clickX < offsetX || clickX > (offsetX + renderW) ||
       clickY < offsetY || clickY > (offsetY + renderH)) {
-    return;
+    return null;
   }
 
   const relX = Math.max(0, Math.min(1, (clickX - offsetX) / renderW));
   const relY = Math.max(0, Math.min(1, (clickY - offsetY) / renderH));
+  return { relX, relY };
+}
 
-  // Visual Ripple
-  const ripple = document.createElement('div');
-  ripple.className = 'click-ripple';
-  ripple.style.left = `${e.clientX - screenContainer.getBoundingClientRect().left}px`;
-  ripple.style.top = `${e.clientY - screenContainer.getBoundingClientRect().top}px`;
-  screenContainer.appendChild(ripple);
-  setTimeout(() => ripple.remove(), 450);
+// REAL-TIME TOUCH HOLD, DRAG, AND TAP ENGINE
+const screenContainer = document.getElementById('screen-container');
+let screenTouchActive = false;
+let screenTouchPointerId = null;
+let touchStartCoords = null;
+let touchStartTime = 0;
+let touchMovedDist = 0;
+let lastMoveSentTime = 0;
+let touchIndicatorEl = null;
 
-  if (navigator.vibrate) navigator.vibrate(12);
+screenContainer.addEventListener('pointerdown', onScreenPointerDown);
+screenContainer.addEventListener('pointermove', onScreenPointerMove);
+screenContainer.addEventListener('pointerup', onScreenPointerUp);
+screenContainer.addEventListener('pointercancel', onScreenPointerCancel);
 
-  fetch('/api/click', {
+function updateIndicatorPos(clientX, clientY) {
+  if (!touchIndicatorEl) return;
+  const containerRect = screenContainer.getBoundingClientRect();
+  touchIndicatorEl.style.left = `${clientX - containerRect.left}px`;
+  touchIndicatorEl.style.top = `${clientY - containerRect.top}px`;
+}
+
+function onScreenPointerDown(e) {
+  if (e.target.closest('.dpad-btn') || e.target.closest('.pad-action-btn') || e.target.closest('.btn') || e.target.closest('.fs-btn') || e.target.closest('.fs-mini-btn') || e.target.closest('.custom-dropdown') || e.target.closest('.stream-tool-btn') || e.target.closest('.cam-touchpad')) {
+    return;
+  }
+  e.preventDefault();
+
+  const coords = getScreenRelCoords(e.clientX, e.clientY);
+  if (!coords) return;
+
+  screenTouchActive = true;
+  screenTouchPointerId = e.pointerId;
+  touchStartCoords = coords;
+  touchStartTime = Date.now();
+  touchMovedDist = 0;
+  lastMoveSentTime = 0;
+
+  try { screenContainer.setPointerCapture(e.pointerId); } catch (_) {}
+
+  // Visual Touch Reticle
+  if (touchIndicatorEl) touchIndicatorEl.remove();
+  touchIndicatorEl = document.createElement('div');
+  touchIndicatorEl.className = 'touch-drag-indicator' + (currentClickMode === 'right' ? ' right-mode' : '');
+  touchIndicatorEl.innerHTML = '<div class="touch-drag-indicator-core"></div>';
+  updateIndicatorPos(e.clientX, e.clientY);
+  screenContainer.appendChild(touchIndicatorEl);
+
+  if (navigator.vibrate) navigator.vibrate(10);
+
+  if (isHoldDragEnabled) {
+    // Send immediate mouse down
+    fetch('/api/mouse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'down', button: currentClickMode, rel_x: coords.relX, rel_y: coords.relY })
+    }).catch(() => {});
+  }
+}
+
+function onScreenPointerMove(e) {
+  if (!screenTouchActive || e.pointerId !== screenTouchPointerId) return;
+  e.preventDefault();
+
+  updateIndicatorPos(e.clientX, e.clientY);
+
+  const coords = getScreenRelCoords(e.clientX, e.clientY);
+  if (!coords || !touchStartCoords) return;
+
+  const dxRel = coords.relX - touchStartCoords.relX;
+  const dyRel = coords.relY - touchStartCoords.relY;
+  touchMovedDist = Math.hypot(dxRel, dyRel);
+
+  if (touchMovedDist > 0.012 && touchIndicatorEl) {
+    touchIndicatorEl.classList.add('dragging');
+  }
+
+  if (isHoldDragEnabled) {
+    const now = Date.now();
+    if (now - lastMoveSentTime >= 35) {
+      lastMoveSentTime = now;
+      fetch('/api/mouse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'move', button: currentClickMode, rel_x: coords.relX, rel_y: coords.relY })
+      }).catch(() => {});
+    }
+  }
+}
+
+function onScreenPointerUp(e) {
+  if (!screenTouchActive || e.pointerId !== screenTouchPointerId) return;
+  e.preventDefault();
+
+  try { screenContainer.releasePointerCapture(e.pointerId); } catch (_) {}
+  screenTouchActive = false;
+  screenTouchPointerId = null;
+
+  if (touchIndicatorEl) {
+    touchIndicatorEl.remove();
+    touchIndicatorEl = null;
+  }
+
+  const coords = getScreenRelCoords(e.clientX, e.clientY) || touchStartCoords;
+  const duration = Date.now() - touchStartTime;
+
+  if (isHoldDragEnabled) {
+    if (coords) {
+      fetch('/api/mouse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'move', button: currentClickMode, rel_x: coords.relX, rel_y: coords.relY })
+      }).catch(() => {});
+
+      fetch('/api/mouse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'up', button: currentClickMode, rel_x: coords.relX, rel_y: coords.relY })
+      }).catch(() => {});
+    }
+
+    if (touchMovedDist >= 0.02 && touchStartCoords && coords) {
+      // Record drag into macro studio
+      fetch('/api/drag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          start_rx: touchStartCoords.relX,
+          start_ry: touchStartCoords.relY,
+          end_rx: coords.relX,
+          end_ry: coords.relY,
+          duration_ms: Math.min(Math.max(duration, 100), 4000),
+          button: currentClickMode,
+          record_only: true
+        })
+      }).catch(() => {});
+    } else if (touchStartCoords) {
+      // Record click into macro studio
+      fetch('/api/click', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rel_x: touchStartCoords.relX, rel_y: touchStartCoords.relY, button: currentClickMode })
+      }).catch(() => {});
+    }
+  } else {
+    // Instant tap mode
+    if (coords) {
+      const ripple = document.createElement('div');
+      ripple.className = 'click-ripple';
+      ripple.style.left = `${e.clientX - screenContainer.getBoundingClientRect().left}px`;
+      ripple.style.top = `${e.clientY - screenContainer.getBoundingClientRect().top}px`;
+      screenContainer.appendChild(ripple);
+      setTimeout(() => ripple.remove(), 450);
+
+      fetch('/api/click', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rel_x: coords.relX, rel_y: coords.relY, button: currentClickMode })
+      }).catch(() => {});
+    }
+  }
+
+  touchStartCoords = null;
+}
+
+function onScreenPointerCancel(e) {
+  if (!screenTouchActive) return;
+  screenTouchActive = false;
+  screenTouchPointerId = null;
+  if (touchIndicatorEl) {
+    touchIndicatorEl.remove();
+    touchIndicatorEl = null;
+  }
+  touchStartCoords = null;
+  fetch('/api/mouse', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rel_x: relX, rel_y: relY, button: currentClickMode })
+    body: JSON.stringify({ action: 'release_all' })
   }).catch(() => {});
 }
 
@@ -2399,6 +2623,17 @@ function startKeyHeartbeat() {
 }
 
 function releaseAllKeys() {
+  if (touchIndicatorEl) {
+    touchIndicatorEl.remove();
+    touchIndicatorEl = null;
+  }
+  screenTouchActive = false;
+  fetch('/api/mouse', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'release_all' })
+  }).catch(() => {});
+
   if (activeKeys.size === 0 && activePointers.size === 0) return;
   activePointers.clear();
   activeKeys.clear();
