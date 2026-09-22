@@ -1120,18 +1120,19 @@ header {
 
 /* MOBILE GAMEPAD ERGONOMIC SHAPES */
 .fs-dpad-circle {
-  width: 154px; height: 154px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(16, 22, 34, 0.85) 0%, rgba(3, 7, 18, 0.95) 100%);
+  width: 148px; height: 148px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 24, 39, 0.88) 0%, rgba(3, 7, 18, 0.96) 100%);
   border: 2px solid rgba(0, 240, 255, 0.35);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(0, 240, 255, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(0, 240, 255, 0.14);
   backdrop-filter: blur(16px); position: relative; display: flex; align-items: center; justify-content: center;
   pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none;
 }
 .fs-dpad-center {
   width: 44px; height: 44px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 240, 255, 0.2) 0%, rgba(15, 23, 42, 0.9) 100%);
-  border: 1.5px solid rgba(0, 240, 255, 0.4);
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.25) 0%, rgba(15, 23, 42, 0.9) 100%);
+  border: 1.5px solid rgba(0, 240, 255, 0.45);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.35);
+  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
   pointer-events: none;
 }
 .fs-dpad-btn-w {
@@ -1151,47 +1152,70 @@ header {
   width: 44px; height: 48px; border-radius: 6px 14px 14px 6px;
 }
 
-/* GAMING ACTION CLUSTER & CAMERA TOUCHPAD */
-.fs-actions-wrapper {
-  display: flex; gap: 10px; align-items: flex-end; pointer-events: none;
+/* CAMERA DIRECTIONAL ARROWS PAD (SCREEN CONTROL) */
+.fs-right-group {
+  display: flex; gap: 14px; align-items: flex-end; pointer-events: none; flex-wrap: wrap; justify-content: flex-end;
 }
-.cam-touchpad {
-  width: 120px; height: 110px; border-radius: 18px;
-  background: rgba(16, 22, 34, 0.7);
-  border: 1.5px dashed rgba(0, 240, 255, 0.4);
-  box-shadow: inset 0 0 16px rgba(0, 240, 255, 0.1), 0 8px 24px rgba(0,0,0,0.6);
-  backdrop-filter: blur(14px); display: flex; flex-direction: column; align-items: center; justify-content: center;
-  pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none;
-  cursor: grab; transition: all 0.18s ease; gap: 4px;
+.fs-arrow-circle {
+  width: 148px; height: 148px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 24, 39, 0.88) 0%, rgba(3, 7, 18, 0.96) 100%);
+  border: 2px solid rgba(59, 130, 246, 0.4);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(59, 130, 246, 0.16);
+  backdrop-filter: blur(16px); position: relative; display: flex; align-items: center; justify-content: center;
+  pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none;
 }
-.cam-touchpad:active, .cam-touchpad.touching {
-  border-color: var(--cyan); border-style: solid;
-  box-shadow: 0 0 20px rgba(0, 240, 255, 0.5), inset 0 0 24px rgba(0, 240, 255, 0.3);
-  cursor: grabbing;
+.fs-arrow-center {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.25) 0%, rgba(15, 23, 42, 0.9) 100%);
+  border: 1.5px solid rgba(59, 130, 246, 0.45);
+  box-shadow: 0 0 14px rgba(59, 130, 246, 0.35);
+  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+  pointer-events: none;
 }
-.cam-touchpad-label {
-  font-size: 0.62rem; font-weight: 800; color: var(--cyan); letter-spacing: 0.5px; pointer-events: none;
+.fs-arrow-btn-up {
+  position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+  width: 46px; height: 42px; border-radius: 14px 14px 6px 6px;
+  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important;
+  font-size: 1.15rem !important;
 }
-.cam-touchpad-icon {
-  font-size: 1.3rem; pointer-events: none; filter: drop-shadow(0 0 8px rgba(0,240,255,0.4));
+.fs-arrow-btn-down {
+  position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+  width: 46px; height: 42px; border-radius: 6px 6px 14px 14px;
+  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important;
+  font-size: 1.15rem !important;
+}
+.fs-arrow-btn-left {
+  position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+  width: 42px; height: 46px; border-radius: 14px 6px 6px 14px;
+  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important;
+  font-size: 1.15rem !important;
+}
+.fs-arrow-btn-right {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 42px; height: 46px; border-radius: 6px 14px 14px 6px;
+  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important;
+  font-size: 1.15rem !important;
+}
+.fs-actions-column {
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none;
 }
 
 .fs-round-action-btn {
-  width: 44px; height: 44px; border-radius: 50% !important;
+  width: 46px; height: 46px; border-radius: 50% !important;
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.78rem; font-weight: 800;
+  font-size: 0.82rem; font-weight: 800;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.08);
 }
 .fs-round-jump-btn {
-  width: 56px; height: 56px; border-radius: 50% !important;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.4), rgba(5, 150, 105, 0.6)) !important;
+  width: 58px; height: 58px; border-radius: 50% !important;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.45), rgba(5, 150, 105, 0.7)) !important;
   border: 2px solid var(--emerald) !important;
-  box-shadow: 0 0 22px rgba(16, 185, 129, 0.45) !important;
-  font-size: 0.85rem; font-weight: 800; color: #fff;
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.5) !important;
+  font-size: 0.95rem; font-weight: 800; color: #fff;
 }
 .fs-round-jump-btn:active, .fs-round-jump-btn.pressed {
   background: var(--emerald) !important; color: #000 !important;
-  box-shadow: 0 0 32px var(--emerald) !important;
+  box-shadow: 0 0 34px var(--emerald) !important; transform: scale(0.94);
 }
 
 /* ACTIONS */
@@ -1210,8 +1234,12 @@ header {
 
 /* VIRTUAL CONTROLLER */
 .controller-card {
-  background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px;
-  display: flex; flex-direction: column; gap: 10px;
+  background: linear-gradient(180deg, rgba(16, 24, 39, 0.75) 0%, rgba(10, 15, 26, 0.9) 100%);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  border-radius: 16px; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
 }
 .controller-layout {
   display: flex; flex-wrap: wrap; justify-content: space-around; align-items: flex-start; gap: 14px;
@@ -1223,32 +1251,47 @@ header {
   font-size: 0.68rem; font-weight: 800; color: var(--text-dim); letter-spacing: 0.5px;
 }
 .dpad-grid {
-  display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(2, 44px); gap: 6px;
+  display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(2, 46px); gap: 6px;
 }
 .dpad-btn {
-  background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 10px; color: var(--text);
-  font-weight: 800; font-size: 1rem; display: flex; align-items: center; justify-content: center;
+  background: rgba(30, 41, 59, 0.75); border: 1.5px solid rgba(255, 255, 255, 0.15); border-radius: 12px; color: var(--text);
+  font-weight: 800; font-size: 0.95rem; display: flex; align-items: center; justify-content: center;
   cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; -webkit-touch-callout: none;
-  transition: all 0.1s;
+  transition: all 0.12s cubic-bezier(0.2, 0.8, 0.4, 1); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
-.dpad-btn:active, .dpad-btn.pressed { background: var(--cyan); color: #000; box-shadow: 0 0 16px var(--cyan); }
+.dpad-btn:hover { border-color: var(--cyan); background: rgba(51, 65, 85, 0.85); color: #fff; }
+.dpad-btn:active, .dpad-btn.pressed {
+  background: var(--cyan); color: #000; box-shadow: 0 0 20px var(--cyan); transform: scale(0.94);
+}
 .pad-arrow-btn {
-  font-size: 1.15rem; color: #60a5fa; border-color: rgba(96, 165, 250, 0.3);
+  font-size: 1.15rem; color: #60a5fa; border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(23, 37, 84, 0.5);
 }
+.pad-arrow-btn:hover { border-color: #60a5fa; background: rgba(30, 58, 138, 0.65); color: #fff; }
 .pad-arrow-btn:active, .pad-arrow-btn.pressed {
-  background: #3b82f6; color: #fff; box-shadow: 0 0 16px #3b82f6;
+  background: #3b82f6 !important; color: #fff !important; box-shadow: 0 0 20px #3b82f6 !important; transform: scale(0.94);
 }
 
 .action-buttons-pad {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; width: 100%;
 }
 .pad-action-btn {
-  padding: 10px 12px; background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); border-radius: 10px;
-  color: var(--text); font-weight: 700; font-size: 0.78rem; cursor: pointer; user-select: none;
+  padding: 11px 14px; background: rgba(30, 41, 59, 0.75); border: 1.5px solid rgba(255, 255, 255, 0.15); border-radius: 12px;
+  color: var(--text); font-weight: 800; font-size: 0.8rem; cursor: pointer; user-select: none;
   -webkit-user-select: none; touch-action: none; -webkit-touch-callout: none;
-  transition: all 0.1s; display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: all 0.12s cubic-bezier(0.2, 0.8, 0.4, 1); display: flex; align-items: center; justify-content: center; gap: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 }
-.pad-action-btn:active, .pad-action-btn.pressed { background: var(--purple); color: #fff; box-shadow: 0 0 16px var(--purple); }
+.pad-action-btn:hover { border-color: var(--purple); background: rgba(51, 65, 85, 0.85); color: #fff; }
+.pad-action-btn:active, .pad-action-btn.pressed {
+  background: var(--purple); color: #fff; box-shadow: 0 0 20px var(--purple); transform: scale(0.94);
+}
+.pad-action-btn.btn-jump {
+  border-color: rgba(16, 185, 129, 0.4); color: #a7f3d0; background: rgba(6, 78, 59, 0.4);
+}
+.pad-action-btn.btn-jump:active, .pad-action-btn.btn-jump.pressed {
+  background: var(--emerald); color: #000; box-shadow: 0 0 20px var(--emerald);
+}
 .btn-shift { border-color: rgba(176, 38, 255, 0.4); color: #d8b4fe; }
 
 /* STATS */
@@ -1559,36 +1602,42 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
             <button class="fs-mini-btn" id="btn-fs-mute" onclick="toggleMute()">🔇 MUTE</button>
           </div>
 
-          <!-- Bottom Floating Controls: Left Circular D-Pad, Right Actions & Camera Touchpad -->
+          <!-- Bottom Floating Controls: Left Movement D-Pad, Right Camera Arrows & Actions -->
           <div class="fs-bottom-controls">
-            <!-- Left: Circular D-Pad Joystick -->
+            <!-- Left: Circular D-Pad Joystick (WASD) -->
             <div class="fs-pad-cluster">
-              <div class="fs-cluster-label">🏃 JOYSTICK (WASD)</div>
+              <div class="fs-cluster-label">🏃 MOVEMENT (WASD)</div>
               <div class="fs-dpad-circle">
-                <div class="fs-dpad-center"></div>
-                <button class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w" title="Walk Forward">▲</button>
-                <button class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s" title="Walk Backward">▼</button>
-                <button class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a" title="Walk Left">◀</button>
-                <button class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d" title="Walk Right">▶</button>
+                <div class="fs-dpad-center">🏃</div>
+                <button class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w" title="Walk Forward (W)">▲</button>
+                <button class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s" title="Walk Backward (S)">▼</button>
+                <button class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a" title="Walk Left (A)">◀</button>
+                <button class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d" title="Walk Right (D)">▶</button>
               </div>
             </div>
 
-            <!-- Right: Action Cluster & Camera Swipe Touchpad -->
-            <div class="fs-pad-cluster" style="align-items: flex-end;">
-              <div class="fs-cluster-label">⚡ ACTIONS &amp; CAMERA</div>
-              <div class="fs-actions-wrapper">
-                <!-- Camera Swipe Touchpad -->
-                <div class="cam-touchpad" id="cam-touchpad" title="Swipe thumb here to rotate camera">
-                  <span class="cam-touchpad-icon">📷</span>
-                  <span class="cam-touchpad-label">SWIPE LOOK</span>
+            <!-- Right: Returned Camera Arrows + Action Arc -->
+            <div class="fs-right-group">
+              <!-- Camera Directional Arrows Pad (Screen / Camera Control) -->
+              <div class="fs-pad-cluster" style="align-items: center;">
+                <div class="fs-cluster-label" style="color: #60a5fa;">👀 CAMERA (ARROWS)</div>
+                <div class="fs-arrow-circle">
+                  <div class="fs-arrow-center">📷</div>
+                  <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-up" data-key="up" title="Tilt Camera Up (↑)">▲</button>
+                  <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-down" data-key="down" title="Tilt Camera Down (↓)">▼</button>
+                  <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-left" data-key="left" title="Rotate Camera Left (←)">◀</button>
+                  <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-right" data-key="right" title="Rotate Camera Right (→)">▶</button>
                 </div>
+              </div>
 
-                <!-- Action Buttons Arc -->
-                <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
+              <!-- Action Cluster -->
+              <div class="fs-pad-cluster" style="align-items: flex-end;">
+                <div class="fs-cluster-label">⚡ ACTIONS</div>
+                <div class="fs-actions-column">
                   <!-- Top Row: Shift-lock & Talk -->
                   <div style="display: flex; gap: 8px; align-items: center;">
-                    <button class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 6px 14px; font-size: 0.72rem;">⚡ SHIFT</button>
-                    <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Talk / Chat">💬</button>
+                    <button class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 7px 14px; font-size: 0.72rem; font-weight: 800;">⚡ SHIFT</button>
+                    <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Talk / Chat (T)">💬</button>
                   </div>
                   <!-- Bottom Row: Rod, Interact, Jump -->
                   <div style="display: flex; gap: 8px; align-items: center;">
@@ -1612,33 +1661,33 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
           <div class="cluster-label">🏃 WALK (WASD)</div>
           <div class="dpad-grid">
             <div></div>
-            <button class="dpad-btn" data-key="w" title="Walk Forward (W)">W</button>
+            <button class="dpad-btn" data-key="w" title="Walk Forward (W)">▲ W</button>
             <div></div>
-            <button class="dpad-btn" data-key="a" title="Walk Left (A)">A</button>
-            <button class="dpad-btn" data-key="s" title="Walk Backward (S)">S</button>
-            <button class="dpad-btn" data-key="d" title="Walk Right (D)">D</button>
+            <button class="dpad-btn" data-key="a" title="Walk Left (A)">◀ A</button>
+            <button class="dpad-btn" data-key="s" title="Walk Backward (S)">▼ S</button>
+            <button class="dpad-btn" data-key="d" title="Walk Right (D)">▶ D</button>
           </div>
         </div>
 
         <!-- 2. Face / Look (Arrow Controls) -->
         <div class="pad-cluster">
-          <div class="cluster-label">👀 FACE / TURN (ARROWS)</div>
+          <div class="cluster-label" style="color: #60a5fa;">👀 CAMERA / LOOK (ARROWS)</div>
           <div class="dpad-grid">
             <div></div>
-            <button class="dpad-btn pad-arrow-btn" data-key="up" title="Face / Tilt Up (↑)">▲</button>
+            <button class="dpad-btn pad-arrow-btn" data-key="up" title="Tilt Camera Up (↑)">▲</button>
             <div></div>
-            <button class="dpad-btn pad-arrow-btn" data-key="left" title="Turn Left (←)">◀</button>
-            <button class="dpad-btn pad-arrow-btn" data-key="down" title="Face / Tilt Down (↓)">▼</button>
-            <button class="dpad-btn pad-arrow-btn" data-key="right" title="Turn Right (→)">▶</button>
+            <button class="dpad-btn pad-arrow-btn" data-key="left" title="Rotate Camera Left (←)">◀</button>
+            <button class="dpad-btn pad-arrow-btn" data-key="down" title="Tilt Camera Down (↓)">▼</button>
+            <button class="dpad-btn pad-arrow-btn" data-key="right" title="Rotate Camera Right (→)">▶</button>
           </div>
         </div>
 
         <!-- 3. Actions -->
         <div class="pad-cluster" style="flex: 1; min-width: 140px;">
-          <div class="cluster-label">⚡ ACTIONS & VIEW</div>
+          <div class="cluster-label">⚡ ACTIONS &amp; VIEW</div>
           <div class="action-buttons-pad">
             <button class="pad-action-btn btn-shift" data-key="shift">⚡ SHIFT-LOCK</button>
-            <button class="pad-action-btn" data-key="space">🦘 JUMP (SPACE)</button>
+            <button class="pad-action-btn btn-jump" data-key="space">🦘 JUMP (SPACE)</button>
             <button class="pad-action-btn" data-key="1">🎣 EQUIP ROD (1)</button>
             <button class="pad-action-btn" data-key="e">🖐️ INTERACT (E)</button>
             <button class="pad-action-btn" data-key="t" style="grid-column: span 2;">💬 TALK / ACTION (T)</button>
