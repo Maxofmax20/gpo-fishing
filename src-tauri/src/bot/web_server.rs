@@ -154,6 +154,9 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     } else if raw_path == "/api/drag" && method == "POST" {
         let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_drag(&mut stream, bot, body);
+    } else if raw_path == "/api/mouse" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_mouse(&mut stream, bot, body);
     } else if raw_path == "/api/key" && method == "POST" {
         let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_key(&mut stream, bot, body);
@@ -462,14 +465,21 @@ fn handle_drag(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let start_ry = parsed.get("start_y").or_else(|| parsed.get("start_ry")).and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
     let end_rx = parsed.get("end_x").or_else(|| parsed.get("end_rx")).and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
     let end_ry = parsed.get("end_y").or_else(|| parsed.get("end_ry")).and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
-    let duration_ms = parsed.get("duration_ms").and_then(|v| v.as_u64()).unwrap_or(300);
+    let duration_ms = parsed.get("duration_ms").and_then(|v| v.as_u64()).unwrap_or(200);
+    let btn_str = parsed.get("button").and_then(|v| v.as_str()).unwrap_or("left");
+
+    let btn = if btn_str == "right" {
+        crate::core::types::MouseButton::Right
+    } else {
+        crate::core::types::MouseButton::Left
+    };
 
     // Record step if macro recorder is active
     crate::bot::recorder::record_drag(start_rx, start_ry, end_rx, end_ry, duration_ms);
 
     // Execute drag in game
     let _ = bot.ctx().platform.window.focus();
-    std::thread::sleep(Duration::from_millis(20));
+    std::thread::sleep(Duration::from_millis(15));
 
     if let Some(rect) = bot.ctx().roblox_rect() {
         let start_px = rect.x + (start_rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
@@ -478,12 +488,12 @@ fn handle_drag(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
         let end_py = rect.y + (end_ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
 
         bot.ctx().platform.input.move_to(crate::core::types::PxPoint { x: start_px, y: start_py });
-        std::thread::sleep(Duration::from_millis(30));
-        bot.ctx().platform.input.button(crate::core::types::MouseButton::Left, true);
-        std::thread::sleep(Duration::from_millis(40));
+        std::thread::sleep(Duration::from_millis(20));
+        bot.ctx().platform.input.button(btn, true);
+        std::thread::sleep(Duration::from_millis(25));
 
-        let num_steps = ((duration_ms as f32 / 15.0).round() as i32).clamp(8, 30);
-        let step_delay = (duration_ms / num_steps as u64).max(10);
+        let num_steps = ((duration_ms as f32 / 12.0).round() as i32).clamp(6, 25);
+        let step_delay = (duration_ms / num_steps as u64).max(8);
         for i in 1..=num_steps {
             let t = i as f32 / num_steps as f32;
             let ease = t * t * (3.0 - 2.0 * t);
@@ -494,8 +504,50 @@ fn handle_drag(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
         }
 
         bot.ctx().platform.input.move_to(crate::core::types::PxPoint { x: end_px, y: end_py });
-        std::thread::sleep(Duration::from_millis(40));
-        bot.ctx().platform.input.button(crate::core::types::MouseButton::Left, false);
+        std::thread::sleep(Duration::from_millis(25));
+        bot.ctx().platform.input.button(btn, false);
+    }
+
+    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let act = parsed.get("action").and_then(|v| v.as_str()).unwrap_or("click");
+    let btn_str = parsed.get("button").and_then(|v| v.as_str()).unwrap_or("left");
+    let rx = parsed.get("rel_x").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    let ry = parsed.get("rel_y").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+
+    let btn = if btn_str == "right" {
+        crate::core::types::MouseButton::Right
+    } else {
+        crate::core::types::MouseButton::Left
+    };
+
+    let _ = bot.ctx().platform.window.focus();
+
+    if let Some(rect) = bot.ctx().roblox_rect() {
+        let px = rect.x + (rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
+        let py = rect.y + (ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
+        let pt = crate::core::types::PxPoint { x: px, y: py };
+
+        match act {
+            "down" => {
+                bot.ctx().platform.input.move_to(pt);
+                std::thread::sleep(Duration::from_millis(10));
+                bot.ctx().platform.input.button(btn, true);
+            }
+            "move" => {
+                bot.ctx().platform.input.move_to(pt);
+            }
+            "up" => {
+                bot.ctx().platform.input.move_to(pt);
+                std::thread::sleep(Duration::from_millis(10));
+                bot.ctx().platform.input.button(btn, false);
+            }
+            _ => {}
+        }
     }
 
     let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
@@ -840,8 +892,25 @@ fn send_html(stream: &mut TcpStream) {
   --text-mute: #64748b;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, sans-serif; -webkit-tap-highlight-color: transparent; }
-body { background: var(--bg); color: var(--text); padding: 14px; min-height: 100vh; background-image: radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.05), transparent 40%), radial-gradient(circle at 100% 100%, rgba(176, 38, 255, 0.04), transparent 40%); }
+* {
+  box-sizing: border-box; margin: 0; padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, sans-serif;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-touch-callout: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+html, body {
+  background: var(--bg); color: var(--text); padding: 14px; min-height: 100vh;
+  background-image: radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.05), transparent 40%), radial-gradient(circle at 100% 100%, rgba(176, 38, 255, 0.04), transparent 40%);
+  overscroll-behavior: none !important;
+  touch-action: manipulation;
+}
+input, textarea {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -webkit-touch-callout: default !important;
+}
 .container { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 
 header {
@@ -897,13 +966,17 @@ header {
 .stream-tool-btn:hover {
   background: rgba(51, 65, 85, 0.9); border-color: rgba(255,255,255,0.25);
 }
+.stream-tool-btn.active {
+  background: rgba(0, 240, 255, 0.2); border-color: var(--cyan); color: var(--cyan);
+}
 
 .screen-box {
   width: 100%; min-height: 240px; background: #030508; display: flex; align-items: center; justify-content: center;
-  position: relative; overflow: hidden; cursor: crosshair;
+  position: relative; overflow: hidden; cursor: crosshair; touch-action: none;
 }
 .screen-img {
   width: 100%; max-height: 480px; object-fit: contain; display: block; user-select: none;
+  pointer-events: none !important; -webkit-user-drag: none !important;
 }
 .click-ripple {
   position: absolute; width: 24px; height: 24px; border-radius: 50%;
@@ -924,15 +997,20 @@ header {
   background: #000 !important; display: flex !important; flex-direction: column !important;
   margin: 0 !important; padding: 0 !important;
 }
+.stream-wrapper.fullscreen-active.rotated-90 {
+  width: 100vh !important; height: 100vw !important;
+  position: fixed !important; top: 50% !important; left: 50% !important;
+  transform: translate(-50%, -50%) rotate(90deg) !important;
+}
 .stream-wrapper.fullscreen-active .stream-bar {
   display: none !important;
 }
 .stream-wrapper.fullscreen-active .screen-box {
-  flex: 1 !important; width: 100vw !important; height: 100vh !important;
-  max-height: 100vh !important; min-height: 100vh !important; border-radius: 0 !important;
+  flex: 1 !important; width: 100%; height: 100%;
+  max-height: 100% !important; min-height: 100% !important; border-radius: 0 !important;
 }
 .stream-wrapper.fullscreen-active .screen-img {
-  width: 100vw !important; height: 100vh !important; max-height: 100vh !important;
+  width: 100%; height: 100%; max-height: 100% !important;
   object-fit: contain !important;
 }
 
@@ -959,6 +1037,7 @@ header {
 }
 .fs-btn:hover { background: rgba(30, 41, 59, 0.95); border-color: var(--cyan); }
 .fs-btn:active { transform: scale(0.96); }
+.fs-btn.active { background: rgba(0, 240, 255, 0.2); border-color: var(--cyan); color: var(--cyan); }
 .fs-btn-close {
   background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.5); color: #fca5a5;
 }
@@ -1001,13 +1080,81 @@ header {
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
   box-shadow: 0 6px 18px rgba(0,0,0,0.6);
 }
-.fs-dpad-grid {
-  grid-template-columns: repeat(3, 46px);
-  grid-template-rows: repeat(2, 46px);
-  gap: 6px;
+
+/* MOBILE GAMEPAD ERGONOMIC SHAPES */
+.fs-dpad-circle {
+  width: 154px; height: 154px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 22, 34, 0.85) 0%, rgba(3, 7, 18, 0.95) 100%);
+  border: 2px solid rgba(0, 240, 255, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(0, 240, 255, 0.12);
+  backdrop-filter: blur(16px); position: relative; display: flex; align-items: center; justify-content: center;
+  pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none;
 }
-.fs-action-grid {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;
+.fs-dpad-center {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.2) 0%, rgba(15, 23, 42, 0.9) 100%);
+  border: 1.5px solid rgba(0, 240, 255, 0.4);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
+  pointer-events: none;
+}
+.fs-dpad-btn-w {
+  position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+  width: 48px; height: 44px; border-radius: 14px 14px 6px 6px;
+}
+.fs-dpad-btn-s {
+  position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+  width: 48px; height: 44px; border-radius: 6px 6px 14px 14px;
+}
+.fs-dpad-btn-a {
+  position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 48px; border-radius: 14px 6px 6px 14px;
+}
+.fs-dpad-btn-d {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  width: 44px; height: 48px; border-radius: 6px 14px 14px 6px;
+}
+
+/* GAMING ACTION CLUSTER & CAMERA TOUCHPAD */
+.fs-actions-wrapper {
+  display: flex; gap: 10px; align-items: flex-end; pointer-events: none;
+}
+.cam-touchpad {
+  width: 120px; height: 110px; border-radius: 18px;
+  background: rgba(16, 22, 34, 0.7);
+  border: 1.5px dashed rgba(0, 240, 255, 0.4);
+  box-shadow: inset 0 0 16px rgba(0, 240, 255, 0.1), 0 8px 24px rgba(0,0,0,0.6);
+  backdrop-filter: blur(14px); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none;
+  cursor: grab; transition: all 0.18s ease; gap: 4px;
+}
+.cam-touchpad:active, .cam-touchpad.touching {
+  border-color: var(--cyan); border-style: solid;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.5), inset 0 0 24px rgba(0, 240, 255, 0.3);
+  cursor: grabbing;
+}
+.cam-touchpad-label {
+  font-size: 0.62rem; font-weight: 800; color: var(--cyan); letter-spacing: 0.5px; pointer-events: none;
+}
+.cam-touchpad-icon {
+  font-size: 1.3rem; pointer-events: none; filter: drop-shadow(0 0 8px rgba(0,240,255,0.4));
+}
+
+.fs-round-action-btn {
+  width: 44px; height: 44px; border-radius: 50% !important;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.78rem; font-weight: 800;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.08);
+}
+.fs-round-jump-btn {
+  width: 56px; height: 56px; border-radius: 50% !important;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.4), rgba(5, 150, 105, 0.6)) !important;
+  border: 2px solid var(--emerald) !important;
+  box-shadow: 0 0 22px rgba(16, 185, 129, 0.45) !important;
+  font-size: 0.85rem; font-weight: 800; color: #fff;
+}
+.fs-round-jump-btn:active, .fs-round-jump-btn.pressed {
+  background: var(--emerald) !important; color: #000 !important;
+  box-shadow: 0 0 32px var(--emerald) !important;
 }
 
 /* ACTIONS */
@@ -1317,6 +1464,11 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
             </div>
           </div>
 
+          <!-- Rotate Button -->
+          <button type="button" class="stream-tool-btn" id="stream-tool-rotate" onclick="toggleRotate()" title="Rotate Screen 90° Landscape">
+            <span>🔄 ROTATE</span>
+          </button>
+
           <!-- Fullscreen Button -->
           <button type="button" class="stream-tool-btn" onclick="toggleFullscreen()" title="Full Screen View" style="background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(176, 38, 255, 0.2)); border-color: var(--cyan); color: #fff; font-weight: 800;">
             <span>⛶ FULLSCREEN</span>
@@ -1324,8 +1476,8 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
         </div>
       </div>
 
-      <div id="screen-container" class="screen-box">
-        <img id="screen-img" class="screen-img" src="/api/stream" alt="" onerror="fallbackSnapshot()" />
+      <div id="screen-container" class="screen-box" oncontextmenu="return false;">
+        <img id="screen-img" class="screen-img" src="/api/stream" alt="" draggable="false" oncontextmenu="return false;" onerror="fallbackSnapshot()" />
 
         <!-- Fullscreen Top Floating Bar -->
         <div id="fs-floating-bar" class="fs-floating-bar">
@@ -1333,10 +1485,17 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
             <div id="fs-status-pill" class="status-badge badge-stopped" style="font-size: 0.68rem; padding: 4px 10px;">STOPPED</div>
             <div id="fs-stream-info" class="fs-stream-pill">20 FPS • 720p</div>
           </div>
-          <div style="display: flex; gap: 8px; align-items: center; pointer-events: auto;">
+          <div style="display: flex; gap: 6px; align-items: center; pointer-events: auto;">
+            <button class="fs-btn" id="btn-click-mode" onclick="toggleClickMode()" title="Toggle Left Click vs Right/Camera Look">
+              <span id="click-mode-icon">🎯</span>
+              <span id="click-mode-label">CLICK</span>
+            </button>
+            <button class="fs-btn" id="btn-fs-rotate" onclick="toggleRotate()" title="Rotate Screen 90° Landscape">
+              <span>🔄 ROTATE</span>
+            </button>
             <button class="fs-btn" id="btn-fs-overlay-toggle" onclick="toggleFullscreenControls()" title="Show/Hide On-Screen Controller">
               <span id="fs-ctrl-icon">🎮</span>
-              <span id="fs-ctrl-label">CONTROLS: ON</span>
+              <span id="fs-ctrl-label">CONTROLS</span>
             </button>
             <button class="fs-btn fs-btn-close" onclick="exitFullscreen()" title="Exit Fullscreen Mode">
               <span>✖ EXIT</span>
@@ -1354,42 +1513,43 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
             <button class="fs-mini-btn" id="btn-fs-mute" onclick="toggleMute()">🔇 MUTE</button>
           </div>
 
-          <!-- Bottom Floating Controls: Left Walk D-Pad, Right Actions -->
+          <!-- Bottom Floating Controls: Left Circular D-Pad, Right Actions & Camera Touchpad -->
           <div class="fs-bottom-controls">
-            <!-- Left: Walk WASD -->
+            <!-- Left: Circular D-Pad Joystick -->
             <div class="fs-pad-cluster">
-              <div class="fs-cluster-label">🏃 WALK (WASD)</div>
-              <div class="dpad-grid fs-dpad-grid">
-                <div></div>
-                <button class="dpad-btn fs-pad-btn" data-key="w" title="Walk Forward">W</button>
-                <div></div>
-                <button class="dpad-btn fs-pad-btn" data-key="a" title="Walk Left">A</button>
-                <button class="dpad-btn fs-pad-btn" data-key="s" title="Walk Backward">S</button>
-                <button class="dpad-btn fs-pad-btn" data-key="d" title="Walk Right">D</button>
+              <div class="fs-cluster-label">🏃 JOYSTICK (WASD)</div>
+              <div class="fs-dpad-circle">
+                <div class="fs-dpad-center"></div>
+                <button class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w" title="Walk Forward">▲</button>
+                <button class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s" title="Walk Backward">▼</button>
+                <button class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a" title="Walk Left">◀</button>
+                <button class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d" title="Walk Right">▶</button>
               </div>
             </div>
 
-            <!-- Right: Camera & Actions -->
+            <!-- Right: Action Cluster & Camera Swipe Touchpad -->
             <div class="fs-pad-cluster" style="align-items: flex-end;">
               <div class="fs-cluster-label">⚡ ACTIONS &amp; CAMERA</div>
-              <div style="display: flex; gap: 10px; align-items: flex-end;">
-                <!-- Camera Arrows -->
-                <div class="dpad-grid fs-dpad-grid" style="grid-template-columns: repeat(3, 40px); grid-template-rows: repeat(2, 40px);">
-                  <div></div>
-                  <button class="dpad-btn fs-pad-btn pad-arrow-btn" data-key="up" title="Look Up">▲</button>
-                  <div></div>
-                  <button class="dpad-btn fs-pad-btn pad-arrow-btn" data-key="left" title="Turn Left">◀</button>
-                  <button class="dpad-btn fs-pad-btn pad-arrow-btn" data-key="down" title="Look Down">▼</button>
-                  <button class="dpad-btn fs-pad-btn pad-arrow-btn" data-key="right" title="Turn Right">▶</button>
+              <div class="fs-actions-wrapper">
+                <!-- Camera Swipe Touchpad -->
+                <div class="cam-touchpad" id="cam-touchpad" title="Swipe thumb here to rotate camera">
+                  <span class="cam-touchpad-icon">📷</span>
+                  <span class="cam-touchpad-label">SWIPE LOOK</span>
                 </div>
 
-                <!-- Action Buttons -->
-                <div class="fs-action-grid">
-                  <button class="pad-action-btn fs-pad-btn btn-shift" data-key="shift">⚡ SHIFT</button>
-                  <button class="pad-action-btn fs-pad-btn" data-key="space">🦘 JUMP</button>
-                  <button class="pad-action-btn fs-pad-btn" data-key="1">🎣 ROD</button>
-                  <button class="pad-action-btn fs-pad-btn" data-key="e">🖐️ E</button>
-                  <button class="pad-action-btn fs-pad-btn" data-key="t" style="grid-column: span 2;">💬 TALK (T)</button>
+                <!-- Action Buttons Arc -->
+                <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
+                  <!-- Top Row: Shift-lock & Talk -->
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 6px 14px; font-size: 0.72rem;">⚡ SHIFT</button>
+                    <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Talk / Chat">💬</button>
+                  </div>
+                  <!-- Bottom Row: Rod, Interact, Jump -->
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="1" title="Equip Rod (1)">🎣</button>
+                    <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="e" title="Interact (E)">🖐️</button>
+                    <button class="pad-action-btn fs-pad-btn fs-round-jump-btn" data-key="space" title="Jump (Space)">🦘</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1976,7 +2136,12 @@ function enterFullscreen() {
 function exitFullscreen() {
   isFullscreen = false;
   const wrapper = document.getElementById('stream-wrapper');
-  if (wrapper) wrapper.classList.remove('fullscreen-active');
+  if (wrapper) {
+    wrapper.classList.remove('fullscreen-active');
+    wrapper.classList.remove('rotated-90');
+  }
+  isRotatedLandscape = false;
+  updateRotateButtons();
 
   if (document.exitFullscreen && document.fullscreenElement) {
     document.exitFullscreen().catch(() => {});
@@ -1985,6 +2150,65 @@ function exitFullscreen() {
   }
   document.body.style.overflow = '';
 }
+
+let isRotatedLandscape = false;
+
+function toggleRotate() {
+  if (!isFullscreen) {
+    enterFullscreen();
+  }
+  isRotatedLandscape = !isRotatedLandscape;
+  const wrapper = document.getElementById('stream-wrapper');
+  if (wrapper) {
+    wrapper.classList.toggle('rotated-90', isRotatedLandscape);
+  }
+  updateRotateButtons();
+
+  if (screen.orientation && screen.orientation.lock) {
+    if (isRotatedLandscape) {
+      screen.orientation.lock('landscape').catch(() => {});
+    } else {
+      if (screen.orientation.unlock) {
+        try { screen.orientation.unlock(); } catch (_) {}
+      }
+    }
+  }
+  showToast(isRotatedLandscape ? '🔄 Rotated 90° Landscape' : '📱 Portrait View');
+}
+
+function updateRotateButtons() {
+  const r1 = document.getElementById('stream-tool-rotate');
+  const r2 = document.getElementById('btn-fs-rotate');
+  if (r1) r1.classList.toggle('active', isRotatedLandscape);
+  if (r2) r2.classList.toggle('active', isRotatedLandscape);
+}
+
+let currentClickMode = 'left';
+
+function toggleClickMode() {
+  currentClickMode = currentClickMode === 'left' ? 'right' : 'left';
+  const label = document.getElementById('click-mode-label');
+  const icon = document.getElementById('click-mode-icon');
+  const btn = document.getElementById('btn-click-mode');
+  if (btn) btn.classList.toggle('active', currentClickMode === 'right');
+  if (label) label.innerText = currentClickMode === 'left' ? 'CLICK: LEFT' : 'LOOK: RIGHT';
+  if (icon) icon.innerText = currentClickMode === 'left' ? '🎯' : '👀';
+  showToast(`Tap mode: ${currentClickMode === 'left' ? 'Left Click (Select/Fish)' : 'Right Click (Camera Look)'}`);
+}
+
+// Global anti-context-menu prevention for Android long-press
+window.addEventListener('contextmenu', (e) => {
+  if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+  }
+}, { capture: true, passive: false });
+
+window.addEventListener('dragstart', (e) => {
+  e.preventDefault();
+  return false;
+}, { capture: true, passive: false });
 
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement) {
@@ -2012,19 +2236,19 @@ function toggleFullscreenControls() {
     overlay.classList.toggle('visible', isControlsOverlayVisible);
   }
   if (label) {
-    label.innerText = isControlsOverlayVisible ? 'CONTROLS: ON' : 'CONTROLS: OFF';
+    label.innerText = isControlsOverlayVisible ? 'CONTROLS' : 'CONTROLS: OFF';
   }
   if (icon) {
     icon.innerText = isControlsOverlayVisible ? '🎮' : '👁️';
   }
 }
 
-// TAP TO CLICK DIRECTLY ON GAME SCREEN (ACCOUNTS FOR LETTERBOXING/PILLARBOXING)
+// TAP TO CLICK DIRECTLY ON GAME SCREEN (ACCOUNTS FOR ROTATION & LETTERBOXING)
 const screenContainer = document.getElementById('screen-container');
 screenContainer.addEventListener('pointerdown', handleScreenTap);
 
 function handleScreenTap(e) {
-  if (e.target.closest('.dpad-btn') || e.target.closest('.pad-action-btn') || e.target.closest('.btn') || e.target.closest('.fs-btn') || e.target.closest('.fs-mini-btn') || e.target.closest('.custom-dropdown') || e.target.closest('.stream-tool-btn')) {
+  if (e.target.closest('.dpad-btn') || e.target.closest('.pad-action-btn') || e.target.closest('.btn') || e.target.closest('.fs-btn') || e.target.closest('.fs-mini-btn') || e.target.closest('.custom-dropdown') || e.target.closest('.stream-tool-btn') || e.target.closest('.cam-touchpad')) {
     return;
   }
   e.preventDefault();
@@ -2032,25 +2256,36 @@ function handleScreenTap(e) {
   if (!img) return;
 
   const rect = img.getBoundingClientRect();
-  const clickX = e.clientX - rect.left;
-  const clickY = e.clientY - rect.top;
+  let clickX, clickY, elemW, elemH;
+
+  if (isRotatedLandscape) {
+    clickX = e.clientY - rect.top;
+    clickY = rect.right - e.clientX;
+    elemW = rect.height;
+    elemH = rect.width;
+  } else {
+    clickX = e.clientX - rect.left;
+    clickY = e.clientY - rect.top;
+    elemW = rect.width;
+    elemH = rect.height;
+  }
 
   const naturalW = img.naturalWidth || 1280;
   const naturalH = img.naturalHeight || 720;
   const imageAspect = naturalW / naturalH;
-  const elementAspect = rect.width / rect.height;
+  const elementAspect = elemW / elemH;
 
-  let renderW = rect.width;
-  let renderH = rect.height;
+  let renderW = elemW;
+  let renderH = elemH;
   let offsetX = 0;
   let offsetY = 0;
 
   if (elementAspect > imageAspect) {
-    renderW = rect.height * imageAspect;
-    offsetX = (rect.width - renderW) / 2;
+    renderW = elemH * imageAspect;
+    offsetX = (elemW - renderW) / 2;
   } else {
-    renderH = rect.width / imageAspect;
-    offsetY = (rect.height - renderH) / 2;
+    renderH = elemW / imageAspect;
+    offsetY = (elemH - renderH) / 2;
   }
 
   if (clickX < offsetX || clickX > (offsetX + renderW) ||
@@ -2069,11 +2304,67 @@ function handleScreenTap(e) {
   screenContainer.appendChild(ripple);
   setTimeout(() => ripple.remove(), 450);
 
+  if (navigator.vibrate) navigator.vibrate(12);
+
   fetch('/api/click', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ rel_x: relX, rel_y: relY, button: 'left' })
+    body: JSON.stringify({ rel_x: relX, rel_y: relY, button: currentClickMode })
   }).catch(() => {});
+}
+
+// CAMERA SWIPE TOUCHPAD (Rotates Roblox camera via Arrow keys + vibration)
+let camActivePointer = null;
+let lastCamX = 0;
+let lastCamY = 0;
+
+const camPad = document.getElementById('cam-touchpad');
+if (camPad) {
+  camPad.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    camActivePointer = e.pointerId;
+    try { camPad.setPointerCapture(e.pointerId); } catch (_) {}
+    camPad.classList.add('touching');
+    lastCamX = e.clientX;
+    lastCamY = e.clientY;
+    if (navigator.vibrate) navigator.vibrate(10);
+  });
+
+  camPad.addEventListener('pointermove', (e) => {
+    if (camActivePointer !== e.pointerId) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    let dx = e.clientX - lastCamX;
+    let dy = e.clientY - lastCamY;
+
+    const threshold = 12;
+    if (Math.abs(dx) >= threshold) {
+      const key = dx > 0 ? 'right' : 'left';
+      sendKey(key, true, true);
+      lastCamX = e.clientX;
+      if (navigator.vibrate) navigator.vibrate(6);
+    }
+    if (Math.abs(dy) >= threshold) {
+      const key = dy > 0 ? 'down' : 'up';
+      sendKey(key, true, true);
+      lastCamY = e.clientY;
+      if (navigator.vibrate) navigator.vibrate(6);
+    }
+  });
+
+  const onCamRelease = (e) => {
+    if (camActivePointer !== e.pointerId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try { camPad.releasePointerCapture(e.pointerId); } catch (_) {}
+    camActivePointer = null;
+    camPad.classList.remove('touching');
+  };
+
+  camPad.addEventListener('pointerup', onCamRelease);
+  camPad.addEventListener('pointercancel', onCamRelease);
 }
 
 // MULTI-TOUCH REMOTE CONTROLLER ENGINE WITH INDEPENDENT POINTER TRACKING & HEARTBEAT
@@ -2131,6 +2422,7 @@ document.querySelectorAll('.dpad-btn').forEach(btn => {
     btn.classList.add('pressed');
     activePointers.set(e.pointerId, { key, btn });
     activeKeys.add(key);
+    if (navigator.vibrate) navigator.vibrate(12);
     sendKey(key, true);
     startKeyHeartbeat();
   });
@@ -2175,6 +2467,7 @@ document.querySelectorAll('.pad-action-btn').forEach(btn => {
     btn.classList.add('pressed');
     activePointers.set(e.pointerId, { key, btn });
     activeKeys.add(key);
+    if (navigator.vibrate) navigator.vibrate(12);
     sendKey(key, true);
     startKeyHeartbeat();
   });
