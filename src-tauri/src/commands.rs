@@ -635,3 +635,42 @@ pub fn macro_delete(st: State<'_, AppState>, name: String) -> Result<serde_json:
     Ok(serde_json::json!({ "ok": true, "message": format!("Deleted macro '{name}'") }))
 }
 
+#[tauri::command]
+pub fn vpn_get_status(st: State<'_, AppState>) -> crate::vpn::VpnStatus {
+    st.vpn.get_status()
+}
+
+#[tauri::command]
+pub async fn vpn_connect(st: State<'_, AppState>, engine: String) -> Result<crate::vpn::VpnStatus, String> {
+    let vpn = Arc::clone(&st.vpn);
+    blocking(move || vpn.connect(&engine)).await
+}
+
+#[tauri::command]
+pub async fn vpn_disconnect(st: State<'_, AppState>) -> Result<crate::vpn::VpnStatus, String> {
+    let vpn = Arc::clone(&st.vpn);
+    blocking(move || vpn.disconnect()).await
+}
+
+#[tauri::command]
+pub async fn vpn_test_ping(st: State<'_, AppState>) -> Result<crate::vpn::PingResult, String> {
+    let vpn = Arc::clone(&st.vpn);
+    blocking(move || Ok(vpn.test_ping())).await
+}
+
+#[tauri::command]
+pub async fn vpn_reset_network(st: State<'_, AppState>) -> Result<String, String> {
+    let vpn = Arc::clone(&st.vpn);
+    blocking(move || vpn.reset_network()).await
+}
+
+#[tauri::command]
+pub fn vpn_get_logs(st: State<'_, AppState>, max_lines: Option<usize>) -> Vec<String> {
+    st.vpn.get_logs(max_lines.unwrap_or(50))
+}
+
+#[tauri::command]
+pub fn vpn_set_auto_reconnect(st: State<'_, AppState>, enabled: bool) {
+    st.vpn.set_auto_reconnect(enabled);
+}
+

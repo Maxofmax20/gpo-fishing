@@ -21,6 +21,9 @@ import type {
   WindowInfo,
   CustomMacro,
   RecorderStatus,
+  VpnEngine,
+  VpnStatus,
+  PingResult,
 } from "./types";
 
 export const api = {
@@ -79,6 +82,13 @@ export const api = {
   macroRename: (idOrName: string, newName: string) =>
     invoke<{ ok: boolean; message: string }>("macro_rename", { idOrName, newName }),
   macroDelete: (name: string) => invoke<{ ok: boolean; message: string }>("macro_delete", { name }),
+  vpnGetStatus: () => invoke<VpnStatus>("vpn_get_status"),
+  vpnConnect: (engine: VpnEngine) => invoke<VpnStatus>("vpn_connect", { engine }),
+  vpnDisconnect: () => invoke<VpnStatus>("vpn_disconnect"),
+  vpnTestPing: () => invoke<PingResult>("vpn_test_ping"),
+  vpnResetNetwork: () => invoke<string>("vpn_reset_network"),
+  vpnGetLogs: (maxLines?: number) => invoke<string[]>("vpn_get_logs", { maxLines }),
+  vpnSetAutoReconnect: (enabled: boolean) => invoke<void>("vpn_set_auto_reconnect", { enabled }),
 };
 
 type Events = {

@@ -300,3 +300,24 @@ export type RecorderStatus = {
   message: string;
 };
 
+export type VpnEngine = "dedicated" | "warp" | "psiphon" | "none";
+
+export type VpnStatus = {
+  connected: boolean;
+  engine: VpnEngine;
+  ip: string;
+  country: string;
+  city: string;
+  latency_ms: number | null;
+  uptime_secs: number;
+  auto_reconnect: boolean;
+  last_error: string | null;
+};
+
+export type PingResult = {
+  success: boolean;
+  latency_ms: number;
+  target: string;
+  error: string | null;
+};
+

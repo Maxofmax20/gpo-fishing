@@ -9,6 +9,7 @@ pub mod tray;
 pub mod webhook;
 pub mod windows;
 pub mod discord_rpc;
+pub mod vpn;
 
 use tauri::Manager;
 
@@ -89,6 +90,13 @@ pub fn run() {
             commands::macro_play,
             commands::macro_rename,
             commands::macro_delete,
+            commands::vpn_get_status,
+            commands::vpn_connect,
+            commands::vpn_disconnect,
+            commands::vpn_test_ping,
+            commands::vpn_reset_network,
+            commands::vpn_get_logs,
+            commands::vpn_set_auto_reconnect,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

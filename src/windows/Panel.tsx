@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { BookOpen, Download, Film, Gauge, Globe, ListChecks, Minus, Settings2, SlidersHorizontal, X } from "lucide-react";
+import { BookOpen, Download, Film, Gauge, Globe, ListChecks, Minus, Settings2, Shield, SlidersHorizontal, X } from "lucide-react";
 import { api, on } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { cx, Dot } from "../components/primitives";
@@ -13,8 +13,9 @@ import Setup from "../pages/Setup";
 import Features from "../pages/Features";
 import SettingsPage from "../pages/Settings";
 import Macros from "../pages/Macros";
+import VpnPage from "../pages/VpnPage";
 
-type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "settings";
+type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "vpn" | "settings";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "Dashboard", icon: <Gauge size={17} /> },
@@ -22,6 +23,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "setup", label: "Setup", icon: <ListChecks size={17} /> },
   { id: "features", label: "Features", icon: <SlidersHorizontal size={17} /> },
   { id: "macros", label: "Macros", icon: <Film size={17} /> },
+  { id: "vpn", label: "VPN & Relay", icon: <Shield size={17} /> },
   { id: "settings", label: "Settings", icon: <Settings2 size={17} /> },
 ];
 
@@ -94,12 +96,12 @@ export default function Panel() {
     };
   }, []);
 
-  const gated = ready && !roblox && !skipGate;
+  const gated = ready && !roblox && !skipGate && tab !== "vpn";
 
   return (
     <div className="h-full w-full p-1.5">
       <div key={appear} className="glass rounded-2xl h-full w-full flex overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.5)] rise">
-        <nav className={cx("w-14 shrink-0 flex flex-col items-center py-3 border-r border-line bg-black/20", gated && "opacity-40 pointer-events-none")}>
+        <nav className="w-14 shrink-0 flex flex-col items-center py-3 border-r border-line bg-black/20">
           <img src={logo} alt="" draggable={false} className="w-9 h-9 rounded-xl mb-4 drag shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
           {TABS.map((t) => (
             <button
@@ -160,6 +162,7 @@ export default function Panel() {
                 {tab === "setup" && <Setup />}
                 {tab === "features" && <Features />}
                 {tab === "macros" && <Macros />}
+                {tab === "vpn" && <VpnPage />}
                 {tab === "settings" && <SettingsPage />}
               </>
             )}

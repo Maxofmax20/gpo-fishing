@@ -22,6 +22,7 @@ pub struct AppState {
     pub store: Arc<Store>,
     pub bot: Arc<Bot>,
     pub webhook: Arc<WebhookQueue>,
+    pub vpn: Arc<crate::vpn::VpnManager>,
     pub overlay_session: Mutex<Option<serde_json::Value>>,
     pub resume_after_overlay: AtomicBool,
     pub panel_requested: AtomicBool,
@@ -43,6 +44,7 @@ pub fn build_state() -> AppState {
     let platform = platform::build();
     let roblox = Arc::new(RwLock::new(platform.window.find()));
     let webhook = WebhookQueue::start(Arc::clone(&settings));
+    let vpn = crate::vpn::VpnManager::new();
     let (tx, rx) = unbounded::<BotEvent>();
     let bot = Bot::new(platform.clone(), Arc::clone(&settings), Arc::clone(&roblox), tx.clone(), Arc::clone(&webhook), Arc::clone(&store));
     crate::bot::recorder::init_roblox_ref(Arc::clone(&roblox), Arc::clone(&store));
@@ -54,6 +56,7 @@ pub fn build_state() -> AppState {
         store,
         bot,
         webhook,
+        vpn,
         overlay_session: Mutex::new(None),
         resume_after_overlay: AtomicBool::new(false),
         panel_requested: AtomicBool::new(false),
