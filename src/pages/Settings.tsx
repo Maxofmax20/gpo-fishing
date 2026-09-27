@@ -169,6 +169,7 @@ export default function SettingsPage() {
 
       <Section title="Hotkeys">
         <HotkeyRow label="Start / pause" value={s.hotkeys.toggle} onChange={(v) => update((x) => void (x.hotkeys.toggle = v))} />
+        <HotkeyRow label="Record macro (start / stop)" value={s.hotkeys.record_toggle || "F7"} onChange={(v) => update((x) => void (x.hotkeys.record_toggle = v))} />
         <HotkeyRow label="Edit areas" value={s.hotkeys.overlay} onChange={(v) => update((x) => void (x.hotkeys.overlay = v))} />
         <HotkeyRow label="Hide HUD" value={s.hotkeys.hide_hud} onChange={(v) => update((x) => void (x.hotkeys.hide_hud = v))} />
         <HotkeyRow label="Quit" value={s.hotkeys.quit} onChange={(v) => update((x) => void (x.hotkeys.quit = v))} />

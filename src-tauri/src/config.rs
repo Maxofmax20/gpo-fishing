@@ -295,11 +295,18 @@ pub struct Hotkeys {
     pub overlay: String,
     pub quit: String,
     pub hide_hud: String,
+    pub record_toggle: String,
 }
 
 impl Default for Hotkeys {
     fn default() -> Self {
-        Self { toggle: "F1".into(), overlay: "F2".into(), quit: "F3".into(), hide_hud: "F4".into() }
+        Self {
+            toggle: "F1".into(),
+            overlay: "F2".into(),
+            quit: "F3".into(),
+            hide_hud: "F4".into(),
+            record_toggle: "F7".into(),
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use crate::app::AppState;
@@ -11,6 +11,7 @@ enum Action {
     Overlay,
     Quit,
     HideHud,
+    RecordToggle,
 }
 
 pub fn register(app: &AppHandle, keys: &Hotkeys) -> Result<(), String> {
@@ -21,6 +22,7 @@ pub fn register(app: &AppHandle, keys: &Hotkeys) -> Result<(), String> {
         (keys.overlay.as_str(), Action::Overlay),
         (keys.quit.as_str(), Action::Quit),
         (keys.hide_hud.as_str(), Action::HideHud),
+        (keys.record_toggle.as_str(), Action::RecordToggle),
     ];
     for (combo, action) in bindings {
         if combo.trim().is_empty() {
@@ -63,6 +65,18 @@ fn dispatch(app: &AppHandle, action: Action) {
             *st.settings.write() = s.clone();
             let _ = st.store.save(&s);
             windows::set_hud_visible(app, v);
+        }
+        Action::RecordToggle => {
+            let res = crate::bot::recorder::toggle_recording();
+            match res {
+                Ok(now_recording) => {
+                    tracing::info!("📼 Macro recording toggled via hotkey. Recording: {now_recording}");
+                }
+                Err(e) => {
+                    tracing::warn!("📼 Macro record hotkey error: {e}");
+                }
+            }
+            let _ = app.emit("macro:status_changed", ());
         }
     }
 }

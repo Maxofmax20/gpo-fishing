@@ -16,7 +16,7 @@ import {
   X,
   Laptop,
 } from "lucide-react";
-import { api } from "../lib/ipc";
+import { api, on } from "../lib/ipc";
 import type { CustomMacro, RecorderStatus } from "../lib/types";
 import {
   Button,
@@ -72,7 +72,11 @@ export default function Macros() {
       refresh,
       status.is_recording || status.is_playing ? 700 : 2000,
     );
-    return () => clearInterval(interval);
+    const unlistenPromise = on("macro:status_changed", () => refresh());
+    return () => {
+      clearInterval(interval);
+      unlistenPromise.then((unlisten) => unlisten());
+    };
   }, [status.is_recording, status.is_playing]);
 
   const activeMacro =
@@ -213,7 +217,7 @@ export default function Macros() {
           }
           sub={
             status.is_recording ? (
-              <>Press <Kbd>F8</Kbd> inside Roblox at any time to instantly save.</>
+              <>Press <Kbd>F7</Kbd> or <Kbd>F8</Kbd> inside Roblox at any time to instantly save.</>
             ) : status.is_playing ? (
               status.message || "Executing sequence with authentic timings and key holds."
             ) : activeMacro ? (
@@ -232,7 +236,7 @@ export default function Macros() {
                   onClick={handleStopRecord}
                   icon={<CheckCircle2 size={13} />}
                 >
-                  Save (F8)
+                  Save (F7 / F8)
                 </Button>
                 <Button
                   size="sm"
@@ -420,12 +424,12 @@ export default function Macros() {
               title={
                 <span className="flex items-center gap-1.5 text-[12px] text-fg-dim">
                   <Laptop size={13} className="text-accent" />
-                  Laptop Keyboard Stop Hotkeys
+                  Laptop & In-Game Keyboard Shortcuts
                 </span>
               }
               sub={
                 <span>
-                  Tap <Kbd>F8</Kbd> or <Kbd>F9</Kbd> anywhere on your keyboard (even while playing Roblox) to immediately cancel macro playback or loops.
+                  Tap <Kbd>F7</Kbd> anywhere to start or stop recording (configurable in Settings). Tap <Kbd>F8</Kbd> inside Roblox to quick-save a recording, or <Kbd>F8</Kbd> / <Kbd>F9</Kbd> to cancel playback loops.
                 </span>
               }
             />
@@ -551,7 +555,7 @@ export default function Macros() {
                 onClick={handleStartRecord}
                 icon={<Plus size={13} />}
               >
-                Record
+                Record (F7)
               </Button>
             </div>
           }

@@ -110,6 +110,7 @@ type Events = {
   "guide:open": null;
   "settings:changed": Settings;
   "panel:visible": boolean;
+  "macro:status_changed": null;
 };
 
 export function on<K extends keyof Events>(name: K, cb: (payload: Events[K]) => void): Promise<UnlistenFn> {

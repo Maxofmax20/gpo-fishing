@@ -176,7 +176,7 @@ export type Settings = {
     radiant_admiral_offset: number | null;
     merchant_offset: number | null;
   };
-  hotkeys: { toggle: string; overlay: string; quit: string; hide_hud: string };
+  hotkeys: { toggle: string; overlay: string; quit: string; hide_hud: string; record_toggle: string };
   ui: { theme: string; hud_offset: RelPoint; hud_visible: boolean; panel_offset: RelPoint; panel_size: [number, number]; log_level: string };
   watchdog: { enabled: boolean; heartbeat_timeout_s: number; max_restarts: number; restart_backoff_s: number };
   auto_update: boolean;

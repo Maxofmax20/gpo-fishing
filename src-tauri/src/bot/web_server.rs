@@ -1844,7 +1844,7 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
         <!-- Laptop Hotkey Banner -->
         <div class="macro-hotkey-box">
           <span style="font-size: 1rem;">💻</span>
-          <div><b>Laptop Stop Hotkeys:</b> Tap <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F8</code> or <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F9</code> on your PC keyboard anytime to halt playback instantly.</div>
+          <div><b>PC & Laptop Shortcuts:</b> Tap <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F7</code> to start/stop recording, <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F8</code> to save recording or cancel playback, and <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F9</code> to stop playback.</div>
         </div>
 
         <!-- Step Inspector Preview -->

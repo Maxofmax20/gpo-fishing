@@ -595,6 +595,14 @@ pub fn macro_record(
             crate::bot::recorder::cancel_recording();
             Ok(serde_json::json!({ "ok": true, "message": "Recording cancelled" }))
         }
+        "toggle" => {
+            let is_now_rec = crate::bot::recorder::toggle_recording()?;
+            Ok(serde_json::json!({
+                "ok": true,
+                "is_recording": is_now_rec,
+                "message": if is_now_rec { "Recording started" } else { "Recording stopped and saved" }
+            }))
+        }
         _ => Err("Unknown action".into()),
     }
 }

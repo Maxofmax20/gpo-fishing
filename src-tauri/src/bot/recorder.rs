@@ -135,6 +135,37 @@ pub fn get_status() -> RecorderStatus {
     STATUS.read().clone()
 }
 
+pub fn is_recording() -> bool {
+    IS_RECORDING.load(Ordering::SeqCst)
+}
+
+pub fn toggle_recording() -> Result<bool, String> {
+    static LAST_TOGGLE: parking_lot::Mutex<Option<Instant>> = parking_lot::Mutex::new(None);
+    {
+        let mut last = LAST_TOGGLE.lock();
+        if let Some(t) = *last {
+            if t.elapsed() < Duration::from_millis(600) {
+                return Ok(IS_RECORDING.load(Ordering::SeqCst));
+            }
+        }
+        *last = Some(Instant::now());
+    }
+
+    if IS_RECORDING.load(Ordering::SeqCst) {
+        if let Some(store) = STORE_REF.read().as_ref() {
+            let m = stop_recording("", store)?;
+            tracing::info!("📼 Macro recording stopped via shortcut: '{}' ({} steps)", m.name, m.steps.len());
+            Ok(false)
+        } else {
+            Err("No store reference available".into())
+        }
+    } else {
+        start_recording(RecordMode::PcWindow)?;
+        tracing::info!("📼 Macro recording started via shortcut");
+        Ok(true)
+    }
+}
+
 pub fn start_recording(mode: RecordMode) -> Result<(), String> {
     if IS_RECORDING.swap(true, Ordering::SeqCst) {
         return Err("Already recording a macro".into());
@@ -152,7 +183,7 @@ pub fn start_recording(mode: RecordMode) -> Result<(), String> {
     st.record_mode = Some(mode);
     st.recorded_steps_count = 0;
     st.message = match mode {
-        RecordMode::PcWindow => "Recording PC window... Click & move in Roblox. Press F8 to save!".into(),
+        RecordMode::PcWindow => "Recording PC window... Click & move in Roblox. Press F7 or F8 to save!".into(),
         RecordMode::WebScreen => "Recording via live screen... Tap buttons and controls.".into(),
     };
 
@@ -177,6 +208,7 @@ fn spawn_pc_recorder_thread() {
                 use windows::Win32::Foundation::POINT;
 
                 let mut prev_f8_down = false;
+                let mut prev_f7_down = false;
 
                 struct KeyState {
                     vk: i32,
@@ -233,15 +265,17 @@ fn spawn_pc_recorder_thread() {
                 };
 
                 while IS_RECORDING.load(Ordering::SeqCst) {
-                    // Hotkey F8 (0x77) finishes recording from within Roblox
+                    // Hotkey F8 (0x77) or F7 (0x76) finishes recording from within Roblox
                     let f8_down = unsafe { (GetAsyncKeyState(0x77) as u16 & 0x8000) != 0 };
-                    if f8_down && !prev_f8_down {
+                    let f7_down = unsafe { (GetAsyncKeyState(0x76) as u16 & 0x8000) != 0 };
+                    if (f8_down && !prev_f8_down) || (f7_down && !prev_f7_down) {
                         if let Some(store) = STORE_REF.read().as_ref() {
                             let _ = stop_recording("", store);
                             break;
                         }
                     }
                     prev_f8_down = f8_down;
+                    prev_f7_down = f7_down;
 
                     let info_opt = get_roblox_window_info();
                     if let Some(info) = info_opt {
