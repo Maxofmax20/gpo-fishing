@@ -282,12 +282,17 @@ function QuickMacroRow({
         <CustomSelect
           value={speed}
           options={[
+            { value: "0.5", label: "0.5x" },
             { value: "0.75", label: "0.75x" },
-            { value: "1.0", label: "1.0x" },
-            { value: "1.25", label: "1.25x" },
+            { value: "1.0", label: "1.0x (Normal)" },
             { value: "1.5", label: "1.5x" },
             { value: "2.0", label: "2.0x" },
             { value: "3.0", label: "3.0x" },
+            { value: "5.0", label: "5.0x" },
+            { value: "10.0", label: "10.0x" },
+            { value: "25.0", label: "25.0x" },
+            { value: "50.0", label: "50.0x" },
+            { value: "100.0", label: "100x (Turbo Max)" },
           ]}
           onChange={(v) => setSpeed(v)}
         />

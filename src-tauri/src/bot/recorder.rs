@@ -539,7 +539,7 @@ pub fn play_macro(
         .find(|m| m.id == name_or_id || m.name.eq_ignore_ascii_case(name_or_id))
         .ok_or_else(|| format!("Macro '{name_or_id}' not found"))?;
 
-    let sp = speed.unwrap_or(1.0).clamp(0.25, 6.0);
+    let sp = speed.unwrap_or(1.0).clamp(0.1, 100.0);
     let target_loops = if loop_mode {
         max_loops.unwrap_or(0)
     } else {
@@ -554,11 +554,11 @@ pub fn play_macro(
         st.current_loop = 1;
         st.is_looping = loop_mode;
         st.message = if target_loops > 1 {
-            format!("Playing '{}' (Loop 1 of {target_loops})", target.name)
+            format!("Playing '{}' (Loop 1 of {target_loops}, {:.1}x)", target.name, sp)
         } else if loop_mode && target_loops == 0 {
-            format!("Playing '{}' (Infinite Loop)", target.name)
+            format!("Playing '{}' (Infinite Loop, {:.1}x)", target.name, sp)
         } else if (sp - 1.0).abs() > 0.05 {
-            format!("Playing '{}' ({:.2}x speed)", target.name, sp)
+            format!("Playing '{}' ({:.1}x speed)", target.name, sp)
         } else {
             format!("Playing '{}'", target.name)
         };
@@ -567,7 +567,7 @@ pub fn play_macro(
     std::thread::spawn(move || {
         let mut loop_count = 1u32;
         ctx.log_info(&format!(
-            "📼 Starting playback of macro '{}' (speed={:.2}x, loop={loop_mode}, max_loops={target_loops})",
+            "📼 Starting playback of macro '{}' (speed={:.1}x, loop={loop_mode}, max_loops={target_loops})",
             target.name, sp
         ));
 
@@ -597,8 +597,8 @@ pub fn play_macro(
 
                 match step {
                     MacroStep::Click { rx, ry, button, delay_ms } => {
-                        let scaled_delay = ((*delay_ms as f32) / sp).round().max(10.0) as u64;
-                        if !sleep_responsive(scaled_delay) {
+                        let scaled_delay = ((*delay_ms as f32) / sp).round() as u64;
+                        if scaled_delay > 0 && !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
@@ -607,21 +607,29 @@ pub fn play_macro(
                             let px = rect.x + (rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
                             let py = rect.y + (ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
                             ctx.platform.input.move_to(PxPoint { x: px, y: py });
-                            std::thread::sleep(Duration::from_millis((20.0 / sp).round().max(10.0) as u64));
+                            let pre_sleep = if sp >= 20.0 { 0 } else if sp >= 5.0 { 2 } else { (20.0 / sp).round().max(4.0) as u64 };
+                            if pre_sleep > 0 {
+                                std::thread::sleep(Duration::from_millis(pre_sleep));
+                            }
                             let btn = if button == "right" {
                                 MouseButton::Right
                             } else {
                                 MouseButton::Left
                             };
                             ctx.platform.input.button(btn, true);
-                            std::thread::sleep(Duration::from_millis((40.0 / sp).round().max(15.0) as u64));
+                            let hold_sleep = if sp >= 50.0 { 1 } else if sp >= 10.0 { 3 } else { (40.0 / sp).round().max(6.0) as u64 };
+                            std::thread::sleep(Duration::from_millis(hold_sleep));
                             ctx.platform.input.button(btn, false);
+                            let post_sleep = if sp >= 20.0 { 0 } else if sp >= 5.0 { 1 } else { (15.0 / sp).round().max(3.0) as u64 };
+                            if post_sleep > 0 {
+                                std::thread::sleep(Duration::from_millis(post_sleep));
+                            }
                         }
                     }
                     MacroStep::Drag { start_rx, start_ry, end_rx, end_ry, duration_ms, delay_ms } => {
-                        let scaled_delay = ((*delay_ms as f32) / sp).round().max(10.0) as u64;
-                        let scaled_duration = ((*duration_ms as f32) / sp).round().max(40.0) as u64;
-                        if !sleep_responsive(scaled_delay) {
+                        let scaled_delay = ((*delay_ms as f32) / sp).round() as u64;
+                        let scaled_duration = if sp >= 50.0 { 4 } else if sp >= 10.0 { 12 } else { ((*duration_ms as f32) / sp).round().max(20.0) as u64 };
+                        if scaled_delay > 0 && !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
@@ -634,21 +642,23 @@ pub fn play_macro(
 
                             // 1. Move to start position
                             ctx.platform.input.move_to(PxPoint { x: start_px, y: start_py });
-                            std::thread::sleep(Duration::from_millis((30.0 / sp).round().max(15.0) as u64));
+                            let pre_drag = if sp >= 20.0 { 1 } else { (30.0 / sp).round().max(4.0) as u64 };
+                            std::thread::sleep(Duration::from_millis(pre_drag));
 
                             // 2. Mouse button DOWN
                             ctx.platform.input.button(MouseButton::Left, true);
-                            std::thread::sleep(Duration::from_millis((40.0 / sp).round().max(20.0) as u64));
+                            let down_wait = if sp >= 20.0 { 2 } else { (40.0 / sp).round().max(6.0) as u64 };
+                            std::thread::sleep(Duration::from_millis(down_wait));
 
-                            // 3. Smooth micro-step interpolation
-                            let num_steps = ((scaled_duration as f32 / 12.0).round() as i32).clamp(8, 40);
-                            let step_delay = (scaled_duration / num_steps as u64).max(8);
+                            // 3. Step interpolation
+                            let num_steps = if sp >= 50.0 { 2 } else if sp >= 10.0 { 4 } else { ((scaled_duration as f32 / 12.0).round() as i32).clamp(4, 30) };
+                            let step_delay = if sp >= 20.0 { 1 } else { (scaled_duration / num_steps as u64).max(2) };
                             for i in 1..=num_steps {
                                 if STOP_PLAYBACK_REQUESTED.load(Ordering::SeqCst) {
                                     break;
                                 }
                                 let t = i as f32 / num_steps as f32;
-                                let ease = t * t * (3.0 - 2.0 * t); // smooth ease in-out
+                                let ease = t * t * (3.0 - 2.0 * t);
                                 let cur_x = (start_px as f32 + (end_px - start_px) as f32 * ease).round() as i32;
                                 let cur_y = (start_py as f32 + (end_py - start_py) as f32 * ease).round() as i32;
                                 ctx.platform.input.move_to(PxPoint { x: cur_x, y: cur_y });
@@ -657,37 +667,40 @@ pub fn play_macro(
 
                             // 4. Ensure at target position
                             ctx.platform.input.move_to(PxPoint { x: end_px, y: end_py });
-                            std::thread::sleep(Duration::from_millis((40.0 / sp).round().max(20.0) as u64));
+                            let post_drag = if sp >= 20.0 { 1 } else { (40.0 / sp).round().max(6.0) as u64 };
+                            std::thread::sleep(Duration::from_millis(post_drag));
 
                             // 5. Mouse button UP
                             ctx.platform.input.button(MouseButton::Left, false);
-                            std::thread::sleep(Duration::from_millis((25.0 / sp).round().max(10.0) as u64));
+                            let up_wait = if sp >= 20.0 { 1 } else { (25.0 / sp).round().max(3.0) as u64 };
+                            std::thread::sleep(Duration::from_millis(up_wait));
                         }
                     }
                     MacroStep::KeyTap { key, delay_ms } => {
-                        let scaled_delay = ((*delay_ms as f32) / sp).round().max(10.0) as u64;
-                        if !sleep_responsive(scaled_delay) {
+                        let scaled_delay = ((*delay_ms as f32) / sp).round() as u64;
+                        if scaled_delay > 0 && !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
                         ctx.ensure_roblox_focus();
                         if let Some(k) = parse_key(key) {
                             ctx.platform.input.key(k, true);
-                            std::thread::sleep(Duration::from_millis((50.0 / sp).round().max(20.0) as u64));
+                            let tap_dur = if sp >= 50.0 { 1 } else if sp >= 10.0 { 3 } else { (50.0 / sp).round().max(5.0) as u64 };
+                            std::thread::sleep(Duration::from_millis(tap_dur));
                             ctx.platform.input.key(k, false);
                         }
                     }
                     MacroStep::KeyHold { key, duration_ms, delay_ms } => {
-                        let scaled_delay = ((*delay_ms as f32) / sp).round().max(10.0) as u64;
-                        let scaled_duration = ((*duration_ms as f32) / sp).round().max(30.0) as u64;
-                        if !sleep_responsive(scaled_delay) {
+                        let scaled_delay = ((*delay_ms as f32) / sp).round() as u64;
+                        let scaled_duration = if sp >= 50.0 { ((*duration_ms as f32) / sp).round().max(1.0) as u64 } else { ((*duration_ms as f32) / sp).round().max(4.0) as u64 };
+                        if scaled_delay > 0 && !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
                         ctx.ensure_roblox_focus();
                         if let Some(k) = parse_key(key) {
                             ctx.platform.input.key(k, true);
-                            if !sleep_responsive(scaled_duration) {
+                            if scaled_duration > 0 && !sleep_responsive(scaled_duration) {
                                 ctx.platform.input.key(k, false);
                                 finished_steps = false;
                                 break;
@@ -696,8 +709,8 @@ pub fn play_macro(
                         }
                     }
                     MacroStep::MouseMove { rx, ry, delay_ms } => {
-                        let scaled_delay = ((*delay_ms as f32) / sp).round().max(10.0) as u64;
-                        if !sleep_responsive(scaled_delay) {
+                        let scaled_delay = ((*delay_ms as f32) / sp).round() as u64;
+                        if scaled_delay > 0 && !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
@@ -709,8 +722,8 @@ pub fn play_macro(
                         }
                     }
                     MacroStep::Sleep { ms } => {
-                        let scaled_ms = ((*ms as f32) / sp).round().max(10.0) as u64;
-                        if !sleep_responsive(scaled_ms) {
+                        let scaled_ms = ((*ms as f32) / sp).round() as u64;
+                        if scaled_ms > 0 && !sleep_responsive(scaled_ms) {
                             finished_steps = false;
                             break;
                         }
@@ -727,8 +740,8 @@ pub fn play_macro(
             }
 
             loop_count += 1;
-            let loop_delay = (250.0 / sp).round().max(80.0) as u64;
-            if !sleep_responsive(loop_delay) {
+            let loop_delay = if sp >= 50.0 { 1 } else if sp >= 10.0 { 4 } else { (250.0 / sp).round().max(10.0) as u64 };
+            if loop_delay > 0 && !sleep_responsive(loop_delay) {
                 break;
             }
         }

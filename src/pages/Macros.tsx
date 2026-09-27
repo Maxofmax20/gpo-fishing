@@ -384,20 +384,35 @@ export default function Macros() {
 
             <Row
               title="Playback Speed"
-              sub="Scale all delays, movement hold durations, and drag timings."
+              sub="Scale all delays, movement hold durations, and drag timings up to 100x Turbo."
               right={
-                <Segmented
-                  value={speed}
-                  options={[
-                    { value: "0.75", label: "0.75x" },
-                    { value: "1.0", label: "1.0x" },
-                    { value: "1.25", label: "1.25x" },
-                    { value: "1.5", label: "1.5x" },
-                    { value: "2.0", label: "2.0x" },
-                    { value: "3.0", label: "3.0x" },
-                  ]}
-                  onChange={setSpeed}
-                />
+                <div className="flex items-center gap-2 flex-wrap justify-end">
+                  <Segmented
+                    value={speed}
+                    options={[
+                      { value: "1.0", label: "1x" },
+                      { value: "2.0", label: "2x" },
+                      { value: "5.0", label: "5x" },
+                      { value: "10.0", label: "10x" },
+                      { value: "25.0", label: "25x" },
+                      { value: "50.0", label: "50x" },
+                      { value: "100.0", label: "100x Turbo" },
+                    ]}
+                    onChange={setSpeed}
+                  />
+                  <div className="flex items-center gap-1 bg-surface-2 px-2 py-1 rounded-lg border border-line">
+                    <input
+                      type="number"
+                      min="0.1"
+                      max="100"
+                      step="0.5"
+                      value={speed}
+                      onChange={(e) => setSpeed(e.target.value)}
+                      className="w-12 bg-transparent text-right text-xs font-mono font-bold text-accent outline-none"
+                    />
+                    <span className="text-xs text-fg-dim font-bold">x</span>
+                  </div>
+                </div>
               }
             />
 

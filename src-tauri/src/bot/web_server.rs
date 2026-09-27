@@ -1818,12 +1818,13 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
           <span style="font-size: 0.74rem; font-weight: 700; color: var(--text-dim);">⚡ Playback Speed:</span>
           <div class="macro-pill-group" id="speed-pills">
-            <button class="macro-pill-btn" onclick="setWebSpeed(0.75, this)">0.75x</button>
-            <button class="macro-pill-btn active" onclick="setWebSpeed(1.0, this)">1.0x</button>
-            <button class="macro-pill-btn" onclick="setWebSpeed(1.25, this)">1.25x</button>
-            <button class="macro-pill-btn" onclick="setWebSpeed(1.5, this)">1.5x</button>
-            <button class="macro-pill-btn" onclick="setWebSpeed(2.0, this)">2.0x</button>
-            <button class="macro-pill-btn" onclick="setWebSpeed(3.0, this)">3.0x</button>
+            <button class="macro-pill-btn active" onclick="setWebSpeed(1.0, this)">1x</button>
+            <button class="macro-pill-btn" onclick="setWebSpeed(2.0, this)">2x</button>
+            <button class="macro-pill-btn" onclick="setWebSpeed(5.0, this)">5x</button>
+            <button class="macro-pill-btn" onclick="setWebSpeed(10.0, this)">10x</button>
+            <button class="macro-pill-btn" onclick="setWebSpeed(25.0, this)">25x</button>
+            <button class="macro-pill-btn" onclick="setWebSpeed(50.0, this)">50x</button>
+            <button class="macro-pill-btn" onclick="setWebSpeed(100.0, this)">100x ⚡</button>
           </div>
         </div>
 
