@@ -605,12 +605,20 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         });
         let rarity = fruit::fruit_rarity(&fruit_name);
 
+        let is_ase = s.fruit_storage.all_seeing_eye;
+        let pity_cap = if is_ase { 40 } else { s.fruit_storage.pity_cap.max(1) };
         let prev_pity = ctx.session.lock().pity_legendary;
         let is_pity_zero = d.is_legendary
-            || prev_pity >= 100
+            || prev_pity >= pity_cap
             || d.pity.as_deref().map(|p| {
                 let clean = p.trim().to_lowercase();
-                clean.starts_with("0/") || clean == "0" || clean.starts_with("o/") || clean == "o" || clean.starts_with("00/")
+                clean.starts_with("0/")
+                    || clean == "0"
+                    || clean.starts_with("o/")
+                    || clean == "o"
+                    || clean.starts_with("00/")
+                    || clean.starts_with("0/40")
+                    || clean.starts_with("0/100")
             }).unwrap_or(false)
             || {
                 let lower = d.text.to_lowercase();
@@ -621,6 +629,8 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
                     || lower.contains("pity 0/")
                     || lower.contains("pity: 0/")
                     || lower.contains("pity 00")
+                    || lower.contains("0/40")
+                    || lower.contains("0/4o")
                     || lower.contains("0/100")
                     || lower.contains("0/300")
             };
@@ -652,7 +662,18 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         ctx.emit_stats();
         ctx.emit(BotEvent::FruitDrop(d.clone()));
 
-        let photo = if s.webhook.send_catch_screenshot {
+        let is_legendary_or_mythical = d.is_legendary
+            || rarity == fruit::FruitRarity::Legendary
+            || rarity == fruit::FruitRarity::Mythical;
+
+        // Screenshot on catch: Sent ONLY when pity is 0, or when getting a Legendary/Mythical fruit!
+        let wants_catch_photo = s.webhook.send_screenshot && (
+            s.webhook.send_catch_screenshot
+            || is_pity_zero
+            || is_legendary_or_mythical
+        );
+
+        let photo = if wants_catch_photo {
             actions::capture_fruit_screenshot(ctx, &s)
         } else {
             None

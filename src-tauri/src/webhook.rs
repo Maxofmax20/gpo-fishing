@@ -141,6 +141,8 @@ impl WebhookQueue {
     pub fn fruit_drop(&self, d: &DropInfo, photo: Option<Vec<u8>>) {
         let fruit_name = d.name.as_deref().unwrap_or("Devil Fruit");
         let rarity = crate::core::fruit::fruit_rarity(fruit_name);
+        let is_ase = self.settings.as_ref().map(|s| s.read().fruit_storage.all_seeing_eye).unwrap_or(true);
+        let cap_str = if is_ase { "40" } else { "100" };
         let pity_info = if let Some(p) = &d.pity {
             if p.starts_with("0/") || d.is_legendary {
                 format!("🌟 Legendary Pity: {p} (HIT! Guaranteed Legendary/Mythical!)")
@@ -148,7 +150,7 @@ impl WebhookQueue {
                 format!("⚡ Legendary Pity: {p}")
             }
         } else if d.is_legendary {
-            "🌟 Legendary Pity: 0/100 (HIT! Guaranteed Legendary/Mythical!)".into()
+            format!("🌟 Legendary Pity: 0/{cap_str} (HIT! Guaranteed Legendary/Mythical!)")
         } else {
             "⚡ Check backpack".into()
         };

@@ -292,15 +292,26 @@ pub fn extract_pity_text(raw: &str) -> Option<String> {
     let lower = raw.to_lowercase();
     for word in lower.split_whitespace() {
         if word.contains('/') {
-            let clean: String = word.chars().filter(|c| c.is_ascii_digit() || *c == '/').collect();
+            let clean: String = word
+                .chars()
+                .map(|c| match c {
+                    'o' | 'O' => '0',
+                    other => other,
+                })
+                .filter(|c| c.is_ascii_digit() || *c == '/')
+                .collect();
             if let Some((curr, total)) = clean.split_once('/') {
                 if !curr.is_empty() && !total.is_empty() {
-                    // In GPO, legendary pity denominator is always 100.
-                    // OCR commonly mistakes '100' for '300' or '00'.
-                    let fixed_total = if total == "300" || total == "100" || total == "00" { "100" } else { total };
-                    if fixed_total == "100" || fixed_total.parse::<u32>().is_ok() {
-                        return Some(format!("{curr}/{fixed_total}"));
-                    }
+                    // In GPO, legendary pity is out of 40 (All-Seeing Eye) or 100 (standard).
+                    // OCR commonly mistakes '100' for '300' or '00', or '40' for '4'.
+                    let fixed_total = if total == "300" || total == "100" || total == "00" {
+                        "100"
+                    } else if total == "40" || total == "4" {
+                        "40"
+                    } else {
+                        total
+                    };
+                    return Some(format!("{curr}/{fixed_total}"));
                 }
             }
         }
@@ -379,12 +390,17 @@ fn is_zero(w: &str) -> bool {
 
 fn is_legendary(words: &[&str]) -> bool {
     if let Some(i) = words.iter().position(|w| jaro_winkler(w, "pity") >= 0.85) {
-        return words.get(i + 1).is_some_and(|w| is_zero(w));
+        if words.get(i + 1).is_some_and(|w| is_zero(w)) {
+            return true;
+        }
     }
     words.iter().any(|w| {
         let mut it = w.splitn(2, '/');
         match (it.next(), it.next()) {
-            (Some(z), Some(rest)) => is_zero(z) && rest.parse::<u32>().is_ok_and(|n| (1..=100).contains(&n)),
+            (Some(z), Some(rest)) => {
+                let clean_rest = rest.replace('o', "0").replace('O', "0");
+                is_zero(z) && clean_rest.parse::<u32>().is_ok_and(|n| (1..=300).contains(&n))
+            }
             _ => false,
         }
     })
@@ -770,6 +786,12 @@ mod tests {
         assert!(d.is_legendary);
         let d = detect_drop(&lex(), "devil fruit 3/37").unwrap();
         assert!(!d.is_legendary);
+        let d_ase = detect_drop(&lex(), "You got a devil fruit drop check your backpack legendary pity 0/40").unwrap();
+        assert!(d_ase.is_legendary);
+        assert_eq!(extract_pity_text("legendary pity: 0/40"), Some("0/40".into()));
+        assert_eq!(extract_pity_text("legendary pity: 15/40"), Some("15/40".into()));
+        assert_eq!(extract_pity_text("legendary pity: 0/4o"), Some("0/40".into()));
+        assert_eq!(extract_pity_text("legendary pity: 25/100"), Some("25/100".into()));
     }
 
     #[test]

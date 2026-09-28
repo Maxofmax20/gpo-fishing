@@ -284,16 +284,21 @@ fn handle_command(
             }
         }
         "/pity" | "pity" => {
+            let s = settings.read();
+            let is_ase = s.fruit_storage.all_seeing_eye;
+            let cap = if is_ase { 40 } else { s.fruit_storage.pity_cap.max(1) };
             let stats = bot.ctx().session.lock().stats();
             let text = format!(
                 "⚡ <b>GPO Pity Status</b>\n\n\
                  • <b>Fruit Pity</b>: <b>{}</b> fish (since last fruit)\n\
-                 • <b>Legendary Pity</b>: <b>{}</b> fish\n\
+                 • <b>Legendary Pity</b>: <b>{}/{}</b> ({})\n\
                  • <b>Fruits Caught</b>: <b>{}</b>\n\
                  • <b>Total Fish</b>: <b>{}</b>\n\
                  • <b>Last Fruit</b>: {}",
                 stats.pity_fruit,
                 stats.pity_legendary,
+                cap,
+                if is_ase { "All-Seeing Eye: 40 Cap" } else { "Standard: 100 Cap" },
                 stats.fruits,
                 stats.fish,
                 stats.last_fruit.as_deref().unwrap_or("None yet")

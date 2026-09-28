@@ -435,6 +435,20 @@ export default function Features() {
             <div className="text-[11px] text-fg-dim pb-1.5 leading-normal">
               ⚡ If pity went to 0 or reset to 0, never drop the fruit even if storage is full. Keeps it safely in your hotbar/inventory.
             </div>
+            <Field wide label="All-Seeing Eye (ASE - 40 Pity Cap)">
+              <Toggle
+                value={s.fruit_storage.all_seeing_eye ?? true}
+                onChange={(v) =>
+                  update((x) => {
+                    x.fruit_storage.all_seeing_eye = v;
+                    x.fruit_storage.pity_cap = v ? 40 : 100;
+                  })
+                }
+              />
+            </Field>
+            <div className="text-[11px] text-fg-dim pb-1.5 leading-normal">
+              👁️ Enables All-Seeing Eye pity rules (40 pity cap instead of 100). Auto-triggers pity 0 protection and screenshots at 0/40.
+            </div>
             <Field label="Dialog wait">
               <Slider value={s.fruit_storage.dialog_wait_ms} min={200} max={3000} step={50} format={(v) => `${v} ms`} onChange={(v) => update((x) => void (x.fruit_storage.dialog_wait_ms = v))} />
             </Field>
@@ -552,8 +566,8 @@ export default function Features() {
               [
                 ["fruit_drop", "Devil fruit caught"],
                 ["send_drop_screenshot", "📸 Send fruit drop screenshot (Ground banner)"],
-                ["send_catch_screenshot", "🎣 Send catch notification photo (Disabled by default)"],
-                ["crop_fruit_screenshot", "✂️ Crop drop screenshots (Focus on banner)"],
+                ["send_catch_screenshot", "🎣 Force photo on ALL fruit catches (Common/Rare)"],
+                ["crop_fruit_screenshot", "✂️ Crop drop & catch screenshots (Focus on banner)"],
                 ["disconnect_alert", "⚠️ Roblox disconnected alert"],
                 ["bait_alert", "🎣 Bait depleted alert"],
                 ["progress", "Progress updates"],

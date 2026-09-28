@@ -212,6 +212,8 @@ pub struct FruitStorage {
     pub never_drop_legendary_or_mythical: bool,
     pub pause_on_protected_fruit: bool,
     pub keep_pity_zero_fruit: bool,
+    pub all_seeing_eye: bool,
+    pub pity_cap: u32,
 }
 
 impl Default for FruitStorage {
@@ -224,6 +226,8 @@ impl Default for FruitStorage {
             never_drop_legendary_or_mythical: true,
             pause_on_protected_fruit: false,
             keep_pity_zero_fruit: true,
+            all_seeing_eye: true,
+            pity_cap: 40,
         }
     }
 }
