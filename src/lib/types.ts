@@ -304,11 +304,12 @@ export type RecorderStatus = {
   message: string;
 };
 
-export type VpnEngine = "dedicated" | "warp" | "psiphon" | "none";
+export type VpnEngine = "auto" | "dedicated" | "warp" | "psiphon" | "wireguard" | "proton" | "windscribe" | "openvpn" | "tailscale" | "mullvad" | "nord" | "clash" | "nekobox" | "v2ray" | "generic" | "none" | (string & {});
 
 export type VpnStatus = {
   connected: boolean;
-  engine: VpnEngine;
+  engine: string;
+  engine_name?: string;
   ip: string;
   country: string;
   city: string;
@@ -316,6 +317,7 @@ export type VpnStatus = {
   uptime_secs: number;
   auto_reconnect: boolean;
   last_error: string | null;
+  auto_detected?: boolean;
 };
 
 export type PingResult = {

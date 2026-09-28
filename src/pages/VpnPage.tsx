@@ -16,7 +16,8 @@ import { Button, Pill, Row, Section, Toggle, cx } from "../components/primitives
 export default function VpnPage() {
   const [status, setStatus] = useState<VpnStatus>({
     connected: false,
-    engine: "dedicated",
+    engine: "auto",
+    engine_name: "Scanning...",
     ip: "Checking...",
     country: "",
     city: "",
@@ -24,9 +25,10 @@ export default function VpnPage() {
     uptime_secs: 0,
     auto_reconnect: true,
     last_error: null,
+    auto_detected: false,
   });
 
-  const [selectedEngine, setSelectedEngine] = useState<VpnEngine>("dedicated");
+  const [selectedEngine, setSelectedEngine] = useState<VpnEngine>("auto");
   const [busy, setBusy] = useState(false);
   const [pingResult, setPingResult] = useState<PingResult | null>(null);
   const [pinging, setPinging] = useState(false);
@@ -40,8 +42,10 @@ export default function VpnPage() {
     try {
       const s = await api.vpnGetStatus();
       setStatus(s);
-      if (s.engine && s.engine !== "none") {
-        setSelectedEngine(s.engine);
+      if (s.connected && s.engine && s.engine !== "none") {
+        if (!selectedEngine || selectedEngine === "auto") {
+          // Keep auto or update
+        }
       }
     } catch {
       // Ignore initial IPC blips
@@ -154,15 +158,16 @@ export default function VpnPage() {
           <div>
             <div className="flex items-center gap-2">
               <span className="font-semibold text-[15px]">
-                {status.connected ? "Relay Active" : "Disconnected"}
+                {status.connected ? "VPN Active" : "VPN Offline"}
               </span>
               <Pill tone={status.connected ? "ok" : "mute"}>
                 {status.connected
-                  ? status.engine === "dedicated"
-                    ? "Frankfurt Dedicated"
-                    : status.engine.toUpperCase()
+                  ? status.engine_name || (status.engine === "dedicated" ? "Dedicated Relay" : status.engine.toUpperCase())
                   : "Offline"}
               </Pill>
+              {status.connected && status.auto_detected && (
+                <Pill tone="accent">Auto-Detected</Pill>
+              )}
             </div>
             <div className="text-[12px] text-fg-dim mt-0.5 flex items-center gap-2 font-mono">
               <Clock size={12} className="text-fg-mute" />
@@ -178,15 +183,26 @@ export default function VpnPage() {
           </div>
         </div>
 
-        <Button
-          kind={status.connected ? "danger" : "primary"}
-          size="md"
-          disabled={busy}
-          onClick={handleToggleConnect}
-          icon={<RefreshCw size={14} className={cx(busy && "animate-spin")} />}
-        >
-          {status.connected ? "Disconnect" : "Connect Now"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            kind="ghost"
+            size="md"
+            disabled={busy}
+            onClick={() => { fetchStatus(); }}
+            icon={<RefreshCw size={14} className={cx(busy && "animate-spin")} />}
+          >
+            Re-scan
+          </Button>
+          <Button
+            kind={status.connected ? "danger" : "primary"}
+            size="md"
+            disabled={busy}
+            onClick={handleToggleConnect}
+            icon={<Zap size={14} />}
+          >
+            {status.connected ? "Disconnect" : "Connect"}
+          </Button>
+        </div>
       </div>
 
       {/* Error notification if any */}
@@ -200,7 +216,25 @@ export default function VpnPage() {
       {/* Network Engine Selection */}
       <Section title="Tunnel Routing Engine">
         <Row
-          title="German Dedicated Relay (Recommended)"
+          title="⚡ Auto-Detect Running VPN (Recommended)"
+          sub={
+            status.connected
+              ? `Active: ${status.engine_name || status.engine}. Macro is automatically linked to this connection.`
+              : "Automatically discovers whichever VPN is active on your PC (Cloudflare WARP, Dedicated Relay, Psiphon, WireGuard, ProtonVPN, Windscribe, OpenVPN, etc.)."
+          }
+          right={
+            <input
+              type="radio"
+              name="vpn_engine"
+              checked={selectedEngine === "auto"}
+              onChange={() => setSelectedEngine("auto")}
+              disabled={status.connected}
+              className="accent-accent w-4 h-4 cursor-pointer"
+            />
+          }
+        />
+        <Row
+          title="German Dedicated Relay"
           sub="Private VLESS-WS-TLS over Port 443 to Frankfurt (92.5.127.89). Zero throttling, low latency, full Roblox UDP pass-through."
           right={
             <input
@@ -214,7 +248,7 @@ export default function VpnPage() {
           }
         />
         <Row
-          title="Cloudflare WARP (Edge Fallback)"
+          title="Cloudflare WARP (Edge Client)"
           sub="Official Cloudflare WARP client tunnel for resilient routing when dedicated relay is in maintenance."
           right={
             <input
