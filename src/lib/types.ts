@@ -127,6 +127,7 @@ export type Settings = {
     fast_reset: boolean;
     telegram_remote: boolean;
     discord_rpc: boolean;
+    multi_roblox: boolean;
   };
   purchase: {
     amount: number;
@@ -322,5 +323,26 @@ export type PingResult = {
   latency_ms: number;
   target: string;
   error: string | null;
+};
+
+export type RobloxInstanceInfo = {
+  pid: number;
+  hwnd: number | null;
+  user_id: string | null;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  universe_id: string | null;
+  game_name: string | null;
+  is_target: boolean;
+};
+
+export type MultiRobloxStatus = {
+  enabled: boolean;
+  mutex_locked: boolean;
+  cookie_locked: boolean;
+  instances_count: number;
+  instances: RobloxInstanceInfo[];
+  target_pid: number | null;
 };
 

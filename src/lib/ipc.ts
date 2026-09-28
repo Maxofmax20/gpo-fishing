@@ -24,6 +24,8 @@ import type {
   VpnEngine,
   VpnStatus,
   PingResult,
+  MultiRobloxStatus,
+  RobloxInstanceInfo,
 } from "./types";
 
 export const api = {
@@ -89,6 +91,14 @@ export const api = {
   vpnResetNetwork: () => invoke<string>("vpn_reset_network"),
   vpnGetLogs: (maxLines?: number) => invoke<string[]>("vpn_get_logs", { maxLines }),
   vpnSetAutoReconnect: (enabled: boolean) => invoke<void>("vpn_set_auto_reconnect", { enabled }),
+  multiRobloxGetStatus: () => invoke<MultiRobloxStatus>("multi_roblox_get_status"),
+  multiRobloxSetEnabled: (enabled: boolean) => invoke<MultiRobloxStatus>("multi_roblox_set_enabled", { enabled }),
+  multiRobloxListInstances: () => invoke<RobloxInstanceInfo[]>("multi_roblox_list_instances"),
+  multiRobloxFocusInstance: (pid: number) => invoke<void>("multi_roblox_focus_instance", { pid }),
+  multiRobloxKillInstance: (pid: number) => invoke<void>("multi_roblox_kill_instance", { pid }),
+  multiRobloxKillAll: () => invoke<number>("multi_roblox_kill_all"),
+  multiRobloxSetTarget: (pid: number | null) => invoke<void>("multi_roblox_set_target", { pid }),
+  multiRobloxLaunch: (placeId?: number) => invoke<void>("multi_roblox_launch", { placeId }),
 };
 
 type Events = {

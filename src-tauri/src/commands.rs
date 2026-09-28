@@ -682,3 +682,49 @@ pub fn vpn_set_auto_reconnect(st: State<'_, AppState>, enabled: bool) {
     st.vpn.set_auto_reconnect(enabled);
 }
 
+#[tauri::command]
+pub fn multi_roblox_get_status(st: State<'_, AppState>) -> crate::multi_roblox::MultiRobloxStatus {
+    st.multi_roblox.get_status()
+}
+
+#[tauri::command]
+pub fn multi_roblox_set_enabled(st: State<'_, AppState>, enabled: bool) -> Result<crate::multi_roblox::MultiRobloxStatus, String> {
+    st.multi_roblox.set_enabled(enabled)
+}
+
+#[tauri::command]
+pub fn multi_roblox_list_instances(st: State<'_, AppState>) -> Vec<crate::multi_roblox::RobloxInstanceInfo> {
+    st.multi_roblox.list_instances()
+}
+
+#[tauri::command]
+pub fn multi_roblox_focus_instance(st: State<'_, AppState>, pid: u32) -> Result<(), String> {
+    st.multi_roblox.focus_instance(pid)
+}
+
+#[tauri::command]
+pub fn multi_roblox_kill_instance(st: State<'_, AppState>, pid: u32) -> Result<(), String> {
+    st.multi_roblox.kill_instance(pid)
+}
+
+#[tauri::command]
+pub fn multi_roblox_kill_all(st: State<'_, AppState>) -> Result<usize, String> {
+    st.multi_roblox.kill_all()
+}
+
+#[tauri::command]
+pub fn multi_roblox_set_target(st: State<'_, AppState>, pid: Option<u32>) {
+    st.multi_roblox.set_target_pid(pid);
+}
+
+#[tauri::command]
+pub fn multi_roblox_launch(app: AppHandle, place_id: Option<u64>) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let url = if let Some(pid) = place_id {
+        format!("roblox://placeId={pid}")
+    } else {
+        "roblox://".to_string()
+    };
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
+}
+

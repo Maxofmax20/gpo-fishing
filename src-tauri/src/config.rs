@@ -136,6 +136,7 @@ pub struct Features {
     pub fast_reset: bool,
     pub telegram_remote: bool,
     pub discord_rpc: bool,
+    pub multi_roblox: bool,
 }
 
 impl Default for Features {
@@ -151,6 +152,7 @@ impl Default for Features {
             fast_reset: true,
             telegram_remote: true,
             discord_rpc: true,
+            multi_roblox: true,
         }
     }
 }

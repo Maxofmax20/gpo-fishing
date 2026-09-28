@@ -10,6 +10,7 @@ pub mod webhook;
 pub mod windows;
 pub mod discord_rpc;
 pub mod vpn;
+pub mod multi_roblox;
 
 use tauri::Manager;
 
@@ -97,6 +98,14 @@ pub fn run() {
             commands::vpn_reset_network,
             commands::vpn_get_logs,
             commands::vpn_set_auto_reconnect,
+            commands::multi_roblox_get_status,
+            commands::multi_roblox_set_enabled,
+            commands::multi_roblox_list_instances,
+            commands::multi_roblox_focus_instance,
+            commands::multi_roblox_kill_instance,
+            commands::multi_roblox_kill_all,
+            commands::multi_roblox_set_target,
+            commands::multi_roblox_launch,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

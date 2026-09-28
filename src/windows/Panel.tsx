@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { BookOpen, Download, Film, Gauge, Globe, ListChecks, Minus, Settings2, Shield, SlidersHorizontal, X } from "lucide-react";
 import { api, on } from "../lib/ipc";
 import { useStore } from "../lib/store";
 import { cx, Dot } from "../components/primitives";
@@ -14,8 +13,10 @@ import Features from "../pages/Features";
 import SettingsPage from "../pages/Settings";
 import Macros from "../pages/Macros";
 import VpnPage from "../pages/VpnPage";
+import MultiRobloxPage from "../pages/MultiRobloxPage";
+import { BookOpen, Download, Film, Gauge, Globe, Layers, ListChecks, Minus, Settings2, Shield, SlidersHorizontal, X } from "lucide-react";
 
-type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "vpn" | "settings";
+type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "vpn" | "multi" | "settings";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "Dashboard", icon: <Gauge size={17} /> },
@@ -24,6 +25,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "features", label: "Features", icon: <SlidersHorizontal size={17} /> },
   { id: "macros", label: "Macros", icon: <Film size={17} /> },
   { id: "vpn", label: "VPN & Relay", icon: <Shield size={17} /> },
+  { id: "multi", label: "Multi Roblox", icon: <Layers size={17} /> },
   { id: "settings", label: "Settings", icon: <Settings2 size={17} /> },
 ];
 
@@ -96,7 +98,7 @@ export default function Panel() {
     };
   }, []);
 
-  const gated = ready && !roblox && !skipGate && tab !== "vpn";
+  const gated = ready && !roblox && !skipGate && tab !== "vpn" && tab !== "multi";
 
   return (
     <div className="h-full w-full p-1.5">
@@ -163,6 +165,7 @@ export default function Panel() {
                 {tab === "features" && <Features />}
                 {tab === "macros" && <Macros />}
                 {tab === "vpn" && <VpnPage />}
+                {tab === "multi" && <MultiRobloxPage />}
                 {tab === "settings" && <SettingsPage />}
               </>
             )}
