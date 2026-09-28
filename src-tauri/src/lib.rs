@@ -106,6 +106,10 @@ pub fn run() {
             commands::multi_roblox_kill_all,
             commands::multi_roblox_set_target,
             commands::multi_roblox_launch,
+            commands::multi_roblox_list_accounts,
+            commands::multi_roblox_add_account,
+            commands::multi_roblox_remove_account,
+            commands::multi_roblox_launch_account,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

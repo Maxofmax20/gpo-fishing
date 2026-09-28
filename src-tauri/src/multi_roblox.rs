@@ -51,6 +51,23 @@ pub struct MultiRobloxStatus {
     pub target_pid: Option<u32>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedRobloxAccount {
+    pub id: String,
+    pub user_id: u64,
+    pub username: String,
+    pub display_name: String,
+    pub avatar_url: Option<String>,
+    #[serde(skip_serializing)]
+    pub cookie: String,
+    pub created_at: String,
+    pub note: Option<String>,
+    #[serde(default)]
+    pub is_running: bool,
+    #[serde(default)]
+    pub running_pid: Option<u32>,
+}
+
 #[derive(Default)]
 struct UserCacheEntry {
     username: String,
@@ -73,10 +90,22 @@ pub struct MultiRobloxManager {
     game_cache: Mutex<HashMap<String, GameCacheEntry>>,
     last_instances: Mutex<Vec<RobloxInstanceInfo>>,
     last_scan: Mutex<Instant>,
+    accounts: Mutex<Vec<SavedRobloxAccount>>,
+    accounts_path: PathBuf,
 }
 
 impl MultiRobloxManager {
-    pub fn new() -> Self {
+    pub fn new(data_dir: PathBuf) -> Self {
+        let accounts_path = data_dir.join("accounts.json");
+        let accounts = if accounts_path.is_file() {
+            std::fs::read_to_string(&accounts_path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<Vec<SavedRobloxAccount>>(&s).ok())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
         Self {
             enabled: AtomicBool::new(false),
             mutex_handle: Mutex::new(None),
@@ -87,6 +116,8 @@ impl MultiRobloxManager {
             game_cache: Mutex::new(HashMap::new()),
             last_instances: Mutex::new(Vec::new()),
             last_scan: Mutex::new(Instant::now() - Duration::from_secs(10)),
+            accounts: Mutex::new(accounts),
+            accounts_path,
         }
     }
 
@@ -313,6 +344,101 @@ impl MultiRobloxManager {
         Ok(killed)
     }
 
+    pub fn list_accounts(&self) -> Vec<SavedRobloxAccount> {
+        let accounts = self.accounts.lock();
+        let running_instances = self.list_instances();
+
+        accounts
+            .iter()
+            .map(|acc| {
+                let mut a = acc.clone();
+                if let Some(inst) = running_instances.iter().find(|i| {
+                    i.user_id.as_deref() == Some(&acc.user_id.to_string())
+                        || i.username.as_deref().map(|u| u.eq_ignore_ascii_case(&acc.username)).unwrap_or(false)
+                }) {
+                    a.is_running = true;
+                    a.running_pid = Some(inst.pid);
+                } else {
+                    a.is_running = false;
+                    a.running_pid = None;
+                }
+                a
+            })
+            .collect()
+    }
+
+    pub fn add_account(&self, cookie: &str, note: Option<String>) -> Result<SavedRobloxAccount, String> {
+        let clean_cookie = cookie.trim().trim_matches('"');
+        let clean_cookie = if clean_cookie.starts_with(".ROBLOSECURITY=") {
+            clean_cookie.to_string()
+        } else {
+            format!(".ROBLOSECURITY={clean_cookie}")
+        };
+
+        let summary = validate_cookie(&clean_cookie)?;
+        let id = format!(
+            "acc_{}_{}",
+            summary.user_id,
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+        );
+
+        let account = SavedRobloxAccount {
+            id: id.clone(),
+            user_id: summary.user_id,
+            username: summary.username,
+            display_name: summary.display_name,
+            avatar_url: summary.avatar_url,
+            cookie: clean_cookie,
+            created_at: chrono_like_now(),
+            note,
+            is_running: false,
+            running_pid: None,
+        };
+
+        {
+            let mut accounts = self.accounts.lock();
+            if let Some(pos) = accounts.iter().position(|a| a.user_id == account.user_id) {
+                accounts[pos] = account.clone();
+            } else {
+                accounts.push(account.clone());
+            }
+            let _ = self.save_accounts_locked(&accounts);
+        }
+
+        Ok(account)
+    }
+
+    pub fn remove_account(&self, id: &str) -> Result<(), String> {
+        let mut accounts = self.accounts.lock();
+        accounts.retain(|a| a.id != id && a.user_id.to_string() != id);
+        self.save_accounts_locked(&accounts)
+    }
+
+    fn save_accounts_locked(&self, accounts: &[SavedRobloxAccount]) -> Result<(), String> {
+        let json = serde_json::to_string_pretty(accounts).map_err(|e| e.to_string())?;
+        std::fs::write(&self.accounts_path, json).map_err(|e| format!("Failed to save accounts: {e}"))?;
+        Ok(())
+    }
+
+    pub fn launch_account(&self, id: &str, place_id: Option<u64>) -> Result<(), String> {
+        let _ = self.acquire_locks();
+        self.enabled.store(true, Ordering::SeqCst);
+
+        let cookie = {
+            let accounts = self.accounts.lock();
+            let acc = accounts
+                .iter()
+                .find(|a| a.id == id || a.user_id.to_string() == id)
+                .ok_or_else(|| format!("Account '{id}' not found"))?;
+            acc.cookie.clone()
+        };
+
+        launch_with_cookie(&cookie, place_id.unwrap_or(1730877806))
+    }
+
     fn resolve_user(&self, user_id: &str) -> Option<UserCacheEntry> {
         {
             let cache = self.user_cache.lock();
@@ -537,3 +663,177 @@ fn parse_log_for_user_and_universe(path: &Path) -> Option<(String, String)> {
 
     None
 }
+
+fn chrono_like_now() -> String {
+    use std::time::SystemTime;
+    let d = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}.{}", d.as_secs(), d.subsec_millis())
+}
+
+struct RobloxAccountSummary {
+    user_id: u64,
+    username: String,
+    display_name: String,
+    avatar_url: Option<String>,
+}
+
+fn validate_cookie(cookie: &str) -> Result<RobloxAccountSummary, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let resp = client
+        .get("https://users.roblox.com/v1/users/authenticated")
+        .header("Cookie", cookie)
+        .header("User-Agent", "Roblox/WinInet")
+        .send()
+        .map_err(|e| format!("Failed to connect to Roblox: {e}"))?;
+
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return Err("Invalid or expired .ROBLOSECURITY cookie. Please check the cookie and try again.".into());
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .map_err(|e| format!("Could not parse Roblox user response: {e}"))?;
+
+    let user_id = json
+        .get("id")
+        .and_then(|v| v.as_u64())
+        .ok_or_else(|| "Missing user ID in Roblox response".to_string())?;
+
+    let username = json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Unknown")
+        .to_string();
+
+    let display_name = json
+        .get("displayName")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&username)
+        .to_string();
+
+    let avatar_url = {
+        let thumb_url = format!(
+            "https://thumbnails.roblox.com/v1/users/avatar-headshot?size=150x150&format=png&userIds={user_id}"
+        );
+        client
+            .get(&thumb_url)
+            .send()
+            .ok()
+            .and_then(|r| r.json::<serde_json::Value>().ok())
+            .and_then(|j| {
+                j.get("data")?
+                    .get(0)?
+                    .get("imageUrl")?
+                    .as_str()
+                    .map(|s| s.to_string())
+            })
+    };
+
+    Ok(RobloxAccountSummary {
+        user_id,
+        username,
+        display_name,
+        avatar_url,
+    })
+}
+
+fn get_auth_ticket(cookie: &str) -> Result<String, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let url = "https://auth.roblox.com/v1/authentication-ticket";
+
+    // 1. Initial request (frequently returns 403 with x-csrf-token)
+    let resp = client
+        .post(url)
+        .header("Cookie", cookie)
+        .header("Referer", "https://www.roblox.com/")
+        .header("Origin", "https://www.roblox.com")
+        .header("User-Agent", "Roblox/WinInet")
+        .send()
+        .map_err(|e| format!("Failed to reach auth.roblox.com: {e}"))?;
+
+    let csrf = if resp.status() == reqwest::StatusCode::FORBIDDEN {
+        resp.headers()
+            .get("x-csrf-token")
+            .and_then(|h| h.to_str().ok())
+            .map(|s| s.to_string())
+            .ok_or_else(|| "Failed to obtain CSRF token from Roblox".to_string())?
+    } else if let Some(ticket) = resp
+        .headers()
+        .get("rbx-authentication-ticket")
+        .and_then(|h| h.to_str().ok())
+    {
+        return Ok(ticket.to_string());
+    } else {
+        return Err(format!("Roblox Auth returned status {}", resp.status()));
+    };
+
+    // 2. Second request with CSRF token
+    let resp2 = client
+        .post(url)
+        .header("Cookie", cookie)
+        .header("x-csrf-token", &csrf)
+        .header("Referer", "https://www.roblox.com/")
+        .header("Origin", "https://www.roblox.com")
+        .header("User-Agent", "Roblox/WinInet")
+        .send()
+        .map_err(|e| format!("Auth ticket request failed: {e}"))?;
+
+    if !resp2.status().is_success() {
+        return Err(format!("Roblox rejected auth ticket ({})", resp2.status()));
+    }
+
+    let ticket = resp2
+        .headers()
+        .get("rbx-authentication-ticket")
+        .and_then(|h| h.to_str().ok())
+        .ok_or_else(|| "Missing rbx-authentication-ticket header from Roblox".to_string())?;
+
+    Ok(ticket.to_string())
+}
+
+fn rand_tracker_id() -> u64 {
+    use std::time::SystemTime;
+    let t = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(12345678);
+    (t ^ (t >> 32)) as u64
+}
+
+fn launch_with_cookie(cookie: &str, place_id: u64) -> Result<(), String> {
+    let ticket = get_auth_ticket(cookie)?;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let tracker_id = rand_tracker_id();
+
+    let place_launcher_url = format!(
+        "https%3A%2F%2Fassetgame.roblox.com%2Fgame%2FPlaceLauncher.ashx%3Frequest%3DRequestGame%26browserTrackerId%3D{}%26placeId%3D{}%26isPlayTogetherGame%3Dfalse",
+        tracker_id, place_id
+    );
+
+    let launch_uri = format!(
+        "roblox-player:1+launchmode:play+gameinfo:{}+launchtime:{}+placelauncherurl:{}+browsertrackerid:{}",
+        ticket, now_ms, place_launcher_url, tracker_id
+    );
+
+    std::process::Command::new("cmd")
+        .args(["/c", "start", "", &launch_uri])
+        .spawn()
+        .map_err(|e| format!("Failed to launch Roblox: {e}"))?;
+
+    tracing::info!("Launched Roblox account with placeId {place_id}");
+    Ok(())
+}
+

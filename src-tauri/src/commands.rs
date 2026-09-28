@@ -728,3 +728,34 @@ pub fn multi_roblox_launch(app: AppHandle, place_id: Option<u64>) -> Result<(), 
     app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn multi_roblox_list_accounts(st: State<'_, AppState>) -> Vec<crate::multi_roblox::SavedRobloxAccount> {
+    st.multi_roblox.list_accounts()
+}
+
+#[tauri::command]
+pub async fn multi_roblox_add_account(
+    st: State<'_, AppState>,
+    cookie: String,
+    note: Option<String>,
+) -> Result<crate::multi_roblox::SavedRobloxAccount, String> {
+    let mr = Arc::clone(&st.multi_roblox);
+    blocking(move || mr.add_account(&cookie, note)).await
+}
+
+#[tauri::command]
+pub fn multi_roblox_remove_account(st: State<'_, AppState>, id: String) -> Result<(), String> {
+    st.multi_roblox.remove_account(&id)
+}
+
+#[tauri::command]
+pub async fn multi_roblox_launch_account(
+    st: State<'_, AppState>,
+    id: String,
+    place_id: Option<u64>,
+) -> Result<(), String> {
+    let mr = Arc::clone(&st.multi_roblox);
+    blocking(move || mr.launch_account(&id, place_id)).await
+}
+
+

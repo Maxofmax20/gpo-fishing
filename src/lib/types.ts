@@ -346,3 +346,16 @@ export type MultiRobloxStatus = {
   target_pid: number | null;
 };
 
+export type SavedRobloxAccount = {
+  id: string;
+  user_id: number;
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  created_at: string;
+  note: string | null;
+  is_running: boolean;
+  running_pid: number | null;
+};
+
+

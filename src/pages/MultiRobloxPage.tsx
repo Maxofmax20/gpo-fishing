@@ -9,33 +9,50 @@ import {
   CheckCircle2,
   Crosshair,
   User,
-  AlertTriangle,
+  Plus,
+  HelpCircle,
+  KeyRound,
+  X,
+  Sparkles,
+  Rocket,
   Monitor,
 } from "lucide-react";
 import { api } from "../lib/ipc";
 import { useStore } from "../lib/store";
-import type { MultiRobloxStatus, RobloxInstanceInfo } from "../lib/types";
+import type { MultiRobloxStatus, RobloxInstanceInfo, SavedRobloxAccount } from "../lib/types";
 
 export default function MultiRobloxPage() {
   const settings = useStore((s) => s.settings);
   const update = useStore((s) => s.update);
 
   const [status, setStatus] = useState<MultiRobloxStatus | null>(null);
+  const [accounts, setAccounts] = useState<SavedRobloxAccount[]>([]);
   const [loading, setLoading] = useState(false);
-  const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<{ type: "info" | "error" | "success"; text: string } | null>(null);
 
-  const refreshStatus = async () => {
+  // Add Account form state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newCookie, setNewCookie] = useState("");
+  const [newNote, setNewNote] = useState("");
+  const [addingAccount, setAddingAccount] = useState(false);
+  const [showCookieHelp, setShowCookieHelp] = useState(false);
+
+  const refreshAll = async () => {
     try {
-      const res = await api.multiRobloxGetStatus();
-      setStatus(res);
+      const [statusRes, accountsRes] = await Promise.all([
+        api.multiRobloxGetStatus(),
+        api.multiRobloxListAccounts(),
+      ]);
+      setStatus(statusRes);
+      setAccounts(accountsRes);
     } catch (e) {
-      console.error("Failed to get multi roblox status:", e);
+      console.error("Failed to refresh multi roblox state:", e);
     }
   };
 
   useEffect(() => {
-    refreshStatus();
-    const interval = setInterval(refreshStatus, 2500);
+    refreshAll();
+    const interval = setInterval(refreshAll, 2500);
     return () => clearInterval(interval);
   }, []);
 
@@ -48,13 +65,14 @@ export default function MultiRobloxPage() {
       update((s) => {
         s.features.multi_roblox = enable;
       });
-      setActionMsg(
-        enable
+      setActionMsg({
+        type: "success",
+        text: enable
           ? "Multi-Roblox active! Singleton locks and Error 773 protection claimed."
-          : "Multi-Roblox deactivated. Standard Roblox singleton restored."
-      );
+          : "Multi-Roblox deactivated. Standard Roblox singleton restored.",
+      });
     } catch (e) {
-      setActionMsg(`Error: ${e}`);
+      setActionMsg({ type: "error", text: `Error: ${e}` });
     } finally {
       setLoading(false);
     }
@@ -64,17 +82,17 @@ export default function MultiRobloxPage() {
     try {
       await api.multiRobloxFocusInstance(pid);
     } catch (e) {
-      setActionMsg(`Failed to focus: ${e}`);
+      setActionMsg({ type: "error", text: `Failed to focus: ${e}` });
     }
   };
 
   const handleKill = async (pid: number) => {
     try {
       await api.multiRobloxKillInstance(pid);
-      setActionMsg(`Instance (PID ${pid}) closed.`);
-      await refreshStatus();
+      setActionMsg({ type: "info", text: `Instance (PID ${pid}) closed.` });
+      await refreshAll();
     } catch (e) {
-      setActionMsg(`Failed to close: ${e}`);
+      setActionMsg({ type: "error", text: `Failed to close: ${e}` });
     }
   };
 
@@ -82,10 +100,10 @@ export default function MultiRobloxPage() {
     if (!window.confirm("Close ALL running Roblox instances?")) return;
     try {
       const count = await api.multiRobloxKillAll();
-      setActionMsg(`Closed ${count} Roblox instances.`);
-      await refreshStatus();
+      setActionMsg({ type: "info", text: `Closed ${count} Roblox instances.` });
+      await refreshAll();
     } catch (e) {
-      setActionMsg(`Failed to close all: ${e}`);
+      setActionMsg({ type: "error", text: `Failed to close all: ${e}` });
     }
   };
 
@@ -93,19 +111,82 @@ export default function MultiRobloxPage() {
     try {
       const newTarget = status?.target_pid === pid ? null : pid;
       await api.multiRobloxSetTarget(newTarget);
-      await refreshStatus();
+      await refreshAll();
     } catch (e) {
-      setActionMsg(`Failed to set target: ${e}`);
+      setActionMsg({ type: "error", text: `Failed to set target: ${e}` });
     }
   };
 
-  const handleLaunch = async (placeId?: number) => {
-    try {
-      await api.multiRobloxLaunch(placeId);
-      setActionMsg(placeId ? "Launching Grand Piece Online..." : "Launching Roblox client...");
-    } catch (e) {
-      setActionMsg(`Launch error: ${e}`);
+  const handleAddAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCookie.trim()) {
+      setActionMsg({ type: "error", text: "Please paste your .ROBLOSECURITY cookie" });
+      return;
     }
+    setAddingAccount(true);
+    setActionMsg(null);
+    try {
+      const acc = await api.multiRobloxAddAccount(newCookie, newNote.trim() || undefined);
+      setActionMsg({
+        type: "success",
+        text: `Account added: @${acc.username} (${acc.display_name})!`,
+      });
+      setNewCookie("");
+      setNewNote("");
+      setShowAddModal(false);
+      await refreshAll();
+    } catch (e) {
+      setActionMsg({ type: "error", text: `Failed to add account: ${e}` });
+    } finally {
+      setAddingAccount(false);
+    }
+  };
+
+  const handleRemoveAccount = async (id: string, name: string) => {
+    if (!window.confirm(`Remove saved account @${name}?`)) return;
+    try {
+      await api.multiRobloxRemoveAccount(id);
+      setActionMsg({ type: "info", text: `Account @${name} removed.` });
+      await refreshAll();
+    } catch (e) {
+      setActionMsg({ type: "error", text: `Failed to remove: ${e}` });
+    }
+  };
+
+  const handleLaunchAccount = async (id: string, name: string, placeId?: number) => {
+    setActionMsg({
+      type: "info",
+      text: `Authenticating & launching @${name} into ${placeId ? "Grand Piece Online" : "Roblox"}...`,
+    });
+    try {
+      await api.multiRobloxLaunchAccount(id, placeId);
+      setActionMsg({
+        type: "success",
+        text: `🚀 @${name} launched successfully! Window will open in a moment.`,
+      });
+      setTimeout(refreshAll, 3000);
+    } catch (e) {
+      setActionMsg({ type: "error", text: `Launch error: ${e}` });
+    }
+  };
+
+  const handleLaunchAllAccounts = async () => {
+    if (accounts.length === 0) return;
+    setActionMsg({ type: "info", text: `Launching all ${accounts.length} accounts into GPO...` });
+    for (let i = 0; i < accounts.length; i++) {
+      const acc = accounts[i];
+      try {
+        await api.multiRobloxLaunchAccount(acc.id, 1730877806);
+        // Stagger launches by 3 seconds so Roblox doesn't contend for process start
+        if (i < accounts.length - 1) {
+          await new Promise((r) => setTimeout(r, 3000));
+        }
+      } catch (err) {
+        console.error(`Failed to launch ${acc.username}:`, err);
+      }
+    }
+    setActionMsg({ type: "success", text: "All accounts dispatched to launch!" });
+    setTimeout(refreshAll, 3000);
   };
 
   const isEnabled = status?.enabled ?? settings?.features.multi_roblox ?? false;
@@ -121,7 +202,7 @@ export default function MultiRobloxPage() {
                 <Layers className="h-4.5 w-4.5" />
               </div>
               <h2 className="text-lg font-semibold tracking-tight text-white">
-                Multiple Roblox Instances
+                Multiple Roblox Instances & Account Launcher
               </h2>
               {isEnabled ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-medium text-emerald-400">
@@ -135,7 +216,7 @@ export default function MultiRobloxPage() {
               )}
             </div>
             <p className="text-xs text-stone-400">
-              Run multiple Roblox accounts simultaneously without crashes or Error 773 teleports.
+              Run and launch multiple Roblox accounts directly with 1-click. Bypass singleton mutex & protect against Error 773.
             </p>
           </div>
 
@@ -184,81 +265,294 @@ export default function MultiRobloxPage() {
             <Monitor className="h-3.5 w-3.5 text-stone-400" />
             <span className="text-stone-400">Instances:</span>
             <span className="font-medium text-stone-200">
-              {status?.instances_count ?? 0} running
+              {status?.instances_count ?? 0} running ({accounts.length} saved)
             </span>
           </div>
         </div>
       </div>
 
       {actionMsg && (
-        <div className="rounded-lg border border-stone-700/60 bg-stone-800/60 px-4 py-2.5 text-xs text-stone-300">
-          {actionMsg}
+        <div
+          className={`rounded-lg border px-4 py-2.5 text-xs ${
+            actionMsg.type === "error"
+              ? "border-rose-500/40 bg-rose-950/30 text-rose-300"
+              : actionMsg.type === "success"
+              ? "border-emerald-500/40 bg-emerald-950/30 text-emerald-300"
+              : "border-stone-700/60 bg-stone-800/60 text-stone-300"
+          }`}
+        >
+          {actionMsg.text}
         </div>
       )}
 
-      {/* Action Tools Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleLaunch(1730877806)}
-            className="flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 transition"
-          >
-            <Play className="h-3.5 w-3.5 fill-current" />
-            Launch GPO
-          </button>
-          <button
-            onClick={() => handleLaunch()}
-            className="flex items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-800/80 px-3 py-1.5 text-xs font-medium text-stone-200 hover:bg-stone-700 transition"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Launch Roblox Client
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={refreshStatus}
-            className="flex items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-800/80 px-2.5 py-1.5 text-xs font-medium text-stone-300 hover:bg-stone-700 transition"
-            title="Refresh instances"
-          >
-            <RotateCw className="h-3.5 w-3.5" />
-            Refresh
-          </button>
-          {(status?.instances_count ?? 0) > 0 && (
-            <button
-              onClick={handleKillAll}
-              className="flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/20 transition"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Kill All
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Instances List */}
+      {/* SECTION 1: SAVED ACCOUNTS & DIRECT LAUNCHER */}
       <div className="space-y-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-          Running Roblox Accounts & Windows ({status?.instances_count ?? 0})
-        </h3>
-
-        {!status?.instances || status.instances.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-stone-800 bg-stone-900/30 p-8 text-center">
-            <Layers className="mx-auto h-8 w-8 text-stone-600 mb-2" />
-            <p className="text-sm font-medium text-stone-300">No Roblox windows detected</p>
-            <p className="mt-1 text-xs text-stone-500 max-w-md mx-auto">
-              Make sure Multi-Roblox is enabled above, then log into your accounts in your browser
-              and launch Roblox. They will run side-by-side simultaneously.
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-emerald-400" />
+              <h3 className="text-sm font-semibold text-white">Saved Accounts ({accounts.length})</h3>
+            </div>
+            <p className="text-xs text-stone-400">
+              Launch directly into GPO with your saved accounts in 1-click.
             </p>
-            <div className="mt-4 flex justify-center gap-2">
+          </div>
+
+          <div className="flex items-center gap-2">
+            {accounts.length > 1 && (
               <button
-                onClick={() => handleLaunch(1730877806)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+                onClick={handleLaunchAllAccounts}
+                className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 transition"
               >
-                <Play className="h-3 w-3 fill-current" />
-                Launch First Instance (GPO)
+                <Rocket className="h-3.5 w-3.5" />
+                Launch All Accounts
+              </button>
+            )}
+
+            <button
+              onClick={() => setShowAddModal(!showAddModal)}
+              className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 transition shadow-sm"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add Account
+            </button>
+          </div>
+        </div>
+
+        {/* Add Account Card / Modal */}
+        {showAddModal && (
+          <form
+            onSubmit={handleAddAccount}
+            className="rounded-xl border border-emerald-500/30 bg-stone-900/90 p-4 shadow-xl space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-stone-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-emerald-400" />
+                <span className="font-semibold text-sm text-white">Add Roblox Account</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="text-stone-400 hover:text-white"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
+
+            <div className="space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-stone-300">
+                    .ROBLOSECURITY Cookie
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowCookieHelp(!showCookieHelp)}
+                    className="flex items-center gap-1 text-[11px] text-emerald-400 hover:underline"
+                  >
+                    <HelpCircle className="h-3 w-3" />
+                    How to get cookie?
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  value={newCookie}
+                  onChange={(e) => setNewCookie(e.target.value)}
+                  placeholder="_|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-to-log-in..."
+                  className="w-full rounded-lg border border-stone-700 bg-stone-950 px-3 py-2 text-xs font-mono text-white placeholder-stone-600 focus:border-emerald-500 focus:outline-none"
+                  autoComplete="off"
+                />
+              </div>
+
+              {showCookieHelp && (
+                <div className="rounded-lg border border-stone-800 bg-stone-950/80 p-3 text-[11px] text-stone-400 space-y-1.5 leading-relaxed">
+                  <p className="font-medium text-stone-200">How to copy your cookie in 15 seconds:</p>
+                  <ol className="list-decimal list-inside space-y-0.5 pl-1 text-stone-400">
+                    <li>Open <strong>roblox.com</strong> in your browser (Chrome/Edge/Brave) and log into your account.</li>
+                    <li>Press <kbd className="rounded bg-stone-800 px-1 py-0.5 font-mono text-[10px] text-stone-200">F12</kbd> (or right click -&gt; Inspect).</li>
+                    <li>Go to the <strong className="text-stone-200">Application</strong> (or <strong className="text-stone-200">Storage</strong>) tab at the top.</li>
+                    <li>In the left sidebar, click <strong className="text-stone-200">Cookies</strong> -&gt; <strong className="text-stone-200">https://www.roblox.com</strong>.</li>
+                    <li>Find the cookie named <code className="rounded bg-stone-800 px-1 py-0.5 font-mono text-[10px] text-emerald-300">.ROBLOSECURITY</code>, double-click its value, copy it, and paste it above!</li>
+                  </ol>
+                  <p className="text-[10px] text-stone-500 pt-1">
+                    * The cookie is stored locally only on your PC in <code className="text-stone-400">accounts.json</code> and used exclusively to generate client launch tickets.
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-medium text-stone-300 block mb-1">
+                  Nickname / Note (optional)
+                </label>
+                <input
+                  type="text"
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="e.g. Main Fisher, Fruit Alt 1"
+                  className="w-full rounded-lg border border-stone-700 bg-stone-950 px-3 py-2 text-xs text-white placeholder-stone-600 focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1 border-t border-stone-800/80">
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="rounded-lg bg-stone-800 px-3 py-1.5 text-xs font-medium text-stone-300 hover:bg-stone-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={addingAccount}
+                className="rounded-lg bg-emerald-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 transition disabled:opacity-50"
+              >
+                {addingAccount ? "Validating..." : "Save Account"}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Saved Accounts Cards */}
+        {accounts.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-stone-800 bg-stone-900/30 p-6 text-center">
+            <KeyRound className="mx-auto h-7 w-7 text-stone-600 mb-2" />
+            <p className="text-sm font-medium text-stone-300">No accounts saved yet</p>
+            <p className="mt-1 text-xs text-stone-500 max-w-sm mx-auto">
+              Add your accounts once with their security cookie to launch them directly from the macro without signing in and out in browsers!
+            </p>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+            >
+              <Plus className="h-3 w-3" />
+              Add Your First Account
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
+            {accounts.map((acc: SavedRobloxAccount) => (
+              <div
+                key={acc.id}
+                className={`relative flex flex-col justify-between rounded-xl border p-4 transition-all ${
+                  acc.is_running
+                    ? "border-emerald-500/50 bg-emerald-950/20 shadow-md"
+                    : "border-stone-800 bg-stone-900/70 hover:border-stone-700"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-stone-700 bg-stone-800">
+                    {acc.avatar_url ? (
+                      <img
+                        src={acc.avatar_url}
+                        alt={acc.username}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-stone-500">
+                        <User className="h-6 w-6" />
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="font-semibold text-white text-sm truncate">
+                        {acc.display_name}
+                      </span>
+                      <button
+                        onClick={() => handleRemoveAccount(acc.id, acc.username)}
+                        title="Delete account"
+                        className="text-stone-500 hover:text-rose-400 p-0.5 transition"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-stone-400 truncate">@{acc.username}</p>
+
+                    {acc.note && (
+                      <span className="inline-block mt-1 rounded bg-stone-800 px-1.5 py-0.5 text-[10px] font-medium text-stone-300 truncate max-w-full">
+                        {acc.note}
+                      </span>
+                    )}
+
+                    <div className="mt-2 flex items-center gap-1.5 text-[11px]">
+                      {acc.is_running ? (
+                        <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
+                          Running (PID {acc.running_pid})
+                        </span>
+                      ) : (
+                        <span className="text-stone-500">Offline</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex items-center gap-2 border-t border-stone-800/80 pt-2.5">
+                  <button
+                    onClick={() => handleLaunchAccount(acc.id, acc.username, 1730877806)}
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-white transition shadow-sm"
+                  >
+                    <Play className="h-3 w-3 fill-current" />
+                    Launch GPO
+                  </button>
+
+                  <button
+                    onClick={() => handleLaunchAccount(acc.id, acc.username)}
+                    title="Launch Roblox Player"
+                    className="rounded-lg border border-stone-700 bg-stone-800 px-2 py-1.5 text-xs text-stone-300 hover:bg-stone-700 transition"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* SECTION 2: RUNNING INSTANCES & ACTIVE WINDOWS */}
+      <div className="space-y-3 pt-4 border-t border-stone-800/80">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <h3 className="text-sm font-semibold text-white">
+              Running Roblox Windows & Macro Targets ({status?.instances_count ?? 0})
+            </h3>
+            <p className="text-xs text-stone-400">
+              Active Roblox game processes currently detected on your system.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={refreshAll}
+              className="flex items-center gap-1.5 rounded-lg border border-stone-700 bg-stone-800/80 px-2.5 py-1.5 text-xs font-medium text-stone-300 hover:bg-stone-700 transition"
+              title="Refresh instances"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              Refresh
+            </button>
+            {(status?.instances_count ?? 0) > 0 && (
+              <button
+                onClick={handleKillAll}
+                className="flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/20 transition"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Kill All
+              </button>
+            )}
+          </div>
+        </div>
+
+        {!status?.instances || status.instances.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-stone-800 bg-stone-900/30 p-6 text-center">
+            <Layers className="mx-auto h-7 w-7 text-stone-600 mb-2" />
+            <p className="text-sm font-medium text-stone-300">No active Roblox windows open</p>
+            <p className="mt-1 text-xs text-stone-500 max-w-sm mx-auto">
+              Click &quot;Launch GPO&quot; on any saved account above or launch through your browser to begin.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -272,7 +566,6 @@ export default function MultiRobloxPage() {
                 }`}
               >
                 <div className="flex items-start gap-3.5">
-                  {/* Avatar */}
                   <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-stone-700 bg-stone-800">
                     {inst.avatar_url ? (
                       <img
@@ -287,7 +580,6 @@ export default function MultiRobloxPage() {
                     )}
                   </div>
 
-                  {/* Account / Window Info */}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-white text-sm truncate">
@@ -306,7 +598,7 @@ export default function MultiRobloxPage() {
                     )}
 
                     <p className="mt-1 text-xs text-stone-300 truncate font-medium">
-                      {inst.game_name || "Roblox Experience"}
+                      {inst.game_name || "Grand Piece Online"}
                     </p>
 
                     <div className="mt-1 flex items-center gap-3 text-[11px] text-stone-500">
@@ -316,7 +608,6 @@ export default function MultiRobloxPage() {
                   </div>
                 </div>
 
-                {/* Instance Control Buttons */}
                 <div className="mt-4 flex items-center justify-end gap-2 border-t border-stone-800/80 pt-3">
                   <button
                     onClick={() => handleSetTarget(inst.pid)}
@@ -347,21 +638,6 @@ export default function MultiRobloxPage() {
             ))}
           </div>
         )}
-      </div>
-
-      {/* Guide Card */}
-      <div className="rounded-xl border border-stone-800 bg-stone-900/40 p-4 text-xs text-stone-400 space-y-2">
-        <div className="flex items-center gap-2 font-medium text-stone-300">
-          <AlertTriangle className="h-4 w-4 text-amber-400" />
-          How Multiple Accounts Work:
-        </div>
-        <ol className="list-decimal list-inside space-y-1 text-stone-400 pl-1 leading-relaxed">
-          <li>Ensure <strong className="text-stone-200">Multi-Roblox is enabled</strong> before launching your games.</li>
-          <li>Log into your first account on your browser and hit <strong>Play</strong>.</li>
-          <li>Open an <strong>Incognito window</strong> (or a second browser profile like Chrome Profile 2) and log into your secondary account, then hit <strong>Play</strong>.</li>
-          <li>Both accounts will open in separate windows and appear in the list above with player avatar and game info.</li>
-          <li>Click <strong className="text-stone-200">Hook Macro</strong> on whichever account you want the fishing bot to automate!</li>
-        </ol>
       </div>
     </div>
   );

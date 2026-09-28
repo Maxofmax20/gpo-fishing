@@ -40,13 +40,13 @@ pub fn build_state() -> AppState {
     let _ = std::fs::create_dir_all(&dir);
     init_logging(&dir);
 
-    let store = Arc::new(Store::new(dir));
+    let store = Arc::new(Store::new(dir.clone()));
     let settings = Arc::new(RwLock::new(store.load()));
     let platform = platform::build();
     let roblox = Arc::new(RwLock::new(platform.window.find()));
     let webhook = WebhookQueue::start(Arc::clone(&settings));
     let vpn = crate::vpn::VpnManager::new();
-    let multi_roblox = Arc::new(crate::multi_roblox::MultiRobloxManager::new());
+    let multi_roblox = Arc::new(crate::multi_roblox::MultiRobloxManager::new(dir.clone()));
     if settings.read().features.multi_roblox {
         let _ = multi_roblox.set_enabled(true);
     }

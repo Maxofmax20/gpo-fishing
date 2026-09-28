@@ -26,6 +26,7 @@ import type {
   PingResult,
   MultiRobloxStatus,
   RobloxInstanceInfo,
+  SavedRobloxAccount,
 } from "./types";
 
 export const api = {
@@ -99,6 +100,12 @@ export const api = {
   multiRobloxKillAll: () => invoke<number>("multi_roblox_kill_all"),
   multiRobloxSetTarget: (pid: number | null) => invoke<void>("multi_roblox_set_target", { pid }),
   multiRobloxLaunch: (placeId?: number) => invoke<void>("multi_roblox_launch", { placeId }),
+  multiRobloxListAccounts: () => invoke<SavedRobloxAccount[]>("multi_roblox_list_accounts"),
+  multiRobloxAddAccount: (cookie: string, note?: string) =>
+    invoke<SavedRobloxAccount>("multi_roblox_add_account", { cookie, note }),
+  multiRobloxRemoveAccount: (id: string) => invoke<void>("multi_roblox_remove_account", { id }),
+  multiRobloxLaunchAccount: (id: string, placeId?: number) =>
+    invoke<void>("multi_roblox_launch_account", { id, placeId }),
 };
 
 type Events = {
