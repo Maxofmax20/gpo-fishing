@@ -551,8 +551,9 @@ export default function Features() {
             {(
               [
                 ["fruit_drop", "Devil fruit caught"],
-                ["send_screenshot", "📸 Send catch screenshot photo"],
-                ["crop_fruit_screenshot", "✂️ Crop fruit & drop screenshots (Focus on banner)"],
+                ["send_drop_screenshot", "📸 Send fruit drop screenshot (Ground banner)"],
+                ["send_catch_screenshot", "🎣 Send catch notification photo (Disabled by default)"],
+                ["crop_fruit_screenshot", "✂️ Crop drop screenshots (Focus on banner)"],
                 ["disconnect_alert", "⚠️ Roblox disconnected alert"],
                 ["bait_alert", "🎣 Bait depleted alert"],
                 ["progress", "Progress updates"],

@@ -666,6 +666,41 @@ pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Optio
         .and_then(|f| f.to_png_bytes().ok())
 }
 
+pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Option<Vec<u8>> {
+    if !s.webhook.send_screenshot || !s.webhook.send_drop_screenshot {
+        return None;
+    }
+    let r = ctx.roblox_rect()?;
+
+    if s.webhook.crop_fruit_screenshot {
+        // Crop wide banner region across top-middle of the screen where GPO displays:
+        // 1) "Dropped [Fruit] will despawn in 10 minutes"
+        // 2) "You can only store one of each fruit!"
+        let drop_r = s.regions.drop;
+        let min_x = (drop_r.x - 0.10).min(0.15).max(0.0);
+        let max_x = (drop_r.x + drop_r.w + 0.10).max(0.85).min(1.0);
+        let min_y = 0.01;
+        let max_y = (drop_r.y + drop_r.h + 0.18).max(0.33).min(1.0);
+
+        let crop_rel = RelRect {
+            x: min_x,
+            y: min_y,
+            w: max_x - min_x,
+            h: max_y - min_y,
+        };
+        let px_box = crop_rel.to_px(&r);
+        if let Ok(frame) = ctx.platform.capture.grab(px_box) {
+            if let Ok(bytes) = frame.to_png_bytes() {
+                return Some(bytes);
+            }
+        }
+    }
+
+    ctx.platform.capture.grab(r).ok()
+        .map(|f| f.downscale(1280))
+        .and_then(|f| f.to_png_bytes().ok())
+}
+
 pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
     let s = ctx.settings();
     if !s.features.fruit_storage {
@@ -689,7 +724,10 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
 
     let mut detected_banner: Option<crate::core::fruit::StorageBannerResult> = None;
     let mut gemini_telegram_msg: Option<String> = None;
-    let banner_rect = RelRect { x: 0.25, y: 0.04, w: 0.50, h: 0.22 };
+    let mut captured_drop_photo: Option<Vec<u8>> = None;
+    let mut backspace_pressed = false;
+
+    let banner_rect = RelRect { x: 0.18, y: 0.02, w: 0.64, h: 0.28 };
 
     let key_settle = fs.key_settle_ms.min(180);
     let click_settle = fs.click_settle_ms.min(180);
@@ -708,13 +746,67 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
         }
 
         // Check if storage duplicate/error banner appeared right after clicking store
-        if detected_banner.is_none() {
+        if let Some(r) = ctx.roblox_rect() {
+            let px_box = banner_rect.to_px(&r);
+            if let Ok(frame) = ctx.platform.capture.grab(px_box) {
+                if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
+                    if let Ok(analysis) = crate::core::gemini::analyze_fruit_event_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
+                        ctx.log_info(&format!("✨ Gemini Storage Analysis: event={}, fruit={:?}", analysis.event, analysis.fruit_name));
+                        if let Some(msg) = analysis.telegram_message {
+                            gemini_telegram_msg = Some(msg);
+                        }
+                        if let Some(name) = analysis.fruit_name {
+                            if analysis.event == "storage_full" || analysis.event == "dropped_ground" {
+                                detected_banner = Some(crate::core::fruit::StorageBannerResult::DuplicateDropped { fruit_name: name });
+                            }
+                        }
+                    }
+                }
+                if detected_banner.is_none() && ctx.platform.ocr.available() {
+                    if let Ok(text) = ctx.platform.ocr.read(&frame) {
+                        if !text.trim().is_empty() {
+                            ctx.log_debug(&format!("Storage check OCR: {}", text.trim()));
+                            if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
+                                ctx.log_info(&format!("Storage banner detected: {res:?}"));
+                                detected_banner = Some(res);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Capture immediately if duplicate banner is on screen
+        if detected_banner.is_some() && captured_drop_photo.is_none() {
+            captured_drop_photo = capture_drop_screenshot(ctx, &s);
+        }
+
+        if !protect_drop {
+            if !key_hold(ctx, Key::Backspace, Duration::from_millis(120)) {
+                return false;
+            }
+            backspace_pressed = true;
+
+            // Wait 120ms for Roblox to render "Dropped [Fruit] will despawn in 10 minutes" banner
+            ctx.sleep_ms(120);
+
+            // NEVER MISS IT: Capture the fruit dropping text immediately after Backspace!
+            let fresh_shot = capture_drop_screenshot(ctx, &s);
+            if fresh_shot.is_some() {
+                captured_drop_photo = fresh_shot;
+            }
+
+            if !ctx.sleep_ms(after_drop.saturating_sub(120).max(100)) {
+                return false;
+            }
+
+            // Check if drop banner appeared right after Backspace
             if let Some(r) = ctx.roblox_rect() {
                 let px_box = banner_rect.to_px(&r);
                 if let Ok(frame) = ctx.platform.capture.grab(px_box) {
                     if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
                         if let Ok(analysis) = crate::core::gemini::analyze_fruit_event_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
-                            ctx.log_info(&format!("✨ Gemini Storage Analysis: event={}, fruit={:?}", analysis.event, analysis.fruit_name));
+                            ctx.log_info(&format!("✨ Gemini Drop Analysis: event={}, fruit={:?}", analysis.event, analysis.fruit_name));
                             if let Some(msg) = analysis.telegram_message {
                                 gemini_telegram_msg = Some(msg);
                             }
@@ -725,12 +817,12 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                             }
                         }
                     }
-                    if detected_banner.is_none() && ctx.platform.ocr.available() {
+                    if ctx.platform.ocr.available() {
                         if let Ok(text) = ctx.platform.ocr.read(&frame) {
                             if !text.trim().is_empty() {
-                                ctx.log_debug(&format!("Storage check OCR: {}", text.trim()));
+                                ctx.log_debug(&format!("Post-drop OCR: {}", text.trim()));
                                 if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
-                                    ctx.log_info(&format!("Storage banner detected: {res:?}"));
+                                    ctx.log_info(&format!("Drop banner detected: {res:?}"));
                                     detected_banner = Some(res);
                                 }
                             }
@@ -738,59 +830,23 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                     }
                 }
             }
-        }
 
-        if !protect_drop {
-            if !key_hold(ctx, Key::Backspace, Duration::from_millis(100)) {
-                return false;
-            }
-            if !ctx.sleep_ms(after_drop) {
-                return false;
-            }
-
-            // Check if drop banner appeared right after Backspace
-            if detected_banner.is_none() {
-                if let Some(r) = ctx.roblox_rect() {
-                    let px_box = banner_rect.to_px(&r);
-                    if let Ok(frame) = ctx.platform.capture.grab(px_box) {
-                        if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
-                            if let Ok(analysis) = crate::core::gemini::analyze_fruit_event_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
-                                ctx.log_info(&format!("✨ Gemini Drop Analysis: event={}, fruit={:?}", analysis.event, analysis.fruit_name));
-                                if let Some(msg) = analysis.telegram_message {
-                                    gemini_telegram_msg = Some(msg);
-                                }
-                                if let Some(name) = analysis.fruit_name {
-                                    if analysis.event == "storage_full" || analysis.event == "dropped_ground" {
-                                        detected_banner = Some(crate::core::fruit::StorageBannerResult::DuplicateDropped { fruit_name: name });
-                                    }
-                                }
-                            }
-                        }
-                        if detected_banner.is_none() && ctx.platform.ocr.available() {
-                            if let Ok(text) = ctx.platform.ocr.read(&frame) {
-                                if !text.trim().is_empty() {
-                                    ctx.log_debug(&format!("Post-drop OCR: {}", text.trim()));
-                                    if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
-                                        ctx.log_info(&format!("Drop banner detected: {res:?}"));
-                                        detected_banner = Some(res);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            // Break out immediately so slot 2 doesn't wipe or cover the drop banner!
+            break;
         } else {
             ctx.log_info("🛡️ Protected fruit kept in slot (drop prevented)");
+            if detected_banner.is_some() {
+                break;
+            }
         }
     }
 
-    let photo = capture_fruit_screenshot(ctx, &s);
+    let photo = captured_drop_photo.or_else(|| capture_drop_screenshot(ctx, &s));
 
     let custom_tg = gemini_telegram_msg.or_else(|| {
         if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
             let rarity = crate::core::fruit::fruit_rarity(fruit_name);
-            let status = if detected_banner.is_some() {
+            let status = if detected_banner.is_some() || (backspace_pressed && !protect_drop) {
                 if protect_drop {
                     "Storage full / duplicate - protected fruit kept in slot"
                 } else {
@@ -888,8 +944,17 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                 );
             }
         }
+    } else if backspace_pressed && !protect_drop {
+        // Backspace was executed to drop fruit, even if OCR missed the banner text
+        ctx.log_warn(&format!("⚠️ Fruit dropped on ground (drop action completed): {fruit_name}"));
+        ctx.webhook.fruit_storage_failed(
+            fruit_name,
+            "Fruit was dropped on the ground.",
+            photo,
+            custom_tg,
+        );
     } else {
-        ctx.webhook.fruit_stored(fruit_name, photo, custom_tg);
+        ctx.webhook.fruit_stored(fruit_name, None, custom_tg);
     }
 
     // Always re-equip rod (key 1) after fruit drop/store

@@ -652,7 +652,11 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         ctx.emit_stats();
         ctx.emit(BotEvent::FruitDrop(d.clone()));
 
-        let photo = actions::capture_fruit_screenshot(ctx, &s);
+        let photo = if s.webhook.send_catch_screenshot {
+            actions::capture_fruit_screenshot(ctx, &s)
+        } else {
+            None
+        };
         if s.webhook.fruit_drop && (is_high_tier || !s.webhook.legendary_only) {
             ctx.webhook.fruit_drop(&d, photo);
         }

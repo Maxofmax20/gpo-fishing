@@ -158,6 +158,8 @@ export type Settings = {
     recovery: boolean;
     legendary_only: boolean;
     send_screenshot: boolean;
+    send_catch_screenshot: boolean;
+    send_drop_screenshot: boolean;
     crop_fruit_screenshot: boolean;
     disconnect_alert: boolean;
     bait_alert: boolean;
