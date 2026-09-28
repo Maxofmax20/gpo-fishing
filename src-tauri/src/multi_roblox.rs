@@ -745,20 +745,33 @@ fn validate_cookie(cookie: &str) -> Result<RobloxAccountSummary, String> {
 
 fn get_auth_ticket(cookie: &str) -> Result<String, String> {
     let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(12))
         .build()
         .map_err(|e| e.to_string())?;
 
     let url = "https://auth.roblox.com/v1/authentication-ticket";
 
+    // Helper closure to build the request with all required Roblox headers and payload
+    let send_req = |csrf_opt: Option<&str>| -> Result<reqwest::blocking::Response, reqwest::Error> {
+        let mut builder = client
+            .post(url)
+            .header("Cookie", cookie)
+            .header("Content-Type", "application/json")
+            .header("rbxauthenticationnegotiation", "1")
+            .header("Referer", "https://www.roblox.com/")
+            .header("Origin", "https://www.roblox.com")
+            .header("User-Agent", "Roblox/WinInet")
+            .body("{}");
+
+        if let Some(csrf) = csrf_opt {
+            builder = builder.header("x-csrf-token", csrf);
+        }
+
+        builder.send()
+    };
+
     // 1. Initial request (frequently returns 403 with x-csrf-token)
-    let resp = client
-        .post(url)
-        .header("Cookie", cookie)
-        .header("Referer", "https://www.roblox.com/")
-        .header("Origin", "https://www.roblox.com")
-        .header("User-Agent", "Roblox/WinInet")
-        .send()
+    let resp = send_req(None)
         .map_err(|e| format!("Failed to reach auth.roblox.com: {e}"))?;
 
     let csrf = if resp.status() == reqwest::StatusCode::FORBIDDEN {
@@ -767,38 +780,61 @@ fn get_auth_ticket(cookie: &str) -> Result<String, String> {
             .and_then(|h| h.to_str().ok())
             .map(|s| s.to_string())
             .ok_or_else(|| "Failed to obtain CSRF token from Roblox".to_string())?
-    } else if let Some(ticket) = resp
+    } else if resp.status().is_success() {
+        if let Some(ticket) = resp
+            .headers()
+            .get("rbx-authentication-ticket")
+            .and_then(|h| h.to_str().ok())
+        {
+            if !ticket.is_empty() {
+                return Ok(ticket.to_string());
+            }
+        }
+        let body_text = resp.text().unwrap_or_default();
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&body_text) {
+            if let Some(ticket) = val.get("authenticationTicket").and_then(|v| v.as_str()) {
+                if !ticket.is_empty() {
+                    return Ok(ticket.to_string());
+                }
+            }
+        }
+        return Err("Roblox returned 200 but no auth ticket found in response".to_string());
+    } else {
+        let status = resp.status();
+        let body = resp.text().unwrap_or_default();
+        return Err(format!("Roblox Auth returned status {status}: {body}"));
+    };
+
+    // 2. Second request with CSRF token
+    let resp2 = send_req(Some(&csrf))
+        .map_err(|e| format!("Auth ticket request failed: {e}"))?;
+
+    if !resp2.status().is_success() {
+        let status = resp2.status();
+        let body = resp2.text().unwrap_or_default();
+        return Err(format!("Roblox rejected auth ticket ({status}): {body}"));
+    }
+
+    if let Some(ticket) = resp2
         .headers()
         .get("rbx-authentication-ticket")
         .and_then(|h| h.to_str().ok())
     {
-        return Ok(ticket.to_string());
-    } else {
-        return Err(format!("Roblox Auth returned status {}", resp.status()));
-    };
-
-    // 2. Second request with CSRF token
-    let resp2 = client
-        .post(url)
-        .header("Cookie", cookie)
-        .header("x-csrf-token", &csrf)
-        .header("Referer", "https://www.roblox.com/")
-        .header("Origin", "https://www.roblox.com")
-        .header("User-Agent", "Roblox/WinInet")
-        .send()
-        .map_err(|e| format!("Auth ticket request failed: {e}"))?;
-
-    if !resp2.status().is_success() {
-        return Err(format!("Roblox rejected auth ticket ({})", resp2.status()));
+        if !ticket.is_empty() {
+            return Ok(ticket.to_string());
+        }
     }
 
-    let ticket = resp2
-        .headers()
-        .get("rbx-authentication-ticket")
-        .and_then(|h| h.to_str().ok())
-        .ok_or_else(|| "Missing rbx-authentication-ticket header from Roblox".to_string())?;
+    let body2 = resp2.text().unwrap_or_default();
+    if let Ok(val) = serde_json::from_str::<serde_json::Value>(&body2) {
+        if let Some(ticket) = val.get("authenticationTicket").and_then(|v| v.as_str()) {
+            if !ticket.is_empty() {
+                return Ok(ticket.to_string());
+            }
+        }
+    }
 
-    Ok(ticket.to_string())
+    Err("Missing authentication ticket from Roblox response".to_string())
 }
 
 fn rand_tracker_id() -> u64 {
@@ -828,10 +864,30 @@ fn launch_with_cookie(cookie: &str, place_id: u64) -> Result<(), String> {
         ticket, now_ms, place_launcher_url, tracker_id
     );
 
-    std::process::Command::new("cmd")
-        .args(["/c", "start", "", &launch_uri])
-        .spawn()
-        .map_err(|e| format!("Failed to launch Roblox: {e}"))?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let spawned = std::process::Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", &launch_uri])
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
+
+        if spawned.is_err() {
+            std::process::Command::new("cmd")
+                .args(["/c", "start", "", &launch_uri])
+                .spawn()
+                .map_err(|e| format!("Failed to launch Roblox: {e}"))?;
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&launch_uri)
+            .spawn()
+            .map_err(|e| format!("Failed to launch Roblox: {e}"))?;
+    }
 
     tracing::info!("Launched Roblox account with placeId {place_id}");
     Ok(())
