@@ -211,6 +211,7 @@ pub struct FruitStorage {
     pub after_drop_ms: u32,
     pub never_drop_legendary_or_mythical: bool,
     pub pause_on_protected_fruit: bool,
+    pub keep_pity_zero_fruit: bool,
 }
 
 impl Default for FruitStorage {
@@ -222,6 +223,7 @@ impl Default for FruitStorage {
             after_drop_ms: 350,
             never_drop_legendary_or_mythical: true,
             pause_on_protected_fruit: false,
+            keep_pity_zero_fruit: true,
         }
     }
 }
@@ -262,6 +264,7 @@ pub struct Webhook {
     pub recovery: bool,
     pub legendary_only: bool,
     pub send_screenshot: bool,
+    pub crop_fruit_screenshot: bool,
     pub disconnect_alert: bool,
     pub bait_alert: bool,
 }
@@ -282,6 +285,7 @@ impl Default for Webhook {
             recovery: true,
             legendary_only: false,
             send_screenshot: true,
+            crop_fruit_screenshot: true,
             disconnect_alert: true,
             bait_alert: true,
         }

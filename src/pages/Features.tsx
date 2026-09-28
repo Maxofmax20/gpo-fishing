@@ -426,6 +426,15 @@ export default function Features() {
             <div className="text-[11px] text-fg-dim pb-1.5 leading-normal">
               🚨 Automatically pauses fishing immediately after catching a protected fruit so you can safely inspect and store it.
             </div>
+            <Field wide label="Keep Pity 0 Fruit (Never Drop)">
+              <Toggle
+                value={s.fruit_storage.keep_pity_zero_fruit ?? true}
+                onChange={(v) => update((x) => void (x.fruit_storage.keep_pity_zero_fruit = v))}
+              />
+            </Field>
+            <div className="text-[11px] text-fg-dim pb-1.5 leading-normal">
+              ⚡ If pity went to 0 or reset to 0, never drop the fruit even if storage is full. Keeps it safely in your hotbar/inventory.
+            </div>
             <Field label="Dialog wait">
               <Slider value={s.fruit_storage.dialog_wait_ms} min={200} max={3000} step={50} format={(v) => `${v} ms`} onChange={(v) => update((x) => void (x.fruit_storage.dialog_wait_ms = v))} />
             </Field>
@@ -543,6 +552,7 @@ export default function Features() {
               [
                 ["fruit_drop", "Devil fruit caught"],
                 ["send_screenshot", "📸 Send catch screenshot photo"],
+                ["crop_fruit_screenshot", "✂️ Crop fruit & drop screenshots (Focus on banner)"],
                 ["disconnect_alert", "⚠️ Roblox disconnected alert"],
                 ["bait_alert", "🎣 Bait depleted alert"],
                 ["progress", "Progress updates"],
@@ -554,7 +564,7 @@ export default function Features() {
               <div key={k} className="flex items-center h-10 border-b border-line">
                 <div className="text-fg-dim">{label}</div>
                 <div className="ml-auto">
-                  <Toggle value={s.webhook[k]} disabled={(k === "fruit_drop" || k === "spawn") && !ocrAvailable} onChange={(v) => update((x) => void (x.webhook[k] = v))} />
+                  <Toggle value={Boolean(s.webhook[k])} disabled={(k === "fruit_drop" || k === "spawn") && !ocrAvailable} onChange={(v) => update((x) => void (x.webhook[k] = v))} />
                 </div>
               </div>
             ))}

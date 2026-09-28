@@ -141,7 +141,7 @@ export type Settings = {
     legendary_reserve: number;
   };
   zoom: { out_steps: number; in_steps: number; step_delay_ms: number; sequence_delay_ms: number };
-  fruit_storage: { key_settle_ms: number; click_settle_ms: number; dialog_wait_ms: number; after_drop_ms: number; never_drop_legendary_or_mythical: boolean; pause_on_protected_fruit: boolean };
+  fruit_storage: { key_settle_ms: number; click_settle_ms: number; dialog_wait_ms: number; after_drop_ms: number; never_drop_legendary_or_mythical: boolean; pause_on_protected_fruit: boolean; keep_pity_zero_fruit: boolean };
   ocr: { spawn_check_interval_s: number; spawn_cooldown_s: number; post_catch_reads: number; post_catch_read_gap_ms: number };
   lexicon: { fruits: string[]; drop_phrases: string[]; drop_keywords: string[]; spawn_keywords: string[]; catch_phrases: string[]; fail_phrases: string[]; fuzzy_threshold: number };
   webhook: {
@@ -158,6 +158,7 @@ export type Settings = {
     recovery: boolean;
     legendary_only: boolean;
     send_screenshot: boolean;
+    crop_fruit_screenshot: boolean;
     disconnect_alert: boolean;
     bait_alert: boolean;
   };

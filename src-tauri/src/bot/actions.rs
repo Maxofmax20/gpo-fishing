@@ -630,6 +630,42 @@ pub fn purchase(ctx: &Ctx) -> bool {
     purchase_amount(ctx, to_buy)
 }
 
+pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Option<Vec<u8>> {
+    if !s.webhook.send_screenshot {
+        return None;
+    }
+    let r = ctx.roblox_rect()?;
+
+    if s.webhook.crop_fruit_screenshot {
+        let drop_r = s.regions.drop;
+        let center_x = drop_r.x + drop_r.w / 2.0;
+        let center_y = drop_r.y + drop_r.h / 2.0;
+
+        let target_w = (drop_r.w * 2.2).max(0.60).min(0.96);
+        let target_h = (drop_r.h * 2.4).max(0.30).min(0.70);
+
+        let crop_x = (center_x - target_w / 2.0).clamp(0.0, 1.0 - target_w);
+        let crop_y = (center_y - target_h / 2.0).clamp(0.0, 1.0 - target_h);
+
+        let crop_rel = RelRect {
+            x: crop_x,
+            y: crop_y,
+            w: target_w,
+            h: target_h,
+        };
+        let px_box = crop_rel.to_px(&r);
+        if let Ok(frame) = ctx.platform.capture.grab(px_box) {
+            if let Ok(bytes) = frame.to_png_bytes() {
+                return Some(bytes);
+            }
+        }
+    }
+
+    ctx.platform.capture.grab(r).ok()
+        .map(|f| f.downscale(1280))
+        .and_then(|f| f.to_png_bytes().ok())
+}
+
 pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
     let s = ctx.settings();
     if !s.features.fruit_storage {
@@ -749,20 +785,17 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
         }
     }
 
-    let photo = if s.webhook.send_screenshot {
-        ctx.roblox_rect()
-            .and_then(|r| ctx.platform.capture.grab(r).ok())
-            .map(|f| f.downscale(1280))
-            .and_then(|f| f.to_png_bytes().ok())
-    } else {
-        None
-    };
+    let photo = capture_fruit_screenshot(ctx, &s);
 
     let custom_tg = gemini_telegram_msg.or_else(|| {
         if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
             let rarity = crate::core::fruit::fruit_rarity(fruit_name);
             let status = if detected_banner.is_some() {
-                "Storage full / duplicate - dropped on ground"
+                if protect_drop {
+                    "Storage full / duplicate - protected fruit kept in slot"
+                } else {
+                    "Storage full / duplicate - dropped on ground"
+                }
             } else {
                 "Stored safely in inventory"
             };
@@ -789,18 +822,29 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                 } else {
                     "Devil Fruit".to_string()
                 };
-                ctx.log_warn(&format!("⚠️ Could not store {name}: duplicate fruit already in inventory (dropped)"));
                 {
                     let mut sess = ctx.session.lock();
                     sess.last_fruit = Some(name.clone());
                 }
                 ctx.emit_stats();
-                ctx.webhook.fruit_storage_failed(
-                    &name,
-                    "You can only store one of each fruit (inventory limit reached) - dropped on ground.",
-                    photo,
-                    custom_tg,
-                );
+
+                if protect_drop {
+                    ctx.log_warn(&format!("🛡️ Could not store {name}: duplicate/bag full. Protected fruit KEPT in slot (NOT dropped)!"));
+                    ctx.webhook.fruit_storage_failed(
+                        &name,
+                        "Storage full or duplicate fruit — protected fruit KEPT in inventory/slot (drop prevented).",
+                        photo,
+                        custom_tg,
+                    );
+                } else {
+                    ctx.log_warn(&format!("⚠️ Could not store {name}: duplicate fruit already in inventory (dropped)"));
+                    ctx.webhook.fruit_storage_failed(
+                        &name,
+                        "You can only store one of each fruit (inventory limit reached) - dropped on ground.",
+                        photo,
+                        custom_tg,
+                    );
+                }
             }
             crate::core::fruit::StorageBannerResult::Dropped { fruit_name: detected_name } => {
                 let name = if detected_name != "Devil Fruit" {
@@ -810,18 +854,29 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                 } else {
                     "Devil Fruit".to_string()
                 };
-                ctx.log_warn(&format!("⚠️ Fruit dropped on ground: {name}"));
                 {
                     let mut sess = ctx.session.lock();
                     sess.last_fruit = Some(name.clone());
                 }
                 ctx.emit_stats();
-                ctx.webhook.fruit_storage_failed(
-                    &name,
-                    "Fruit was dropped on the ground.",
-                    photo,
-                    custom_tg,
-                );
+
+                if protect_drop {
+                    ctx.log_warn(&format!("🛡️ Could not store {name}: protected fruit KEPT in slot (NOT dropped)!"));
+                    ctx.webhook.fruit_storage_failed(
+                        &name,
+                        "Protected fruit was KEPT in inventory/slot (drop prevented).",
+                        photo,
+                        custom_tg,
+                    );
+                } else {
+                    ctx.log_warn(&format!("⚠️ Fruit dropped on ground: {name}"));
+                    ctx.webhook.fruit_storage_failed(
+                        &name,
+                        "Fruit was dropped on the ground.",
+                        photo,
+                        custom_tg,
+                    );
+                }
             }
             crate::core::fruit::StorageBannerResult::Failed { reason } => {
                 ctx.log_warn(&format!("⚠️ Fruit storage failed: {reason}"));

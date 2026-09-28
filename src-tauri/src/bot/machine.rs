@@ -603,55 +603,75 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         let fruit_name = d.name.clone().unwrap_or_else(|| {
             fruit::parse_catch_item(&s.lexicon, &d.text).1
         });
-            let rarity = fruit::fruit_rarity(&fruit_name);
-            let is_high_tier = d.is_legendary || rarity.is_high_tier();
-            let is_protected = s.fruit_storage.never_drop_legendary_or_mythical && is_high_tier;
+        let rarity = fruit::fruit_rarity(&fruit_name);
 
-            let label = if rarity == fruit::FruitRarity::Mythical {
-                format!("Mythical devil fruit ({fruit_name})")
-            } else if d.is_legendary || rarity == fruit::FruitRarity::Legendary {
-                format!("Legendary devil fruit ({fruit_name})")
-            } else if rarity != fruit::FruitRarity::Unknown {
-                format!("{} devil fruit ({fruit_name})", rarity.as_str())
-            } else {
-                format!("Devil fruit ({fruit_name})")
+        let prev_pity = ctx.session.lock().pity_legendary;
+        let is_pity_zero = d.is_legendary
+            || prev_pity >= 100
+            || d.pity.as_deref().map(|p| {
+                let clean = p.trim().to_lowercase();
+                clean.starts_with("0/") || clean == "0" || clean.starts_with("o/") || clean == "o" || clean.starts_with("00/")
+            }).unwrap_or(false)
+            || {
+                let lower = d.text.to_lowercase();
+                lower.contains("pity 0")
+                    || lower.contains("pity: 0")
+                    || lower.contains("pity o")
+                    || lower.contains("pity: o")
+                    || lower.contains("pity 0/")
+                    || lower.contains("pity: 0/")
+                    || lower.contains("pity 00")
+                    || lower.contains("0/100")
+                    || lower.contains("0/300")
             };
-            ctx.log_info(&format!("{label} dropped"));
-            {
-                let mut sess = ctx.session.lock();
-                sess.fruits += 1;
-                sess.last_fruit = Some(fruit_name.clone());
-                sess.pity_fruit = 0;
-                if is_high_tier {
-                    sess.pity_legendary = 0;
-                }
+
+        let is_high_tier = d.is_legendary || is_pity_zero || rarity.is_high_tier();
+        let is_protected = (s.fruit_storage.never_drop_legendary_or_mythical && is_high_tier)
+            || (s.fruit_storage.keep_pity_zero_fruit && is_pity_zero);
+
+        let label = if rarity == fruit::FruitRarity::Mythical {
+            format!("Mythical devil fruit ({fruit_name})")
+        } else if d.is_legendary || is_pity_zero || rarity == fruit::FruitRarity::Legendary {
+            format!("Legendary devil fruit ({fruit_name})")
+        } else if rarity != fruit::FruitRarity::Unknown {
+            format!("{} devil fruit ({fruit_name})", rarity.as_str())
+        } else {
+            format!("Devil fruit ({fruit_name})")
+        };
+        ctx.log_info(&format!("{label} dropped"));
+        {
+            let mut sess = ctx.session.lock();
+            sess.fruits += 1;
+            sess.last_fruit = Some(fruit_name.clone());
+            sess.pity_fruit = 0;
+            if is_high_tier || is_pity_zero {
+                sess.pity_legendary = 0;
             }
-            ctx.record_catch("fruit", &fruit_name, &d.text);
-            ctx.emit_stats();
-            ctx.emit(BotEvent::FruitDrop(d.clone()));
-            let photo = if s.webhook.send_screenshot {
-                ctx.roblox_rect()
-                    .and_then(|r| ctx.platform.capture.grab(r).ok())
-                    .map(|f| f.downscale(1280))
-                    .and_then(|f| f.to_png_bytes().ok())
+        }
+        ctx.record_catch("fruit", &fruit_name, &d.text);
+        ctx.emit_stats();
+        ctx.emit(BotEvent::FruitDrop(d.clone()));
+
+        let photo = actions::capture_fruit_screenshot(ctx, &s);
+        if s.webhook.fruit_drop && (is_high_tier || !s.webhook.legendary_only) {
+            ctx.webhook.fruit_drop(&d, photo);
+        }
+        if is_protected {
+            if is_pity_zero {
+                ctx.log_info(&format!("🛡️ Pity reached 0! Protecting {label} - drop/backspace strictly prevented"));
             } else {
-                None
-            };
-            if s.webhook.fruit_drop && (is_high_tier || !s.webhook.legendary_only) {
-                ctx.webhook.fruit_drop(&d, photo);
-            }
-            if is_protected {
                 ctx.log_info(&format!("🛡️ Protected {label} - preventing drop"));
             }
-            if !actions::store_fruit(ctx, &fruit_name, is_protected) {
-                return false;
-            }
-            *rod_equipped = true;
+        }
+        if !actions::store_fruit(ctx, &fruit_name, is_protected) {
+            return false;
+        }
+        *rod_equipped = true;
 
-            if s.fruit_storage.pause_on_protected_fruit && is_protected {
-                ctx.log_info(&format!("🚨 Macro paused: Protected {label} caught! Safely inspect your inventory."));
-                return false;
-            }
+        if s.fruit_storage.pause_on_protected_fruit && is_protected {
+            ctx.log_info(&format!("🚨 Macro paused: Protected {label} caught! Safely inspect your inventory."));
+            return false;
+        }
         }
     }
 
