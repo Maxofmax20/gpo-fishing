@@ -12,16 +12,14 @@ const GUIDE_W: f64 = 680.0;
 const GUIDE_H: f64 = 600.0;
 
 static GUIDE_OPEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static PANEL_OPEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
 pub fn init(app: &AppHandle) {
     if let Some(hud) = hud(app) {
         let _ = hud.set_size(LogicalSize::new(HUD_W, HUD_H));
         set_noactivate(&hud);
     }
-    if let Some(panel) = panel(app) {
-        let size = app.state::<AppState>().settings.read().ui.panel_size;
-        let _ = panel.set_size(LogicalSize::new(size[0] as f64, size[1] as f64));
-    }
+    show_panel(app);
     let info = *app.state::<AppState>().roblox.read();
     on_roblox_changed(app, info);
 }
@@ -56,15 +54,17 @@ pub fn on_roblox_changed(app: &AppHandle, info: Option<WindowInfo>) {
             if overlay_visible(app) {
                 hide_overlay(app);
             }
-            if let Some(p) = panel(app) {
-                if !p.is_visible().unwrap_or(false) && !p.is_minimized().unwrap_or(false) {
-                    show_noactivate(&p);
+            if PANEL_OPEN.load(std::sync::atomic::Ordering::SeqCst) {
+                if let Some(p) = panel(app) {
+                    if !p.is_visible().unwrap_or(false) && !p.is_minimized().unwrap_or(false) {
+                        show_window(&p);
+                    }
                 }
             }
             if GUIDE_OPEN.load(std::sync::atomic::Ordering::SeqCst) {
                 if let Some(g) = guide(app) {
                     if !g.is_visible().unwrap_or(false) {
-                        show_noactivate(&g);
+                        show_window(&g);
                     }
                 }
             }
@@ -74,12 +74,13 @@ pub fn on_roblox_changed(app: &AppHandle, info: Option<WindowInfo>) {
             if overlay_visible(app) {
                 hide_overlay(app);
             }
-            hide(panel(app));
-            hide(guide(app));
+            // Keep panel and guide open if the user opened them. Do not auto-hide user windows.
         }
         Some(w) => {
             position_hud(app, w.client);
-            position_panel(app, w.client);
+            if PANEL_OPEN.load(std::sync::atomic::Ordering::SeqCst) {
+                position_panel(app, w.client);
+            }
             if GUIDE_OPEN.load(std::sync::atomic::Ordering::SeqCst) {
                 position_guide(app, w.client);
             }
@@ -151,15 +152,38 @@ fn show_noactivate(w: &WebviewWindow) {
 }
 
 #[cfg(windows)]
+pub fn show_window(w: &WebviewWindow) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{BringWindowToTop, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW};
+    let _ = w.unminimize();
+    let _ = w.show();
+    if let Ok(h) = w.hwnd() {
+        unsafe {
+            let hwnd = HWND(h.0 as *mut _);
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+            let _ = ShowWindow(hwnd, SW_SHOW);
+            let _ = BringWindowToTop(hwnd);
+            let _ = SetForegroundWindow(hwnd);
+        }
+    }
+    let _ = w.set_focus();
+}
+
+#[cfg(not(windows))]
+pub fn show_window(w: &WebviewWindow) {
+    let _ = w.unminimize();
+    let _ = w.show();
+    let _ = w.set_focus();
+}
+
+#[cfg(windows)]
 fn hide_window(w: &WebviewWindow) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE};
-    match w.hwnd() {
-        Ok(h) => unsafe {
+    let _ = w.hide();
+    if let Ok(h) = w.hwnd() {
+        unsafe {
             let _ = ShowWindow(HWND(h.0 as *mut _), SW_HIDE);
-        },
-        Err(_) => {
-            let _ = w.hide();
         }
     }
 }
@@ -273,7 +297,8 @@ pub fn set_hud_visible(app: &AppHandle, visible: bool) {
 }
 
 pub fn panel_visible(app: &AppHandle) -> bool {
-    panel(app).map(|p| p.is_visible().unwrap_or(false) && !p.is_minimized().unwrap_or(false)).unwrap_or(false)
+    PANEL_OPEN.load(std::sync::atomic::Ordering::SeqCst)
+        && panel(app).map(|p| p.is_visible().unwrap_or(false) && !p.is_minimized().unwrap_or(false)).unwrap_or(false)
 }
 
 pub fn emit_panel_visible(app: &AppHandle) {
@@ -281,6 +306,7 @@ pub fn emit_panel_visible(app: &AppHandle) {
 }
 
 pub fn hide_panel(app: &AppHandle) {
+    PANEL_OPEN.store(false, std::sync::atomic::Ordering::SeqCst);
     hide(panel(app));
     emit_panel_visible(app);
 }
@@ -294,7 +320,11 @@ pub fn toggle_panel(app: &AppHandle) {
 }
 
 pub fn show_panel(app: &AppHandle) {
-    let Some(p) = panel(app) else { return };
+    let Some(p) = panel(app) else {
+        tracing::warn!("show_panel: panel window not found");
+        return;
+    };
+    PANEL_OPEN.store(true, std::sync::atomic::Ordering::SeqCst);
     let _ = p.unminimize();
     let info = *app.state::<AppState>().roblox.read();
     if let Some(client) = roblox_active(info) {
@@ -306,11 +336,11 @@ pub fn show_panel(app: &AppHandle) {
         let w = ((size[0] as f64 * scale) as u32).max((PANEL_MIN_W * scale) as u32);
         let h = ((size[1] as f64 * scale) as u32).max((PANEL_MIN_H * scale) as u32);
         let _ = p.set_size(PhysicalSize::new(w, h));
-        let _ = p.show();
+        let _ = p.center();
     }
-    let _ = p.show();
-    let _ = p.set_focus();
+    show_window(&p);
     emit_panel_visible(app);
+    tracing::info!("show_panel: panel window shown and focused");
 }
 
 pub fn show_guide(app: &AppHandle) -> Result<(), String> {
@@ -324,8 +354,7 @@ pub fn show_guide(app: &AppHandle) -> Result<(), String> {
             let _ = g.center();
         }
     }
-    g.show().map_err(|e| e.to_string())?;
-    let _ = g.set_focus();
+    show_window(&g);
     let _ = g.emit("guide:open", ());
     Ok(())
 }

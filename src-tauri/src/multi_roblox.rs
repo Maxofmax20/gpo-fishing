@@ -58,7 +58,7 @@ pub struct SavedRobloxAccount {
     pub username: String,
     pub display_name: String,
     pub avatar_url: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(default)]
     pub cookie: String,
     pub created_at: String,
     pub note: Option<String>,
@@ -97,10 +97,32 @@ pub struct MultiRobloxManager {
 impl MultiRobloxManager {
     pub fn new(data_dir: PathBuf) -> Self {
         let accounts_path = data_dir.join("accounts.json");
+        let backup_path = data_dir.join("accounts.backup.json");
         let accounts = if accounts_path.is_file() {
-            std::fs::read_to_string(&accounts_path)
+            match std::fs::read_to_string(&accounts_path) {
+                Ok(s) => match serde_json::from_str::<Vec<SavedRobloxAccount>>(&s) {
+                    Ok(accs) => accs,
+                    Err(e) => {
+                        tracing::error!("Failed to parse accounts.json: {e}, falling back to backup");
+                        if backup_path.is_file() {
+                            std::fs::read_to_string(&backup_path)
+                                .ok()
+                                .and_then(|bs| serde_json::from_str::<Vec<SavedRobloxAccount>>(&bs).ok())
+                                .unwrap_or_default()
+                        } else {
+                            Vec::new()
+                        }
+                    }
+                },
+                Err(e) => {
+                    tracing::error!("Failed to read accounts.json: {e}");
+                    Vec::new()
+                }
+            }
+        } else if backup_path.is_file() {
+            std::fs::read_to_string(&backup_path)
                 .ok()
-                .and_then(|s| serde_json::from_str::<Vec<SavedRobloxAccount>>(&s).ok())
+                .and_then(|bs| serde_json::from_str::<Vec<SavedRobloxAccount>>(&bs).ok())
                 .unwrap_or_default()
         } else {
             Vec::new()
@@ -419,7 +441,9 @@ impl MultiRobloxManager {
 
     fn save_accounts_locked(&self, accounts: &[SavedRobloxAccount]) -> Result<(), String> {
         let json = serde_json::to_string_pretty(accounts).map_err(|e| e.to_string())?;
-        std::fs::write(&self.accounts_path, json).map_err(|e| format!("Failed to save accounts: {e}"))?;
+        std::fs::write(&self.accounts_path, &json).map_err(|e| format!("Failed to save accounts: {e}"))?;
+        let backup_path = self.accounts_path.with_file_name("accounts.backup.json");
+        let _ = std::fs::write(backup_path, &json);
         Ok(())
     }
 

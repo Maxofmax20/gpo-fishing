@@ -170,10 +170,10 @@ fn spawn_panel_fallback(app: AppHandle) {
     std::thread::Builder::new()
         .name("panel-fallback".into())
         .spawn(move || {
-            std::thread::sleep(Duration::from_secs(8));
+            std::thread::sleep(Duration::from_secs(1));
             let st = app.state::<AppState>();
             if !st.panel_requested.load(std::sync::atomic::Ordering::SeqCst) {
-                tracing::warn!("frontend did not report ready; showing panel anyway");
+                tracing::info!("Ensuring panel window is visible on startup");
                 windows::show_panel(&app);
             }
         })

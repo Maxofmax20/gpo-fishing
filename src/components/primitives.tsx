@@ -492,7 +492,7 @@ export function TextField({
   );
 }
 
-export function Pill({ children, tone = "mute" }: { children: ReactNode; tone?: "ok" | "warn" | "bad" | "accent" | "mute" | "fruit" }) {
+export function Pill({ children, tone = "mute", className }: { children: ReactNode; tone?: "ok" | "warn" | "bad" | "accent" | "mute" | "fruit"; className?: string }) {
   const tones = {
     ok: "bg-ok-soft text-ok",
     warn: "bg-warn-soft text-warn",
@@ -501,7 +501,7 @@ export function Pill({ children, tone = "mute" }: { children: ReactNode; tone?: 
     mute: "bg-white/[0.06] text-fg-dim",
     fruit: "bg-fruit/15 text-fruit",
   }[tone];
-  return <span className={cx("inline-flex items-center h-5 px-2 rounded-full text-[11px] font-medium", tones)}>{children}</span>;
+  return <span className={cx("inline-flex items-center h-5 px-2 rounded-full text-[11px] font-medium whitespace-nowrap shrink-0", tones, className)}>{children}</span>;
 }
 
 export function Dot({ tone, pulse }: { tone: "ok" | "warn" | "bad" | "accent" | "mute"; pulse?: boolean }) {

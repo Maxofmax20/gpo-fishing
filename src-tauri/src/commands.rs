@@ -758,4 +758,20 @@ pub async fn multi_roblox_launch_account(
     blocking(move || mr.launch_account(&id, place_id)).await
 }
 
+#[tauri::command]
+pub fn laptop_keyboard_light_get() -> crate::laptop_light::KeyboardLightStatus {
+    crate::laptop_light::get_keyboard_light_status()
+}
+
+#[tauri::command]
+pub async fn laptop_keyboard_light_set(action: String) -> Result<crate::laptop_light::KeyboardLightStatus, String> {
+    blocking(move || Ok(crate::laptop_light::set_keyboard_light(&action))).await
+}
+
+#[tauri::command]
+pub async fn laptop_keyboard_light_setup() -> Result<String, String> {
+    blocking(crate::laptop_light::setup_keyboard_light_task).await
+}
+
+
 

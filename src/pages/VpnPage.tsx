@@ -143,50 +143,58 @@ export default function VpnPage() {
   return (
     <div className="pb-6 pt-2">
       {/* Hero Banner / Status */}
-      <div className="px-4 py-3 mx-4 mb-4 rounded-xl bg-gradient-to-r from-bg-elev to-bg border border-line flex items-center justify-between shadow-lg">
+      <div className="px-4 py-3 mx-4 mb-4 rounded-xl bg-gradient-to-r from-bg-elev to-bg border border-line flex flex-col gap-3 shadow-lg">
         <div className="flex items-center gap-3">
           <div
             className={cx(
-              "w-12 h-12 rounded-xl grid place-items-center transition-colors shadow-[0_0_15px_rgba(0,0,0,0.5)]",
+              "w-11 h-11 shrink-0 rounded-xl grid place-items-center transition-colors shadow-[0_0_15px_rgba(0,0,0,0.5)]",
               status.connected
                 ? "bg-ok-soft text-ok border border-ok/30"
                 : "bg-white/[0.05] text-fg-dim border border-line-strong",
             )}
           >
-            {status.connected ? <ShieldCheck size={24} /> : <Shield size={24} />}
+            {status.connected ? <ShieldCheck size={22} /> : <Shield size={22} />}
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-[15px]">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-semibold text-[15px] whitespace-nowrap">
                 {status.connected ? "VPN Active" : "VPN Offline"}
               </span>
-              <Pill tone={status.connected ? "ok" : "mute"}>
-                {status.connected
-                  ? status.engine_name || (status.engine === "dedicated" ? "Dedicated Relay" : status.engine.toUpperCase())
-                  : "Offline"}
-              </Pill>
+              <span className="inline-block whitespace-nowrap">
+                <Pill tone={status.connected ? "ok" : "mute"}>
+                  {status.connected
+                    ? status.engine_name || (status.engine === "dedicated" ? "Dedicated Relay" : status.engine.toUpperCase())
+                    : "Offline"}
+                </Pill>
+              </span>
               {status.connected && status.auto_detected && (
-                <Pill tone="accent">Auto-Detected</Pill>
+                <span className="inline-block whitespace-nowrap">
+                  <Pill tone="accent">Auto-Detected</Pill>
+                </span>
               )}
             </div>
-            <div className="text-[12px] text-fg-dim mt-0.5 flex items-center gap-2 font-mono">
-              <Clock size={12} className="text-fg-mute" />
-              <span>Uptime: {formatUptime(status.uptime_secs)}</span>
+            <div className="text-[12px] text-fg-dim mt-1 flex flex-wrap items-center gap-2 font-mono">
+              <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                <Clock size={12} className="text-fg-mute" />
+                <span>Uptime: {formatUptime(status.uptime_secs)}</span>
+              </span>
               {status.latency_ms != null && (
                 <>
                   <span className="text-line-strong">|</span>
-                  <Zap size={12} className={status.latency_ms < 100 ? "text-ok" : "text-warn"} />
-                  <span>{status.latency_ms} ms</span>
+                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                    <Zap size={12} className={status.latency_ms < 100 ? "text-ok" : "text-warn"} />
+                    <span>{status.latency_ms} ms</span>
+                  </span>
                 </>
               )}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-line/60">
           <Button
             kind="ghost"
-            size="md"
+            size="sm"
             disabled={busy}
             onClick={() => { fetchStatus(); }}
             icon={<RefreshCw size={14} className={cx(busy && "animate-spin")} />}
@@ -195,7 +203,7 @@ export default function VpnPage() {
           </Button>
           <Button
             kind={status.connected ? "danger" : "primary"}
-            size="md"
+            size="sm"
             disabled={busy}
             onClick={handleToggleConnect}
             icon={<Zap size={14} />}

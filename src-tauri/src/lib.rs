@@ -11,6 +11,7 @@ pub mod windows;
 pub mod discord_rpc;
 pub mod vpn;
 pub mod multi_roblox;
+pub mod laptop_light;
 
 use tauri::Manager;
 
@@ -110,6 +111,9 @@ pub fn run() {
             commands::multi_roblox_add_account,
             commands::multi_roblox_remove_account,
             commands::multi_roblox_launch_account,
+            commands::laptop_keyboard_light_get,
+            commands::laptop_keyboard_light_set,
+            commands::laptop_keyboard_light_setup,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
@@ -117,9 +121,7 @@ pub fn run() {
             if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 if code.is_none() {
                     api.prevent_exit();
-                    if let Some(p) = app.get_webview_window("panel") {
-                        let _ = p.hide();
-                    }
+                    windows::hide_panel(app);
                 }
             }
         });

@@ -180,6 +180,13 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     } else if raw_path == "/api/macro/delete" && method == "POST" {
         let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_macro_delete(&mut stream, bot, body);
+    } else if raw_path == "/api/keyboard/light" {
+        if method == "POST" {
+            let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+            handle_keyboard_light(&mut stream, body);
+        } else {
+            send_keyboard_light_status(&mut stream);
+        }
     } else {
         let not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
         let _ = stream.write_all(not_found.as_bytes());
@@ -354,6 +361,7 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "crafting": crate::bot::crafting::get_craft_status(),
         "recorder": crate::bot::recorder::get_status(),
         "macros": crate::bot::recorder::load_macros(&bot.ctx().store),
+        "keyboard_light": crate::laptop_light::get_keyboard_light_status(),
     });
 
     let body = payload.to_string();
@@ -879,6 +887,31 @@ fn handle_macro_delete(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let _ = stream.write_all(resp.as_bytes());
 }
 
+fn send_keyboard_light_status(stream: &mut TcpStream) {
+    let st = crate::laptop_light::get_keyboard_light_status();
+    let body = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_keyboard_light(stream: &mut TcpStream, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let action = parsed.get("action").and_then(|a| a.as_str()).unwrap_or("toggle");
+
+    let st = crate::laptop_light::set_keyboard_light(action);
+    let out = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
+
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        out.len(),
+        out
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
 
 fn send_html(stream: &mut TcpStream) {
     let html = r#"<!DOCTYPE html>
@@ -1294,6 +1327,22 @@ header {
 }
 .btn-shift { border-color: rgba(176, 38, 255, 0.4); color: #d8b4fe; }
 
+/* KEYBOARD LIGHT BUTTONS */
+.kbd-btn {
+  padding: 10px 4px; border-radius: 10px; border: 1.5px solid rgba(255,255,255,0.12);
+  background: rgba(30, 41, 59, 0.7); color: var(--text); font-weight: 700; font-size: 0.8rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;
+  transition: all 0.15s ease; user-select: none;
+}
+.kbd-btn:hover { background: rgba(51, 65, 85, 0.85); border-color: rgba(255,255,255,0.25); }
+.kbd-btn:active { transform: scale(0.95); }
+.kbd-btn.active {
+  border-color: #a855f7 !important;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.45)) !important;
+  color: #fff !important;
+  box-shadow: 0 0 14px rgba(168, 85, 247, 0.45);
+}
+
 /* STATS */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; }
 .card {
@@ -1707,6 +1756,23 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
       <button id="btn-mute" class="btn btn-sub" onclick="toggleMute()">🔇 MUTE</button>
       <button class="btn btn-update" onclick="doUpdate()">🚀 UPDATE</button>
     </div>
+
+    <!-- LAPTOP KEYBOARD LIGHT CONTROL -->
+    <div class="card" style="border-color: rgba(168, 85, 247, 0.35); background: rgba(168, 85, 247, 0.04); margin-top: 10px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div class="card-label" style="color: #c084fc; display: flex; align-items: center; gap: 6px;">
+          <span>⌨️ KEYBOARD LIGHT</span>
+          <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.3); color: #e9d5ff;">LENOVO LOQ</span>
+        </div>
+        <div id="kbd-light-badge" class="status-badge" style="font-size: 0.7rem; padding: 3px 8px; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15);">UNKNOWN</div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+        <button id="btn-kbd-off" class="kbd-btn" onclick="setKbdLight('off')">🌑 OFF</button>
+        <button id="btn-kbd-low" class="kbd-btn" onclick="setKbdLight('low')">🔅 LOW</button>
+        <button id="btn-kbd-high" class="kbd-btn" onclick="setKbdLight('high')">🔆 HIGH</button>
+        <button id="btn-kbd-cycle" class="kbd-btn" style="border-color: rgba(168,85,247,0.4);" onclick="setKbdLight('cycle')">🔄 CYCLE</button>
+      </div>
+    </div>
   </div>
 
   <!-- SECTION 2: AUTO CRAFT BAIT (BLACKSMITH SEN) -->
@@ -2081,6 +2147,7 @@ async function fetchStatus() {
 
     updateCraftUi(d.crafting);
     updateMacroUi(d.recorder, d.macros);
+    if (d.keyboard_light) updateKbdLightUi(d.keyboard_light);
 
     renderTimers();
   } catch (e) {
@@ -2828,6 +2895,65 @@ function toggleSpawnAlerts() {
 function doUpdate() {
   if (confirm('Check for update and restart macro? (If running, it will automatically resume fishing!)')) {
     doAction('update');
+  }
+}
+
+function updateKbdLightUi(kbd) {
+  if (!kbd) return;
+  const badge = document.getElementById('kbd-light-badge');
+  const bOff = document.getElementById('btn-kbd-off');
+  const bLow = document.getElementById('btn-kbd-low');
+  const bHigh = document.getElementById('btn-kbd-high');
+  if (!badge) return;
+
+  const lvl = kbd.level;
+  const st = (kbd.status || '').toLowerCase();
+
+  [bOff, bLow, bHigh].forEach(b => { if (b) b.classList.remove('active'); });
+
+  if (lvl === 0 || st === 'off') {
+    badge.innerText = 'OFF';
+    badge.style.background = 'rgba(255,255,255,0.08)';
+    badge.style.color = '#94a3b8';
+    badge.style.borderColor = 'rgba(255,255,255,0.15)';
+    badge.style.boxShadow = 'none';
+    if (bOff) bOff.classList.add('active');
+  } else if (lvl === 1 || st === 'low') {
+    badge.innerText = 'LOW';
+    badge.style.background = 'rgba(245, 158, 11, 0.2)';
+    badge.style.color = '#fbbf24';
+    badge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+    badge.style.boxShadow = '0 0 10px rgba(245, 158, 11, 0.3)';
+    if (bLow) bLow.classList.add('active');
+  } else if (lvl === 2 || st === 'high') {
+    badge.innerText = 'HIGH';
+    badge.style.background = 'rgba(168, 85, 247, 0.25)';
+    badge.style.color = '#d8b4fe';
+    badge.style.borderColor = 'rgba(168, 85, 247, 0.5)';
+    badge.style.boxShadow = '0 0 12px rgba(168, 85, 247, 0.45)';
+    if (bHigh) bHigh.classList.add('active');
+  } else {
+    badge.innerText = kbd.status ? kbd.status.toUpperCase() : 'UNKNOWN';
+  }
+}
+
+async function setKbdLight(act) {
+  try {
+    const res = await fetch('/api/keyboard/light', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: act })
+    });
+    const data = await res.json();
+    if (data.status) {
+      updateKbdLightUi(data);
+      showToast('Keyboard light: ' + data.status.toUpperCase());
+    } else if (data.error) {
+      showToast('Light error: ' + data.error);
+    }
+    fetchStatus();
+  } catch (e) {
+    showToast('Failed to set light: ' + e);
   }
 }
 
