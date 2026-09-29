@@ -183,6 +183,11 @@ impl WebhookQueue {
 
     pub fn fruit_stored(&self, fruit_name: &str, photo: Option<Vec<u8>>, custom_tg: Option<String>) {
         let rarity = crate::core::fruit::fruit_rarity(fruit_name);
+        let legendary_only = self.settings.as_ref().map(|s| s.read().webhook.legendary_only).unwrap_or(true);
+        if legendary_only && !rarity.is_high_tier() {
+            return;
+        }
+
         let title = if rarity == crate::core::fruit::FruitRarity::Mythical {
             "🔥 Mythical Devil Fruit Stored!"
         } else if rarity == crate::core::fruit::FruitRarity::Legendary {
@@ -211,6 +216,11 @@ impl WebhookQueue {
 
     pub fn fruit_storage_failed(&self, fruit_name: &str, reason: &str, photo: Option<Vec<u8>>, custom_tg: Option<String>) {
         let rarity = crate::core::fruit::fruit_rarity(fruit_name);
+        let legendary_only = self.settings.as_ref().map(|s| s.read().webhook.legendary_only).unwrap_or(true);
+        if legendary_only && !rarity.is_high_tier() {
+            return;
+        }
+
         let title = "⚠️ Devil Fruit Storage Full / Dropped!";
         let desc = if rarity != crate::core::fruit::FruitRarity::Unknown {
             format!("Could not store <b>{fruit_name}</b> ({})!\n\n<b>Reason:</b> {reason}", rarity.as_str())

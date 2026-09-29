@@ -666,8 +666,11 @@ pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Optio
         .and_then(|f| f.to_png_bytes().ok())
 }
 
-pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Option<Vec<u8>> {
+pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_tier: bool) -> Option<Vec<u8>> {
     if !s.webhook.send_screenshot || !s.webhook.send_drop_screenshot {
+        return None;
+    }
+    if s.webhook.legendary_only && !is_high_tier {
         return None;
     }
     let r = ctx.roblox_rect()?;
@@ -701,7 +704,7 @@ pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Option
         .and_then(|f| f.to_png_bytes().ok())
 }
 
-pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
+pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier: bool) -> bool {
     let s = ctx.settings();
     if !s.features.fruit_storage {
         return true;
@@ -778,7 +781,7 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
 
         // Capture immediately if duplicate banner is on screen
         if detected_banner.is_some() && captured_drop_photo.is_none() {
-            captured_drop_photo = capture_drop_screenshot(ctx, &s);
+            captured_drop_photo = capture_drop_screenshot(ctx, &s, is_high_tier);
         }
 
         if !protect_drop {
@@ -794,7 +797,7 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
             ctx.sleep_ms(120);
 
             // NEVER MISS IT: Capture the fruit dropping text immediately after Backspace!
-            let fresh_shot = capture_drop_screenshot(ctx, &s);
+            let fresh_shot = capture_drop_screenshot(ctx, &s, is_high_tier);
             if fresh_shot.is_some() {
                 captured_drop_photo = fresh_shot;
             }
@@ -846,7 +849,7 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
         }
     }
 
-    let photo = captured_drop_photo.or_else(|| capture_drop_screenshot(ctx, &s));
+    let photo = captured_drop_photo.or_else(|| capture_drop_screenshot(ctx, &s, is_high_tier));
 
     let custom_tg = gemini_telegram_msg.or_else(|| {
         if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
@@ -889,22 +892,24 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                 }
                 ctx.emit_stats();
 
-                if protect_drop {
-                    ctx.log_warn(&format!("🛡️ Could not store {name}: duplicate/bag full. Protected fruit KEPT in slot (NOT dropped)!"));
-                    ctx.webhook.fruit_storage_failed(
-                        &name,
-                        "Storage full or duplicate fruit — protected fruit KEPT in inventory/slot (drop prevented).",
-                        photo,
-                        custom_tg,
-                    );
-                } else {
-                    ctx.log_warn(&format!("⚠️ Could not store {name}: duplicate fruit already in inventory (dropped)"));
-                    ctx.webhook.fruit_storage_failed(
-                        &name,
-                        "You can only store one of each fruit (inventory limit reached) - dropped on ground.",
-                        photo,
-                        custom_tg,
-                    );
+                if !s.webhook.legendary_only || is_high_tier {
+                    if protect_drop {
+                        ctx.log_warn(&format!("🛡️ Could not store {name}: duplicate/bag full. Protected fruit KEPT in slot (NOT dropped)!"));
+                        ctx.webhook.fruit_storage_failed(
+                            &name,
+                            "Storage full or duplicate fruit — protected fruit KEPT in inventory/slot (drop prevented).",
+                            photo,
+                            custom_tg,
+                        );
+                    } else {
+                        ctx.log_warn(&format!("⚠️ Could not store {name}: duplicate fruit already in inventory (dropped)"));
+                        ctx.webhook.fruit_storage_failed(
+                            &name,
+                            "You can only store one of each fruit (inventory limit reached) - dropped on ground.",
+                            photo,
+                            custom_tg,
+                        );
+                    }
                 }
             }
             crate::core::fruit::StorageBannerResult::Dropped { fruit_name: detected_name } => {
@@ -921,45 +926,53 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                 }
                 ctx.emit_stats();
 
-                if protect_drop {
-                    ctx.log_warn(&format!("🛡️ Could not store {name}: protected fruit KEPT in slot (NOT dropped)!"));
+                if !s.webhook.legendary_only || is_high_tier {
+                    if protect_drop {
+                        ctx.log_warn(&format!("🛡️ Could not store {name}: protected fruit KEPT in slot (NOT dropped)!"));
+                        ctx.webhook.fruit_storage_failed(
+                            &name,
+                            "Protected fruit was KEPT in inventory/slot (drop prevented).",
+                            photo,
+                            custom_tg,
+                        );
+                    } else {
+                        ctx.log_warn(&format!("⚠️ Fruit dropped on ground: {name}"));
+                        ctx.webhook.fruit_storage_failed(
+                            &name,
+                            "Fruit was dropped on the ground.",
+                            photo,
+                            custom_tg,
+                        );
+                    }
+                }
+            }
+            crate::core::fruit::StorageBannerResult::Failed { reason } => {
+                ctx.log_warn(&format!("⚠️ Fruit storage failed: {reason}"));
+                if !s.webhook.legendary_only || is_high_tier {
                     ctx.webhook.fruit_storage_failed(
-                        &name,
-                        "Protected fruit was KEPT in inventory/slot (drop prevented).",
-                        photo,
-                        custom_tg,
-                    );
-                } else {
-                    ctx.log_warn(&format!("⚠️ Fruit dropped on ground: {name}"));
-                    ctx.webhook.fruit_storage_failed(
-                        &name,
-                        "Fruit was dropped on the ground.",
+                        fruit_name,
+                        &reason,
                         photo,
                         custom_tg,
                     );
                 }
             }
-            crate::core::fruit::StorageBannerResult::Failed { reason } => {
-                ctx.log_warn(&format!("⚠️ Fruit storage failed: {reason}"));
-                ctx.webhook.fruit_storage_failed(
-                    fruit_name,
-                    &reason,
-                    photo,
-                    custom_tg,
-                );
-            }
         }
     } else if backspace_pressed && !protect_drop {
         // Backspace was executed to drop fruit, even if OCR missed the banner text
         ctx.log_warn(&format!("⚠️ Fruit dropped on ground (drop action completed): {fruit_name}"));
-        ctx.webhook.fruit_storage_failed(
-            fruit_name,
-            "Fruit was dropped on the ground.",
-            photo,
-            custom_tg,
-        );
+        if !s.webhook.legendary_only || is_high_tier {
+            ctx.webhook.fruit_storage_failed(
+                fruit_name,
+                "Fruit was dropped on the ground.",
+                photo,
+                custom_tg,
+            );
+        }
     } else {
-        ctx.webhook.fruit_stored(fruit_name, None, custom_tg);
+        if !s.webhook.legendary_only || is_high_tier {
+            ctx.webhook.fruit_stored(fruit_name, None, custom_tg);
+        }
     }
 
     // Always re-equip rod (key 1) after fruit drop/store

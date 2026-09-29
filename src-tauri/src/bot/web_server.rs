@@ -366,6 +366,8 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "vip_server_url": s.features.vip_server_url.clone(),
         "private_server_code": s.features.private_server_code.clone(),
         "rejoin_macro_name": s.features.rejoin_macro_name.clone(),
+        "legendary_only": s.webhook.legendary_only,
+        "send_drop_screenshot": s.webhook.send_drop_screenshot,
     });
 
     let body = payload.to_string();
@@ -785,6 +787,20 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
             let on = s.features.auto_reconnect;
             let _ = bot.ctx().store.save(&s);
             if on { "Auto-reconnect enabled" } else { "Auto-reconnect disabled" }
+        }
+        "toggle_legendary_only" => {
+            let mut s = settings.write();
+            s.webhook.legendary_only = !s.webhook.legendary_only;
+            let on = s.webhook.legendary_only;
+            let _ = bot.ctx().store.save(&s);
+            if on { "Notifications restricted to Legendary/Mythical & Pity 0 only" } else { "Notifications enabled for ALL fruit drops" }
+        }
+        "toggle_drop_screenshot" => {
+            let mut s = settings.write();
+            s.webhook.send_drop_screenshot = !s.webhook.send_drop_screenshot;
+            let on = s.webhook.send_drop_screenshot;
+            let _ = bot.ctx().store.save(&s);
+            if on { "Drop screenshots enabled" } else { "Drop screenshots disabled" }
         }
         _ => "Unknown action",
     };
@@ -2128,6 +2144,27 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
         </div>
       </div>
 
+      <!-- NOTIFICATION & SCREENSHOT FILTERS -->
+      <div class="card">
+        <div class="card-label">🛡️ NOTIFICATION &amp; SCREENSHOT FILTERS</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-size: 0.8rem; font-weight: 700; color: #fff;">🌟 Legendary / Pity 0 Only</div>
+              <div style="font-size: 0.7rem; color: var(--text-mute);">Block spam alerts for Common/Rare/Epic fruits</div>
+            </div>
+            <button id="btn-legendary-toggle" class="status-badge badge-running" style="cursor: pointer;" onclick="toggleLegendaryOnly()">ACTIVE</button>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06);">
+            <div>
+              <div style="font-size: 0.8rem; font-weight: 700; color: #fff;">📸 Drop Screenshots</div>
+              <div style="font-size: 0.7rem; color: var(--text-mute);">Capture screenshot when fruit drops on ground</div>
+            </div>
+            <button id="btn-drop-shot-toggle" class="status-badge badge-running" style="cursor: pointer;" onclick="toggleDropScreenshot()">ACTIVE</button>
+          </div>
+        </div>
+      </div>
+
       <!-- AUTO-RECONNECT & GPO PRIVATE SERVER JOIN -->
       <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -2407,6 +2444,36 @@ async function toggleAutoReconnect() {
   }
 }
 
+async function toggleLegendaryOnly() {
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'toggle_legendary_only' })
+    });
+    const d = await res.json();
+    showToast(d.message || 'Notification filter updated');
+    fetchStatus();
+  } catch (e) {
+    showToast('Failed to toggle notification filter');
+  }
+}
+
+async function toggleDropScreenshot() {
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'toggle_drop_screenshot' })
+    });
+    const d = await res.json();
+    showToast(d.message || 'Drop screenshot updated');
+    fetchStatus();
+  } catch (e) {
+    showToast('Failed to toggle drop screenshot');
+  }
+}
+
 if (window.Telegram && window.Telegram.WebApp) {
   const twa = window.Telegram.WebApp;
   twa.ready();
@@ -2618,6 +2685,28 @@ async function fetchStatus() {
         optHtml += `<option value="${m.name}" ${isSel}>📼 ${m.name} (${m.steps.length} steps)</option>`;
       }
       selRejoin.innerHTML = optHtml;
+    }
+
+    // Filter toggles sync
+    const btnLeg = document.getElementById('btn-legendary-toggle');
+    if (btnLeg && d.legendary_only !== undefined) {
+      if (d.legendary_only) {
+        btnLeg.className = 'status-badge badge-running';
+        btnLeg.innerText = 'ACTIVE';
+      } else {
+        btnLeg.className = 'status-badge badge-stopped';
+        btnLeg.innerText = 'OFF (ALL)';
+      }
+    }
+    const btnDropShot = document.getElementById('btn-drop-shot-toggle');
+    if (btnDropShot && d.send_drop_screenshot !== undefined) {
+      if (d.send_drop_screenshot) {
+        btnDropShot.className = 'status-badge badge-running';
+        btnDropShot.innerText = 'ACTIVE';
+      } else {
+        btnDropShot.className = 'status-badge badge-stopped';
+        btnDropShot.innerText = 'OFF';
+      }
     }
 
     updateCraftUi(d.crafting);

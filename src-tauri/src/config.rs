@@ -301,7 +301,7 @@ impl Default for Webhook {
             spawn: true,
             purchase: true,
             recovery: true,
-            legendary_only: false,
+            legendary_only: true,
             send_screenshot: true,
             send_catch_screenshot: false,
             send_drop_screenshot: true,

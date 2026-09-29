@@ -795,7 +795,7 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
                 ctx.log_info(&format!("🛡️ Protected {label} - preventing drop"));
             }
         }
-        if !actions::store_fruit(ctx, &fruit_name, is_protected) {
+        if !actions::store_fruit(ctx, &fruit_name, is_protected, is_high_tier) {
             return false;
         }
         *rod_equipped = true;
