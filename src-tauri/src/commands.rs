@@ -773,5 +773,17 @@ pub async fn laptop_keyboard_light_setup() -> Result<String, String> {
     blocking(crate::laptop_light::setup_keyboard_light_task).await
 }
 
+#[tauri::command]
+pub fn laptop_fan_get() -> crate::laptop_fan::FanStatus {
+    crate::laptop_fan::get_fan_status()
+}
 
+#[tauri::command]
+pub async fn laptop_fan_set(mode: String) -> Result<crate::laptop_fan::FanStatus, String> {
+    blocking(move || Ok(crate::laptop_fan::set_fan_mode(&mode))).await
+}
 
+#[tauri::command]
+pub async fn laptop_fan_set_auto_turbo(enabled: bool) -> Result<crate::laptop_fan::FanStatus, String> {
+    blocking(move || Ok(crate::laptop_fan::set_auto_turbo(enabled))).await
+}

@@ -187,6 +187,16 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
         } else {
             send_keyboard_light_status(&mut stream);
         }
+    } else if raw_path == "/api/fan/status" || raw_path == "/api/fan" {
+        if method == "POST" {
+            let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+            handle_fan_set(&mut stream, body);
+        } else {
+            send_fan_status(&mut stream);
+        }
+    } else if raw_path == "/api/fan/set" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_fan_set(&mut stream, body);
     } else {
         let not_found = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
         let _ = stream.write_all(not_found.as_bytes());
@@ -362,6 +372,7 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "recorder": crate::bot::recorder::get_status(),
         "macros": crate::bot::recorder::load_macros(&bot.ctx().store),
         "keyboard_light": crate::laptop_light::get_keyboard_light_status(),
+        "fan": crate::laptop_fan::get_fan_status(),
         "auto_reconnect": s.features.auto_reconnect,
         "vip_server_url": s.features.vip_server_url.clone(),
         "private_server_code": s.features.private_server_code.clone(),
@@ -977,6 +988,37 @@ fn handle_keyboard_light(stream: &mut TcpStream, body: &str) {
     let _ = stream.write_all(resp.as_bytes());
 }
 
+fn send_fan_status(stream: &mut TcpStream) {
+    let st = crate::laptop_fan::get_fan_status();
+    let body = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        body.len(),
+        body
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_fan_set(stream: &mut TcpStream, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let st = if let Some(auto_turbo) = parsed.get("auto_turbo").and_then(|v| v.as_bool()) {
+        crate::laptop_fan::set_auto_turbo(auto_turbo)
+    } else if let Some(pct) = parsed.get("pct").and_then(|v| v.as_u64()) {
+        crate::laptop_fan::set_fan_percentage(pct as u32)
+    } else if let Some(mode) = parsed.get("mode").and_then(|v| v.as_str()) {
+        crate::laptop_fan::set_fan_mode(mode)
+    } else {
+        crate::laptop_fan::get_fan_status()
+    };
+    let out = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        out.len(),
+        out
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
 fn send_html(stream: &mut TcpStream) {
     let html = r##"<!DOCTYPE html>
 <html lang="en">
@@ -1510,6 +1552,31 @@ input, textarea {
   border-color: #a855f7 !important;
   background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.45)) !important;
   color: #fff !important; box-shadow: 0 0 14px rgba(168, 85, 247, 0.45);
+}
+
+/* FAN BUTTONS */
+.fan-btn {
+  padding: 10px 4px; border-radius: 10px; border: 1.5px solid rgba(255,255,255,0.12);
+  background: rgba(30, 41, 59, 0.7); color: var(--text); font-weight: 700; font-size: 0.8rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;
+  transition: all 0.15s ease; user-select: none;
+}
+.fan-btn:active { transform: scale(0.95); }
+.fan-btn.active-quiet {
+  border-color: #3b82f6 !important; background: linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(37, 99, 235, 0.5)) !important;
+  color: #fff !important; box-shadow: 0 0 14px rgba(59, 130, 246, 0.45);
+}
+.fan-btn.active-balance {
+  border-color: #06b6d4 !important; background: linear-gradient(135deg, rgba(6, 182, 212, 0.35), rgba(8, 145, 178, 0.5)) !important;
+  color: #fff !important; box-shadow: 0 0 14px rgba(6, 182, 212, 0.45);
+}
+.fan-btn.active-perf {
+  border-color: #f97316 !important; background: linear-gradient(135deg, rgba(249, 115, 22, 0.35), rgba(234, 88, 12, 0.5)) !important;
+  color: #fff !important; box-shadow: 0 0 14px rgba(249, 115, 22, 0.45);
+}
+.fan-btn.active-turbo {
+  border-color: #f43f5e !important; background: linear-gradient(135deg, rgba(244, 63, 94, 0.35), rgba(225, 29, 72, 0.55)) !important;
+  color: #fff !important; box-shadow: 0 0 16px rgba(244, 63, 94, 0.55);
 }
 
 /* SLIDERS */
@@ -2088,6 +2155,69 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
 
     <!-- TAB 5: SYSTEM & SETTINGS -->
     <section id="sec-system" class="mobile-section">
+      <!-- LAPTOP FAN & THERMAL CONTROL -->
+      <div class="card" style="border-color: rgba(0, 240, 255, 0.35); background: rgba(0, 240, 255, 0.04);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <div class="card-label" style="color: var(--cyan); display: flex; align-items: center; gap: 6px;">
+            <span>🌀 FAN &amp; THERMAL HUB</span>
+            <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(0,240,255,0.15); border: 1px solid rgba(0,240,255,0.3); color: #a5f3fc;">LENOVO LOQ</span>
+          </div>
+          <div id="fan-mode-badge" class="status-badge" style="font-size: 0.7rem; padding: 3px 8px; background: rgba(6,182,212,0.15); color: #06b6d4; border: 1px solid rgba(6,182,212,0.3);">BALANCE (AUTO)</div>
+        </div>
+
+        <!-- Live Telemetry Stat Pills -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 6px 0;">
+          <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px; text-align: center;">
+            <div style="font-size: 0.65rem; color: var(--text-dim); font-weight: 700;">CPU TEMP</div>
+            <div id="telemetry-cpu-temp" style="font-size: 0.95rem; font-weight: 800; color: #38bdf8;">--°C</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px; text-align: center;">
+            <div style="font-size: 0.65rem; color: var(--text-dim); font-weight: 700;">GPU TEMP</div>
+            <div id="telemetry-gpu-temp" style="font-size: 0.95rem; font-weight: 800; color: #34d399;">--°C</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px; text-align: center;">
+            <div style="font-size: 0.65rem; color: var(--text-dim); font-weight: 700;">GPU POWER</div>
+            <div id="telemetry-gpu-power" style="font-size: 0.95rem; font-weight: 800; color: #fbbf24;">-- W</div>
+          </div>
+          <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px; text-align: center;">
+            <div style="font-size: 0.65rem; color: var(--text-dim); font-weight: 700;">EST. FAN</div>
+            <div id="telemetry-fan-rpm" style="font-size: 0.8rem; font-weight: 800; color: #c084fc; margin-top: 2px;">~2800 RPM</div>
+          </div>
+        </div>
+
+        <!-- 4 Fan Mode Buttons -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px;">
+          <button id="btn-fan-quiet" class="fan-btn" onclick="setFanMode('quiet')">💤 QUIET</button>
+          <button id="btn-fan-balance" class="fan-btn" onclick="setFanMode('balance')">⚖️ BALANCE</button>
+          <button id="btn-fan-perf" class="fan-btn" onclick="setFanMode('performance')">⚡ PERF</button>
+          <button id="btn-fan-turbo" class="fan-btn" style="border-color: rgba(244,63,94,0.4); color: #fda4af;" onclick="setFanMode('turbo')">🚀 TURBO</button>
+        </div>
+
+        <!-- Fan Speed Slider -->
+        <div class="slider-group" style="margin-top: 8px;">
+          <div class="slider-head">
+            <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: 700;">FAN SPEED SLIDER</span>
+            <span id="lbl-fan-pct" class="slider-val">50% (Balance)</span>
+          </div>
+          <input id="rng-fan-speed" type="range" min="0" max="100" value="50"
+                 oninput="onFanSliderInput(this.value)"
+                 onchange="onFanSliderRelease(this.value)"
+                 onpointerup="onFanSliderRelease(this.value)"
+                 ontouchend="onFanSliderRelease(this.value)" />
+        </div>
+
+        <!-- Auto-Turbo Switch -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
+          <div style="font-size: 0.75rem; color: var(--text-dim); display: flex; align-items: center; gap: 6px;">
+            <span>❄️ Auto-Turbo on Fishing:</span>
+            <span style="color: var(--text-mute); font-size: 0.7rem;">Ramps to Turbo while active</span>
+          </div>
+          <button id="btn-auto-turbo" class="header-btn-toggle" style="font-size: 0.75rem; padding: 4px 10px;" onclick="toggleAutoTurbo()">
+            <span>ON</span>
+          </button>
+        </div>
+      </div>
+
       <!-- LAPTOP KEYBOARD LIGHT CONTROL -->
       <div class="card" style="border-color: rgba(168, 85, 247, 0.35); background: rgba(168, 85, 247, 0.04);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -2728,6 +2858,7 @@ async function fetchStatus() {
     updateCraftUi(d.crafting);
     updateMacroUi(d.recorder, d.macros);
     if (d.keyboard_light) updateKbdLightUi(d.keyboard_light);
+    if (d.fan) updateFanUi(d.fan);
 
     renderTimers();
   } catch (e) {
@@ -3474,6 +3605,132 @@ async function setKbdLight(act) {
     fetchStatus();
   } catch (e) {
     showToast('Failed to set light: ' + e);
+  }
+}
+
+// LAPTOP FAN & THERMAL HUB
+let isDraggingFanSlider = false;
+let currentAutoTurbo = true;
+
+function updateFanUi(fan) {
+  if (!fan) return;
+  const badge = document.getElementById('fan-mode-badge');
+  const bQuiet = document.getElementById('btn-fan-quiet');
+  const bBal = document.getElementById('btn-fan-balance');
+  const bPerf = document.getElementById('btn-fan-perf');
+  const bTurbo = document.getElementById('btn-fan-turbo');
+  const rng = document.getElementById('rng-fan-speed');
+  const lblPct = document.getElementById('lbl-fan-pct');
+  const btnAuto = document.getElementById('btn-auto-turbo');
+
+  const cpuEl = document.getElementById('telemetry-cpu-temp');
+  const gpuEl = document.getElementById('telemetry-gpu-temp');
+  const powEl = document.getElementById('telemetry-gpu-power');
+  const rpmEl = document.getElementById('telemetry-fan-rpm');
+
+  if (cpuEl) cpuEl.innerText = (fan.cpu_temp !== null && fan.cpu_temp !== undefined) ? Math.round(fan.cpu_temp) + '°C' : '--°C';
+  if (gpuEl) gpuEl.innerText = (fan.gpu_temp !== null && fan.gpu_temp !== undefined) ? fan.gpu_temp + '°C' : '--°C';
+  if (powEl) powEl.innerText = (fan.gpu_power !== null && fan.gpu_power !== undefined) ? fan.gpu_power.toFixed(1) + ' W' : '-- W';
+  if (rpmEl) rpmEl.innerText = fan.est_fan_rpm || '~2800 RPM';
+
+  const m = (fan.current_mode || 'balance').toLowerCase();
+
+  if (badge) {
+    badge.innerText = (fan.mode_label || m).toUpperCase();
+    if (m === 'quiet') {
+      badge.style.background = 'rgba(59,130,246,0.15)';
+      badge.style.color = '#60a5fa';
+      badge.style.borderColor = 'rgba(59,130,246,0.4)';
+    } else if (m === 'performance') {
+      badge.style.background = 'rgba(249,115,22,0.15)';
+      badge.style.color = '#fb923c';
+      badge.style.borderColor = 'rgba(249,115,22,0.4)';
+    } else if (m === 'turbo') {
+      badge.style.background = 'rgba(244,63,94,0.2)';
+      badge.style.color = '#fda4af';
+      badge.style.borderColor = 'rgba(244,63,94,0.5)';
+    } else {
+      badge.style.background = 'rgba(6,182,212,0.15)';
+      badge.style.color = '#22d3ee';
+      badge.style.borderColor = 'rgba(6,182,212,0.4)';
+    }
+  }
+
+  [bQuiet, bBal, bPerf, bTurbo].forEach(b => {
+    if (b) {
+      b.classList.remove('active-quiet', 'active-balance', 'active-perf', 'active-turbo');
+    }
+  });
+
+  if (m === 'quiet' && bQuiet) bQuiet.classList.add('active-quiet');
+  else if (m === 'performance' && bPerf) bPerf.classList.add('active-perf');
+  else if (m === 'turbo' && bTurbo) bTurbo.classList.add('active-turbo');
+  else if (bBal) bBal.classList.add('active-balance');
+
+  if (rng && !isDraggingFanSlider) {
+    rng.value = fan.fan_level_pct || (m === 'quiet' ? 25 : m === 'performance' ? 75 : m === 'turbo' ? 100 : 50);
+  }
+  if (lblPct && !isDraggingFanSlider) {
+    lblPct.innerText = (fan.fan_level_pct || 50) + '% (' + (fan.mode_label || 'Auto') + ')';
+  }
+
+  currentAutoTurbo = !!fan.auto_turbo;
+  if (btnAuto) {
+    if (fan.auto_turbo) {
+      btnAuto.className = 'header-btn-toggle toggle-active';
+      btnAuto.innerText = 'ON';
+    } else {
+      btnAuto.className = 'header-btn-toggle toggle-inactive';
+      btnAuto.innerText = 'OFF';
+    }
+  }
+}
+
+function onFanSliderInput(v) {
+  isDraggingFanSlider = true;
+  const lbl = document.getElementById('lbl-fan-pct');
+  const val = parseInt(v, 10);
+  const modeName = val <= 33 ? 'Quiet' : val <= 66 ? 'Balance' : val <= 89 ? 'Performance' : 'Turbo 100%';
+  if (lbl) lbl.innerText = val + '% (' + modeName + ')';
+}
+
+function onFanSliderRelease(v) {
+  isDraggingFanSlider = false;
+  const val = parseInt(v, 10);
+  const mode = val <= 33 ? 'quiet' : val <= 66 ? 'balance' : val <= 89 ? 'performance' : 'turbo';
+  setFanMode(mode);
+}
+
+async function setFanMode(mode) {
+  try {
+    const res = await fetch('/api/fan/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: mode })
+    });
+    const data = await res.json();
+    if (data.success) {
+      updateFanUi(data);
+      showToast('Fan Mode: ' + (data.mode_label || mode).toUpperCase());
+    }
+  } catch (e) {
+    showToast('Failed to set fan: ' + e);
+  }
+}
+
+async function toggleAutoTurbo() {
+  try {
+    currentAutoTurbo = !currentAutoTurbo;
+    const res = await fetch('/api/fan/set', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auto_turbo: currentAutoTurbo })
+    });
+    const data = await res.json();
+    updateFanUi(data);
+    showToast('Auto-Turbo on Fishing: ' + (data.auto_turbo ? 'ENABLED' : 'DISABLED'));
+  } catch (e) {
+    showToast('Failed to toggle auto turbo: ' + e);
   }
 }
 

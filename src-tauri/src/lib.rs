@@ -12,6 +12,7 @@ pub mod discord_rpc;
 pub mod vpn;
 pub mod multi_roblox;
 pub mod laptop_light;
+pub mod laptop_fan;
 
 use tauri::Manager;
 
@@ -114,6 +115,9 @@ pub fn run() {
             commands::laptop_keyboard_light_get,
             commands::laptop_keyboard_light_set,
             commands::laptop_keyboard_light_setup,
+            commands::laptop_fan_get,
+            commands::laptop_fan_set,
+            commands::laptop_fan_set_auto_turbo,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

@@ -84,6 +84,7 @@ impl Bot {
         self.ctx.emit_stats();
         self.spawn_loop(resume);
         self.spawn_watchdog();
+        crate::laptop_fan::on_bot_state_changed(true);
         self.ctx.log_info(if resume { "Resumed" } else { "Started" });
     }
 
@@ -96,6 +97,7 @@ impl Bot {
         self.ctx.set_state(BotState::Paused, None);
         self.ctx.log_info("Paused");
         self.halt();
+        crate::laptop_fan::on_bot_state_changed(false);
         self.ctx.session.lock().pause();
         self.ctx.emit_stats();
     }
@@ -109,6 +111,7 @@ impl Bot {
             self.ctx.log_info("Stopped");
         }
         self.halt();
+        crate::laptop_fan::on_bot_state_changed(false);
         self.ctx.session.lock().pause();
         self.ctx.emit_stats();
     }
