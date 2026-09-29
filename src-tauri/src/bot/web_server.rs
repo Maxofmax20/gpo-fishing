@@ -914,118 +914,212 @@ fn handle_keyboard_light(stream: &mut TcpStream, body: &str) {
 }
 
 fn send_html(stream: &mut TcpStream) {
-    let html = r#"<!DOCTYPE html>
+    let html = r##"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<title>GPO Autofish CyberDeck</title>
+<!-- Mobile / PWA App Meta Tags -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GPO CyberDeck">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#07090e">
+<meta name="format-detection" content="telephone=no">
+<title>GPO Autofish Mobile</title>
+<!-- Embedded Favicon & Apple Touch Icon -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2300f0ff'/%3E%3Cstop offset='100%25' stop-color='%23b026ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='%2307090e'/%3E%3Ccircle cx='50' cy='50' r='38' stroke='url(%23g)' stroke-width='4' fill='none' opacity='0.4'/%3E%3Cpath d='M50 20 L58 42 L80 50 L58 58 L50 80 L42 58 L20 50 L42 42 Z' fill='url(%23g)'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2300f0ff'/%3E%3Cstop offset='100%25' stop-color='%23b026ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='%2307090e'/%3E%3Ccircle cx='50' cy='50' r='38' stroke='url(%23g)' stroke-width='4' fill='none' opacity='0.4'/%3E%3Cpath d='M50 20 L58 42 L80 50 L58 58 L50 80 L42 58 L20 50 L42 42 Z' fill='url(%23g)'/%3E%3C/svg%3E">
+<!-- Embedded Web App Manifest -->
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22GPO%20Autofish%20CyberDeck%22%2C%22short_name%22%3A%22GPO%20Macro%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%2307090e%22%2C%22theme_color%22%3A%22%2307090e%22%7D">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
 :root {
   --bg: #07090e;
-  --card: rgba(16, 22, 34, 0.85);
-  --border: rgba(30, 41, 59, 0.8);
-  --border-focus: #00f0ff;
+  --bg-surface: #0c101a;
+  --card: rgba(14, 20, 32, 0.88);
+  --card-border: rgba(30, 41, 59, 0.8);
+  --card-highlight: rgba(255, 255, 255, 0.05);
   --cyan: #00f0ff;
   --purple: #b026ff;
   --emerald: #10b981;
   --amber: #f59e0b;
-  --rose: #f43f5e;
+  --rose: #ef4444;
   --text: #f8fafc;
   --text-dim: #94a3b8;
   --text-mute: #64748b;
+  --safe-bottom: env(safe-area-inset-bottom, 16px);
+  --safe-top: env(safe-area-inset-top, 0px);
 }
 
 * {
   box-sizing: border-box; margin: 0; padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, sans-serif;
   -webkit-tap-highlight-color: transparent !important;
   -webkit-touch-callout: none !important;
   user-select: none !important;
   -webkit-user-select: none !important;
 }
+
 html, body {
-  background: var(--bg); color: var(--text); padding: 14px; min-height: 100vh;
-  background-image: radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.05), transparent 40%), radial-gradient(circle at 100% 100%, rgba(176, 38, 255, 0.04), transparent 40%);
-  overscroll-behavior: none !important;
+  background: var(--bg); color: var(--text); min-height: 100vh;
+  background-image: radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.06), transparent 50%), radial-gradient(circle at 100% 100%, rgba(176, 38, 255, 0.05), transparent 50%);
+  overscroll-behavior-y: none !important;
   touch-action: manipulation;
+  overflow-x: hidden;
 }
+
 input, textarea {
   user-select: text !important;
   -webkit-user-select: text !important;
   -webkit-touch-callout: default !important;
 }
-.container { max-width: 960px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 
-header {
-  display: flex; justify-content: space-between; align-items: center; padding: 14px 18px;
-  background: var(--card); border: 1px solid var(--border); border-radius: 16px;
-  backdrop-filter: blur(16px); box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+/* APP SHELL & CONTAINER */
+.app-shell {
+  display: flex; flex-direction: column; min-height: 100vh; position: relative;
 }
-.brand { display: flex; align-items: center; gap: 12px; }
-.brand-icon { font-size: 1.6rem; filter: drop-shadow(0 0 10px rgba(0,240,255,0.4)); }
-.brand h1 { font-size: 1.2rem; font-weight: 800; letter-spacing: -0.5px; background: linear-gradient(135deg, var(--cyan), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-.brand-sub { font-size: 0.72rem; color: var(--text-mute); font-family: monospace; }
 
-.header-badges { display: flex; align-items: center; gap: 8px; }
+/* STICKY TOP APP HEADER */
+.app-header {
+  position: sticky; top: 0; z-index: 900;
+  padding: max(10px, var(--safe-top)) 14px 10px 14px;
+  background: rgba(7, 9, 14, 0.88);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+}
+
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-avatar {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.25), rgba(176, 38, 255, 0.25));
+  border: 1px solid var(--cyan);
+  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.35); flex-shrink: 0;
+}
+.brand-text { display: flex; flex-direction: column; min-width: 0; }
+.brand-title {
+  font-size: 1.05rem; font-weight: 800; letter-spacing: -0.3px;
+  background: linear-gradient(135deg, var(--cyan), #c084fc);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.brand-sub { font-size: 0.68rem; color: var(--text-mute); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+.header-btn-toggle {
+  height: 32px; padding: 0 10px; border-radius: 999px;
+  background: linear-gradient(135deg, #00d2ff, #0084ff); color: #fff;
+  border: 1px solid rgba(255,255,255,0.25); font-size: 0.72rem; font-weight: 800;
+  display: flex; align-items: center; gap: 5px; cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 132, 255, 0.4); transition: all 0.15s ease;
+}
+.header-btn-toggle.active {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.4);
+}
+.header-btn-toggle:active { transform: scale(0.95); }
+
 .status-badge {
-  padding: 6px 14px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
-  letter-spacing: 0.5px; text-transform: uppercase; display: flex; align-items: center; gap: 6px;
-  border: 1px solid transparent; transition: all 0.3s ease;
+  padding: 5px 10px; border-radius: 999px; font-size: 0.68rem; font-weight: 800;
+  letter-spacing: 0.4px; text-transform: uppercase; display: flex; align-items: center; gap: 5px;
+  border: 1px solid transparent; transition: all 0.25s ease;
 }
-.badge-running { background: rgba(16, 185, 129, 0.15); color: var(--emerald); border-color: rgba(16, 185, 129, 0.4); box-shadow: 0 0 16px rgba(16, 185, 129, 0.2); }
-.badge-paused { background: rgba(245, 158, 11, 0.15); color: var(--amber); border-color: rgba(245, 158, 11, 0.4); box-shadow: 0 0 16px rgba(245, 158, 11, 0.2); }
-.badge-stopped { background: rgba(100, 116, 139, 0.15); color: var(--text-dim); border-color: rgba(100, 116, 139, 0.3); }
+.badge-running { background: rgba(16, 185, 129, 0.16); color: var(--emerald); border-color: rgba(16, 185, 129, 0.4); box-shadow: 0 0 12px rgba(16, 185, 129, 0.25); }
+.badge-paused { background: rgba(245, 158, 11, 0.16); color: var(--amber); border-color: rgba(245, 158, 11, 0.4); box-shadow: 0 0 12px rgba(245, 158, 11, 0.25); }
+.badge-stopped { background: rgba(100, 116, 139, 0.16); color: var(--text-dim); border-color: rgba(100, 116, 139, 0.3); }
 
 .toggle-spawn-badge {
-  cursor: pointer; padding: 6px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
-  background: rgba(176, 38, 255, 0.15); color: #d8b4fe; border: 1px solid rgba(176, 38, 255, 0.4);
-  transition: all 0.2s ease; user-select: none;
+  cursor: pointer; padding: 5px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 700;
+  background: rgba(176, 38, 255, 0.15); color: #d8b4fe; border: 1px solid rgba(176, 38, 255, 0.35);
+  transition: all 0.2s ease;
 }
 .toggle-spawn-badge.off {
-  background: rgba(100, 116, 139, 0.15); color: var(--text-mute); border-color: rgba(100, 116, 139, 0.3);
+  background: rgba(100, 116, 139, 0.12); color: var(--text-mute); border-color: rgba(100, 116, 139, 0.25);
 }
 
-/* SCREEN STREAM & TAP-TO-CONTROL */
+/* MAIN CONTENT AREA */
+.app-content {
+  flex: 1; max-width: 680px; width: 100%; margin: 0 auto;
+  padding: 12px 14px calc(76px + var(--safe-bottom)) 14px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+
+/* MOBILE SECTIONS */
+.mobile-section {
+  display: none; flex-direction: column; gap: 12px;
+  animation: mobileFade 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.mobile-section.active { display: flex; }
+@keyframes mobileFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* CARDS */
+.card {
+  background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; padding: 14px;
+  display: flex; flex-direction: column; gap: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.card-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; }
+.card-val { font-size: 1.45rem; font-weight: 800; color: var(--text); }
+.card-val.fruit { color: #d8b4fe; text-shadow: 0 0 16px rgba(176, 38, 255, 0.35); }
+.card-meta { font-size: 0.72rem; color: var(--text-mute); }
+
+/* STATS GAUGES & GRIDS */
+.stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.gauge-bar-bg {
+  width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 999px;
+  overflow: hidden; margin-top: 4px;
+}
+.gauge-bar-fill {
+  height: 100%; width: 0%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--cyan), var(--purple));
+  transition: width 0.4s ease;
+}
+
+/* STREAM WRAPPER & TOOLBAR */
 .stream-wrapper {
-  background: var(--card); border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+  background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; overflow: hidden;
   position: relative; box-shadow: 0 12px 36px rgba(0,0,0,0.5); transition: all 0.25s ease;
 }
 .stream-bar {
-  display: flex; justify-content: space-between; align-items: center; padding: 10px 16px;
-  background: rgba(0,0,0,0.4); border-bottom: 1px solid var(--border); font-size: 0.75rem; font-weight: 600;
-  gap: 8px; flex-wrap: wrap;
+  display: flex; justify-content: space-between; align-items: center; padding: 10px 12px;
+  background: rgba(0,0,0,0.45); border-bottom: 1px solid var(--card-border); font-size: 0.74rem; font-weight: 600;
+  gap: 6px; flex-wrap: wrap;
 }
-.stream-indicator { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.stream-indicator { display: flex; align-items: center; gap: 6px; }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; transition: all 0.3s; }
 .live-dot.on { background: var(--emerald); box-shadow: 0 0 10px var(--emerald); animation: pulseDot 1.5s infinite; }
 @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
+.stream-tools-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .stream-tool-btn {
-  height: 32px; padding: 0 10px; font-size: 0.74rem; font-weight: 700; border-radius: 8px;
-  background: rgba(30, 41, 59, 0.8); border: 1px solid var(--border); color: var(--text);
-  display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer;
+  height: 32px; padding: 0 9px; font-size: 0.72rem; font-weight: 700; border-radius: 8px;
+  background: rgba(30, 41, 59, 0.85); border: 1px solid var(--card-border); color: var(--text);
+  display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer;
   user-select: none; transition: all 0.15s ease; white-space: nowrap;
 }
-.stream-tool-btn:hover {
-  background: rgba(51, 65, 85, 0.9); border-color: rgba(255,255,255,0.25);
-}
+.stream-tool-btn:hover, .stream-tool-btn:active { background: rgba(51, 65, 85, 0.95); }
 .stream-tool-btn.active {
   background: rgba(0, 240, 255, 0.2); border-color: var(--cyan); color: var(--cyan);
 }
 
 .screen-box {
-  width: 100%; min-height: 240px; background: #030508; display: flex; align-items: center; justify-content: center;
+  width: 100%; min-height: 220px; background: #030508; display: flex; align-items: center; justify-content: center;
   position: relative; overflow: hidden; cursor: crosshair; touch-action: none;
 }
 .screen-img {
   width: 100%; max-height: 480px; object-fit: contain; display: block; user-select: none;
   pointer-events: none !important; -webkit-user-drag: none !important;
 }
+
 .click-ripple {
   position: absolute; width: 24px; height: 24px; border-radius: 50%;
   border: 2px solid var(--cyan); background: rgba(0, 240, 255, 0.3);
@@ -1037,7 +1131,6 @@ header {
   100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
 }
 
-/* TOUCH HOLD & DRAG RETICLE */
 .touch-drag-indicator {
   position: absolute; width: 50px; height: 50px; border-radius: 50%;
   border: 2px solid var(--cyan); background: rgba(0, 240, 255, 0.2);
@@ -1051,15 +1144,14 @@ header {
   box-shadow: 0 0 18px rgba(176, 38, 255, 0.6), inset 0 0 14px rgba(176, 38, 255, 0.35);
 }
 .touch-drag-indicator.dragging {
-  transform: translate(-50%, -50%) scale(1.22);
-  border-width: 2.5px;
+  transform: translate(-50%, -50%) scale(1.22); border-width: 2.5px;
 }
 .touch-drag-indicator-core {
   width: 10px; height: 10px; border-radius: 50%; background: #fff;
   box-shadow: 0 0 8px #fff; pointer-events: none;
 }
 
-/* FULLSCREEN IMMERSIVE MODE & FLOATING CONTROLS */
+/* FULLSCREEN IMMERSIVE MODE */
 .stream-wrapper.fullscreen-active {
   position: fixed !important; top: 0 !important; left: 0 !important;
   width: 100vw !important; height: 100vh !important; max-width: 100vw !important; max-height: 100vh !important;
@@ -1072,250 +1164,201 @@ header {
   position: fixed !important; top: 50% !important; left: 50% !important;
   transform: translate(-50%, -50%) rotate(90deg) !important;
 }
-.stream-wrapper.fullscreen-active .stream-bar {
-  display: none !important;
-}
+.stream-wrapper.fullscreen-active .stream-bar { display: none !important; }
 .stream-wrapper.fullscreen-active .screen-box {
   flex: 1 !important; width: 100%; height: 100%;
   max-height: 100% !important; min-height: 100% !important; border-radius: 0 !important;
 }
 .stream-wrapper.fullscreen-active .screen-img {
-  width: 100%; height: 100%; max-height: 100% !important;
-  object-fit: contain !important;
+  width: 100%; height: 100%; max-height: 100% !important; object-fit: contain !important;
 }
 
 .fs-floating-bar {
   display: none; position: absolute; top: 12px; left: 12px; right: 12px;
   z-index: 100000; pointer-events: none; justify-content: space-between; align-items: center;
 }
-.stream-wrapper.fullscreen-active .fs-floating-bar {
-  display: flex;
-}
-.fs-badge-group {
-  display: flex; align-items: center; gap: 8px; pointer-events: auto;
-}
+.stream-wrapper.fullscreen-active .fs-floating-bar { display: flex; }
+.fs-badge-group { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
 .fs-stream-pill {
-  background: rgba(16, 22, 34, 0.85); border: 1px solid var(--border); padding: 4px 10px;
+  background: rgba(16, 22, 34, 0.85); border: 1px solid var(--card-border); padding: 4px 10px;
   border-radius: 999px; font-size: 0.7rem; font-family: monospace; font-weight: 800;
   color: var(--cyan); backdrop-filter: blur(10px); box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
 .fs-btn {
-  pointer-events: auto; background: rgba(16, 22, 34, 0.85); border: 1px solid var(--border);
-  color: var(--text); padding: 6px 14px; border-radius: 999px; font-size: 0.74rem; font-weight: 800;
-  cursor: pointer; backdrop-filter: blur(10px); transition: all 0.18s; display: flex; align-items: center;
-  gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); user-select: none;
+  pointer-events: auto; background: rgba(16, 22, 34, 0.85); border: 1px solid var(--card-border);
+  color: var(--text); padding: 6px 12px; border-radius: 999px; font-size: 0.72rem; font-weight: 800;
+  cursor: pointer; backdrop-filter: blur(10px); transition: all 0.15s; display: flex; align-items: center;
+  gap: 5px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); user-select: none;
 }
-.fs-btn:hover { background: rgba(30, 41, 59, 0.95); border-color: var(--cyan); }
-.fs-btn:active { transform: scale(0.96); }
+.fs-btn:active { transform: scale(0.95); }
 .fs-btn.active { background: rgba(0, 240, 255, 0.2); border-color: var(--cyan); color: var(--cyan); }
 .fs-btn-close {
-  background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.5); color: #fca5a5;
+  background: rgba(239, 68, 68, 0.3); border-color: rgba(239, 68, 68, 0.5); color: #fca5a5;
 }
-.fs-btn-close:hover { background: rgba(239, 68, 68, 0.5); color: #fff; }
 
 .fs-controls-overlay {
   display: none; position: absolute; inset: 0; z-index: 99999;
   pointer-events: none; flex-direction: column; justify-content: space-between;
   padding: 58px 16px 20px 16px;
 }
-.stream-wrapper.fullscreen-active .fs-controls-overlay.visible {
-  display: flex;
-}
+.stream-wrapper.fullscreen-active .fs-controls-overlay.visible { display: flex; }
 .fs-quick-bar {
   display: flex; justify-content: center; gap: 8px; pointer-events: none; flex-wrap: wrap;
 }
 .fs-mini-btn {
-  pointer-events: auto; background: rgba(16, 22, 34, 0.78); border: 1px solid rgba(255, 255, 255, 0.18);
-  color: var(--text); padding: 6px 14px; border-radius: 8px; font-size: 0.74rem; font-weight: 700;
+  pointer-events: auto; background: rgba(16, 22, 34, 0.85); border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text); padding: 6px 12px; border-radius: 8px; font-size: 0.72rem; font-weight: 700;
   cursor: pointer; backdrop-filter: blur(10px); box-shadow: 0 4px 14px rgba(0,0,0,0.5);
   transition: all 0.15s; user-select: none;
 }
-.fs-mini-btn:hover { background: rgba(30, 41, 59, 0.9); border-color: var(--cyan); color: #fff; }
 .fs-mini-btn:active { transform: scale(0.95); }
 
 .fs-bottom-controls {
   display: flex; justify-content: space-between; align-items: flex-end;
   pointer-events: none; gap: 12px; width: 100%;
 }
-.fs-pad-cluster {
-  display: flex; flex-direction: column; gap: 6px; pointer-events: none;
-}
+.fs-pad-cluster { display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
 .fs-cluster-label {
   font-size: 0.65rem; font-weight: 800; color: var(--text-dim); letter-spacing: 0.5px;
   text-shadow: 0 2px 4px rgba(0,0,0,0.8);
 }
 .fs-pad-btn {
   pointer-events: auto; backdrop-filter: blur(12px);
-  background: rgba(16, 22, 34, 0.72) !important;
+  background: rgba(16, 22, 34, 0.75) !important;
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
   box-shadow: 0 6px 18px rgba(0,0,0,0.6);
 }
 
-/* MOBILE GAMEPAD ERGONOMIC SHAPES */
-.fs-dpad-circle {
-  width: 148px; height: 148px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(16, 24, 39, 0.88) 0%, rgba(3, 7, 18, 0.96) 100%);
+/* ERGONOMIC TOUCH GAMEPAD */
+.controller-card {
+  background: linear-gradient(180deg, rgba(16, 24, 39, 0.82) 0%, rgba(10, 15, 26, 0.94) 100%);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  border-radius: 18px; padding: 14px;
+  display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+}
+.controller-layout {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
+}
+
+/* CIRCULAR DPAD & ARROW PADS */
+.fs-dpad-circle, .mobile-dpad-circle {
+  width: 140px; height: 140px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 24, 39, 0.9) 0%, rgba(3, 7, 18, 0.98) 100%);
   border: 2px solid rgba(0, 240, 255, 0.35);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(0, 240, 255, 0.14);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7), inset 0 0 16px rgba(0, 240, 255, 0.12);
   backdrop-filter: blur(16px); position: relative; display: flex; align-items: center; justify-content: center;
   pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none;
 }
 .fs-dpad-center {
-  width: 44px; height: 44px; border-radius: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
   background: radial-gradient(circle, rgba(0, 240, 255, 0.25) 0%, rgba(15, 23, 42, 0.9) 100%);
   border: 1.5px solid rgba(0, 240, 255, 0.45);
-  box-shadow: 0 0 14px rgba(0, 240, 255, 0.35);
-  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.35);
+  display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
   pointer-events: none;
 }
 .fs-dpad-btn-w {
-  position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
-  width: 48px; height: 44px; border-radius: 14px 14px 6px 6px;
+  position: absolute; top: 5px; left: 50%; transform: translateX(-50%);
+  width: 44px; height: 40px; border-radius: 12px 12px 6px 6px;
 }
 .fs-dpad-btn-s {
-  position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
-  width: 48px; height: 44px; border-radius: 6px 6px 14px 14px;
+  position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
+  width: 44px; height: 40px; border-radius: 6px 6px 12px 12px;
 }
 .fs-dpad-btn-a {
-  position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
-  width: 44px; height: 48px; border-radius: 14px 6px 6px 14px;
+  position: absolute; left: 5px; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 44px; border-radius: 12px 6px 6px 12px;
 }
 .fs-dpad-btn-d {
-  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-  width: 44px; height: 48px; border-radius: 6px 14px 14px 6px;
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 44px; border-radius: 6px 12px 12px 6px;
 }
 
-/* CAMERA DIRECTIONAL ARROWS PAD (SCREEN CONTROL) */
-.fs-right-group {
-  display: flex; gap: 14px; align-items: flex-end; pointer-events: none; flex-wrap: wrap; justify-content: flex-end;
-}
-.fs-arrow-circle {
-  width: 148px; height: 148px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(16, 24, 39, 0.88) 0%, rgba(3, 7, 18, 0.96) 100%);
+.fs-arrow-circle, .mobile-arrow-circle {
+  width: 140px; height: 140px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 24, 39, 0.9) 0%, rgba(3, 7, 18, 0.98) 100%);
   border: 2px solid rgba(59, 130, 246, 0.4);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), inset 0 0 20px rgba(59, 130, 246, 0.16);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7), inset 0 0 16px rgba(59, 130, 246, 0.15);
   backdrop-filter: blur(16px); position: relative; display: flex; align-items: center; justify-content: center;
   pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none;
 }
 .fs-arrow-center {
-  width: 44px; height: 44px; border-radius: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
   background: radial-gradient(circle, rgba(59, 130, 246, 0.25) 0%, rgba(15, 23, 42, 0.9) 100%);
   border: 1.5px solid rgba(59, 130, 246, 0.45);
-  box-shadow: 0 0 14px rgba(59, 130, 246, 0.35);
-  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
+  display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
   pointer-events: none;
 }
 .fs-arrow-btn-up {
-  position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
-  width: 46px; height: 42px; border-radius: 14px 14px 6px 6px;
-  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important;
-  font-size: 1.15rem !important;
+  position: absolute; top: 5px; left: 50%; transform: translateX(-50%);
+  width: 44px; height: 40px; border-radius: 12px 12px 6px 6px;
+  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
 }
 .fs-arrow-btn-down {
-  position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
-  width: 46px; height: 42px; border-radius: 6px 6px 14px 14px;
-  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important;
-  font-size: 1.15rem !important;
+  position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
+  width: 44px; height: 40px; border-radius: 6px 6px 12px 12px;
+  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
 }
 .fs-arrow-btn-left {
-  position: absolute; left: 6px; top: 50%; transform: translateY(-50%);
-  width: 42px; height: 46px; border-radius: 14px 6px 6px 14px;
-  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important;
-  font-size: 1.15rem !important;
+  position: absolute; left: 5px; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 44px; border-radius: 12px 6px 6px 12px;
+  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
 }
 .fs-arrow-btn-right {
-  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
-  width: 42px; height: 46px; border-radius: 6px 14px 14px 6px;
-  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important;
-  font-size: 1.15rem !important;
+  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 44px; border-radius: 6px 12px 12px 6px;
+  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
+}
+
+.fs-right-group {
+  display: flex; gap: 10px; align-items: center; pointer-events: none; flex-wrap: wrap; justify-content: flex-end;
 }
 .fs-actions-column {
   display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none;
 }
-
 .fs-round-action-btn {
-  width: 46px; height: 46px; border-radius: 50% !important;
+  width: 44px; height: 44px; border-radius: 50% !important;
   display: flex; align-items: center; justify-content: center;
-  font-size: 0.82rem; font-weight: 800;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.08);
+  font-size: 0.85rem; font-weight: 800;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
 }
 .fs-round-jump-btn {
-  width: 58px; height: 58px; border-radius: 50% !important;
+  width: 52px; height: 52px; border-radius: 50% !important;
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.45), rgba(5, 150, 105, 0.7)) !important;
   border: 2px solid var(--emerald) !important;
-  box-shadow: 0 0 24px rgba(16, 185, 129, 0.5) !important;
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.45) !important;
   font-size: 0.95rem; font-weight: 800; color: #fff;
 }
 .fs-round-jump-btn:active, .fs-round-jump-btn.pressed {
   background: var(--emerald) !important; color: #000 !important;
-  box-shadow: 0 0 34px var(--emerald) !important; transform: scale(0.94);
+  box-shadow: 0 0 30px var(--emerald) !important; transform: scale(0.94);
 }
 
-/* ACTIONS */
-.action-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
-.btn {
-  padding: 12px 16px; border-radius: 12px; border: 1px solid transparent; font-size: 0.88rem; font-weight: 700;
-  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.18s ease;
-  user-select: none;
-}
-.btn:active { transform: scale(0.96); }
-.btn-toggle { background: linear-gradient(135deg, #00d2ff, #0084ff); color: #fff; box-shadow: 0 4px 18px rgba(0, 140, 255, 0.35); }
-.btn-toggle.paused { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 18px rgba(245, 158, 11, 0.35); }
-.btn-sub { background: rgba(30, 41, 59, 0.6); color: var(--text); border-color: var(--border); }
-.btn-sub:hover { background: rgba(51, 65, 85, 0.8); border-color: rgba(255,255,255,0.1); }
-.btn-update { background: rgba(176, 38, 255, 0.15); color: #d8b4fe; border-color: rgba(176, 38, 255, 0.4); }
-
-/* VIRTUAL CONTROLLER */
-.controller-card {
-  background: linear-gradient(180deg, rgba(16, 24, 39, 0.75) 0%, rgba(10, 15, 26, 0.9) 100%);
-  border: 1px solid rgba(0, 240, 255, 0.25);
-  border-radius: 16px; padding: 16px;
-  display: flex; flex-direction: column; gap: 12px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(14px);
-}
-.controller-layout {
-  display: flex; flex-wrap: wrap; justify-content: space-around; align-items: flex-start; gap: 14px;
-}
-.pad-cluster {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-}
-.cluster-label {
-  font-size: 0.68rem; font-weight: 800; color: var(--text-dim); letter-spacing: 0.5px;
-}
-.dpad-grid {
-  display: grid; grid-template-columns: repeat(3, 46px); grid-template-rows: repeat(2, 46px); gap: 6px;
-}
 .dpad-btn {
   background: rgba(30, 41, 59, 0.75); border: 1.5px solid rgba(255, 255, 255, 0.15); border-radius: 12px; color: var(--text);
   font-weight: 800; font-size: 0.95rem; display: flex; align-items: center; justify-content: center;
-  cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; -webkit-touch-callout: none;
+  cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none;
   transition: all 0.12s cubic-bezier(0.2, 0.8, 0.4, 1); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
-.dpad-btn:hover { border-color: var(--cyan); background: rgba(51, 65, 85, 0.85); color: #fff; }
 .dpad-btn:active, .dpad-btn.pressed {
   background: var(--cyan); color: #000; box-shadow: 0 0 20px var(--cyan); transform: scale(0.94);
 }
 .pad-arrow-btn {
-  font-size: 1.15rem; color: #60a5fa; border-color: rgba(96, 165, 250, 0.35);
-  background: rgba(23, 37, 84, 0.5);
+  font-size: 1.15rem; color: #60a5fa; border-color: rgba(96, 165, 250, 0.35); background: rgba(23, 37, 84, 0.5);
 }
-.pad-arrow-btn:hover { border-color: #60a5fa; background: rgba(30, 58, 138, 0.65); color: #fff; }
 .pad-arrow-btn:active, .pad-arrow-btn.pressed {
   background: #3b82f6 !important; color: #fff !important; box-shadow: 0 0 20px #3b82f6 !important; transform: scale(0.94);
 }
 
-.action-buttons-pad {
-  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; width: 100%;
-}
 .pad-action-btn {
-  padding: 11px 14px; background: rgba(30, 41, 59, 0.75); border: 1.5px solid rgba(255, 255, 255, 0.15); border-radius: 12px;
+  padding: 10px 14px; background: rgba(30, 41, 59, 0.75); border: 1.5px solid rgba(255, 255, 255, 0.15); border-radius: 12px;
   color: var(--text); font-weight: 800; font-size: 0.8rem; cursor: pointer; user-select: none;
-  -webkit-user-select: none; touch-action: none; -webkit-touch-callout: none;
-  transition: all 0.12s cubic-bezier(0.2, 0.8, 0.4, 1); display: flex; align-items: center; justify-content: center; gap: 6px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  touch-action: none; transition: all 0.12s cubic-bezier(0.2, 0.8, 0.4, 1);
+  display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
 }
-.pad-action-btn:hover { border-color: var(--purple); background: rgba(51, 65, 85, 0.85); color: #fff; }
 .pad-action-btn:active, .pad-action-btn.pressed {
   background: var(--purple); color: #fff; box-shadow: 0 0 20px var(--purple); transform: scale(0.94);
 }
@@ -1327,6 +1370,19 @@ header {
 }
 .btn-shift { border-color: rgba(176, 38, 255, 0.4); color: #d8b4fe; }
 
+/* ACTION BUTTONS & GRIDS */
+.action-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.btn {
+  padding: 12px 14px; border-radius: 12px; border: 1px solid transparent; font-size: 0.85rem; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s ease;
+  user-select: none;
+}
+.btn:active { transform: scale(0.96); }
+.btn-toggle { background: linear-gradient(135deg, #00d2ff, #0084ff); color: #fff; box-shadow: 0 4px 18px rgba(0, 140, 255, 0.35); }
+.btn-toggle.paused { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 18px rgba(245, 158, 11, 0.35); }
+.btn-sub { background: rgba(30, 41, 59, 0.6); color: var(--text); border-color: var(--card-border); }
+.btn-update { background: rgba(176, 38, 255, 0.15); color: #d8b4fe; border-color: rgba(176, 38, 255, 0.4); }
+
 /* KEYBOARD LIGHT BUTTONS */
 .kbd-btn {
   padding: 10px 4px; border-radius: 10px; border: 1.5px solid rgba(255,255,255,0.12);
@@ -1334,44 +1390,30 @@ header {
   cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;
   transition: all 0.15s ease; user-select: none;
 }
-.kbd-btn:hover { background: rgba(51, 65, 85, 0.85); border-color: rgba(255,255,255,0.25); }
 .kbd-btn:active { transform: scale(0.95); }
 .kbd-btn.active {
   border-color: #a855f7 !important;
   background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.45)) !important;
-  color: #fff !important;
-  box-shadow: 0 0 14px rgba(168, 85, 247, 0.45);
+  color: #fff !important; box-shadow: 0 0 14px rgba(168, 85, 247, 0.45);
 }
-
-/* STATS */
-.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; }
-.card {
-  background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px;
-  display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-  backdrop-filter: blur(12px);
-}
-.card-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
-.card-val { font-size: 1.45rem; font-weight: 800; color: var(--text); }
-.card-val.fruit { color: #d8b4fe; text-shadow: 0 0 16px rgba(176, 38, 255, 0.3); }
-.card-meta { font-size: 0.72rem; color: var(--text-mute); }
 
 /* SLIDERS */
-.sliders-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.sliders-grid { display: flex; flex-direction: column; gap: 12px; }
 .slider-group { display: flex; flex-direction: column; gap: 8px; }
-.slider-head { display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 700; }
+.slider-head { display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 700; }
 .slider-val { font-family: monospace; color: var(--cyan); }
 input[type=range] {
-  -webkit-appearance: none; width: 100%; height: 7px; border-radius: 4px; background: #1e293b; outline: none; cursor: pointer;
+  -webkit-appearance: none; width: 100%; height: 8px; border-radius: 4px; background: #1e293b; outline: none; cursor: pointer;
 }
 input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); cursor: pointer; transition: transform 0.1s;
+  -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); cursor: pointer; transition: transform 0.1s;
 }
-input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
+input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
 
 /* BOSS TIMERS */
-.boss-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.boss-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
 .boss-card {
-  background: rgba(16, 22, 34, 0.7); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px;
+  background: rgba(16, 22, 34, 0.7); border: 1px solid var(--card-border); border-radius: 12px; padding: 10px 12px;
   display: flex; justify-content: space-between; align-items: center;
 }
 .boss-title { font-size: 0.82rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
@@ -1380,319 +1422,284 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
 .boss-soon { color: var(--amber); }
 @keyframes pulseSpawn { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
-/* TOAST */
-#toast {
-  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(100px);
-  background: rgba(16, 22, 34, 0.95); border: 1px solid var(--border-focus); color: var(--text);
-  padding: 10px 20px; border-radius: 999px; font-size: 0.82rem; font-weight: 700;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(0,240,255,0.25);
-  transition: transform 0.28s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-  pointer-events: none; z-index: 999;
-}
-#toast.show { transform: translateX(-50%) translateY(0); }
-
-/* TOP NAVIGATION TABS */
-.nav-tabs {
-  display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;
-  border-bottom: 1px solid var(--border); margin-bottom: 4px;
-  -webkit-overflow-scrolling: touch;
-}
-.nav-tab-btn {
-  padding: 8px 16px; border-radius: 10px; background: rgba(30, 41, 59, 0.5);
-  border: 1px solid var(--border); color: var(--text-dim); font-size: 0.8rem;
-  font-weight: 700; cursor: pointer; white-space: nowrap; transition: all 0.18s ease;
-}
-.nav-tab-btn:hover { background: rgba(51, 65, 85, 0.8); color: var(--text); }
-.nav-tab-btn.active {
-  background: rgba(0, 240, 255, 0.18); border-color: var(--cyan); color: var(--cyan);
-  box-shadow: 0 0 14px rgba(0, 240, 255, 0.3);
-}
-
-/* CUSTOM NON-NATIVE DROPDOWN */
-.custom-dropdown {
-  position: relative; display: inline-block; flex: 1; min-width: 160px;
-}
+/* CUSTOM DROPDOWNS */
+.custom-dropdown { position: relative; display: inline-block; flex: 1; min-width: 140px; }
 .custom-dropdown-btn {
-  width: 100%; height: 42px; padding: 0 14px;
-  background: #14151a; border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 10px; color: var(--text); font-size: 0.84rem; font-weight: 700;
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  cursor: pointer; transition: all 0.18s ease; user-select: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  width: 100%; height: 42px; padding: 0 12px; background: #14151a; border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px; color: var(--text); font-size: 0.82rem; font-weight: 700;
+  display: flex; align-items: center; justify-content: space-between; gap: 6px; cursor: pointer;
 }
-.custom-dropdown-btn:hover {
-  background: #1a1d24; border-color: rgba(255, 255, 255, 0.28);
-}
-.custom-dropdown.open .custom-dropdown-btn {
-  border-color: var(--cyan); box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
-}
-.custom-dropdown.open .dropdown-chevron {
-  transform: rotate(180deg);
-}
-.dropdown-chevron {
-  font-size: 0.72rem; color: var(--text-dim); transition: transform 0.2s ease;
-}
+.custom-dropdown.open .custom-dropdown-btn { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0, 240, 255, 0.3); }
+.custom-dropdown.open .dropdown-chevron { transform: rotate(180deg); }
+.dropdown-chevron { font-size: 0.7rem; color: var(--text-dim); transition: transform 0.2s ease; }
 .custom-dropdown-menu {
-  display: none; position: absolute; top: calc(100% + 4px); left: 0;
-  min-width: 100%; max-width: 320px; max-height: 240px; overflow-y: auto;
-  background: #14151a; border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 12px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8);
-  z-index: 1000; padding: 6px; backdrop-filter: blur(20px);
+  display: none; position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%; max-width: 320px;
+  max-height: 240px; overflow-y: auto; background: #14151a; border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8); z-index: 1000; padding: 6px;
 }
-.custom-dropdown.open .custom-dropdown-menu {
-  display: flex; flex-direction: column; gap: 3px;
-}
+.custom-dropdown.open .custom-dropdown-menu { display: flex; flex-direction: column; gap: 3px; }
 .custom-dropdown-item {
-  padding: 8px 12px; border-radius: 8px; font-size: 0.82rem;
-  color: var(--text-dim); cursor: pointer; display: flex; align-items: center;
-  justify-content: space-between; gap: 8px; transition: background 0.12s ease;
-  user-select: none;
+  padding: 8px 10px; border-radius: 8px; font-size: 0.8rem; color: var(--text-dim); cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
 }
-.custom-dropdown-item:hover {
-  background: rgba(255, 255, 255, 0.08); color: #fff;
-}
-.custom-dropdown-item.active {
-  background: rgba(0, 240, 255, 0.15); color: var(--cyan); font-weight: 700;
-}
-.dropdown-item-sub {
-  font-size: 0.68rem; color: var(--text-mute); font-family: monospace;
-}
+.custom-dropdown-item.active { background: rgba(0, 240, 255, 0.15); color: var(--cyan); font-weight: 700; }
+.dropdown-item-sub { font-size: 0.68rem; color: var(--text-mute); font-family: monospace; }
 
-/* MACRO UPGRADE STYLES */
-.macro-pill-group {
-  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
-}
+/* MACRO PILLS & INSPECTOR */
+.macro-pill-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .macro-pill-btn {
-  background: rgba(30, 41, 59, 0.7); border: 1px solid var(--border); color: var(--text-dim);
-  padding: 6px 12px; border-radius: 8px; font-size: 0.76rem; font-weight: 700; cursor: pointer;
-  transition: all 0.15s ease; user-select: none;
+  background: rgba(30, 41, 59, 0.7); border: 1px solid var(--card-border); color: var(--text-dim);
+  padding: 6px 10px; border-radius: 8px; font-size: 0.74rem; font-weight: 700; cursor: pointer;
 }
-.macro-pill-btn:hover { background: rgba(51, 65, 85, 0.9); color: #fff; }
 .macro-pill-btn.active {
-  background: rgba(0, 240, 255, 0.16); border-color: var(--cyan); color: var(--cyan);
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
+  background: rgba(0, 240, 255, 0.16); border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
 }
 .macro-pill-btn.active-purple {
-  background: rgba(176, 38, 255, 0.18); border-color: #c084fc; color: #e9d5ff;
-  box-shadow: 0 0 12px rgba(176, 38, 255, 0.3);
+  background: rgba(176, 38, 255, 0.18); border-color: #c084fc; color: #e9d5ff; box-shadow: 0 0 12px rgba(176, 38, 255, 0.3);
 }
 .macro-hotkey-box {
   background: rgba(0, 240, 255, 0.05); border: 1px dashed rgba(0, 240, 255, 0.3);
-  border-radius: 8px; padding: 8px 12px; font-size: 0.73rem; color: #94a3b8;
-  display: flex; align-items: center; gap: 8px;
+  border-radius: 8px; padding: 8px 10px; font-size: 0.72rem; color: #94a3b8; display: flex; align-items: center; gap: 8px;
 }
 .macro-steps-box {
   background: rgba(3, 5, 8, 0.7); border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px; padding: 10px; max-height: 200px; overflow-y: auto;
-  font-family: monospace; font-size: 0.72rem; display: flex; flex-direction: column; gap: 4px;
+  border-radius: 10px; padding: 8px; max-height: 180px; overflow-y: auto;
+  font-family: monospace; font-size: 0.7rem; display: flex; flex-direction: column; gap: 4px;
 }
 .macro-step-row {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.02);
-  border: 1px solid rgba(255,255,255,0.03);
+  padding: 4px 6px; border-radius: 6px; background: rgba(255,255,255,0.02);
 }
+
+/* FIXED BOTTOM APP TAB BAR */
+.bottom-nav-bar {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
+  height: calc(58px + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  background: rgba(10, 14, 23, 0.94);
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  display: flex; justify-content: space-around; align-items: center;
+}
+.bottom-nav-item {
+  flex: 1; height: 100%; border: none; background: transparent;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  color: var(--text-mute); cursor: pointer; transition: all 0.15s ease; position: relative;
+}
+.bottom-nav-item .nav-icon { font-size: 1.25rem; transition: transform 0.15s ease; }
+.bottom-nav-item .nav-label { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.2px; }
+.bottom-nav-item.active { color: var(--cyan); }
+.bottom-nav-item.active .nav-icon { transform: scale(1.12); filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.4)); }
+.bottom-nav-item.active::after {
+  content: ''; position: absolute; top: 0; width: 36px; height: 2px;
+  background: var(--cyan); border-radius: 999px; box-shadow: 0 0 10px var(--cyan);
+}
+.bottom-nav-item:active { transform: scale(0.92); }
+
+/* TOAST */
+#toast {
+  position: fixed; bottom: calc(68px + var(--safe-bottom)); left: 50%; transform: translateX(-50%) translateY(100px);
+  background: rgba(16, 22, 34, 0.96); border: 1px solid var(--cyan); color: var(--text);
+  padding: 8px 18px; border-radius: 999px; font-size: 0.8rem; font-weight: 700;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 18px rgba(0,240,255,0.25);
+  transition: transform 0.26s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+  pointer-events: none; z-index: 10000; white-space: nowrap;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
-<div class="container">
-  <header>
+<div class="app-shell">
+  <!-- TOP APP HEADER -->
+  <header class="app-header" id="app-header">
     <div class="brand">
-      <span class="brand-icon">⚡</span>
-      <div>
-        <h1>GPO AUTOFISH</h1>
+      <div class="brand-avatar">⚡</div>
+      <div class="brand-text">
+        <div class="brand-title">GPO CYBERDECK</div>
         <div class="brand-sub" id="host-sub">CONNECTING...</div>
       </div>
     </div>
-    <div class="header-badges">
-      <div id="badge-fruit" class="toggle-spawn-badge" onclick="toggleSpawnAlerts()" title="Toggle fruit spawn alerts on/off">🍇 FRUIT ALERTS: ON</div>
+    <div class="header-actions">
+      <button id="btn-header-toggle" class="header-btn-toggle" onclick="togglePlay()">
+        <span>▶</span><span>START</span>
+      </button>
       <div id="status-pill" class="status-badge badge-stopped">STOPPED</div>
+      <div id="badge-fruit" class="toggle-spawn-badge" onclick="toggleSpawnAlerts()" title="Toggle fruit spawn alerts">🍇 ALERTS</div>
     </div>
   </header>
 
-  <!-- TOP NAVIGATION TABS -->
-  <div class="nav-tabs">
-    <button class="nav-tab-btn active" onclick="switchTab('all', this)">📑 Show All</button>
-    <button class="nav-tab-btn" onclick="switchTab('remote', this)">🎮 Remote &amp; Gamepad</button>
-    <button class="nav-tab-btn" onclick="switchTab('macro', this)">📼 Macro Studio</button>
-    <button class="nav-tab-btn" onclick="switchTab('craft', this)">🔨 Auto Craft</button>
-    <button class="nav-tab-btn" onclick="switchTab('stats', this)">📊 Stats &amp; Restock</button>
-  </div>
+  <!-- MAIN SCROLLABLE APP CONTENT -->
+  <main class="app-content">
 
-  <!-- SECTION 1: REMOTE CONTROLS & STREAM -->
-  <div id="sec-remote" style="display: flex; flex-direction: column; gap: 14px;">
-    <!-- LIVE VIDEO STREAM & SCREEN TOUCH -->
-    <!-- LIVE VIDEO STREAM & SCREEN TOUCH -->
-    <div class="stream-wrapper" id="stream-wrapper">
-      <div class="stream-bar" id="stream-bar">
-        <div class="stream-indicator">
-          <div id="stream-dot" class="live-dot on"></div>
-          <span style="font-weight: 800;">LIVE STREAM</span>
-          <span id="stream-fps-badge" style="font-family: monospace; color: var(--cyan); font-size: 0.72rem; font-weight: 800;">20 FPS</span>
-          <span id="stream-res-badge" style="font-family: monospace; color: var(--amber); font-size: 0.72rem; font-weight: 800;">720p</span>
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-          <!-- FPS Selector Dropdown -->
-          <div class="custom-dropdown" id="dropdown-fps" style="min-width: 96px; flex: initial;">
-            <button type="button" class="stream-tool-btn" onclick="toggleDropdown('dropdown-fps')" title="Change Frame Rate">
-              <span id="dropdown-fps-label">⚡ 20 FPS</span>
-              <span class="dropdown-chevron">▼</span>
-            </button>
-            <div class="custom-dropdown-menu" id="dropdown-fps-menu" style="min-width: 140px;">
-              <div class="custom-dropdown-item" data-val="10" onclick="setStreamFps(10)">
-                <span>10 FPS (Eco)</span>
-              </div>
-              <div class="custom-dropdown-item" data-val="15" onclick="setStreamFps(15)">
-                <span>15 FPS</span>
-              </div>
-              <div class="custom-dropdown-item active" data-val="20" onclick="setStreamFps(20)">
-                <span>20 FPS (Default)</span>
-                <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
-              </div>
-              <div class="custom-dropdown-item" data-val="30" onclick="setStreamFps(30)">
-                <span>30 FPS (Smooth)</span>
-              </div>
-              <div class="custom-dropdown-item" data-val="60" onclick="setStreamFps(60)">
-                <span>60 FPS (Ultra)</span>
-              </div>
-            </div>
+    <!-- TAB 1: REMOTE CONTROLS & LIVE STREAM -->
+    <section id="sec-remote" class="mobile-section active">
+      <!-- LIVE VIDEO STREAM -->
+      <div class="stream-wrapper" id="stream-wrapper">
+        <div class="stream-bar" id="stream-bar">
+          <div class="stream-indicator">
+            <div id="stream-dot" class="live-dot on"></div>
+            <span style="font-weight: 800;">LIVE</span>
+            <span id="stream-fps-badge" style="font-family: monospace; color: var(--cyan); font-size: 0.7rem; font-weight: 800;">20 FPS</span>
+            <span id="stream-res-badge" style="font-family: monospace; color: var(--amber); font-size: 0.7rem; font-weight: 800;">720p</span>
           </div>
 
-          <!-- Quality Selector Dropdown -->
-          <div class="custom-dropdown" id="dropdown-quality" style="min-width: 96px; flex: initial;">
-            <button type="button" class="stream-tool-btn" onclick="toggleDropdown('dropdown-quality')" title="Change Resolution &amp; Quality">
-              <span id="dropdown-quality-label">📺 720p</span>
-              <span class="dropdown-chevron">▼</span>
-            </button>
-            <div class="custom-dropdown-menu" id="dropdown-quality-menu" style="min-width: 160px;">
-              <div class="custom-dropdown-item" data-val="480" onclick="setStreamQuality(480, 50, '480p (Low)')">
-                <div style="flex:1;text-align:left;">
-                  <div style="font-weight:700;">480p (Low)</div>
-                  <div class="dropdown-item-sub">Fast &amp; Data Saver</div>
+          <div class="stream-tools-group">
+            <!-- FPS Selector Dropdown -->
+            <div class="custom-dropdown" id="dropdown-fps" style="min-width: 86px; flex: initial;">
+              <button type="button" class="stream-tool-btn" onclick="toggleDropdown('dropdown-fps')" title="Change Frame Rate">
+                <span id="dropdown-fps-label">⚡ 20 FPS</span>
+                <span class="dropdown-chevron">▼</span>
+              </button>
+              <div class="custom-dropdown-menu" id="dropdown-fps-menu" style="min-width: 130px;">
+                <div class="custom-dropdown-item" data-val="10" onclick="setStreamFps(10)">
+                  <span>10 FPS (Eco)</span>
                 </div>
-              </div>
-              <div class="custom-dropdown-item active" data-val="720" onclick="setStreamQuality(720, 70, '720p (Balanced)')">
-                <div style="flex:1;text-align:left;">
-                  <div style="font-weight:700;">720p (Balanced)</div>
-                  <div class="dropdown-item-sub">Default HD</div>
+                <div class="custom-dropdown-item" data-val="15" onclick="setStreamFps(15)">
+                  <span>15 FPS</span>
                 </div>
-                <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
-              </div>
-              <div class="custom-dropdown-item" data-val="1080" onclick="setStreamQuality(1080, 85, '1080p (Crisp)')">
-                <div style="flex:1;text-align:left;">
-                  <div style="font-weight:700;">1080p (Crisp)</div>
-                  <div class="dropdown-item-sub">High Detail</div>
+                <div class="custom-dropdown-item active" data-val="20" onclick="setStreamFps(20)">
+                  <span>20 FPS (Default)</span>
+                  <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
                 </div>
-              </div>
-              <div class="custom-dropdown-item" data-val="0" onclick="setStreamQuality(0, 92, 'Original (Max)')">
-                <div style="flex:1;text-align:left;">
-                  <div style="font-weight:700;">Original (Max)</div>
-                  <div class="dropdown-item-sub">Native Resolution</div>
+                <div class="custom-dropdown-item" data-val="30" onclick="setStreamFps(30)">
+                  <span>30 FPS (Smooth)</span>
+                </div>
+                <div class="custom-dropdown-item" data-val="60" onclick="setStreamFps(60)">
+                  <span>60 FPS (Ultra)</span>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- Hold & Drag Toggle Button -->
-          <button type="button" class="stream-tool-btn active" id="stream-tool-drag" onclick="toggleHoldDragMode()" title="Toggle Touch Hold & Drag vs Tap">
-            <span id="stream-drag-label">🖐️ HOLD &amp; DRAG</span>
-          </button>
-
-          <!-- Rotate Button -->
-          <button type="button" class="stream-tool-btn" id="stream-tool-rotate" onclick="toggleRotate()" title="Rotate Screen 90° Landscape">
-            <span>🔄 ROTATE</span>
-          </button>
-
-          <!-- Fullscreen Button -->
-          <button type="button" class="stream-tool-btn" onclick="toggleFullscreen()" title="Full Screen View" style="background: linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(176, 38, 255, 0.2)); border-color: var(--cyan); color: #fff; font-weight: 800;">
-            <span>⛶ FULLSCREEN</span>
-          </button>
-        </div>
-      </div>
-
-      <div id="screen-container" class="screen-box" oncontextmenu="return false;">
-        <img id="screen-img" class="screen-img" src="/api/stream" alt="" draggable="false" oncontextmenu="return false;" onerror="fallbackSnapshot()" />
-
-        <!-- Fullscreen Top Floating Bar -->
-        <div id="fs-floating-bar" class="fs-floating-bar">
-          <div class="fs-badge-group">
-            <div id="fs-status-pill" class="status-badge badge-stopped" style="font-size: 0.68rem; padding: 4px 10px;">STOPPED</div>
-            <div id="fs-stream-info" class="fs-stream-pill">20 FPS • 720p</div>
-          </div>
-          <div style="display: flex; gap: 6px; align-items: center; pointer-events: auto;">
-            <button class="fs-btn active" id="btn-fs-drag" onclick="toggleHoldDragMode()" title="Toggle Touch Hold & Drag vs Tap Mode">
-              <span id="fs-drag-icon">🖐️</span>
-              <span id="fs-drag-label">HOLD/DRAG</span>
-            </button>
-            <button class="fs-btn" id="btn-click-mode" onclick="toggleClickMode()" title="Toggle Left Click vs Right/Camera Look">
-              <span id="click-mode-icon">🎯</span>
-              <span id="click-mode-label">CLICK</span>
-            </button>
-            <button class="fs-btn" id="btn-fs-rotate" onclick="toggleRotate()" title="Rotate Screen 90° Landscape">
-              <span>🔄 ROTATE</span>
-            </button>
-            <button class="fs-btn" id="btn-fs-overlay-toggle" onclick="toggleFullscreenControls()" title="Show/Hide On-Screen Controller">
-              <span id="fs-ctrl-icon">🎮</span>
-              <span id="fs-ctrl-label">CONTROLS</span>
-            </button>
-            <button class="fs-btn fs-btn-close" onclick="exitFullscreen()" title="Exit Fullscreen Mode">
-              <span>✖ EXIT</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- Fullscreen Floating Controller Overlay -->
-        <div id="fs-controls-overlay" class="fs-controls-overlay visible">
-          <!-- Top Mini Quick Bar -->
-          <div class="fs-quick-bar">
-            <button class="fs-mini-btn" id="btn-fs-toggle" onclick="togglePlay()">▶ START</button>
-            <button class="fs-mini-btn" onclick="doAction('recast')">🔄 RECAST</button>
-            <button class="fs-mini-btn" onclick="doAction('buy_bait')">🛒 BUY BAIT</button>
-            <button class="fs-mini-btn" id="btn-fs-mute" onclick="toggleMute()">🔇 MUTE</button>
-          </div>
-
-          <!-- Bottom Floating Controls: Left Movement D-Pad, Right Camera Arrows & Actions -->
-          <div class="fs-bottom-controls">
-            <!-- Left: Circular D-Pad Joystick (WASD) -->
-            <div class="fs-pad-cluster">
-              <div class="fs-cluster-label">🏃 MOVEMENT (WASD)</div>
-              <div class="fs-dpad-circle">
-                <div class="fs-dpad-center">🏃</div>
-                <button class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w" title="Walk Forward (W)">▲</button>
-                <button class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s" title="Walk Backward (S)">▼</button>
-                <button class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a" title="Walk Left (A)">◀</button>
-                <button class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d" title="Walk Right (D)">▶</button>
-              </div>
-            </div>
-
-            <!-- Right: Returned Camera Arrows + Action Arc -->
-            <div class="fs-right-group">
-              <!-- Camera Directional Arrows Pad (Screen / Camera Control) -->
-              <div class="fs-pad-cluster" style="align-items: center;">
-                <div class="fs-cluster-label" style="color: #60a5fa;">👀 CAMERA (ARROWS)</div>
-                <div class="fs-arrow-circle">
-                  <div class="fs-arrow-center">📷</div>
-                  <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-up" data-key="up" title="Tilt Camera Up (↑)">▲</button>
-                  <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-down" data-key="down" title="Tilt Camera Down (↓)">▼</button>
-                  <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-left" data-key="left" title="Rotate Camera Left (←)">◀</button>
-                  <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-right" data-key="right" title="Rotate Camera Right (→)">▶</button>
-                </div>
-              </div>
-
-              <!-- Action Cluster -->
-              <div class="fs-pad-cluster" style="align-items: flex-end;">
-                <div class="fs-cluster-label">⚡ ACTIONS</div>
-                <div class="fs-actions-column">
-                  <!-- Top Row: Shift-lock & Talk -->
-                  <div style="display: flex; gap: 8px; align-items: center;">
-                    <button class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 7px 14px; font-size: 0.72rem; font-weight: 800;">⚡ SHIFT</button>
-                    <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Talk / Chat (T)">💬</button>
+            <!-- Quality Selector Dropdown -->
+            <div class="custom-dropdown" id="dropdown-quality" style="min-width: 86px; flex: initial;">
+              <button type="button" class="stream-tool-btn" onclick="toggleDropdown('dropdown-quality')" title="Change Resolution">
+                <span id="dropdown-quality-label">📺 720p</span>
+                <span class="dropdown-chevron">▼</span>
+              </button>
+              <div class="custom-dropdown-menu" id="dropdown-quality-menu" style="min-width: 150px;">
+                <div class="custom-dropdown-item" data-val="480" onclick="setStreamQuality(480, 50, '480p (Low)')">
+                  <div style="flex:1;text-align:left;">
+                    <div style="font-weight:700;">480p (Low)</div>
+                    <div class="dropdown-item-sub">Data Saver</div>
                   </div>
-                  <!-- Bottom Row: Rod, Interact, Jump -->
-                  <div style="display: flex; gap: 8px; align-items: center;">
-                    <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="1" title="Equip Rod (1)">🎣</button>
-                    <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="e" title="Interact (E)">🖐️</button>
-                    <button class="pad-action-btn fs-pad-btn fs-round-jump-btn" data-key="space" title="Jump (Space)">🦘</button>
+                </div>
+                <div class="custom-dropdown-item active" data-val="720" onclick="setStreamQuality(720, 70, '720p (Balanced)')">
+                  <div style="flex:1;text-align:left;">
+                    <div style="font-weight:700;">720p (Balanced)</div>
+                    <div class="dropdown-item-sub">Default HD</div>
+                  </div>
+                  <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
+                </div>
+                <div class="custom-dropdown-item" data-val="1080" onclick="setStreamQuality(1080, 85, '1080p (Crisp)')">
+                  <div style="flex:1;text-align:left;">
+                    <div style="font-weight:700;">1080p (Crisp)</div>
+                    <div class="dropdown-item-sub">High Detail</div>
+                  </div>
+                </div>
+                <div class="custom-dropdown-item" data-val="0" onclick="setStreamQuality(0, 92, 'Original (Max)')">
+                  <div style="flex:1;text-align:left;">
+                    <div style="font-weight:700;">Original (Max)</div>
+                    <div class="dropdown-item-sub">Native Display</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Hold & Drag Toggle Button -->
+            <button type="button" class="stream-tool-btn active" id="stream-tool-drag" onclick="toggleHoldDragMode()" title="Toggle Touch Hold & Drag vs Tap">
+              <span id="stream-drag-label">🖐️ DRAG</span>
+            </button>
+
+            <!-- Rotate Button -->
+            <button type="button" class="stream-tool-btn" id="stream-tool-rotate" onclick="toggleRotate()" title="Rotate 90° Landscape">
+              <span>🔄</span>
+            </button>
+
+            <!-- Fullscreen Button -->
+            <button type="button" class="stream-tool-btn" onclick="toggleFullscreen()" title="Full Screen View" style="background: linear-gradient(135deg, rgba(0, 240, 255, 0.25), rgba(176, 38, 255, 0.25)); border-color: var(--cyan); color: #fff; font-weight: 800;">
+              <span>⛶</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="screen-container" class="screen-box" oncontextmenu="return false;">
+          <img id="screen-img" class="screen-img" src="/api/stream" alt="" draggable="false" oncontextmenu="return false;" onerror="fallbackSnapshot()" />
+
+          <!-- Fullscreen Floating Bar -->
+          <div id="fs-floating-bar" class="fs-floating-bar">
+            <div class="fs-badge-group">
+              <div id="fs-status-pill" class="status-badge badge-stopped" style="font-size: 0.68rem; padding: 4px 10px;">STOPPED</div>
+              <div id="fs-stream-info" class="fs-stream-pill">20 FPS • 720p</div>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center; pointer-events: auto;">
+              <button class="fs-btn active" id="btn-fs-drag" onclick="toggleHoldDragMode()">
+                <span id="fs-drag-icon">🖐️</span>
+                <span id="fs-drag-label">DRAG</span>
+              </button>
+              <button class="fs-btn" id="btn-click-mode" onclick="toggleClickMode()">
+                <span id="click-mode-icon">🎯</span>
+                <span id="click-mode-label">CLICK</span>
+              </button>
+              <button class="fs-btn" id="btn-fs-rotate" onclick="toggleRotate()">
+                <span>🔄</span>
+              </button>
+              <button class="fs-btn" id="btn-fs-overlay-toggle" onclick="toggleFullscreenControls()">
+                <span id="fs-ctrl-icon">🎮</span>
+                <span id="fs-ctrl-label">PAD</span>
+              </button>
+              <button class="fs-btn fs-btn-close" onclick="exitFullscreen()">
+                <span>✖</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Fullscreen Controls Overlay -->
+          <div id="fs-controls-overlay" class="fs-controls-overlay visible">
+            <div class="fs-quick-bar">
+              <button class="fs-mini-btn" id="btn-fs-toggle" onclick="togglePlay()">▶ START</button>
+              <button class="fs-mini-btn" onclick="doAction('recast')">🔄 RECAST</button>
+              <button class="fs-mini-btn" onclick="doAction('buy_bait')">🛒 BUY BAIT</button>
+              <button class="fs-mini-btn" id="btn-fs-mute" onclick="toggleMute()">🔇 MUTE</button>
+            </div>
+
+            <div class="fs-bottom-controls">
+              <!-- Left: Circular D-Pad Joystick -->
+              <div class="fs-pad-cluster">
+                <div class="fs-cluster-label">🏃 MOVEMENT (WASD)</div>
+                <div class="fs-dpad-circle">
+                  <div class="fs-dpad-center">🏃</div>
+                  <button class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w">▲</button>
+                  <button class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s">▼</button>
+                  <button class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a">◀</button>
+                  <button class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d">▶</button>
+                </div>
+              </div>
+
+              <!-- Right: Camera & Actions -->
+              <div class="fs-right-group">
+                <div class="fs-pad-cluster" style="align-items: center;">
+                  <div class="fs-cluster-label" style="color: #60a5fa;">👀 CAMERA</div>
+                  <div class="fs-arrow-circle">
+                    <div class="fs-arrow-center">📷</div>
+                    <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-up" data-key="up">▲</button>
+                    <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-down" data-key="down">▼</button>
+                    <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-left" data-key="left">◀</button>
+                    <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-right" data-key="right">▶</button>
+                  </div>
+                </div>
+
+                <div class="fs-pad-cluster" style="align-items: flex-end;">
+                  <div class="fs-cluster-label">⚡ ACTIONS</div>
+                  <div class="fs-actions-column">
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                      <button class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 6px 12px; font-size: 0.72rem;">⚡ SHIFT</button>
+                      <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Chat (T)">💬</button>
+                    </div>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                      <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="1" title="Rod (1)">🎣</button>
+                      <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="e" title="Interact (E)">🖐️</button>
+                      <button class="pad-action-btn fs-pad-btn fs-round-jump-btn" data-key="space" title="Jump (Space)">🦘</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1700,321 +1707,342 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.2); }
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- REMOTE GAMEPAD / MOVEMENT CONTROLLER -->
-    <div class="controller-card">
-      <div class="controller-layout">
-        <!-- 1. Movement WASD -->
-        <div class="pad-cluster">
-          <div class="cluster-label">🏃 WALK (WASD)</div>
-          <div class="dpad-grid">
-            <div></div>
-            <button class="dpad-btn" data-key="w" title="Walk Forward (W)">▲ W</button>
-            <div></div>
-            <button class="dpad-btn" data-key="a" title="Walk Left (A)">◀ A</button>
-            <button class="dpad-btn" data-key="s" title="Walk Backward (S)">▼ S</button>
-            <button class="dpad-btn" data-key="d" title="Walk Right (D)">▶ D</button>
-          </div>
-        </div>
-
-        <!-- 2. Face / Look (Arrow Controls) -->
-        <div class="pad-cluster">
-          <div class="cluster-label" style="color: #60a5fa;">👀 CAMERA / LOOK (ARROWS)</div>
-          <div class="dpad-grid">
-            <div></div>
-            <button class="dpad-btn pad-arrow-btn" data-key="up" title="Tilt Camera Up (↑)">▲</button>
-            <div></div>
-            <button class="dpad-btn pad-arrow-btn" data-key="left" title="Rotate Camera Left (←)">◀</button>
-            <button class="dpad-btn pad-arrow-btn" data-key="down" title="Tilt Camera Down (↓)">▼</button>
-            <button class="dpad-btn pad-arrow-btn" data-key="right" title="Rotate Camera Right (→)">▶</button>
-          </div>
-        </div>
-
-        <!-- 3. Actions -->
-        <div class="pad-cluster" style="flex: 1; min-width: 140px;">
-          <div class="cluster-label">⚡ ACTIONS &amp; VIEW</div>
-          <div class="action-buttons-pad">
-            <button class="pad-action-btn btn-shift" data-key="shift">⚡ SHIFT-LOCK</button>
-            <button class="pad-action-btn btn-jump" data-key="space">🦘 JUMP (SPACE)</button>
-            <button class="pad-action-btn" data-key="1">🎣 EQUIP ROD (1)</button>
-            <button class="pad-action-btn" data-key="e">🖐️ INTERACT (E)</button>
-            <button class="pad-action-btn" data-key="t" style="grid-column: span 2;">💬 TALK / ACTION (T)</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- MACRO ACTIONS -->
-    <div class="action-grid">
-      <button id="btn-toggle" class="btn btn-toggle" onclick="togglePlay()">
-        <span id="toggle-icon">▶️</span>
-        <span id="toggle-label">START MACRO</span>
-      </button>
-      <button class="btn btn-sub" onclick="doAction('recast')">🔄 RECAST</button>
-      <button class="btn btn-sub" onclick="doAction('buy_bait')">🛒 BUY BAIT</button>
-      <button id="btn-mute" class="btn btn-sub" onclick="toggleMute()">🔇 MUTE</button>
-      <button class="btn btn-update" onclick="doUpdate()">🚀 UPDATE</button>
-    </div>
-
-    <!-- LAPTOP KEYBOARD LIGHT CONTROL -->
-    <div class="card" style="border-color: rgba(168, 85, 247, 0.35); background: rgba(168, 85, 247, 0.04); margin-top: 10px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <div class="card-label" style="color: #c084fc; display: flex; align-items: center; gap: 6px;">
-          <span>⌨️ KEYBOARD LIGHT</span>
-          <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.3); color: #e9d5ff;">LENOVO LOQ</span>
-        </div>
-        <div id="kbd-light-badge" class="status-badge" style="font-size: 0.7rem; padding: 3px 8px; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15);">UNKNOWN</div>
-      </div>
-      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
-        <button id="btn-kbd-off" class="kbd-btn" onclick="setKbdLight('off')">🌑 OFF</button>
-        <button id="btn-kbd-low" class="kbd-btn" onclick="setKbdLight('low')">🔅 LOW</button>
-        <button id="btn-kbd-high" class="kbd-btn" onclick="setKbdLight('high')">🔆 HIGH</button>
-        <button id="btn-kbd-cycle" class="kbd-btn" style="border-color: rgba(168,85,247,0.4);" onclick="setKbdLight('cycle')">🔄 CYCLE</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- SECTION 2: AUTO CRAFT BAIT (BLACKSMITH SEN) -->
-  <div id="sec-craft" style="display: flex; flex-direction: column; gap: 14px;">
-    <div class="card" style="border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.04);">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <div class="card-label" style="color: var(--amber);">🔨 AUTO CRAFT BAIT (BLACKSMITH SEN)</div>
-        <div id="craft-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
-      </div>
-      <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
-        <!-- Custom Craft Dropdown (Non-Native) -->
-        <div class="custom-dropdown" id="dropdown-craft" style="flex: 1; min-width: 170px;">
-          <button type="button" class="custom-dropdown-btn" onclick="toggleDropdown('dropdown-craft')">
-            <span class="dropdown-label" id="dropdown-craft-label">🍇 Rare Fish Bait</span>
-            <span class="dropdown-chevron">▼</span>
-          </button>
-          <div class="custom-dropdown-menu" id="dropdown-craft-menu">
-            <div class="custom-dropdown-item active" data-val="rare" onclick="selectCraftTier('rare', '🍇 Rare Fish Bait')">
-              <span>🍇 Rare Fish Bait</span>
-              <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
+      <!-- MOBILE DUAL-THUMB GAMEPAD -->
+      <div class="controller-card">
+        <div class="controller-layout">
+          <!-- Left: Circular WASD Joystick -->
+          <div class="pad-cluster">
+            <div class="cluster-label">🏃 WALK (WASD)</div>
+            <div class="mobile-dpad-circle">
+              <div class="fs-dpad-center">🏃</div>
+              <button class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w">▲</button>
+              <button class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s">▼</button>
+              <button class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a">◀</button>
+              <button class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d">▶</button>
             </div>
-            <div class="custom-dropdown-item" data-val="legendary" onclick="selectCraftTier('legendary', '👑 Legendary Fish Bait')">
-              <span>👑 Legendary Fish Bait</span>
+          </div>
+
+          <!-- Right: Circular Camera Pad + Quick Action Cluster -->
+          <div class="fs-right-group">
+            <div class="pad-cluster" style="align-items: center;">
+              <div class="cluster-label" style="color: #60a5fa;">👀 CAMERA</div>
+              <div class="mobile-arrow-circle">
+                <div class="fs-arrow-center">📷</div>
+                <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-up" data-key="up">▲</button>
+                <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-down" data-key="down">▼</button>
+                <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-left" data-key="left">◀</button>
+                <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-right" data-key="right">▶</button>
+              </div>
             </div>
-            <div class="custom-dropdown-item" data-val="all" onclick="selectCraftTier('all', '🌟 All (Legendary &amp; Rare)')">
-              <span>🌟 All (Legendary &amp; Rare)</span>
+
+            <div class="pad-cluster" style="align-items: flex-end;">
+              <div class="cluster-label">⚡ ACTIONS</div>
+              <div class="fs-actions-column">
+                <div style="display: flex; gap: 6px; align-items: center;">
+                  <button class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 6px 12px; font-size: 0.72rem;">⚡ SHIFT</button>
+                  <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Chat (T)">💬</button>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                  <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="1" title="Rod (1)">🎣</button>
+                  <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="e" title="Interact (E)">🖐️</button>
+                  <button class="pad-action-btn fs-pad-btn fs-round-jump-btn" data-key="space" title="Jump (Space)">🦘</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
-        <button id="btn-craft-toggle" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; flex: 1; min-width: 160px;" onclick="toggleAutoCraft()">
-          <span id="craft-btn-icon">🔨</span>
-          <span id="craft-btn-label">START AUTO CRAFT</span>
+      <!-- QUICK MACRO ACTION BUTTONS -->
+      <div class="action-grid">
+        <button id="btn-toggle" class="btn btn-toggle" onclick="togglePlay()" style="grid-column: span 2; padding: 14px;">
+          <span id="toggle-icon">▶️</span>
+          <span id="toggle-label">START MACRO</span>
         </button>
+        <button class="btn btn-sub" onclick="doAction('recast')">🔄 RECAST</button>
+        <button class="btn btn-sub" onclick="doAction('buy_bait')">🛒 BUY BAIT</button>
+        <button id="btn-mute" class="btn btn-sub" onclick="toggleMute()">🔇 MUTE</button>
+        <button class="btn btn-update" onclick="doUpdate()">🚀 UPDATE</button>
       </div>
-      <div id="craft-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 6px;">Stand at Blacksmith Sen with caught fish, then tap Start.</div>
-    </div>
-  </div>
+    </section>
 
-  <!-- SECTION 3: CUSTOM STEP RECORDER & MACRO STUDIO -->
-  <div id="sec-macro" style="display: flex; flex-direction: column; gap: 14px;">
-    <div class="card" style="border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.03);">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <div class="card-label" style="color: var(--cyan); display: flex; align-items: center; gap: 6px;">
-          <span>📼 STEP RECORDER &amp; MACRO STUDIO</span>
+    <!-- TAB 2: STATS & DASHBOARD -->
+    <section id="sec-stats" class="mobile-section">
+      <!-- PRIMARY CATCH METRICS -->
+      <div class="stat-grid">
+        <div class="card">
+          <div class="card-label">🐟 Fish Caught</div>
+          <div class="card-val" id="val-fish">0</div>
+          <div class="card-meta" id="val-rate">0% rate</div>
         </div>
-        <div id="macro-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
-      </div>
-
-      <!-- 1. RECORD CONTROLS -->
-      <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">1. RECORD NEW WORKFLOW</span>
-          <span id="record-count-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--amber); font-weight: 800;">READY</span>
+        <div class="card">
+          <div class="card-label">🍇 Devil Fruits</div>
+          <div class="card-val fruit" id="val-fruits">0</div>
+          <div class="card-meta" id="val-pity">Pity: 0</div>
         </div>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <input id="txt-macro-name" type="text" placeholder="Macro Name (e.g. Craft Rare Bait)" value="Craft Rare Bait"
-                 style="background: #14151a; color: #fff; border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; font-size: 0.85rem; font-weight: 700; flex: 1; min-width: 160px; outline: none;" />
-          <button id="btn-record-toggle" class="btn" style="background: linear-gradient(135deg, #00f0ff, #0284c7); color: #000; flex: 1; min-width: 140px; padding: 10px 14px;" onclick="toggleRecord()">
-            <span id="record-btn-icon">⏺️</span>
-            <span id="record-btn-label">RECORD VIA SCREEN</span>
-          </button>
-          <button id="btn-record-cancel" class="btn btn-sub" style="display: none; padding: 10px 14px;" onclick="cancelRecord()">❌ CANCEL</button>
+        <div class="card">
+          <div class="card-label">🌟 Legendary Pity</div>
+          <div class="card-val" id="val-leg-pity" style="color: var(--amber);">0</div>
+          <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-leg-pity"></div></div>
+          <div class="card-meta">Toward 100 guaranteed</div>
         </div>
-        <div id="record-hint" style="font-size: 0.72rem; color: var(--text-mute);">
-          Tap <b>Record</b>, then tap the live video screen and press controls (T, E, WASD). Every click &amp; key with timing is captured!
+        <div class="card">
+          <div class="card-label">⏱️ Runtime</div>
+          <div class="card-val" id="val-runtime" style="font-size: 1.25rem;">00:00:00</div>
+          <div class="card-meta">Current session</div>
         </div>
       </div>
 
-      <!-- 2. PLAYBACK CONTROLS -->
-      <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">2. PLAY OR LOOP SAVED MACRO</span>
-          <span id="play-loop-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--cyan); font-weight: 800;">READY</span>
+      <!-- BAIT & RESTOCK METRICS -->
+      <div class="stat-grid">
+        <div class="card">
+          <div class="card-label">🛒 Orders Placed</div>
+          <div class="card-val" id="val-orders">0</div>
+          <div class="card-meta" id="val-auto-buy">Auto-buy ON</div>
+        </div>
+        <div class="card">
+          <div class="card-label">⏳ Next Restock</div>
+          <div class="card-val" id="val-restock" style="color: var(--cyan); font-size: 1.25rem;">0 / 10</div>
+          <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-restock" style="background:var(--cyan)"></div></div>
+          <div class="card-meta">Catches until restock</div>
+        </div>
+        <div class="card">
+          <div class="card-label">🎯 Active Tier</div>
+          <div class="card-val" id="val-tier" style="color: #60a5fa; font-size: 1.15rem;">Common</div>
+          <div class="card-meta">Purchase priority</div>
+        </div>
+        <div class="card">
+          <div class="card-label">🛡️ Leg. Reserve</div>
+          <div class="card-val" id="val-reserve" style="color: var(--amber); font-size: 1.15rem;">0</div>
+          <div class="card-meta">Protected stock</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: STEP RECORDER & MACRO STUDIO -->
+    <section id="sec-macro" class="mobile-section">
+      <div class="card" style="border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.03);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <div class="card-label" style="color: var(--cyan); display: flex; align-items: center; gap: 6px;">
+            <span>📼 MACRO RECORDER &amp; STUDIO</span>
+          </div>
+          <div id="macro-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
         </div>
 
-        <!-- Custom Macro Dropdown (Non-Native) + Rename + Delete -->
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-          <div class="custom-dropdown" id="dropdown-macro" style="flex: 1; min-width: 170px;">
-            <button type="button" class="custom-dropdown-btn" onclick="toggleDropdown('dropdown-macro')">
-              <span class="dropdown-label" id="dropdown-macro-label">(No macros saved yet)</span>
-              <span class="dropdown-chevron">▼</span>
+        <!-- 1. RECORD CONTROLS -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--card-border); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">1. RECORD WORKFLOW</span>
+            <span id="record-count-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--amber); font-weight: 800;">READY</span>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <input id="txt-macro-name" type="text" placeholder="Macro Name" value="Craft Rare Bait"
+                   style="background: #14151a; color: #fff; border: 1px solid var(--card-border); border-radius: 10px; padding: 8px 12px; font-size: 0.85rem; font-weight: 700; flex: 1; min-width: 140px; outline: none;" />
+            <button id="btn-record-toggle" class="btn" style="background: linear-gradient(135deg, #00f0ff, #0284c7); color: #000; flex: 1; min-width: 130px; padding: 10px 12px;" onclick="toggleRecord()">
+              <span id="record-btn-icon">⏺️</span>
+              <span id="record-btn-label">RECORD</span>
             </button>
-            <div class="custom-dropdown-menu" id="dropdown-macro-menu">
-              <div class="custom-dropdown-item" style="color:var(--text-mute);cursor:default;">(No macros saved yet)</div>
+            <button id="btn-record-cancel" class="btn btn-sub" style="display: none; padding: 10px 12px;" onclick="cancelRecord()">❌ CANCEL</button>
+          </div>
+          <div id="record-hint" style="font-size: 0.72rem; color: var(--text-mute);">
+            Tap Record, then tap live screen and press controls (T, E, WASD). Timing is captured!
+          </div>
+        </div>
+
+        <!-- 2. PLAYBACK CONTROLS -->
+        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--card-border); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">2. PLAY / LOOP MACRO</span>
+            <span id="play-loop-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--cyan); font-weight: 800;">READY</span>
+          </div>
+
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="custom-dropdown" id="dropdown-macro" style="flex: 1;">
+              <button type="button" class="custom-dropdown-btn" onclick="toggleDropdown('dropdown-macro')">
+                <span class="dropdown-label" id="dropdown-macro-label">(No macros saved)</span>
+                <span class="dropdown-chevron">▼</span>
+              </button>
+              <div class="custom-dropdown-menu" id="dropdown-macro-menu">
+                <div class="custom-dropdown-item" style="color:var(--text-mute);cursor:default;">(No macros saved yet)</div>
+              </div>
+            </div>
+            <button class="btn btn-sub" style="padding: 10px 12px; font-size: 0.8rem;" onclick="renameSelectedMacro()" title="Rename">✏️</button>
+            <button class="btn btn-sub" style="padding: 10px 12px; font-size: 0.8rem;" onclick="deleteSelectedMacro()" title="Delete">🗑️</button>
+          </div>
+
+          <!-- Loop Repetition Pills -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding-top: 2px;">
+            <span style="font-size: 0.72rem; font-weight: 700; color: var(--text-dim);">🔁 Loop Count:</span>
+            <div class="macro-pill-group" id="loop-pills">
+              <button class="macro-pill-btn active-purple" onclick="setWebLoopCount(1, this)">1x</button>
+              <button class="macro-pill-btn" onclick="setWebLoopCount(5, this)">5x</button>
+              <button class="macro-pill-btn" onclick="setWebLoopCount(10, this)">10x</button>
+              <button class="macro-pill-btn" onclick="setWebLoopCount(25, this)">25x</button>
+              <button class="macro-pill-btn" onclick="setWebLoopCount(0, this)">∞ Endless</button>
             </div>
           </div>
-          <button class="btn btn-sub" style="padding: 10px 14px; font-size: 0.8rem;" onclick="renameSelectedMacro()" title="Rename selected macro">
-            ✏️ RENAME
-          </button>
-          <button class="btn btn-sub" style="padding: 10px 12px; font-size: 0.8rem;" onclick="deleteSelectedMacro()" title="Delete selected macro">
-            🗑️
-          </button>
-        </div>
 
-        <!-- Loop Repetition Pills -->
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding-top: 2px;">
-          <span style="font-size: 0.74rem; font-weight: 700; color: var(--text-dim);">🔁 Loop Count:</span>
-          <div class="macro-pill-group" id="loop-pills">
-            <button class="macro-pill-btn active-purple" onclick="setWebLoopCount(1, this)">1x</button>
-            <button class="macro-pill-btn" onclick="setWebLoopCount(5, this)">5x</button>
-            <button class="macro-pill-btn" onclick="setWebLoopCount(10, this)">10x</button>
-            <button class="macro-pill-btn" onclick="setWebLoopCount(25, this)">25x</button>
-            <button class="macro-pill-btn" onclick="setWebLoopCount(0, this)">∞ Endless</button>
+          <!-- Playback Speed Pills -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+            <span style="font-size: 0.72rem; font-weight: 700; color: var(--text-dim);">⚡ Speed:</span>
+            <div class="macro-pill-group" id="speed-pills">
+              <button class="macro-pill-btn active" onclick="setWebSpeed(1.0, this)">1x</button>
+              <button class="macro-pill-btn" onclick="setWebSpeed(2.0, this)">2x</button>
+              <button class="macro-pill-btn" onclick="setWebSpeed(5.0, this)">5x</button>
+              <button class="macro-pill-btn" onclick="setWebSpeed(10.0, this)">10x</button>
+              <button class="macro-pill-btn" onclick="setWebSpeed(25.0, this)">25x</button>
+              <button class="macro-pill-btn" onclick="setWebSpeed(50.0, this)">50x</button>
+              <button class="macro-pill-btn" onclick="setWebSpeed(100.0, this)">100x ⚡</button>
+            </div>
           </div>
-        </div>
 
-        <!-- Playback Speed Pills -->
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-          <span style="font-size: 0.74rem; font-weight: 700; color: var(--text-dim);">⚡ Playback Speed:</span>
-          <div class="macro-pill-group" id="speed-pills">
-            <button class="macro-pill-btn active" onclick="setWebSpeed(1.0, this)">1x</button>
-            <button class="macro-pill-btn" onclick="setWebSpeed(2.0, this)">2x</button>
-            <button class="macro-pill-btn" onclick="setWebSpeed(5.0, this)">5x</button>
-            <button class="macro-pill-btn" onclick="setWebSpeed(10.0, this)">10x</button>
-            <button class="macro-pill-btn" onclick="setWebSpeed(25.0, this)">25x</button>
-            <button class="macro-pill-btn" onclick="setWebSpeed(50.0, this)">50x</button>
-            <button class="macro-pill-btn" onclick="setWebSpeed(100.0, this)">100x ⚡</button>
+          <!-- Play / Loop / Stop Action Buttons -->
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px;">
+            <button id="btn-macro-play" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; flex: 1; padding: 10px 12px;" onclick="playMacro(false)">
+              ▶️ PLAY ONCE
+            </button>
+            <button id="btn-macro-loop" class="btn" style="background: linear-gradient(135deg, #b026ff, #7c3aed); color: #fff; flex: 1; padding: 10px 12px;" onclick="playMacro(true)">
+              🔁 LOOP PLAY
+            </button>
+            <button id="btn-macro-stop" class="btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; flex: 1; padding: 10px 14px; display: none;" onclick="stopMacro()">
+              🛑 STOP PLAYBACK
+            </button>
           </div>
-        </div>
 
-        <!-- Play / Loop / Stop Action Buttons -->
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 2px;">
-          <button id="btn-macro-play" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; flex: 1; min-width: 110px; padding: 10px 12px;" onclick="playMacro(false)">
-            ▶️ PLAY ONCE
-          </button>
-          <button id="btn-macro-loop" class="btn" style="background: linear-gradient(135deg, #b026ff, #7c3aed); color: #fff; flex: 1; min-width: 110px; padding: 10px 12px;" onclick="playMacro(true)">
-            🔁 LOOP PLAY
-          </button>
-          <button id="btn-macro-stop" class="btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; flex: 1; padding: 10px 14px; display: none;" onclick="stopMacro()">
-            🛑 STOP PLAYBACK
-          </button>
+          <!-- Step Inspector -->
+          <details id="macro-steps-details" style="margin-top: 4px;" open>
+            <summary style="font-size: 0.74rem; font-weight: 700; color: var(--cyan); cursor: pointer; user-select: none;">
+              🎞️ Step Inspector (<span id="macro-steps-count">0</span> steps)
+            </summary>
+            <div id="macro-steps-list" class="macro-steps-box" style="margin-top: 6px;">
+              <div style="color: var(--text-mute);">Select a macro to inspect steps...</div>
+            </div>
+          </details>
         </div>
-
-        <!-- Laptop Hotkey Banner -->
-        <div class="macro-hotkey-box">
-          <span style="font-size: 1rem;">💻</span>
-          <div><b>PC & Laptop Shortcuts:</b> Tap <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F7</code> to start/stop recording, <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F8</code> to save recording or cancel playback, and <code style="background:rgba(255,255,255,0.1);padding:1px 5px;border-radius:4px;color:#fff;">F9</code> to stop playback.</div>
-        </div>
-
-        <!-- Step Inspector Preview -->
-        <details id="macro-steps-details" style="margin-top: 2px;" open>
-          <summary style="font-size: 0.74rem; font-weight: 700; color: var(--cyan); cursor: pointer; user-select: none;">
-            🎞️ Step Inspector (<span id="macro-steps-count">0</span> steps)
-          </summary>
-          <div id="macro-steps-list" class="macro-steps-box" style="margin-top: 6px;">
-            <div style="color: var(--text-mute);">Select a macro to inspect steps...</div>
-          </div>
-        </details>
+        <div id="macro-msg" style="font-size: 0.72rem; color: var(--text-mute); margin-top: 4px;">Record any workflow once and replay or loop it smoothly!</div>
       </div>
-      <div id="macro-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 4px;">Record any workflow once and replay or loop it smoothly!</div>
-    </div>
-  </div>
+    </section>
 
-  <!-- SECTION 4: STATS & RESTOCK -->
-  <div id="sec-stats" style="display: flex; flex-direction: column; gap: 14px;">
-
-  <!-- PRIMARY STATS -->
-  <div class="stat-grid">
-    <div class="card">
-      <div class="card-label">🐟 Fish Caught</div>
-      <div class="card-val" id="val-fish">0</div>
-      <div class="card-meta" id="val-rate">0% rate</div>
-    </div>
-    <div class="card">
-      <div class="card-label">🍇 Devil Fruits</div>
-      <div class="card-val fruit" id="val-fruits">0</div>
-      <div class="card-meta" id="val-pity">Pity: 0</div>
-    </div>
-    <div class="card">
-      <div class="card-label">🌟 Legendary Pity</div>
-      <div class="card-val" id="val-leg-pity" style="color: var(--amber);">0</div>
-      <div class="card-meta">Pity fish</div>
-    </div>
-    <div class="card">
-      <div class="card-label">⏱️ Runtime</div>
-      <div class="card-val" id="val-runtime" style="font-size: 1.25rem;">00:00:00</div>
-      <div class="card-meta">Current session</div>
-    </div>
-  </div>
-
-  <!-- BAIT AUTOMATION & RESTOCK -->
-  <div class="stat-grid">
-    <div class="card">
-      <div class="card-label">🛒 Orders Placed</div>
-      <div class="card-val" id="val-orders">0</div>
-      <div class="card-meta" id="val-auto-buy">Auto-buy ON</div>
-    </div>
-    <div class="card">
-      <div class="card-label">⏳ Next Restock</div>
-      <div class="card-val" id="val-restock" style="color: var(--cyan); font-size: 1.25rem;">0 / 10</div>
-      <div class="card-meta">Fish until purchase</div>
-    </div>
-    <div class="card">
-      <div class="card-label">🎯 Active Tier</div>
-      <div class="card-val" id="val-tier" style="color: #60a5fa; font-size: 1.2rem;">Common</div>
-      <div class="card-meta">Purchase priority</div>
-    </div>
-    <div class="card">
-      <div class="card-label">🛡️ Leg. Reserve</div>
-      <div class="card-val" id="val-reserve" style="color: var(--amber);">0</div>
-      <div class="card-meta">Protected stock</div>
-    </div>
-  </div>
-
-  <!-- TOUCH-RELEASE SLIDERS: VOLUME & BRIGHTNESS -->
-  <div class="card">
-    <div class="sliders-grid">
-      <div class="slider-group">
-        <div class="slider-head">
-          <span>🔊 WINDOWS AUDIO VOLUME</span>
-          <span id="lbl-volume" class="slider-val">50%</span>
+    <!-- TAB 4: AUTO CRAFT BAIT -->
+    <section id="sec-craft" class="mobile-section">
+      <div class="card" style="border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.04);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <div class="card-label" style="color: var(--amber);">🔨 AUTO CRAFT (BLACKSMITH SEN)</div>
+          <div id="craft-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
         </div>
-        <input id="rng-volume" type="range" min="0" max="100" value="50"
-               oninput="onVolInput(this.value)"
-               onchange="onVolRelease(this.value)"
-               onpointerup="onVolRelease(this.value)"
-               ontouchend="onVolRelease(this.value)" />
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+          <!-- Custom Craft Dropdown -->
+          <div class="custom-dropdown" id="dropdown-craft" style="width: 100%;">
+            <button type="button" class="custom-dropdown-btn" onclick="toggleDropdown('dropdown-craft')">
+              <span class="dropdown-label" id="dropdown-craft-label">🍇 Rare Fish Bait</span>
+              <span class="dropdown-chevron">▼</span>
+            </button>
+            <div class="custom-dropdown-menu" id="dropdown-craft-menu">
+              <div class="custom-dropdown-item active" data-val="rare" onclick="selectCraftTier('rare', '🍇 Rare Fish Bait')">
+                <span>🍇 Rare Fish Bait</span>
+                <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
+              </div>
+              <div class="custom-dropdown-item" data-val="legendary" onclick="selectCraftTier('legendary', '👑 Legendary Fish Bait')">
+                <span>👑 Legendary Fish Bait</span>
+              </div>
+              <div class="custom-dropdown-item" data-val="all" onclick="selectCraftTier('all', '🌟 All (Legendary &amp; Rare)')">
+                <span>🌟 All (Legendary &amp; Rare)</span>
+              </div>
+            </div>
+          </div>
+
+          <button id="btn-craft-toggle" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; padding: 14px;" onclick="toggleAutoCraft()">
+            <span id="craft-btn-icon">🔨</span>
+            <span id="craft-btn-label">START AUTO CRAFT</span>
+          </button>
+        </div>
+        <div id="craft-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 6px;">Stand at Blacksmith Sen with caught fish in inventory, then tap Start.</div>
+      </div>
+    </section>
+
+    <!-- TAB 5: SYSTEM & SETTINGS -->
+    <section id="sec-system" class="mobile-section">
+      <!-- LAPTOP KEYBOARD LIGHT CONTROL -->
+      <div class="card" style="border-color: rgba(168, 85, 247, 0.35); background: rgba(168, 85, 247, 0.04);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <div class="card-label" style="color: #c084fc; display: flex; align-items: center; gap: 6px;">
+            <span>⌨️ KEYBOARD LIGHT</span>
+            <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.3); color: #e9d5ff;">LENOVO LOQ</span>
+          </div>
+          <div id="kbd-light-badge" class="status-badge" style="font-size: 0.7rem; padding: 3px 8px; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15);">UNKNOWN</div>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+          <button id="btn-kbd-off" class="kbd-btn" onclick="setKbdLight('off')">🌑 OFF</button>
+          <button id="btn-kbd-low" class="kbd-btn" onclick="setKbdLight('low')">🔅 LOW</button>
+          <button id="btn-kbd-high" class="kbd-btn" onclick="setKbdLight('high')">🔆 HIGH</button>
+          <button id="btn-kbd-cycle" class="kbd-btn" style="border-color: rgba(168,85,247,0.4);" onclick="setKbdLight('cycle')">🔄 CYCLE</button>
+        </div>
       </div>
 
-      <div class="slider-group">
-        <div class="slider-head">
-          <span>💡 SCREEN BRIGHTNESS</span>
-          <span id="lbl-brightness" class="slider-val">80%</span>
-        </div>
-        <input id="rng-brightness" type="range" min="0" max="100" value="80"
-               oninput="onBrightInput(this.value)"
-               onchange="onBrightRelease(this.value)"
-               onpointerup="onBrightRelease(this.value)"
-               ontouchend="onBrightRelease(this.value)" />
-      </div>
-    </div>
-  </div>
+      <!-- AUDIO & SCREEN CONTROLS -->
+      <div class="card">
+        <div class="sliders-grid">
+          <div class="slider-group">
+            <div class="slider-head">
+              <span>🔊 AUDIO VOLUME</span>
+              <span id="lbl-volume" class="slider-val">50%</span>
+            </div>
+            <input id="rng-volume" type="range" min="0" max="100" value="50"
+                   oninput="onVolInput(this.value)"
+                   onchange="onVolRelease(this.value)"
+                   onpointerup="onVolRelease(this.value)"
+                   ontouchend="onVolRelease(this.value)" />
+          </div>
 
-  <!-- WORLD BOSSES -->
-  <div class="card">
-    <div class="card-label" style="margin-bottom: 8px;">👑 WORLD BOSS & MERCHANT COUNTDOWNS</div>
-    <div id="boss-list" class="boss-grid">
-      <div style="font-size: 0.8rem; color: var(--text-mute);">Loading timers...</div>
-    </div>
-  </div>
-</div>
+          <div class="slider-group">
+            <div class="slider-head">
+              <span>💡 SCREEN BRIGHTNESS</span>
+              <span id="lbl-brightness" class="slider-val">80%</span>
+            </div>
+            <input id="rng-brightness" type="range" min="0" max="100" value="80"
+                   oninput="onBrightInput(this.value)"
+                   onchange="onBrightRelease(this.value)"
+                   onpointerup="onBrightRelease(this.value)"
+                   ontouchend="onBrightRelease(this.value)" />
+          </div>
+        </div>
+      </div>
+
+      <!-- WORLD BOSS & TIMERS -->
+      <div class="card">
+        <div class="card-label" style="margin-bottom: 6px;">👑 WORLD BOSS &amp; MERCHANT COUNTDOWNS</div>
+        <div id="boss-list" class="boss-grid">
+          <div style="font-size: 0.8rem; color: var(--text-mute);">Loading timers...</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- FIXED BOTTOM DOCK (MOBILE APP TAB BAR) -->
+  <nav class="bottom-nav-bar" id="bottom-nav-bar">
+    <button class="bottom-nav-item active" data-tab="remote" onclick="switchTab('remote', this)">
+      <span class="nav-icon">🎮</span>
+      <span class="nav-label">Remote</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="stats" onclick="switchTab('stats', this)">
+      <span class="nav-icon">📊</span>
+      <span class="nav-label">Stats</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="macro" onclick="switchTab('macro', this)">
+      <span class="nav-icon">📼</span>
+      <span class="nav-label">Studio</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="craft" onclick="switchTab('craft', this)">
+      <span class="nav-icon">🔨</span>
+      <span class="nav-label">Craft</span>
+    </button>
+    <button class="bottom-nav-item" data-tab="system" onclick="switchTab('system', this)">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">System</span>
+    </button>
+  </nav>
 </div>
 
 <div id="toast"></div>
@@ -2080,26 +2108,30 @@ async function fetchStatus() {
     document.getElementById('host-sub').innerText = `${d.local_ip}:3888 • v${d.version}`;
 
     const fruitBadge = document.getElementById('badge-fruit');
-    if (spawnAlerts) {
-      fruitBadge.className = 'toggle-spawn-badge';
-      fruitBadge.innerText = '🍇 FRUIT ALERTS: ON';
-    } else {
-      fruitBadge.className = 'toggle-spawn-badge off';
-      fruitBadge.innerText = '🍇 FRUIT ALERTS: OFF';
+    if (fruitBadge) {
+      if (spawnAlerts) {
+        fruitBadge.className = 'toggle-spawn-badge';
+        fruitBadge.innerText = '🍇 ALERTS: ON';
+      } else {
+        fruitBadge.className = 'toggle-spawn-badge off';
+        fruitBadge.innerText = '🍇 ALERTS: OFF';
+      }
     }
 
     const pill = document.getElementById('status-pill');
-    pill.innerText = d.state.toUpperCase();
-    if (!isRunning) {
-      pill.className = 'status-badge badge-stopped';
-    } else if (isPaused) {
-      pill.className = 'status-badge badge-paused';
-    } else {
-      pill.className = 'status-badge badge-running';
+    if (pill) {
+      pill.innerText = d.state.toUpperCase();
+      if (!isRunning) {
+        pill.className = 'status-badge badge-stopped';
+      } else if (isPaused) {
+        pill.className = 'status-badge badge-paused';
+      } else {
+        pill.className = 'status-badge badge-running';
+      }
     }
 
     const fsPill = document.getElementById('fs-status-pill');
-    if (fsPill) {
+    if (fsPill && pill) {
       fsPill.innerText = d.state.toUpperCase();
       fsPill.className = pill.className;
     }
@@ -2108,41 +2140,84 @@ async function fetchStatus() {
     const tLabel = document.getElementById('toggle-label');
     const tIcon = document.getElementById('toggle-icon');
     const fsToggleBtn = document.getElementById('btn-fs-toggle');
+    const headerToggle = document.getElementById('btn-header-toggle');
+
     if (isRunning && !isPaused) {
-      tBtn.className = 'btn btn-toggle paused';
-      tLabel.innerText = 'PAUSE MACRO';
-      tIcon.innerText = '⏸️';
+      if (tBtn) {
+        tBtn.className = 'btn btn-toggle paused';
+        tLabel.innerText = 'PAUSE MACRO';
+        tIcon.innerText = '⏸️';
+      }
       if (fsToggleBtn) fsToggleBtn.innerText = '⏸ PAUSE';
+      if (headerToggle) {
+        headerToggle.className = 'header-btn-toggle active';
+        headerToggle.innerHTML = '<span>⏸</span><span>PAUSE</span>';
+      }
     } else {
-      tBtn.className = 'btn btn-toggle';
-      tLabel.innerText = isPaused ? 'RESUME MACRO' : 'START MACRO';
-      tIcon.innerText = '▶️';
+      if (tBtn) {
+        tBtn.className = 'btn btn-toggle';
+        tLabel.innerText = isPaused ? 'RESUME MACRO' : 'START MACRO';
+        tIcon.innerText = '▶️';
+      }
       if (fsToggleBtn) fsToggleBtn.innerText = isPaused ? '▶ RESUME' : '▶ START';
+      if (headerToggle) {
+        headerToggle.className = 'header-btn-toggle';
+        headerToggle.innerHTML = `<span>▶</span><span>${isPaused ? 'RESUME' : 'START'}</span>`;
+      }
     }
 
-    document.getElementById('btn-mute').innerText = isMuted ? '🔊 UNMUTE' : '🔇 MUTE';
+    const muteBtn = document.getElementById('btn-mute');
+    if (muteBtn) muteBtn.innerText = isMuted ? '🔊 UNMUTE' : '🔇 MUTE';
     const fsMuteBtn = document.getElementById('btn-fs-mute');
     if (fsMuteBtn) fsMuteBtn.innerText = isMuted ? '🔊 UNMUTE' : '🔇 MUTE';
 
-    document.getElementById('val-fish').innerText = d.fish;
-    document.getElementById('val-rate').innerText = `${d.success_rate}% catch rate`;
-    document.getElementById('val-fruits').innerText = d.fruits;
-    document.getElementById('val-pity').innerText = `Pity: ⚡ ${d.pity_fruit}`;
-    document.getElementById('val-leg-pity').innerText = d.pity_legendary;
+    const elFish = document.getElementById('val-fish');
+    if (elFish) elFish.innerText = d.fish;
+    const elRate = document.getElementById('val-rate');
+    if (elRate) elRate.innerText = `${d.success_rate}% rate`;
+    const elFruits = document.getElementById('val-fruits');
+    if (elFruits) elFruits.innerText = d.fruits;
+    const elPity = document.getElementById('val-pity');
+    if (elPity) elPity.innerText = `Pity: ⚡ ${d.pity_fruit}`;
+    const elLegPity = document.getElementById('val-leg-pity');
+    if (elLegPity) elLegPity.innerText = d.pity_legendary;
 
-    document.getElementById('val-orders').innerText = d.bait_purchased;
-    document.getElementById('val-auto-buy').innerText = d.auto_purchase ? 'Auto-buy ON' : 'Auto-buy OFF';
-    document.getElementById('val-restock').innerText = `${d.since_purchase} / ${d.every_n_catches}`;
-    document.getElementById('val-tier').innerText = d.bait_tier;
-    document.getElementById('val-reserve').innerText = d.legendary_reserve;
+    // Progress Gauges
+    const barLegPity = document.getElementById('bar-leg-pity');
+    if (barLegPity) {
+      const legP = Math.min(100, Math.max(0, parseInt(d.pity_legendary || 0, 10)));
+      barLegPity.style.width = `${legP}%`;
+    }
+
+    const elOrders = document.getElementById('val-orders');
+    if (elOrders) elOrders.innerText = d.bait_purchased;
+    const elAutoBuy = document.getElementById('val-auto-buy');
+    if (elAutoBuy) elAutoBuy.innerText = d.auto_purchase ? 'Auto-buy ON' : 'Auto-buy OFF';
+    const elRestock = document.getElementById('val-restock');
+    if (elRestock) elRestock.innerText = `${d.since_purchase} / ${d.every_n_catches}`;
+
+    const barRestock = document.getElementById('bar-restock');
+    if (barRestock && d.every_n_catches > 0) {
+      const pct = Math.min(100, Math.max(0, Math.round((d.since_purchase / d.every_n_catches) * 100)));
+      barRestock.style.width = `${pct}%`;
+    }
+
+    const elTier = document.getElementById('val-tier');
+    if (elTier) elTier.innerText = d.bait_tier;
+    const elReserve = document.getElementById('val-reserve');
+    if (elReserve) elReserve.innerText = d.legendary_reserve;
 
     if (!userSlidingVol) {
-      document.getElementById('rng-volume').value = d.volume;
-      document.getElementById('lbl-volume').innerText = `${d.volume}%`;
+      const rVol = document.getElementById('rng-volume');
+      if (rVol) rVol.value = d.volume;
+      const lVol = document.getElementById('lbl-volume');
+      if (lVol) lVol.innerText = `${d.volume}%`;
     }
     if (!userSlidingBright) {
-      document.getElementById('rng-brightness').value = d.brightness;
-      document.getElementById('lbl-brightness').innerText = `${d.brightness}%`;
+      const rBri = document.getElementById('rng-brightness');
+      if (rBri) rBri.value = d.brightness;
+      const lBri = document.getElementById('lbl-brightness');
+      if (lBri) lBri.innerText = `${d.brightness}%`;
     }
 
     updateCraftUi(d.crafting);
@@ -2155,11 +2230,12 @@ async function fetchStatus() {
   }
 }
 
-// SMOOTH HIGH-FREQUENCY CLIENT TIMER TICK (1s)
+// 1s TIMER TICK
 function tickTimersLocally() {
   if (isRunning && !isPaused) {
     localRuntimeSec += 1;
-    document.getElementById('val-runtime').innerText = fmtSec(localRuntimeSec);
+    const rt = document.getElementById('val-runtime');
+    if (rt) rt.innerText = fmtSec(localRuntimeSec);
   }
   renderTimers();
 }
@@ -2185,10 +2261,11 @@ function renderTimers() {
         <div class="${tClass}">${tText}</div>
       </div>`;
   }
-  document.getElementById('boss-list').innerHTML = bHtml;
+  const bList = document.getElementById('boss-list');
+  if (bList) bList.innerHTML = bHtml;
 }
 
-// STREAM QUALITY, FPS & FULLSCREEN MANAGEMENT
+// STREAM QUALITY & FPS MANAGEMENT
 let currentFps = parseInt(localStorage.getItem('gpo_stream_fps') || '20', 10);
 let currentScale = parseInt(localStorage.getItem('gpo_stream_scale') || '720', 10);
 let currentQuality = parseInt(localStorage.getItem('gpo_stream_quality') || '70', 10);
@@ -2201,9 +2278,16 @@ function setStreamFps(fps) {
   localStorage.setItem('gpo_stream_fps', fps);
   updateStreamLabels();
   reloadStream();
-  showToast(`Stream set to ${fps} FPS`);
-  const dd = document.getElementById('dropdown-fps');
-  if (dd) dd.classList.remove('open');
+  document.querySelectorAll('#dropdown-fps-menu .custom-dropdown-item').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-val') == fps);
+    const check = el.querySelector('.item-check');
+    if (check) check.remove();
+    if (el.getAttribute('data-val') == fps) {
+      el.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
+    }
+  });
+  const menu = document.getElementById('dropdown-fps');
+  if (menu) menu.classList.remove('open');
 }
 
 function setStreamQuality(scale, q, label) {
@@ -2215,503 +2299,313 @@ function setStreamQuality(scale, q, label) {
   localStorage.setItem('gpo_stream_quality_label', label);
   updateStreamLabels();
   reloadStream();
-  showToast(`Stream set to ${label}`);
-  const dd = document.getElementById('dropdown-quality');
-  if (dd) dd.classList.remove('open');
+  document.querySelectorAll('#dropdown-quality-menu .custom-dropdown-item').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-val') == scale);
+    const check = el.querySelector('.item-check');
+    if (check) check.remove();
+    if (el.getAttribute('data-val') == scale) {
+      el.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
+    }
+  });
+  const menu = document.getElementById('dropdown-quality');
+  if (menu) menu.classList.remove('open');
 }
 
 function updateStreamLabels() {
-  const fpsLbl = document.getElementById('dropdown-fps-label');
-  if (fpsLbl) fpsLbl.innerText = `⚡ ${currentFps} FPS`;
   const fpsBadge = document.getElementById('stream-fps-badge');
-  if (fpsBadge) fpsBadge.innerText = `${currentFps} FPS`;
-
-  const qLbl = document.getElementById('dropdown-quality-label');
-  if (qLbl) {
-    let shortName = currentScale === 0 ? 'Original' : `${currentScale}p`;
-    qLbl.innerText = `📺 ${shortName}`;
-  }
+  const fpsLabel = document.getElementById('dropdown-fps-label');
   const resBadge = document.getElementById('stream-res-badge');
-  if (resBadge) {
-    resBadge.innerText = currentScale === 0 ? 'Original' : `${currentScale}p`;
-  }
-
+  const resLabel = document.getElementById('dropdown-quality-label');
   const fsInfo = document.getElementById('fs-stream-info');
-  if (fsInfo) {
-    fsInfo.innerText = `${currentFps} FPS • ${currentScale === 0 ? 'Original' : currentScale + 'p'}`;
-  }
 
-  // Update checkmarks in menus
-  document.querySelectorAll('#dropdown-fps-menu .custom-dropdown-item').forEach(it => {
-    const val = parseInt(it.getAttribute('data-val'), 10);
-    const isAct = val === currentFps;
-    it.classList.toggle('active', isAct);
-    let check = it.querySelector('.item-check');
-    if (isAct && !check) {
-      it.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
-    } else if (!isAct && check) {
-      check.remove();
-    }
-  });
-
-  document.querySelectorAll('#dropdown-quality-menu .custom-dropdown-item').forEach(it => {
-    const val = parseInt(it.getAttribute('data-val'), 10);
-    const isAct = val === currentScale;
-    it.classList.toggle('active', isAct);
-    let check = it.querySelector('.item-check');
-    if (isAct && !check) {
-      it.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
-    } else if (!isAct && check) {
-      check.remove();
-    }
-  });
+  const shortRes = currentScale === 0 ? 'MAX' : `${currentScale}p`;
+  if (fpsBadge) fpsBadge.innerText = `${currentFps} FPS`;
+  if (fpsLabel) fpsLabel.innerText = `⚡ ${currentFps} FPS`;
+  if (resBadge) resBadge.innerText = shortRes;
+  if (resLabel) resLabel.innerText = `📺 ${shortRes}`;
+  if (fsInfo) fsInfo.innerText = `${currentFps} FPS • ${shortRes}`;
 }
 
 function reloadStream() {
   const img = document.getElementById('screen-img');
-  if (img) {
-    img.src = `/api/stream?fps=${currentFps}&scale=${currentScale}&q=${currentQuality}&t=${Date.now()}`;
-  }
+  if (!img) return;
+  const url = `/api/stream?fps=${currentFps}&scale=${currentScale}&q=${currentQuality}&t=` + Date.now();
+  img.src = url;
 }
 
 function toggleFullscreen() {
-  if (isFullscreen) {
-    exitFullscreen();
-  } else {
-    enterFullscreen();
-  }
+  if (!isFullscreen) enterFullscreen();
+  else exitFullscreen();
 }
 
 function enterFullscreen() {
   isFullscreen = true;
-  const wrapper = document.getElementById('stream-wrapper');
-  if (wrapper) wrapper.classList.add('fullscreen-active');
+  const wrap = document.getElementById('stream-wrapper');
+  if (wrap) wrap.classList.add('fullscreen-active');
+  const bNav = document.getElementById('bottom-nav-bar');
+  if (bNav) bNav.style.display = 'none';
+  const aHead = document.getElementById('app-header');
+  if (aHead) aHead.style.display = 'none';
 
   const docEl = document.documentElement;
-  if (docEl.requestFullscreen) {
-    docEl.requestFullscreen().catch(() => {});
-  } else if (docEl.webkitRequestFullscreen) {
-    docEl.webkitRequestFullscreen();
-  }
-  document.body.style.overflow = 'hidden';
+  try {
+    if (docEl.requestFullscreen) docEl.requestFullscreen();
+    else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
+  } catch (_) {}
 }
 
 function exitFullscreen() {
   isFullscreen = false;
-  const wrapper = document.getElementById('stream-wrapper');
-  if (wrapper) {
-    wrapper.classList.remove('fullscreen-active');
-    wrapper.classList.remove('rotated-90');
+  const wrap = document.getElementById('stream-wrapper');
+  if (wrap) {
+    wrap.classList.remove('fullscreen-active');
+    wrap.classList.remove('rotated-90');
   }
-  isRotatedLandscape = false;
-  updateRotateButtons();
+  const bNav = document.getElementById('bottom-nav-bar');
+  if (bNav) bNav.style.display = 'flex';
+  const aHead = document.getElementById('app-header');
+  if (aHead) aHead.style.display = 'flex';
 
-  if (document.exitFullscreen && document.fullscreenElement) {
-    document.exitFullscreen().catch(() => {});
-  } else if (document.webkitExitFullscreen && document.webkitFullscreenElement) {
-    document.webkitExitFullscreen();
-  }
-  document.body.style.overflow = '';
+  updateRotateButtons(false);
+  try {
+    if (document.exitFullscreen) document.exitFullscreen();
+    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+  } catch (_) {}
 }
 
-let isRotatedLandscape = false;
-
+let isRotated = false;
 function toggleRotate() {
-  if (!isFullscreen) {
-    enterFullscreen();
+  isRotated = !isRotated;
+  const wrap = document.getElementById('stream-wrapper');
+  if (!isFullscreen) enterFullscreen();
+  if (wrap) {
+    if (isRotated) wrap.classList.add('rotated-90');
+    else wrap.classList.remove('rotated-90');
   }
-  isRotatedLandscape = !isRotatedLandscape;
-  const wrapper = document.getElementById('stream-wrapper');
-  if (wrapper) {
-    wrapper.classList.toggle('rotated-90', isRotatedLandscape);
-  }
-  updateRotateButtons();
+  updateRotateButtons(isRotated);
+}
 
-  if (screen.orientation && screen.orientation.lock) {
-    if (isRotatedLandscape) {
-      screen.orientation.lock('landscape').catch(() => {});
-    } else {
-      if (screen.orientation.unlock) {
-        try { screen.orientation.unlock(); } catch (_) {}
-      }
+function updateRotateButtons(rot) {
+  const b1 = document.getElementById('stream-tool-rotate');
+  const b2 = document.getElementById('btn-fs-rotate');
+  [b1, b2].forEach(b => {
+    if (b) {
+      if (rot) b.classList.add('active');
+      else b.classList.remove('active');
     }
-  }
-  showToast(isRotatedLandscape ? '🔄 Rotated 90° Landscape' : '📱 Portrait View');
+  });
 }
 
-function updateRotateButtons() {
-  const r1 = document.getElementById('stream-tool-rotate');
-  const r2 = document.getElementById('btn-fs-rotate');
-  if (r1) r1.classList.toggle('active', isRotatedLandscape);
-  if (r2) r2.classList.toggle('active', isRotatedLandscape);
-}
-
-let currentClickMode = 'left';
-
+let isRightClickMode = false;
 function toggleClickMode() {
-  currentClickMode = currentClickMode === 'left' ? 'right' : 'left';
-  const label = document.getElementById('click-mode-label');
+  isRightClickMode = !isRightClickMode;
   const icon = document.getElementById('click-mode-icon');
+  const label = document.getElementById('click-mode-label');
   const btn = document.getElementById('btn-click-mode');
-  if (btn) btn.classList.toggle('active', currentClickMode === 'right');
-  if (label) label.innerText = currentClickMode === 'left' ? 'CLICK: LEFT' : 'LOOK: RIGHT';
-  if (icon) icon.innerText = currentClickMode === 'left' ? '🎯' : '👀';
-  showToast(`Tap mode: ${currentClickMode === 'left' ? 'Left Click (Select/Fish)' : 'Right Click (Camera Look)'}`);
+  if (isRightClickMode) {
+    if (icon) icon.innerText = '👀';
+    if (label) label.innerText = 'LOOK';
+    if (btn) btn.classList.add('active');
+    showToast('Touch set to Camera Look (Right-Click)');
+  } else {
+    if (icon) icon.innerText = '🎯';
+    if (label) label.innerText = 'CLICK';
+    if (btn) btn.classList.remove('active');
+    showToast('Touch set to Primary Click (Left-Click)');
+  }
 }
-
-// Global anti-context-menu prevention for Android long-press
-window.addEventListener('contextmenu', (e) => {
-  if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-    e.preventDefault();
-    e.stopPropagation();
-    return false;
-  }
-}, { capture: true, passive: false });
-
-window.addEventListener('dragstart', (e) => {
-  e.preventDefault();
-  return false;
-}, { capture: true, passive: false });
-
-document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement) {
-    exitFullscreen();
-  }
-});
-document.addEventListener('webkitfullscreenchange', () => {
-  if (!document.webkitFullscreenElement) {
-    exitFullscreen();
-  }
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && isFullscreen) {
-    exitFullscreen();
-  }
-});
 
 function toggleFullscreenControls() {
   isControlsOverlayVisible = !isControlsOverlayVisible;
   const overlay = document.getElementById('fs-controls-overlay');
-  const label = document.getElementById('fs-ctrl-label');
-  const icon = document.getElementById('fs-ctrl-icon');
-  if (overlay) {
-    overlay.classList.toggle('visible', isControlsOverlayVisible);
-  }
-  if (label) {
-    label.innerText = isControlsOverlayVisible ? 'CONTROLS' : 'CONTROLS: OFF';
-  }
-  if (icon) {
-    icon.innerText = isControlsOverlayVisible ? '🎮' : '👁️';
-  }
+  const btn = document.getElementById('btn-fs-overlay-toggle');
+  if (overlay) overlay.classList.toggle('visible', isControlsOverlayVisible);
+  if (btn) btn.classList.toggle('active', isControlsOverlayVisible);
 }
 
-// HOLD & DRAG / TOUCH CONTROL ENGINE
-let isHoldDragEnabled = true;
-
+let isHoldDragMode = true;
 function toggleHoldDragMode() {
-  isHoldDragEnabled = !isHoldDragEnabled;
-  const sLabel = document.getElementById('stream-drag-label');
-  const sBtn = document.getElementById('stream-tool-drag');
-  const fsLabel = document.getElementById('fs-drag-label');
-  const fsIcon = document.getElementById('fs-drag-icon');
-  const fsBtn = document.getElementById('btn-fs-drag');
+  isHoldDragMode = !isHoldDragMode;
+  const btnTool = document.getElementById('stream-tool-drag');
+  const lblTool = document.getElementById('stream-drag-label');
+  const btnFs = document.getElementById('btn-fs-drag');
+  const lblFs = document.getElementById('fs-drag-label');
+  const iconFs = document.getElementById('fs-drag-icon');
 
-  if (sLabel) sLabel.innerText = isHoldDragEnabled ? '🖐️ HOLD & DRAG' : '👆 TAP ONLY';
-  if (sBtn) sBtn.classList.toggle('active', isHoldDragEnabled);
-  if (fsLabel) fsLabel.innerText = isHoldDragEnabled ? 'HOLD/DRAG' : 'TAP ONLY';
-  if (fsIcon) fsIcon.innerText = isHoldDragEnabled ? '🖐️' : '👆';
-  if (fsBtn) fsBtn.classList.toggle('active', isHoldDragEnabled);
-
-  showToast(isHoldDragEnabled ? '🖐️ Touch Hold & Drag enabled' : '👆 Instant Tap mode enabled');
+  if (isHoldDragMode) {
+    if (btnTool) btnTool.classList.add('active');
+    if (lblTool) lblTool.innerText = '🖐️ DRAG';
+    if (btnFs) btnFs.classList.add('active');
+    if (lblFs) lblFs.innerText = 'DRAG';
+    if (iconFs) iconFs.innerText = '🖐️';
+    showToast('Touch mode: Camera Hold & Drag');
+  } else {
+    if (btnTool) btnTool.classList.remove('active');
+    if (lblTool) lblTool.innerText = '👆 TAP';
+    if (btnFs) btnFs.classList.remove('active');
+    if (lblFs) lblFs.innerText = 'TAP';
+    if (iconFs) iconFs.innerText = '👆';
+    showToast('Touch mode: Direct Tap to Click');
+  }
 }
+
+// SCREEN TOUCH CONTROLLER
+let touchPointerId = null;
+let touchStartX = 0;
+let touchStartY = 0;
+let touchStartRelX = 0;
+let touchStartRelY = 0;
+let touchStartTime = 0;
+let touchIndicatorEl = null;
+let touchMoveThrottle = 0;
 
 function getScreenRelCoords(clientX, clientY) {
   const img = document.getElementById('screen-img');
   if (!img) return null;
-
   const rect = img.getBoundingClientRect();
-  let clickX, clickY, elemW, elemH;
-
-  if (isRotatedLandscape) {
-    clickX = clientY - rect.top;
-    clickY = rect.right - clientX;
-    elemW = rect.height;
-    elemH = rect.width;
-  } else {
-    clickX = clientX - rect.left;
-    clickY = clientY - rect.top;
-    elemW = rect.width;
-    elemH = rect.height;
-  }
-
-  const naturalW = img.naturalWidth || 1280;
-  const naturalH = img.naturalHeight || 720;
-  const imageAspect = naturalW / naturalH;
-  const elementAspect = elemW / elemH;
-
-  let renderW = elemW;
-  let renderH = elemH;
-  let offsetX = 0;
-  let offsetY = 0;
-
-  if (elementAspect > imageAspect) {
-    renderW = elemH * imageAspect;
-    offsetX = (elemW - renderW) / 2;
-  } else {
-    renderH = elemW / imageAspect;
-    offsetY = (elemH - renderH) / 2;
-  }
-
-  if (clickX < offsetX || clickX > (offsetX + renderW) ||
-      clickY < offsetY || clickY > (offsetY + renderH)) {
+  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
     return null;
   }
-
-  const relX = Math.max(0, Math.min(1, (clickX - offsetX) / renderW));
-  const relY = Math.max(0, Math.min(1, (clickY - offsetY) / renderH));
-  return { relX, relY };
+  const rx = (clientX - rect.left) / rect.width;
+  const ry = (clientY - rect.top) / rect.height;
+  return {
+    rx: Math.max(0, Math.min(1, rx)),
+    ry: Math.max(0, Math.min(1, ry)),
+    rect
+  };
 }
-
-// REAL-TIME TOUCH HOLD, DRAG, AND TAP ENGINE
-const screenContainer = document.getElementById('screen-container');
-let screenTouchActive = false;
-let screenTouchPointerId = null;
-let touchStartCoords = null;
-let touchStartTime = 0;
-let touchMovedDist = 0;
-let lastMoveSentTime = 0;
-let touchIndicatorEl = null;
-
-screenContainer.addEventListener('pointerdown', onScreenPointerDown);
-screenContainer.addEventListener('pointermove', onScreenPointerMove);
-screenContainer.addEventListener('pointerup', onScreenPointerUp);
-screenContainer.addEventListener('pointercancel', onScreenPointerCancel);
 
 function updateIndicatorPos(clientX, clientY) {
   if (!touchIndicatorEl) return;
-  const containerRect = screenContainer.getBoundingClientRect();
-  touchIndicatorEl.style.left = `${clientX - containerRect.left}px`;
-  touchIndicatorEl.style.top = `${clientY - containerRect.top}px`;
+  const container = document.getElementById('screen-container');
+  if (!container) return;
+  const cRect = container.getBoundingClientRect();
+  const ox = clientX - cRect.left;
+  const oy = clientY - cRect.top;
+  touchIndicatorEl.style.left = `${ox}px`;
+  touchIndicatorEl.style.top = `${oy}px`;
 }
 
 function onScreenPointerDown(e) {
-  if (e.target.closest('.dpad-btn') || e.target.closest('.pad-action-btn') || e.target.closest('.btn') || e.target.closest('.fs-btn') || e.target.closest('.fs-mini-btn') || e.target.closest('.custom-dropdown') || e.target.closest('.stream-tool-btn') || e.target.closest('.cam-touchpad')) {
-    return;
-  }
-  e.preventDefault();
-
+  if (touchPointerId !== null) return;
   const coords = getScreenRelCoords(e.clientX, e.clientY);
   if (!coords) return;
 
-  screenTouchActive = true;
-  screenTouchPointerId = e.pointerId;
-  touchStartCoords = coords;
+  touchPointerId = e.pointerId;
+  touchStartX = e.clientX;
+  touchStartY = e.clientY;
+  touchStartRelX = coords.rx;
+  touchStartRelY = coords.ry;
   touchStartTime = Date.now();
-  touchMovedDist = 0;
-  lastMoveSentTime = 0;
 
-  try { screenContainer.setPointerCapture(e.pointerId); } catch (_) {}
+  const container = document.getElementById('screen-container');
+  try { container.setPointerCapture(e.pointerId); } catch (_) {}
 
-  // Visual Touch Reticle
-  if (touchIndicatorEl) touchIndicatorEl.remove();
   touchIndicatorEl = document.createElement('div');
-  touchIndicatorEl.className = 'touch-drag-indicator' + (currentClickMode === 'right' ? ' right-mode' : '');
+  touchIndicatorEl.className = 'touch-drag-indicator' + (isRightClickMode ? ' right-mode' : '');
   touchIndicatorEl.innerHTML = '<div class="touch-drag-indicator-core"></div>';
+  container.appendChild(touchIndicatorEl);
   updateIndicatorPos(e.clientX, e.clientY);
-  screenContainer.appendChild(touchIndicatorEl);
 
-  if (navigator.vibrate) navigator.vibrate(10);
-
-  if (isHoldDragEnabled) {
-    // Send immediate mouse down
+  if (isHoldDragMode) {
+    const btn = isRightClickMode ? 'right' : 'right';
     fetch('/api/mouse', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'down', button: currentClickMode, rel_x: coords.relX, rel_y: coords.relY })
+      body: JSON.stringify({ action: 'down', button: btn, rx: coords.rx, ry: coords.ry })
     }).catch(() => {});
   }
 }
 
 function onScreenPointerMove(e) {
-  if (!screenTouchActive || e.pointerId !== screenTouchPointerId) return;
-  e.preventDefault();
-
+  if (e.pointerId !== touchPointerId) return;
   updateIndicatorPos(e.clientX, e.clientY);
 
+  const now = Date.now();
+  if (now - touchMoveThrottle < 20) return;
+  touchMoveThrottle = now;
+
   const coords = getScreenRelCoords(e.clientX, e.clientY);
-  if (!coords || !touchStartCoords) return;
+  if (!coords) return;
 
-  const dxRel = coords.relX - touchStartCoords.relX;
-  const dyRel = coords.relY - touchStartCoords.relY;
-  touchMovedDist = Math.hypot(dxRel, dyRel);
-
-  if (touchMovedDist > 0.012 && touchIndicatorEl) {
-    touchIndicatorEl.classList.add('dragging');
-  }
-
-  if (isHoldDragEnabled) {
-    const now = Date.now();
-    if (now - lastMoveSentTime >= 35) {
-      lastMoveSentTime = now;
-      fetch('/api/mouse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'move', button: currentClickMode, rel_x: coords.relX, rel_y: coords.relY })
-      }).catch(() => {});
-    }
+  if (isHoldDragMode) {
+    if (touchIndicatorEl) touchIndicatorEl.classList.add('dragging');
+    fetch('/api/mouse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'move', rx: coords.rx, ry: coords.ry })
+    }).catch(() => {});
   }
 }
 
 function onScreenPointerUp(e) {
-  if (!screenTouchActive || e.pointerId !== screenTouchPointerId) return;
-  e.preventDefault();
+  if (e.pointerId !== touchPointerId) return;
+  const container = document.getElementById('screen-container');
+  try { container.releasePointerCapture(e.pointerId); } catch (_) {}
 
-  try { screenContainer.releasePointerCapture(e.pointerId); } catch (_) {}
-  screenTouchActive = false;
-  screenTouchPointerId = null;
-
-  if (touchIndicatorEl) {
-    touchIndicatorEl.remove();
-    touchIndicatorEl = null;
-  }
-
-  const coords = getScreenRelCoords(e.clientX, e.clientY) || touchStartCoords;
   const duration = Date.now() - touchStartTime;
+  const dist = Math.hypot(e.clientX - touchStartX, e.clientY - touchStartY);
+  const coords = getScreenRelCoords(e.clientX, e.clientY) || { rx: touchStartRelX, ry: touchStartRelY };
 
-  if (isHoldDragEnabled) {
-    if (coords) {
-      fetch('/api/mouse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'move', button: currentClickMode, rel_x: coords.relX, rel_y: coords.relY })
-      }).catch(() => {});
+  if (isHoldDragMode) {
+    const btn = isRightClickMode ? 'right' : 'right';
+    fetch('/api/mouse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'up', button: btn, rx: coords.rx, ry: coords.ry })
+    }).catch(() => {});
 
-      fetch('/api/mouse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'up', button: currentClickMode, rel_x: coords.relX, rel_y: coords.relY })
-      }).catch(() => {});
-    }
-
-    if (touchMovedDist >= 0.02 && touchStartCoords && coords) {
-      // Record drag into macro studio
-      fetch('/api/drag', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          start_rx: touchStartCoords.relX,
-          start_ry: touchStartCoords.relY,
-          end_rx: coords.relX,
-          end_ry: coords.relY,
-          duration_ms: Math.min(Math.max(duration, 100), 4000),
-          button: currentClickMode,
-          record_only: true
-        })
-      }).catch(() => {});
-    } else if (touchStartCoords) {
-      // Record click into macro studio
+    if (dist < 8 && duration < 250) {
       fetch('/api/click', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rel_x: touchStartCoords.relX, rel_y: touchStartCoords.relY, button: currentClickMode })
+        body: JSON.stringify({ rx: coords.rx, ry: coords.ry, button: isRightClickMode ? 'right' : 'left' })
       }).catch(() => {});
     }
   } else {
-    // Instant tap mode
-    if (coords) {
-      const ripple = document.createElement('div');
-      ripple.className = 'click-ripple';
-      ripple.style.left = `${e.clientX - screenContainer.getBoundingClientRect().left}px`;
-      ripple.style.top = `${e.clientY - screenContainer.getBoundingClientRect().top}px`;
-      screenContainer.appendChild(ripple);
-      setTimeout(() => ripple.remove(), 450);
-
-      fetch('/api/click', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rel_x: coords.relX, rel_y: coords.relY, button: currentClickMode })
-      }).catch(() => {});
-    }
+    fetch('/api/click', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rx: coords.rx, ry: coords.ry, button: isRightClickMode ? 'right' : 'left' })
+    }).catch(() => {});
   }
 
-  touchStartCoords = null;
-}
-
-function onScreenPointerCancel(e) {
-  if (!screenTouchActive) return;
-  screenTouchActive = false;
-  screenTouchPointerId = null;
   if (touchIndicatorEl) {
     touchIndicatorEl.remove();
     touchIndicatorEl = null;
   }
-  touchStartCoords = null;
-  fetch('/api/mouse', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'release_all' })
-  }).catch(() => {});
+  touchPointerId = null;
 }
 
-// CAMERA SWIPE TOUCHPAD (Rotates Roblox camera via Arrow keys + vibration)
-let camActivePointer = null;
-let lastCamX = 0;
-let lastCamY = 0;
-
-const camPad = document.getElementById('cam-touchpad');
-if (camPad) {
-  camPad.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    camActivePointer = e.pointerId;
-    try { camPad.setPointerCapture(e.pointerId); } catch (_) {}
-    camPad.classList.add('touching');
-    lastCamX = e.clientX;
-    lastCamY = e.clientY;
-    if (navigator.vibrate) navigator.vibrate(10);
-  });
-
-  camPad.addEventListener('pointermove', (e) => {
-    if (camActivePointer !== e.pointerId) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    let dx = e.clientX - lastCamX;
-    let dy = e.clientY - lastCamY;
-
-    const threshold = 12;
-    if (Math.abs(dx) >= threshold) {
-      const key = dx > 0 ? 'right' : 'left';
-      sendKey(key, true, true);
-      lastCamX = e.clientX;
-      if (navigator.vibrate) navigator.vibrate(6);
-    }
-    if (Math.abs(dy) >= threshold) {
-      const key = dy > 0 ? 'down' : 'up';
-      sendKey(key, true, true);
-      lastCamY = e.clientY;
-      if (navigator.vibrate) navigator.vibrate(6);
-    }
-  });
-
-  const onCamRelease = (e) => {
-    if (camActivePointer !== e.pointerId) return;
-    e.preventDefault();
-    e.stopPropagation();
-    try { camPad.releasePointerCapture(e.pointerId); } catch (_) {}
-    camActivePointer = null;
-    camPad.classList.remove('touching');
-  };
-
-  camPad.addEventListener('pointerup', onCamRelease);
-  camPad.addEventListener('pointercancel', onCamRelease);
+function onScreenPointerCancel(e) {
+  if (e.pointerId !== touchPointerId) return;
+  const container = document.getElementById('screen-container');
+  try { container.releasePointerCapture(e.pointerId); } catch (_) {}
+  if (isHoldDragMode) {
+    fetch('/api/mouse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'up', button: 'right', rx: touchStartRelX, ry: touchStartRelY })
+    }).catch(() => {});
+  }
+  if (touchIndicatorEl) {
+    touchIndicatorEl.remove();
+    touchIndicatorEl = null;
+  }
+  touchPointerId = null;
 }
 
-// MULTI-TOUCH REMOTE CONTROLLER ENGINE WITH INDEPENDENT POINTER TRACKING & HEARTBEAT
-// Map of active pointerId -> { key: string, btn: HTMLElement }
-const activePointers = new Map();
+const sBox = document.getElementById('screen-container');
+if (sBox) {
+  sBox.addEventListener('pointerdown', onScreenPointerDown);
+  sBox.addEventListener('pointermove', onScreenPointerMove);
+  sBox.addEventListener('pointerup', onScreenPointerUp);
+  sBox.addEventListener('pointercancel', onScreenPointerCancel);
+}
+
+// KEYBOARD EMULATION WITH MULTI-TOUCH
 const activeKeys = new Set();
+const activePointers = new Map();
 let heartbeatInterval = null;
 
 function sendKey(k, down, tap = false) {
@@ -2730,22 +2624,17 @@ function startKeyHeartbeat() {
       heartbeatInterval = null;
       return;
     }
-    // Refresh server activity watchdog so long holds are never interrupted
+    const keysArray = Array.from(activeKeys);
     fetch('/api/key', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key: 'heartbeat', down: true, tap: false })
+      body: JSON.stringify({ keys: keysArray, heartbeat: true })
     }).catch(() => {});
-  }, 1500);
+  }, 450);
 }
 
 function releaseAllKeys() {
-  if (touchIndicatorEl) {
-    touchIndicatorEl.remove();
-    touchIndicatorEl = null;
-  }
-  screenTouchActive = false;
-  fetch('/api/mouse', {
+  fetch('/api/key', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'release_all' })
@@ -2762,7 +2651,7 @@ function releaseAllKeys() {
   sendKey('release_all', false);
 }
 
-// DIRECTIONAL & ARROW CONTROLS (Hold or simultaneous multi-touch)
+// ATTACH TOUCH HANDLERS TO GAMEPAD BUTTONS
 document.querySelectorAll('.dpad-btn').forEach(btn => {
   const key = btn.getAttribute('data-key');
   if (!key) return;
@@ -2774,7 +2663,7 @@ document.querySelectorAll('.dpad-btn').forEach(btn => {
     btn.classList.add('pressed');
     activePointers.set(e.pointerId, { key, btn });
     activeKeys.add(key);
-    if (navigator.vibrate) navigator.vibrate(12);
+    if (navigator.vibrate) navigator.vibrate(10);
     sendKey(key, true);
     startKeyHeartbeat();
   });
@@ -2787,7 +2676,6 @@ document.querySelectorAll('.dpad-btn').forEach(btn => {
     const entry = activePointers.get(e.pointerId);
     activePointers.delete(e.pointerId);
 
-    // Check if any other touch pointer is holding the same button
     let stillHeld = false;
     for (const p of activePointers.values()) {
       if (p.key === entry.key) { stillHeld = true; break; }
@@ -2807,7 +2695,6 @@ document.querySelectorAll('.dpad-btn').forEach(btn => {
   btn.addEventListener('pointercancel', onPointerRelease);
 });
 
-// ACTION BUTTONS (Shift, Space, 1, E, T)
 document.querySelectorAll('.pad-action-btn').forEach(btn => {
   const key = btn.getAttribute('data-key');
   if (!key) return;
@@ -2819,7 +2706,7 @@ document.querySelectorAll('.pad-action-btn').forEach(btn => {
     btn.classList.add('pressed');
     activePointers.set(e.pointerId, { key, btn });
     activeKeys.add(key);
-    if (navigator.vibrate) navigator.vibrate(12);
+    if (navigator.vibrate) navigator.vibrate(10);
     sendKey(key, true);
     startKeyHeartbeat();
   });
@@ -2851,7 +2738,6 @@ document.querySelectorAll('.pad-action-btn').forEach(btn => {
   btn.addEventListener('pointercancel', onPointerRelease);
 });
 
-// Failsafe auto-release ONLY if browser window loses focus or tab is hidden
 window.addEventListener('blur', releaseAllKeys);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) releaseAllKeys();
@@ -2862,42 +2748,37 @@ async function doAction(act, val = null) {
     const res = await fetch('/api/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: act, value: val !== null ? Number(val) : undefined })
+      body: JSON.stringify({ action: act, value: val })
     });
-    const data = await res.json();
-    showToast(data.message || 'Action executed');
+    const d = await res.json();
+    if (d.error) showToast('Error: ' + d.error);
+    else showToast('Action sent: ' + act);
     fetchStatus();
   } catch (e) {
-    showToast('Failed: ' + e);
+    showToast('Failed to trigger ' + act);
   }
 }
 
 function togglePlay() {
-  if (isRunning && !isPaused) {
-    doAction('pause');
-  } else {
-    doAction('start');
-  }
+  if (isRunning && !isPaused) doAction('pause');
+  else if (isRunning && isPaused) doAction('resume');
+  else doAction('start');
 }
 
 function toggleMute() {
-  if (isMuted) {
-    doAction('unmute');
-  } else {
-    doAction('mute');
-  }
+  doAction(isMuted ? 'unmute' : 'mute');
 }
 
 function toggleSpawnAlerts() {
-  doAction('toggle_spawn');
+  doAction('toggle_spawn_alerts');
 }
 
 function doUpdate() {
-  if (confirm('Check for update and restart macro? (If running, it will automatically resume fishing!)')) {
-    doAction('update');
-  }
+  showToast('Triggering update check...');
+  doAction('check_update');
 }
 
+// KEYBOARD BACKLIGHT CONTROLS
 function updateKbdLightUi(kbd) {
   if (!kbd) return;
   const badge = document.getElementById('kbd-light-badge');
@@ -2957,8 +2838,8 @@ async function setKbdLight(act) {
   }
 }
 
+// AUTO CRAFT CONTROLS
 let isCrafting = false;
-
 function updateCraftUi(c) {
   if (!c) return;
   isCrafting = c.is_crafting;
@@ -2992,41 +2873,35 @@ function updateCraftUi(c) {
 let selectedCraftTier = "rare";
 let selectedMacroValue = "";
 
+// MOBILE APP TAB SWITCHING
 function switchTab(tab, btn) {
-  document.querySelectorAll('.nav-tab-btn').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
+  localStorage.setItem('gpo_mobile_tab', tab);
+  document.querySelectorAll('.bottom-nav-item').forEach(b => b.classList.remove('active'));
+  const activeBtn = btn || document.querySelector(`.bottom-nav-item[data-tab="${tab}"]`);
+  if (activeBtn) activeBtn.classList.add('active');
 
   const remoteSec = document.getElementById('sec-remote');
   const macroSec = document.getElementById('sec-macro');
   const craftSec = document.getElementById('sec-craft');
   const statsSec = document.getElementById('sec-stats');
+  const systemSec = document.getElementById('sec-system');
 
   if (tab === 'all') {
-    if (remoteSec) remoteSec.style.display = 'flex';
-    if (macroSec) macroSec.style.display = 'flex';
-    if (craftSec) craftSec.style.display = 'flex';
-    if (statsSec) statsSec.style.display = 'flex';
-  } else if (tab === 'remote') {
-    if (remoteSec) remoteSec.style.display = 'flex';
-    if (macroSec) macroSec.style.display = 'none';
-    if (craftSec) craftSec.style.display = 'none';
-    if (statsSec) statsSec.style.display = 'none';
-  } else if (tab === 'macro') {
-    if (remoteSec) remoteSec.style.display = 'none';
-    if (macroSec) macroSec.style.display = 'flex';
-    if (craftSec) craftSec.style.display = 'none';
-    if (statsSec) statsSec.style.display = 'none';
-  } else if (tab === 'craft') {
-    if (remoteSec) remoteSec.style.display = 'none';
-    if (macroSec) macroSec.style.display = 'none';
-    if (craftSec) craftSec.style.display = 'flex';
-    if (statsSec) statsSec.style.display = 'none';
-  } else if (tab === 'stats') {
-    if (remoteSec) remoteSec.style.display = 'none';
-    if (macroSec) macroSec.style.display = 'none';
-    if (craftSec) craftSec.style.display = 'none';
-    if (statsSec) statsSec.style.display = 'flex';
+    [remoteSec, macroSec, craftSec, statsSec, systemSec].forEach(s => { if (s) s.classList.add('active'); });
+  } else {
+    if (remoteSec) remoteSec.classList.toggle('active', tab === 'remote');
+    if (statsSec) statsSec.classList.toggle('active', tab === 'stats');
+    if (macroSec) macroSec.classList.toggle('active', tab === 'macro');
+    if (craftSec) craftSec.classList.toggle('active', tab === 'craft');
+    if (systemSec) systemSec.classList.toggle('active', tab === 'system');
   }
+
+  if (window.Telegram?.WebApp?.HapticFeedback) {
+    window.Telegram.WebApp.HapticFeedback.selectionChanged();
+  } else if (navigator.vibrate) {
+    navigator.vibrate(10);
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function toggleDropdown(id) {
@@ -3039,7 +2914,7 @@ function toggleDropdown(id) {
   }
 }
 
-window.addEventListener('click', (e) => {
+document.addEventListener('click', (e) => {
   if (!e.target.closest('.custom-dropdown')) {
     document.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
   }
@@ -3047,46 +2922,69 @@ window.addEventListener('click', (e) => {
 
 function selectCraftTier(val, label) {
   selectedCraftTier = val;
-  const lbl = document.getElementById('dropdown-craft-label');
-  if (lbl) lbl.innerText = label;
-  document.querySelectorAll('#dropdown-craft-menu .custom-dropdown-item').forEach(it => {
-    it.classList.toggle('active', it.getAttribute('data-val') === val);
+  const labelEl = document.getElementById('dropdown-craft-label');
+  if (labelEl) labelEl.innerText = label;
+  document.querySelectorAll('#dropdown-craft-menu .custom-dropdown-item').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-val') === val);
+    const check = el.querySelector('.item-check');
+    if (check) check.remove();
+    if (el.getAttribute('data-val') === val) {
+      el.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
+    }
   });
-  const dd = document.getElementById('dropdown-craft');
-  if (dd) dd.classList.remove('open');
+  const menu = document.getElementById('dropdown-craft');
+  if (menu) menu.classList.remove('open');
 }
 
 function selectMacroItem(val) {
   selectedMacroValue = val;
   const m = cachedMacros.find(x => x.name === val || x.id === val);
-  const lbl = document.getElementById('dropdown-macro-label');
-  if (lbl) {
-    lbl.innerText = m ? `📋 ${m.name} (${m.steps.length} steps)` : val;
-  }
-  document.querySelectorAll('#dropdown-macro-menu .custom-dropdown-item').forEach(it => {
-    it.classList.toggle('active', it.getAttribute('data-val') === val);
+  const labelEl = document.getElementById('dropdown-macro-label');
+  if (labelEl && m) labelEl.innerText = `📋 ${m.name} (${m.steps.length} steps)`;
+  document.querySelectorAll('#dropdown-macro-menu .custom-dropdown-item').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-val') === val);
+    const check = el.querySelector('.item-check');
+    if (check) check.remove();
+    if (el.getAttribute('data-val') === val) {
+      el.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
+    }
   });
-  const dd = document.getElementById('dropdown-macro');
-  if (dd) dd.classList.remove('open');
+  const menu = document.getElementById('dropdown-macro');
+  if (menu) menu.classList.remove('open');
   renderMacroSteps(m);
 }
 
 async function toggleAutoCraft() {
-  const tier = selectedCraftTier || 'rare';
-  try {
-    const res = await fetch('/api/craft', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: isCrafting ? 'stop' : 'start', tier })
-    });
-    const data = await res.json();
-    showToast(data.message || (isCrafting ? 'Auto-craft stop requested' : 'Auto-craft started'));
-    fetchStatus();
-  } catch (e) {
-    showToast('Failed: ' + e);
+  if (isCrafting) {
+    try {
+      const res = await fetch('/api/craft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop' })
+      });
+      const data = await res.json();
+      showToast(data.message || 'Auto-craft stopped');
+      fetchStatus();
+    } catch (e) {
+      showToast('Stop craft failed: ' + e);
+    }
+  } else {
+    try {
+      const res = await fetch('/api/craft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start', tier: selectedCraftTier })
+      });
+      const data = await res.json();
+      showToast(data.message || 'Auto-craft started!');
+      fetchStatus();
+    } catch (e) {
+      showToast('Start craft failed: ' + e);
+    }
   }
 }
 
+// MACRO STUDIO CONTROLS
 let isRecordingMacro = false;
 let isPlayingMacro = false;
 let webSpeed = 1.0;
@@ -3156,44 +3054,52 @@ function updateMacroUi(rec, macros) {
   const macroMsg = document.getElementById('macro-msg');
 
   if (isRecordingMacro) {
-    stBadge.className = 'status-badge badge-running';
-    stBadge.innerText = 'RECORDING';
-    countBadge.innerText = `${rec.recorded_steps_count} STEPS`;
-    recToggle.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
-    recToggle.style.color = '#fff';
-    recIcon.innerText = '⏹️';
-    recLabel.innerText = 'FINISH & SAVE';
-    recCancel.style.display = 'inline-flex';
-    recHint.innerText = 'Tap live screen or controls (T, E, WASD, 1-5). Each action & delay is saved!';
+    if (stBadge) {
+      stBadge.className = 'status-badge badge-running';
+      stBadge.innerText = 'RECORDING';
+    }
+    if (countBadge) countBadge.innerText = `${rec.recorded_steps_count} STEPS`;
+    if (recToggle) {
+      recToggle.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+      recToggle.style.color = '#fff';
+    }
+    if (recIcon) recIcon.innerText = '⏹️';
+    if (recLabel) recLabel.innerText = 'FINISH & SAVE';
+    if (recCancel) recCancel.style.display = 'inline-flex';
+    if (recHint) recHint.innerText = 'Tap live screen or controls (T, E, WASD, 1-5). Each action & delay is saved!';
   } else {
-    countBadge.innerText = rec.recorded_steps_count > 0 ? `${rec.recorded_steps_count} STEPS` : 'READY';
-    recToggle.style.background = 'linear-gradient(135deg, #00f0ff, #0284c7)';
-    recToggle.style.color = '#000';
-    recIcon.innerText = '⏺️';
-    recLabel.innerText = 'RECORD VIA SCREEN';
-    recCancel.style.display = 'none';
-    recHint.innerText = 'Tap Record, then tap live screen and press controls. Captures timing automatically!';
+    if (countBadge) countBadge.innerText = rec.recorded_steps_count > 0 ? `${rec.recorded_steps_count} STEPS` : 'READY';
+    if (recToggle) {
+      recToggle.style.background = 'linear-gradient(135deg, #00f0ff, #0284c7)';
+      recToggle.style.color = '#000';
+    }
+    if (recIcon) recIcon.innerText = '⏺️';
+    if (recLabel) recLabel.innerText = 'RECORD';
+    if (recCancel) recCancel.style.display = 'none';
+    if (recHint) recHint.innerText = 'Tap Record, then tap live screen and press controls. Captures timing automatically!';
   }
 
   if (isPlayingMacro) {
-    stBadge.className = 'status-badge badge-running';
-    stBadge.innerText = rec.is_looping ? `LOOP #${rec.current_loop}` : 'PLAYING';
-    playBadge.innerText = rec.is_looping ? `LOOPING (#${rec.current_loop}) [${webSpeed}x]` : `PLAYING ONCE [${webSpeed}x]`;
-    btnPlay.style.display = 'none';
-    btnLoop.style.display = 'none';
-    btnStop.style.display = 'inline-flex';
+    if (stBadge) {
+      stBadge.className = 'status-badge badge-running';
+      stBadge.innerText = rec.is_looping ? `LOOP #${rec.current_loop}` : 'PLAYING';
+    }
+    if (playBadge) playBadge.innerText = rec.is_looping ? `LOOPING (#${rec.current_loop}) [${webSpeed}x]` : `PLAYING ONCE [${webSpeed}x]`;
+    if (btnPlay) btnPlay.style.display = 'none';
+    if (btnLoop) btnLoop.style.display = 'none';
+    if (btnStop) btnStop.style.display = 'inline-flex';
   } else {
-    if (!isRecordingMacro) {
+    if (!isRecordingMacro && stBadge) {
       stBadge.className = 'status-badge badge-stopped';
       stBadge.innerText = 'IDLE';
     }
-    playBadge.innerText = 'READY';
-    btnPlay.style.display = 'inline-flex';
-    btnLoop.style.display = 'inline-flex';
-    btnStop.style.display = 'none';
+    if (playBadge) playBadge.innerText = 'READY';
+    if (btnPlay) btnPlay.style.display = 'inline-flex';
+    if (btnLoop) btnLoop.style.display = 'inline-flex';
+    if (btnStop) btnStop.style.display = 'none';
   }
 
-  if (rec.message) {
+  if (rec.message && macroMsg) {
     macroMsg.innerText = rec.message;
   }
 
@@ -3258,7 +3164,7 @@ async function toggleRecord() {
       showToast(data.message || 'Recording started!');
       fetchStatus();
     } catch (e) {
-      showToast('Record failed: ' + e);
+      showToast('Record start failed: ' + e);
     }
   }
 }
@@ -3279,48 +3185,50 @@ async function cancelRecord() {
 }
 
 async function renameSelectedMacro() {
-  const currentName = selectedMacroValue;
-  if (!currentName) {
-    showToast('Please select a macro to rename.');
+  if (!selectedMacroValue) {
+    showToast('Please select a macro first');
     return;
   }
-  const newName = prompt(`Enter new name for "${currentName}":`, currentName);
-  if (!newName || newName.trim() === '' || newName.trim() === currentName) return;
+  const current = selectedMacroValue;
+  const newName = prompt(`Enter new name for macro "${current}":`, current);
+  if (!newName || newName.trim() === '' || newName.trim() === current) return;
   try {
     const res = await fetch('/api/macro/rename', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: currentName, new_name: newName.trim() })
+      body: JSON.stringify({ id: current, name: newName.trim() })
     });
     const data = await res.json();
-    showToast(data.message || 'Macro renamed');
-    selectedMacroValue = newName.trim();
-    fetchStatus();
+    if (data.status === 'ok') {
+      showToast('Macro renamed to ' + newName.trim());
+      selectedMacroValue = newName.trim();
+      fetchStatus();
+    } else {
+      showToast('Rename failed: ' + (data.error || 'unknown'));
+    }
   } catch (e) {
-    showToast('Rename failed: ' + e);
+    showToast('Rename error: ' + e);
   }
 }
 
 async function playMacro(isLoop) {
-  const name = selectedMacroValue;
-  if (!name) {
-    showToast('Please record or select a macro first!');
+  if (!selectedMacroValue) {
+    showToast('Please record or select a macro first');
     return;
   }
   try {
-    const maxLoops = isLoop ? (webLoopCount === 0 ? undefined : webLoopCount) : 1;
     const res = await fetch('/api/macro/play', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: isLoop ? 'loop' : 'play',
-        name,
-        speed: webSpeed,
-        max_loops: maxLoops
+        id: selectedMacroValue,
+        loop: isLoop,
+        loop_count: isLoop ? webLoopCount : 1,
+        speed: webSpeed
       })
     });
     const data = await res.json();
-    showToast(data.message || (isLoop ? 'Started loop playback' : 'Started playing macro'));
+    showToast(data.message || (isLoop ? 'Started loop playback' : 'Playing macro once'));
     fetchStatus();
   } catch (e) {
     showToast('Play failed: ' + e);
@@ -3335,7 +3243,7 @@ async function stopMacro() {
       body: JSON.stringify({ action: 'stop' })
     });
     const data = await res.json();
-    showToast(data.message || 'Playback stopped');
+    showToast(data.message || 'Macro playback stopped');
     fetchStatus();
   } catch (e) {
     showToast('Stop failed: ' + e);
@@ -3343,37 +3251,44 @@ async function stopMacro() {
 }
 
 async function deleteSelectedMacro() {
-  const name = selectedMacroValue;
-  if (!name) return;
-  if (!confirm(`Delete macro "${name}"?`)) return;
+  if (!selectedMacroValue) {
+    showToast('No macro selected');
+    return;
+  }
+  if (!confirm(`Are you sure you want to delete macro "${selectedMacroValue}"?`)) return;
   try {
     const res = await fetch('/api/macro/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
+      body: JSON.stringify({ id: selectedMacroValue })
     });
     const data = await res.json();
-    showToast(data.message || 'Macro deleted');
-    selectedMacroValue = '';
-    fetchStatus();
+    if (data.status === 'ok') {
+      showToast('Macro deleted');
+      selectedMacroValue = '';
+      fetchStatus();
+    } else {
+      showToast('Delete error: ' + (data.error || 'unknown'));
+    }
   } catch (e) {
     showToast('Delete failed: ' + e);
   }
 }
 
-// TOUCH-RELEASE SLIDERS
+// SLIDERS
 function onVolInput(val) {
   userSlidingVol = true;
-  document.getElementById('lbl-volume').innerText = `${val}%`;
+  const lbl = document.getElementById('lbl-volume');
+  if (lbl) lbl.innerText = `${val}%`;
 }
 function onVolRelease(val) {
   userSlidingVol = false;
   doAction('set_volume', val);
 }
-
 function onBrightInput(val) {
   userSlidingBright = true;
-  document.getElementById('lbl-brightness').innerText = `${val}%`;
+  const lbl = document.getElementById('lbl-brightness');
+  if (lbl) lbl.innerText = `${val}%`;
 }
 function onBrightRelease(val) {
   userSlidingBright = false;
@@ -3387,6 +3302,10 @@ function fallbackSnapshot() {
   }
 }
 
+// RESTORE SAVED TAB
+const savedTab = localStorage.getItem('gpo_mobile_tab') || 'remote';
+switchTab(savedTab);
+
 updateStreamLabels();
 reloadStream();
 
@@ -3396,7 +3315,7 @@ fetchStatus();
 </script>
 </body>
 </html>
-"#;
+"##;
 
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
