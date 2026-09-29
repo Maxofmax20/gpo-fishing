@@ -37,7 +37,13 @@ pub mod windows_brightness {
     pub fn set_brightness(level: u32) -> Result<u32, String> {
         let clamped = level.clamp(0, 100);
         let script = format!(
-            "(Get-WmiObject -Namespace root/wmi -ClassName WmiMonitorBrightnessMethods -ErrorAction SilentlyContinue).WmiSetBrightness(1, {clamped})"
+            r#"try {{
+                (Get-WmiObject -Namespace root/wmi -ClassName WmiMonitorBrightnessMethods -ErrorAction Stop).WmiSetBrightness(1, {clamped})
+            }} catch {{
+                try {{
+                    (Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBrightnessMethods -ErrorAction Stop) | Invoke-CimMethod -MethodName WmiSetBrightness -Arguments @{{ Timeout = 1; Brightness = {clamped} }}
+                }} catch {{}}
+            }}"#
         );
 
         let output = Command::new("powershell")
