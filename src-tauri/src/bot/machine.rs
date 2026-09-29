@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::core::controller::Tracker;
@@ -18,7 +19,7 @@ enum Outcome {
     Disconnected(String),
 }
 
-pub fn run(ctx: &Ctx, skip_setup: bool) {
+pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
     ctx.log_debug("Loop thread started");
     let mut tracker = Tracker::default();
     let mut last_hash: u64 = 0;
@@ -167,7 +168,7 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
     }
 }
 
-fn wait_for_roblox(ctx: &Ctx, notify_disconnect: bool) -> bool {
+fn wait_for_roblox(ctx: &Arc<Ctx>, notify_disconnect: bool) -> bool {
     if ctx.roblox_rect().is_some() {
         return true;
     }
@@ -189,7 +190,7 @@ fn wait_for_roblox(ctx: &Ctx, notify_disconnect: bool) -> bool {
     false
 }
 
-fn ensure_front(ctx: &Ctx) -> bool {
+fn ensure_front(ctx: &Arc<Ctx>) -> bool {
     if ctx.ensure_roblox_focus() {
         return true;
     }
@@ -284,7 +285,7 @@ pub(super) fn trigger_anti_afk(ctx: &Ctx) {
     }
 }
 
-pub(super) fn attempt_reconnect(ctx: &Ctx, reason: &str, rod_equipped: &mut bool) -> bool {
+pub(super) fn attempt_reconnect(ctx: &Arc<Ctx>, reason: &str, rod_equipped: &mut bool) -> bool {
     ctx.set_state(BotState::Recovering, Some(format!("Auto-reconnecting: {reason}")));
 
     // 1. Click Roblox 'Reconnect' button on disconnect modal (approx center-right: 0.58, 0.59)
@@ -328,7 +329,42 @@ pub(super) fn attempt_reconnect(ctx: &Ctx, reason: &str, rod_equipped: &mut bool
         return false;
     }
 
-    // 5. Wait 12s for character assets to load
+    // 5. Execute recorded private server join macro or type private server code if configured
+    let (rejoin_macro, ps_code) = {
+        let s = ctx.settings.read();
+        (s.features.rejoin_macro_name.trim().to_string(), s.features.private_server_code.trim().to_string())
+    };
+
+    if !rejoin_macro.is_empty() {
+        ctx.log_info(&format!("Auto-reconnect: Executing private server rejoin macro '{rejoin_macro}'..."));
+        let _ = ensure_front(ctx);
+        let _ = ctx.sleep_ms(1500);
+        let _ = crate::bot::recorder::play_macro(
+            Arc::clone(ctx),
+            ctx.store.clone(),
+            &rejoin_macro,
+            false,
+            Some(1.0),
+            Some(1),
+        );
+        // Wait for macro execution to finish
+        for _ in 0..30 {
+            if !ctx.alive() { return false; }
+            if !crate::bot::recorder::is_playing() { break; }
+            let _ = ctx.sleep_ms(500);
+        }
+    } else if !ps_code.is_empty() {
+        ctx.log_info(&format!("Auto-reconnect: Entering private server code '{ps_code}'..."));
+        let _ = ensure_front(ctx);
+        let _ = ctx.sleep_ms(1000);
+        ctx.platform.input.type_text(&ps_code);
+        let _ = ctx.sleep_ms(250);
+        ctx.platform.input.key(crate::core::types::Key::Enter, true);
+        let _ = ctx.sleep_ms(80);
+        ctx.platform.input.key(crate::core::types::Key::Enter, false);
+    }
+
+    // 6. Wait 12s for character assets to load
     ctx.log_info("Roblox window found! Waiting 12s for character to load...");
     for _ in 0..24 {
         if !ctx.alive() {
@@ -339,7 +375,7 @@ pub(super) fn attempt_reconnect(ctx: &Ctx, reason: &str, rod_equipped: &mut bool
         }
     }
 
-    // 6. Ensure in front and equip rod
+    // 7. Ensure in front and equip rod
     if !ensure_front(ctx) {
         return false;
     }
@@ -354,7 +390,7 @@ pub(super) fn attempt_reconnect(ctx: &Ctx, reason: &str, rod_equipped: &mut bool
     true
 }
 
-fn handle_disconnect_flow(ctx: &Ctx, reason: &str, rod_equipped: &mut bool) -> bool {
+fn handle_disconnect_flow(ctx: &Arc<Ctx>, reason: &str, rod_equipped: &mut bool) -> bool {
     let photo = capture_screenshot_bytes(ctx);
     ctx.webhook.disconnect(reason, photo);
 

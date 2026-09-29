@@ -139,6 +139,8 @@ pub struct Features {
     pub multi_roblox: bool,
     pub auto_reconnect: bool,
     pub vip_server_url: String,
+    pub private_server_code: String,
+    pub rejoin_macro_name: String,
     pub sound_alerts: bool,
 }
 
@@ -158,6 +160,8 @@ impl Default for Features {
             multi_roblox: true,
             auto_reconnect: true,
             vip_server_url: String::new(),
+            private_server_code: String::new(),
+            rejoin_macro_name: String::new(),
             sound_alerts: true,
         }
     }

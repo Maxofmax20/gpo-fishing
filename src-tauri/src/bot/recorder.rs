@@ -14,6 +14,10 @@ static IS_RECORDING: AtomicBool = AtomicBool::new(false);
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
 static STOP_PLAYBACK_REQUESTED: AtomicBool = AtomicBool::new(false);
 
+pub fn is_playing() -> bool {
+    IS_PLAYING.load(Ordering::SeqCst)
+}
+
 static ROBLOX_REF: RwLock<Option<Arc<RwLock<Option<WindowInfo>>>>> = RwLock::new(None);
 static STORE_REF: RwLock<Option<Arc<Store>>> = RwLock::new(None);
 

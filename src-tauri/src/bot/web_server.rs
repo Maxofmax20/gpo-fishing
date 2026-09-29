@@ -364,6 +364,8 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "keyboard_light": crate::laptop_light::get_keyboard_light_status(),
         "auto_reconnect": s.features.auto_reconnect,
         "vip_server_url": s.features.vip_server_url.clone(),
+        "private_server_code": s.features.private_server_code.clone(),
+        "rejoin_macro_name": s.features.rejoin_macro_name.clone(),
     });
 
     let body = payload.to_string();
@@ -437,8 +439,14 @@ fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>, query: &str) {
 
 fn handle_click(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
-    let rx = parsed.get("rel_x").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
-    let ry = parsed.get("rel_y").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    let rx = parsed.get("rx")
+        .or_else(|| parsed.get("rel_x"))
+        .or_else(|| parsed.get("x"))
+        .and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    let ry = parsed.get("ry")
+        .or_else(|| parsed.get("rel_y"))
+        .or_else(|| parsed.get("y"))
+        .and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
     let btn_str = parsed.get("button").and_then(|v| v.as_str()).unwrap_or("left");
 
     // Record step if macro recorder is active
@@ -533,8 +541,14 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
     let act = parsed.get("action").and_then(|v| v.as_str()).unwrap_or("click");
     let btn_str = parsed.get("button").and_then(|v| v.as_str()).unwrap_or("left");
-    let rx = parsed.get("rel_x").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
-    let ry = parsed.get("rel_y").and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    let rx = parsed.get("rx")
+        .or_else(|| parsed.get("rel_x"))
+        .or_else(|| parsed.get("x"))
+        .and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
+    let ry = parsed.get("ry")
+        .or_else(|| parsed.get("rel_y"))
+        .or_else(|| parsed.get("y"))
+        .and_then(|v| v.as_f64()).unwrap_or(0.5) as f32;
 
     let btn = if btn_str == "right" {
         crate::core::types::MouseButton::Right
@@ -586,10 +600,11 @@ fn handle_key(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let key_str = parsed.get("key").and_then(|v| v.as_str()).unwrap_or("");
     let is_down = parsed.get("down").and_then(|v| v.as_bool()).unwrap_or(true);
     let tap = parsed.get("tap").and_then(|v| v.as_bool()).unwrap_or(false);
+    let is_heartbeat = parsed.get("heartbeat").and_then(|v| v.as_bool()).unwrap_or(false);
 
     *LAST_KEY_ACTIVITY.write() = Some(std::time::Instant::now());
 
-    if key_str == "heartbeat" {
+    if is_heartbeat || key_str == "heartbeat" {
         // Just refresh the activity timestamp, keys remain held!
         let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
         let _ = stream.write_all(resp.as_bytes());
@@ -747,6 +762,22 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
                 let _ = bot.ctx().store.save(&s);
             }
             "VIP server link saved"
+        }
+        "set_private_server_code" => {
+            if let Some(val) = parsed.get("value").and_then(|v| v.as_str()) {
+                let mut s = settings.write();
+                s.features.private_server_code = val.trim().to_string();
+                let _ = bot.ctx().store.save(&s);
+            }
+            "Private server code saved"
+        }
+        "set_rejoin_macro" => {
+            if let Some(val) = parsed.get("value").and_then(|v| v.as_str()) {
+                let mut s = settings.write();
+                s.features.rejoin_macro_name = val.trim().to_string();
+                let _ = bot.ctx().store.save(&s);
+            }
+            "Rejoin macro assigned"
         }
         "toggle_auto_reconnect" => {
             let mut s = settings.write();
@@ -1003,38 +1034,38 @@ input, textarea {
 /* STICKY TOP APP HEADER */
 .app-header {
   position: sticky; top: 0; z-index: 900;
-  padding: max(10px, var(--safe-top)) 14px 10px 14px;
-  background: rgba(7, 9, 14, 0.88);
+  padding: max(8px, var(--safe-top)) 12px 8px 12px;
+  background: rgba(7, 9, 14, 0.94);
   backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px;
 }
 
-.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 1; }
 .brand-avatar {
-  width: 36px; height: 36px; border-radius: 10px;
+  width: 32px; height: 32px; border-radius: 9px;
   background: linear-gradient(135deg, rgba(0, 240, 255, 0.25), rgba(176, 38, 255, 0.25));
   border: 1px solid var(--cyan);
-  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
-  box-shadow: 0 0 14px rgba(0, 240, 255, 0.35); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 1rem;
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.35); flex-shrink: 0;
 }
 .brand-text { display: flex; flex-direction: column; min-width: 0; }
 .brand-title {
-  font-size: 1.05rem; font-weight: 800; letter-spacing: -0.3px;
+  font-size: 0.92rem; font-weight: 800; letter-spacing: -0.2px;
   background: linear-gradient(135deg, var(--cyan), #c084fc);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.brand-sub { font-size: 0.68rem; color: var(--text-mute); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 .header-btn-toggle {
-  height: 32px; padding: 0 10px; border-radius: 999px;
+  height: 32px; padding: 0 12px; border-radius: 999px;
   background: linear-gradient(135deg, #00d2ff, #0084ff); color: #fff;
   border: 1px solid rgba(255,255,255,0.25); font-size: 0.72rem; font-weight: 800;
   display: flex; align-items: center; gap: 5px; cursor: pointer;
   box-shadow: 0 2px 10px rgba(0, 132, 255, 0.4); transition: all 0.15s ease;
+  user-select: none; -webkit-user-select: none;
 }
 .header-btn-toggle.active {
   background: linear-gradient(135deg, #f59e0b, #d97706);
@@ -1045,25 +1076,44 @@ input, textarea {
 .status-badge {
   padding: 5px 10px; border-radius: 999px; font-size: 0.68rem; font-weight: 800;
   letter-spacing: 0.4px; text-transform: uppercase; display: flex; align-items: center; gap: 5px;
-  border: 1px solid transparent; transition: all 0.25s ease;
+  border: 1px solid transparent; transition: all 0.25s ease; white-space: nowrap;
 }
 .badge-running { background: rgba(16, 185, 129, 0.16); color: var(--emerald); border-color: rgba(16, 185, 129, 0.4); box-shadow: 0 0 12px rgba(16, 185, 129, 0.25); }
 .badge-paused { background: rgba(245, 158, 11, 0.16); color: var(--amber); border-color: rgba(245, 158, 11, 0.4); box-shadow: 0 0 12px rgba(245, 158, 11, 0.25); }
 .badge-stopped { background: rgba(100, 116, 139, 0.16); color: var(--text-dim); border-color: rgba(100, 116, 139, 0.3); }
 
+/* SUB-HEADER RIBBON */
+.sub-header-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 14px 6px 14px; background: rgba(12, 16, 26, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.68rem;
+}
+.sub-bar-left { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-family: monospace; }
+.sub-bar-right { display: flex; align-items: center; gap: 8px; }
+.live-dot-mini { width: 7px; height: 7px; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 6px var(--emerald); }
+
 .toggle-spawn-badge {
-  cursor: pointer; padding: 5px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 700;
+  cursor: pointer; padding: 4px 8px; border-radius: 999px; font-size: 0.66rem; font-weight: 700;
   background: rgba(176, 38, 255, 0.15); color: #d8b4fe; border: 1px solid rgba(176, 38, 255, 0.35);
-  transition: all 0.2s ease;
+  transition: all 0.2s ease; user-select: none;
 }
 .toggle-spawn-badge.off {
   background: rgba(100, 116, 139, 0.12); color: var(--text-mute); border-color: rgba(100, 116, 139, 0.25);
 }
 
+.toggle-sound-mini {
+  cursor: pointer; padding: 4px 8px; border-radius: 999px; font-size: 0.66rem; font-weight: 700;
+  background: rgba(16, 185, 129, 0.18); color: #a7f3d0; border: 1px solid rgba(16, 185, 129, 0.35);
+  user-select: none;
+}
+.toggle-sound-mini.muted {
+  background: rgba(100, 116, 139, 0.15); color: var(--text-mute); border-color: rgba(100, 116, 139, 0.25);
+}
+
 /* MAIN CONTENT AREA */
 .app-content {
   flex: 1; max-width: 680px; width: 100%; margin: 0 auto;
-  padding: 12px 14px calc(76px + var(--safe-bottom)) 14px;
+  padding: 10px 12px calc(115px + var(--safe-bottom)) 12px;
   display: flex; flex-direction: column; gap: 12px;
 }
 
@@ -1248,85 +1298,104 @@ input, textarea {
 
 /* ERGONOMIC TOUCH GAMEPAD */
 .controller-card {
-  background: linear-gradient(180deg, rgba(16, 24, 39, 0.82) 0%, rgba(10, 15, 26, 0.94) 100%);
+  background: linear-gradient(180deg, rgba(16, 24, 39, 0.88) 0%, rgba(10, 15, 26, 0.96) 100%);
   border: 1px solid rgba(0, 240, 255, 0.25);
-  border-radius: 18px; padding: 14px;
-  display: flex; flex-direction: column; gap: 12px;
+  border-radius: 18px; padding: 12px;
+  display: flex; flex-direction: column; gap: 10px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  touch-action: none !important;
 }
 .controller-layout {
-  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
+  display: flex; flex-direction: column; gap: 10px; width: 100%;
+}
+.controller-sticks-row {
+  display: flex; justify-content: space-around; align-items: center; width: 100%; gap: 10px;
+}
+.controller-actions-row {
+  display: flex; justify-content: space-between; align-items: center; width: 100%;
+  padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08); gap: 8px;
+}
+.actions-left-group, .actions-right-group {
+  display: flex; align-items: center; gap: 8px;
 }
 
 /* CIRCULAR DPAD & ARROW PADS */
 .fs-dpad-circle, .mobile-dpad-circle {
-  width: 140px; height: 140px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(16, 24, 39, 0.9) 0%, rgba(3, 7, 18, 0.98) 100%);
+  width: 135px; height: 135px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 24, 39, 0.95) 0%, rgba(3, 7, 18, 0.98) 100%);
   border: 2px solid rgba(0, 240, 255, 0.35);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7), inset 0 0 16px rgba(0, 240, 255, 0.12);
   backdrop-filter: blur(16px); position: relative; display: flex; align-items: center; justify-content: center;
-  pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none;
+  pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none !important;
+  cursor: grab;
+}
+.fs-dpad-circle:active, .mobile-dpad-circle:active {
+  cursor: grabbing; border-color: var(--cyan); box-shadow: 0 0 20px rgba(0, 240, 255, 0.35);
 }
 .fs-dpad-center {
-  width: 40px; height: 40px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 240, 255, 0.25) 0%, rgba(15, 23, 42, 0.9) 100%);
-  border: 1.5px solid rgba(0, 240, 255, 0.45);
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.35);
-  display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
-  pointer-events: none;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 240, 255, 0.35) 0%, rgba(15, 23, 42, 0.95) 100%);
+  border: 2px solid rgba(0, 240, 255, 0.65);
+  box-shadow: 0 0 14px rgba(0, 240, 255, 0.45);
+  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+  pointer-events: none; will-change: transform; transition: transform 0.04s ease-out;
 }
 .fs-dpad-btn-w {
-  position: absolute; top: 5px; left: 50%; transform: translateX(-50%);
-  width: 44px; height: 40px; border-radius: 12px 12px 6px 6px;
+  position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
+  width: 44px; height: 38px; border-radius: 12px 12px 6px 6px;
 }
 .fs-dpad-btn-s {
-  position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
-  width: 44px; height: 40px; border-radius: 6px 6px 12px 12px;
+  position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+  width: 44px; height: 38px; border-radius: 6px 6px 12px 12px;
 }
 .fs-dpad-btn-a {
-  position: absolute; left: 5px; top: 50%; transform: translateY(-50%);
-  width: 40px; height: 44px; border-radius: 12px 6px 6px 12px;
+  position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
+  width: 38px; height: 44px; border-radius: 12px 6px 6px 12px;
 }
 .fs-dpad-btn-d {
-  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
-  width: 40px; height: 44px; border-radius: 6px 12px 12px 6px;
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 38px; height: 44px; border-radius: 6px 12px 12px 6px;
 }
 
 .fs-arrow-circle, .mobile-arrow-circle {
-  width: 140px; height: 140px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(16, 24, 39, 0.9) 0%, rgba(3, 7, 18, 0.98) 100%);
+  width: 135px; height: 135px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(16, 24, 39, 0.95) 0%, rgba(3, 7, 18, 0.98) 100%);
   border: 2px solid rgba(59, 130, 246, 0.4);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7), inset 0 0 16px rgba(59, 130, 246, 0.15);
   backdrop-filter: blur(16px); position: relative; display: flex; align-items: center; justify-content: center;
-  pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none;
+  pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none !important;
+  cursor: grab;
+}
+.fs-arrow-circle:active, .mobile-arrow-circle:active {
+  cursor: grabbing; border-color: #60a5fa; box-shadow: 0 0 20px rgba(59, 130, 246, 0.35);
 }
 .fs-arrow-center {
-  width: 40px; height: 40px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.25) 0%, rgba(15, 23, 42, 0.9) 100%);
-  border: 1.5px solid rgba(59, 130, 246, 0.45);
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.35);
-  display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
-  pointer-events: none;
+  width: 44px; height: 44px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.35) 0%, rgba(15, 23, 42, 0.95) 100%);
+  border: 2px solid rgba(59, 130, 246, 0.65);
+  box-shadow: 0 0 14px rgba(59, 130, 246, 0.45);
+  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
+  pointer-events: none; will-change: transform; transition: transform 0.04s ease-out;
 }
 .fs-arrow-btn-up {
-  position: absolute; top: 5px; left: 50%; transform: translateX(-50%);
-  width: 44px; height: 40px; border-radius: 12px 12px 6px 6px;
+  position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
+  width: 44px; height: 38px; border-radius: 12px 12px 6px 6px;
   color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
 }
 .fs-arrow-btn-down {
-  position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
-  width: 44px; height: 40px; border-radius: 6px 6px 12px 12px;
+  position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+  width: 44px; height: 38px; border-radius: 6px 6px 12px 12px;
   color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
 }
 .fs-arrow-btn-left {
-  position: absolute; left: 5px; top: 50%; transform: translateY(-50%);
-  width: 40px; height: 44px; border-radius: 12px 6px 6px 12px;
+  position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
+  width: 38px; height: 44px; border-radius: 12px 6px 6px 12px;
   color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
 }
 .fs-arrow-btn-right {
-  position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
-  width: 40px; height: 44px; border-radius: 6px 12px 12px 6px;
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 38px; height: 44px; border-radius: 6px 12px 12px 6px;
   color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
 }
 
@@ -1533,17 +1602,27 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
       <div class="brand-avatar">⚡</div>
       <div class="brand-text">
         <div class="brand-title">GPO CYBERDECK</div>
-        <div class="brand-sub" id="host-sub">CONNECTING...</div>
       </div>
     </div>
     <div class="header-actions">
+      <div id="status-pill" class="status-badge badge-stopped">STOPPED</div>
       <button id="btn-header-toggle" class="header-btn-toggle" onclick="togglePlay()">
         <span>▶</span><span>START</span>
       </button>
-      <div id="status-pill" class="status-badge badge-stopped">STOPPED</div>
-      <div id="badge-fruit" class="toggle-spawn-badge" onclick="toggleSpawnAlerts()" title="Toggle fruit spawn alerts">🍇 ALERTS</div>
     </div>
   </header>
+
+  <!-- SUB-HEADER STATUS RIBBON -->
+  <div class="sub-header-bar">
+    <div class="sub-bar-left">
+      <span class="live-dot-mini"></span>
+      <span id="host-sub">CONNECTING...</span>
+    </div>
+    <div class="sub-bar-right">
+      <div id="badge-fruit" class="toggle-spawn-badge" onclick="toggleSpawnAlerts()" title="Toggle fruit spawn alerts">🍇 ALERTS: ON</div>
+      <div id="badge-sound-mini" class="toggle-sound-mini" onclick="toggleSoundAlerts()" title="Toggle sound alarms">🔊</div>
+    </div>
+  </div>
 
   <!-- MAIN SCROLLABLE APP CONTENT -->
   <main class="app-content">
@@ -1622,9 +1701,9 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
               </div>
             </div>
 
-            <!-- Hold & Drag Toggle Button -->
-            <button type="button" class="stream-tool-btn active" id="stream-tool-drag" onclick="toggleHoldDragMode()" title="Toggle Touch Hold & Drag vs Tap">
-              <span id="stream-drag-label">🖐️ DRAG</span>
+            <!-- Tap to Click / Drag Toggle Button -->
+            <button type="button" class="stream-tool-btn active" id="stream-tool-drag" onclick="toggleHoldDragMode()" title="Toggle Tap to Click vs Pan Camera" style="min-width: 70px;">
+              <span id="stream-drag-label">👆 TAP</span>
             </button>
 
             <!-- Rotate Button -->
@@ -1650,8 +1729,8 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
             </div>
             <div style="display: flex; gap: 6px; align-items: center; pointer-events: auto;">
               <button class="fs-btn active" id="btn-fs-drag" onclick="toggleHoldDragMode()">
-                <span id="fs-drag-icon">🖐️</span>
-                <span id="fs-drag-label">DRAG</span>
+                <span id="fs-drag-icon">👆</span>
+                <span id="fs-drag-label">TAP</span>
               </button>
               <button class="fs-btn" id="btn-click-mode" onclick="toggleClickMode()">
                 <span id="click-mode-icon">🎯</span>
@@ -1683,12 +1762,12 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
               <!-- Left: Circular D-Pad Joystick -->
               <div class="fs-pad-cluster">
                 <div class="fs-cluster-label">🏃 MOVEMENT (WASD)</div>
-                <div class="fs-dpad-circle">
-                  <div class="fs-dpad-center">🏃</div>
-                  <button class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w">▲</button>
-                  <button class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s">▼</button>
-                  <button class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a">◀</button>
-                  <button class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d">▶</button>
+                <div class="fs-dpad-circle" id="fs-stick-walk">
+                  <div class="fs-dpad-center" id="fs-stick-walk-knob">🏃</div>
+                  <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w">▲</button>
+                  <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s">▼</button>
+                  <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a">◀</button>
+                  <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d">▶</button>
                 </div>
               </div>
 
@@ -1696,12 +1775,12 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
               <div class="fs-right-group">
                 <div class="fs-pad-cluster" style="align-items: center;">
                   <div class="fs-cluster-label" style="color: #60a5fa;">👀 CAMERA</div>
-                  <div class="fs-arrow-circle">
-                    <div class="fs-arrow-center">📷</div>
-                    <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-up" data-key="up">▲</button>
-                    <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-down" data-key="down">▼</button>
-                    <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-left" data-key="left">◀</button>
-                    <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-right" data-key="right">▶</button>
+                  <div class="fs-arrow-circle" id="fs-stick-cam">
+                    <div class="fs-arrow-center" id="fs-stick-cam-knob">📷</div>
+                    <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-up" data-key="up">▲</button>
+                    <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-down" data-key="down">▼</button>
+                    <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-left" data-key="left">◀</button>
+                    <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-right" data-key="right">▶</button>
                   </div>
                 </div>
 
@@ -1709,13 +1788,13 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
                   <div class="fs-cluster-label">⚡ ACTIONS</div>
                   <div class="fs-actions-column">
                     <div style="display: flex; gap: 6px; align-items: center;">
-                      <button class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 6px 12px; font-size: 0.72rem;">⚡ SHIFT</button>
-                      <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Chat (T)">💬</button>
+                      <button type="button" class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 6px 12px; font-size: 0.72rem;">⚡ SHIFT</button>
+                      <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Chat (T)">💬</button>
                     </div>
                     <div style="display: flex; gap: 6px; align-items: center;">
-                      <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="1" title="Rod (1)">🎣</button>
-                      <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="e" title="Interact (E)">🖐️</button>
-                      <button class="pad-action-btn fs-pad-btn fs-round-jump-btn" data-key="space" title="Jump (Space)">🦘</button>
+                      <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="1" title="Rod (1)">🎣</button>
+                      <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="e" title="Interact (E)">🖐️</button>
+                      <button type="button" class="pad-action-btn fs-pad-btn fs-round-jump-btn" data-key="space" title="Jump (Space)">🦘</button>
                     </div>
                   </div>
                 </div>
@@ -1728,44 +1807,43 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
       <!-- MOBILE DUAL-THUMB GAMEPAD -->
       <div class="controller-card">
         <div class="controller-layout">
-          <!-- Left: Circular WASD Joystick -->
-          <div class="pad-cluster">
-            <div class="cluster-label">🏃 WALK (WASD)</div>
-            <div class="mobile-dpad-circle">
-              <div class="fs-dpad-center">🏃</div>
-              <button class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w">▲</button>
-              <button class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s">▼</button>
-              <button class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a">◀</button>
-              <button class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d">▶</button>
+          <!-- Row 1: Dual Circular Joysticks (Walk Left, Camera Right) -->
+          <div class="controller-sticks-row">
+            <!-- Left: Dynamic WASD Joystick -->
+            <div class="pad-cluster">
+              <div class="cluster-label">🏃 WALK (WASD)</div>
+              <div class="mobile-dpad-circle" id="stick-walk">
+                <div class="fs-dpad-center" id="stick-walk-knob">🏃</div>
+                <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w">▲</button>
+                <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s">▼</button>
+                <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a">◀</button>
+                <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d">▶</button>
+              </div>
+            </div>
+
+            <!-- Right: Dynamic Camera Joystick -->
+            <div class="pad-cluster">
+              <div class="cluster-label" style="color: #60a5fa;">👀 CAMERA</div>
+              <div class="mobile-arrow-circle" id="stick-cam">
+                <div class="fs-arrow-center" id="stick-cam-knob">📷</div>
+                <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-up" data-key="up">▲</button>
+                <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-down" data-key="down">▼</button>
+                <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-left" data-key="left">◀</button>
+                <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-right" data-key="right">▶</button>
+              </div>
             </div>
           </div>
 
-          <!-- Right: Circular Camera Pad + Quick Action Cluster -->
-          <div class="fs-right-group">
-            <div class="pad-cluster" style="align-items: center;">
-              <div class="cluster-label" style="color: #60a5fa;">👀 CAMERA</div>
-              <div class="mobile-arrow-circle">
-                <div class="fs-arrow-center">📷</div>
-                <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-up" data-key="up">▲</button>
-                <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-down" data-key="down">▼</button>
-                <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-left" data-key="left">◀</button>
-                <button class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-right" data-key="right">▶</button>
-              </div>
+          <!-- Row 2: Ergonomic Quick Action Buttons -->
+          <div class="controller-actions-row">
+            <div class="actions-left-group">
+              <button type="button" class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 8px 14px; font-size: 0.74rem;">⚡ SPRINT</button>
+              <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Chat (T)">💬</button>
             </div>
-
-            <div class="pad-cluster" style="align-items: flex-end;">
-              <div class="cluster-label">⚡ ACTIONS</div>
-              <div class="fs-actions-column">
-                <div style="display: flex; gap: 6px; align-items: center;">
-                  <button class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 6px 12px; font-size: 0.72rem;">⚡ SHIFT</button>
-                  <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Chat (T)">💬</button>
-                </div>
-                <div style="display: flex; gap: 6px; align-items: center;">
-                  <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="1" title="Rod (1)">🎣</button>
-                  <button class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="e" title="Interact (E)">🖐️</button>
-                  <button class="pad-action-btn fs-pad-btn fs-round-jump-btn" data-key="space" title="Jump (Space)">🦘</button>
-                </div>
-              </div>
+            <div class="actions-right-group">
+              <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="1" title="Equip Rod (1)">🎣</button>
+              <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="e" title="Interact / Reel (E)">🖐️</button>
+              <button type="button" class="pad-action-btn fs-pad-btn fs-round-jump-btn" data-key="space" title="Jump / Geppo (Space)">🦘</button>
             </div>
           </div>
         </div>
@@ -2050,20 +2128,54 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
         </div>
       </div>
 
-      <!-- AUTO-RECONNECT & VIP SERVER LINK -->
+      <!-- AUTO-RECONNECT & GPO PRIVATE SERVER JOIN -->
       <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div class="card-label">🛡️ AUTO-RECONNECT &amp; VIP LINK</div>
+          <div class="card-label">🛡️ AUTO-RECONNECT &amp; PRIVATE SERVER</div>
           <button id="btn-reconnect-toggle" class="status-badge badge-running" style="cursor: pointer;" onclick="toggleAutoReconnect()">ACTIVE</button>
         </div>
-        <div style="display: flex; gap: 8px;">
-          <input id="txt-vip-url" type="text" placeholder="Roblox VIP / Private Server Link"
-                 style="background: #14151a; color: #fff; border: 1px solid var(--card-border); border-radius: 10px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; flex: 1; outline: none;" />
-          <button class="btn btn-sub" style="padding: 8px 14px;" onclick="saveVipUrl()">
-            💾 SAVE
-          </button>
+
+        <!-- 1. GPO Private Server Code -->
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="font-size: 0.68rem; font-weight: 700; color: var(--text-dim);">GPO PRIVATE SERVER CODE:</div>
+          <div style="display: flex; gap: 8px;">
+            <input id="txt-ps-code" type="text" placeholder="Enter Server Code (e.g. ABC123XYZ)"
+                   style="background: #14151a; color: #fff; border: 1px solid var(--card-border); border-radius: 10px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; flex: 1; outline: none;" />
+            <button class="btn btn-sub" style="padding: 8px 14px; white-space: nowrap;" onclick="savePsCode()">
+              💾 SAVE CODE
+            </button>
+          </div>
         </div>
-        <div style="font-size: 0.72rem; color: var(--text-mute);">When Roblox disconnects (Error 277/268), the macro clicks Reconnect or launches this VIP link!</div>
+
+        <!-- 2. On-Join Recorded Macro -->
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="font-size: 0.68rem; font-weight: 700; color: var(--text-dim);">EXECUTE RECORDED JOIN MACRO ON RECONNECT:</div>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="sel-rejoin-macro" onchange="saveRejoinMacro(this.value)"
+                    style="background: #14151a; color: #fff; border: 1px solid var(--card-border); border-radius: 10px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; flex: 1; outline: none;">
+              <option value="">-- No Macro (Auto-click Reconnect &amp; enter code) --</option>
+            </select>
+            <button class="btn btn-sub" style="padding: 8px 12px; white-space: nowrap;" onclick="switchTab('macro')" title="Go to Macro Studio">
+              📼 STUDIO
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. VIP URL Link (Optional) -->
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="font-size: 0.68rem; font-weight: 700; color: var(--text-dim);">VIP SERVER URL (OPTIONAL LINK):</div>
+          <div style="display: flex; gap: 8px;">
+            <input id="txt-vip-url" type="text" placeholder="Roblox VIP URL (https://roblox.com/...)"
+                   style="background: #14151a; color: #fff; border: 1px solid var(--card-border); border-radius: 10px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; flex: 1; outline: none;" />
+            <button class="btn btn-sub" style="padding: 8px 14px; white-space: nowrap;" onclick="saveVipUrl()">
+              💾 SAVE URL
+            </button>
+          </div>
+        </div>
+
+        <div style="font-size: 0.72rem; color: var(--text-mute); line-height: 1.4;">
+          💡 When Roblox disconnects, the macro auto-clicks Reconnect. If configured, it executes your recorded Main Menu Join Macro or enters your Private Server Code automatically!
+        </div>
       </div>
     </section>
 
@@ -2246,6 +2358,37 @@ async function saveVipUrl() {
     showToast(d.message || 'VIP link saved!');
   } catch (e) {
     showToast('Failed to save VIP link: ' + e);
+  }
+}
+
+async function savePsCode() {
+  const input = document.getElementById('txt-ps-code');
+  if (!input) return;
+  const val = input.value.trim();
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_private_server_code', value: val })
+    });
+    const d = await res.json();
+    showToast(d.message || 'Private server code saved!');
+  } catch (e) {
+    showToast('Failed to save server code: ' + e);
+  }
+}
+
+async function saveRejoinMacro(macroName) {
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_rejoin_macro', value: macroName })
+    });
+    const d = await res.json();
+    showToast(d.message || 'Rejoin macro updated!');
+  } catch (e) {
+    showToast('Failed to update rejoin macro: ' + e);
   }
 }
 
@@ -2462,6 +2605,20 @@ async function fetchStatus() {
     if (txtVip && document.activeElement !== txtVip && d.vip_server_url !== undefined && !txtVip.value) {
       txtVip.value = d.vip_server_url;
     }
+    const txtPs = document.getElementById('txt-ps-code');
+    if (txtPs && document.activeElement !== txtPs && d.private_server_code !== undefined && !txtPs.value) {
+      txtPs.value = d.private_server_code;
+    }
+    const selRejoin = document.getElementById('sel-rejoin-macro');
+    if (selRejoin && d.macros && document.activeElement !== selRejoin) {
+      const curVal = selRejoin.value || d.rejoin_macro_name || '';
+      let optHtml = '<option value="">-- No Macro (Auto-click Reconnect & enter code) --</option>';
+      for (const m of d.macros) {
+        const isSel = (m.name === curVal) ? 'selected' : '';
+        optHtml += `<option value="${m.name}" ${isSel}>📼 ${m.name} (${m.steps.length} steps)</option>`;
+      }
+      selRejoin.innerHTML = optHtml;
+    }
 
     updateCraftUi(d.crafting);
     updateMacroUi(d.recorder, d.macros);
@@ -2666,7 +2823,7 @@ function toggleFullscreenControls() {
   if (btn) btn.classList.toggle('active', isControlsOverlayVisible);
 }
 
-let isHoldDragMode = true;
+let isHoldDragMode = false;
 function toggleHoldDragMode() {
   isHoldDragMode = !isHoldDragMode;
   const btnTool = document.getElementById('stream-tool-drag');
@@ -2692,7 +2849,7 @@ function toggleHoldDragMode() {
   }
 }
 
-// SCREEN TOUCH CONTROLLER
+// SCREEN TOUCH CONTROLLER (PRECISE LETTERBOX COMPENSATION + VISUAL FEEDBACK)
 let touchPointerId = null;
 let touchStartX = 0;
 let touchStartY = 0;
@@ -2709,13 +2866,54 @@ function getScreenRelCoords(clientX, clientY) {
   if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
     return null;
   }
-  const rx = (clientX - rect.left) / rect.width;
-  const ry = (clientY - rect.top) / rect.height;
+
+  const nw = img.naturalWidth || rect.width;
+  const nh = img.naturalHeight || rect.height;
+  const naturalAspect = (nw > 0 && nh > 0) ? (nw / nh) : (rect.width / rect.height);
+  const renderAspect = rect.width / (rect.height || 1);
+
+  let renderedW = rect.width;
+  let renderedH = rect.height;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (renderAspect > naturalAspect) {
+    // Letterbox on left / right
+    renderedW = rect.height * naturalAspect;
+    offsetX = (rect.width - renderedW) / 2;
+  } else {
+    // Letterbox on top / bottom
+    renderedH = rect.width / naturalAspect;
+    offsetY = (rect.height - renderedH) / 2;
+  }
+
+  const clickX = clientX - rect.left - offsetX;
+  const clickY = clientY - rect.top - offsetY;
+
+  if (clickX < 0 || clickX > renderedW || clickY < 0 || clickY > renderedH) {
+    return null;
+  }
+
+  const rx = clickX / renderedW;
+  const ry = clickY / renderedH;
+
   return {
     rx: Math.max(0, Math.min(1, rx)),
     ry: Math.max(0, Math.min(1, ry)),
     rect
   };
+}
+
+function showTouchRipple(clientX, clientY) {
+  const container = document.getElementById('screen-container');
+  if (!container) return;
+  const cRect = container.getBoundingClientRect();
+  const rip = document.createElement('div');
+  rip.className = 'click-ripple';
+  rip.style.left = `${clientX - cRect.left}px`;
+  rip.style.top = `${clientY - cRect.top}px`;
+  container.appendChild(rip);
+  setTimeout(() => rip.remove(), 450);
 }
 
 function updateIndicatorPos(clientX, clientY) {
@@ -2744,14 +2942,17 @@ function onScreenPointerDown(e) {
   const container = document.getElementById('screen-container');
   try { container.setPointerCapture(e.pointerId); } catch (_) {}
 
-  touchIndicatorEl = document.createElement('div');
-  touchIndicatorEl.className = 'touch-drag-indicator' + (isRightClickMode ? ' right-mode' : '');
-  touchIndicatorEl.innerHTML = '<div class="touch-drag-indicator-core"></div>';
-  container.appendChild(touchIndicatorEl);
-  updateIndicatorPos(e.clientX, e.clientY);
+  showTouchRipple(e.clientX, e.clientY);
+  if (navigator.vibrate) navigator.vibrate(10);
 
   if (isHoldDragMode) {
-    const btn = isRightClickMode ? 'right' : 'right';
+    touchIndicatorEl = document.createElement('div');
+    touchIndicatorEl.className = 'touch-drag-indicator' + (isRightClickMode ? ' right-mode' : '');
+    touchIndicatorEl.innerHTML = '<div class="touch-drag-indicator-core"></div>';
+    container.appendChild(touchIndicatorEl);
+    updateIndicatorPos(e.clientX, e.clientY);
+
+    const btn = isRightClickMode ? 'right' : 'left';
     fetch('/api/mouse', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2791,14 +2992,14 @@ function onScreenPointerUp(e) {
   const coords = getScreenRelCoords(e.clientX, e.clientY) || { rx: touchStartRelX, ry: touchStartRelY };
 
   if (isHoldDragMode) {
-    const btn = isRightClickMode ? 'right' : 'right';
+    const btn = isRightClickMode ? 'right' : 'left';
     fetch('/api/mouse', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'up', button: btn, rx: coords.rx, ry: coords.ry })
     }).catch(() => {});
 
-    if (dist < 8 && duration < 250) {
+    if (dist < 10 && duration < 300) {
       fetch('/api/click', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2806,6 +3007,7 @@ function onScreenPointerUp(e) {
       }).catch(() => {});
     }
   } else {
+    // Direct Tap Mode: instant precise click
     fetch('/api/click', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2828,7 +3030,7 @@ function onScreenPointerCancel(e) {
     fetch('/api/mouse', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'up', button: 'right', rx: touchStartRelX, ry: touchStartRelY })
+      body: JSON.stringify({ action: 'up', button: isRightClickMode ? 'right' : 'left', rx: touchStartRelX, ry: touchStartRelY })
     }).catch(() => {});
   }
   if (touchIndicatorEl) {
@@ -2848,7 +3050,6 @@ if (sBox) {
 
 // KEYBOARD EMULATION WITH MULTI-TOUCH
 const activeKeys = new Set();
-const activePointers = new Map();
 let heartbeatInterval = null;
 
 function sendKey(k, down, tap = false) {
@@ -2883,93 +3084,182 @@ function releaseAllKeys() {
     body: JSON.stringify({ action: 'release_all' })
   }).catch(() => {});
 
-  if (activeKeys.size === 0 && activePointers.size === 0) return;
-  activePointers.clear();
   activeKeys.clear();
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
   }
   document.querySelectorAll('.dpad-btn.pressed, .pad-action-btn.pressed').forEach(b => b.classList.remove('pressed'));
+  ['stick-walk-knob', 'stick-cam-knob', 'fs-stick-walk-knob', 'fs-stick-cam-knob'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.transform = 'translate(0px, 0px)';
+  });
   sendKey('release_all', false);
 }
 
-// ATTACH TOUCH HANDLERS TO GAMEPAD BUTTONS
-document.querySelectorAll('.dpad-btn').forEach(btn => {
-  const key = btn.getAttribute('data-key');
-  if (!key) return;
+// TRUE VIRTUAL JOYSTICK CONTROLLER (SMOOTH DRAG, DIAGONALS, AUTO-RELEASE)
+function setupVirtualStick(containerId, knobId, isArrow) {
+  const container = document.getElementById(containerId);
+  const knob = document.getElementById(knobId);
+  if (!container || !knob) return;
 
-  btn.addEventListener('pointerdown', (e) => {
+  const KEYS = isArrow
+    ? { up: 'up', down: 'down', left: 'left', right: 'right' }
+    : { up: 'w', down: 's', left: 'a', right: 'd' };
+
+  let stickPointerId = null;
+  const currentStickKeys = new Set();
+
+  function updateDirection(dx, dy, dist, maxR) {
+    const deadzone = 10;
+    const nextKeys = new Set();
+
+    if (dist >= deadzone) {
+      const nx = dx / dist;
+      const ny = dy / dist;
+      // 8-directional sensitivity threshold: 0.38 allows natural diagonals
+      if (ny < -0.38) nextKeys.add(KEYS.up);
+      if (ny > 0.38) nextKeys.add(KEYS.down);
+      if (nx < -0.38) nextKeys.add(KEYS.left);
+      if (nx > 0.38) nextKeys.add(KEYS.right);
+    }
+
+    // Release keys no longer active
+    currentStickKeys.forEach(k => {
+      if (!nextKeys.has(k)) {
+        currentStickKeys.delete(k);
+        activeKeys.delete(k);
+        sendKey(k, false);
+        const btn = container.querySelector(`[data-key="${k}"]`);
+        if (btn) btn.classList.remove('pressed');
+      }
+    });
+
+    // Press new keys
+    let newDirection = false;
+    nextKeys.forEach(k => {
+      if (!currentStickKeys.has(k)) {
+        currentStickKeys.add(k);
+        activeKeys.add(k);
+        sendKey(k, true);
+        newDirection = true;
+        const btn = container.querySelector(`[data-key="${k}"]`);
+        if (btn) btn.classList.add('pressed');
+      }
+    });
+
+    if (newDirection) {
+      if (navigator.vibrate) navigator.vibrate(8);
+      startKeyHeartbeat();
+    }
+  }
+
+  function onPointerDown(e) {
+    if (stickPointerId !== null) return;
     e.preventDefault();
     e.stopPropagation();
-    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
-    btn.classList.add('pressed');
-    activePointers.set(e.pointerId, { key, btn });
-    activeKeys.add(key);
-    if (navigator.vibrate) navigator.vibrate(10);
-    sendKey(key, true);
-    startKeyHeartbeat();
-  });
+    stickPointerId = e.pointerId;
+    try { container.setPointerCapture(e.pointerId); } catch (_) {}
 
-  const onPointerRelease = (e) => {
-    if (!activePointers.has(e.pointerId)) return;
+    const rect = container.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const dx = e.clientX - centerX;
+    const dy = e.clientY - centerY;
+    const dist = Math.hypot(dx, dy);
+    const maxR = Math.max(20, (rect.width / 2) - 18);
+
+    const clampDist = Math.min(dist, maxR);
+    const angle = Math.atan2(dy, dx);
+    const kx = Math.cos(angle) * clampDist;
+    const ky = Math.sin(angle) * clampDist;
+    knob.style.transform = `translate(${kx}px, ${ky}px)`;
+
+    updateDirection(dx, dy, dist, maxR);
+  }
+
+  function onPointerMove(e) {
+    if (e.pointerId !== stickPointerId) return;
     e.preventDefault();
     e.stopPropagation();
-    try { btn.releasePointerCapture(e.pointerId); } catch (_) {}
-    const entry = activePointers.get(e.pointerId);
-    activePointers.delete(e.pointerId);
 
-    let stillHeld = false;
-    for (const p of activePointers.values()) {
-      if (p.key === entry.key) { stillHeld = true; break; }
-    }
-    if (!stillHeld) {
-      entry.btn.classList.remove('pressed');
-      activeKeys.delete(entry.key);
-      sendKey(entry.key, false);
-    }
+    const rect = container.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const dx = e.clientX - centerX;
+    const dy = e.clientY - centerY;
+    const dist = Math.hypot(dx, dy);
+    const maxR = Math.max(20, (rect.width / 2) - 18);
+
+    const clampDist = Math.min(dist, maxR);
+    const angle = Math.atan2(dy, dx);
+    const kx = Math.cos(angle) * clampDist;
+    const ky = Math.sin(angle) * clampDist;
+    knob.style.transform = `translate(${kx}px, ${ky}px)`;
+
+    updateDirection(dx, dy, dist, maxR);
+  }
+
+  function onPointerRelease(e) {
+    if (e.pointerId !== stickPointerId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try { container.releasePointerCapture(e.pointerId); } catch (_) {}
+    stickPointerId = null;
+
+    knob.style.transform = 'translate(0px, 0px)';
+
+    currentStickKeys.forEach(k => {
+      activeKeys.delete(k);
+      sendKey(k, false);
+      const btn = container.querySelector(`[data-key="${k}"]`);
+      if (btn) btn.classList.remove('pressed');
+    });
+    currentStickKeys.clear();
+
     if (activeKeys.size === 0 && heartbeatInterval) {
       clearInterval(heartbeatInterval);
       heartbeatInterval = null;
     }
-  };
+  }
 
-  btn.addEventListener('pointerup', onPointerRelease);
-  btn.addEventListener('pointercancel', onPointerRelease);
-});
+  container.addEventListener('pointerdown', onPointerDown);
+  container.addEventListener('pointermove', onPointerMove);
+  container.addEventListener('pointerup', onPointerRelease);
+  container.addEventListener('pointercancel', onPointerRelease);
+}
 
+// INITIALIZE VIRTUAL JOYSTICKS (CARD & FULLSCREEN)
+setupVirtualStick('stick-walk', 'stick-walk-knob', false);
+setupVirtualStick('stick-cam', 'stick-cam-knob', true);
+setupVirtualStick('fs-stick-walk', 'fs-stick-walk-knob', false);
+setupVirtualStick('fs-stick-cam', 'fs-stick-cam-knob', true);
+
+// ERGONOMIC ACTION BUTTON HANDLERS
 document.querySelectorAll('.pad-action-btn').forEach(btn => {
   const key = btn.getAttribute('data-key');
   if (!key) return;
 
-  btn.addEventListener('pointerdown', (e) => {
+  const press = (e) => {
     e.preventDefault();
     e.stopPropagation();
     try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+    if (activeKeys.has(key)) return;
     btn.classList.add('pressed');
-    activePointers.set(e.pointerId, { key, btn });
     activeKeys.add(key);
-    if (navigator.vibrate) navigator.vibrate(10);
+    if (navigator.vibrate) navigator.vibrate(12);
     sendKey(key, true);
     startKeyHeartbeat();
-  });
+  };
 
-  const onPointerRelease = (e) => {
-    if (!activePointers.has(e.pointerId)) return;
+  const release = (e) => {
     e.preventDefault();
     e.stopPropagation();
     try { btn.releasePointerCapture(e.pointerId); } catch (_) {}
-    const entry = activePointers.get(e.pointerId);
-    activePointers.delete(e.pointerId);
-
-    let stillHeld = false;
-    for (const p of activePointers.values()) {
-      if (p.key === entry.key) { stillHeld = true; break; }
-    }
-    if (!stillHeld) {
-      entry.btn.classList.remove('pressed');
-      activeKeys.delete(entry.key);
-      sendKey(entry.key, false);
+    btn.classList.remove('pressed');
+    if (activeKeys.has(key)) {
+      activeKeys.delete(key);
+      sendKey(key, false);
     }
     if (activeKeys.size === 0 && heartbeatInterval) {
       clearInterval(heartbeatInterval);
@@ -2977,8 +3267,9 @@ document.querySelectorAll('.pad-action-btn').forEach(btn => {
     }
   };
 
-  btn.addEventListener('pointerup', onPointerRelease);
-  btn.addEventListener('pointercancel', onPointerRelease);
+  btn.addEventListener('pointerdown', press);
+  btn.addEventListener('pointerup', release);
+  btn.addEventListener('pointercancel', release);
 });
 
 window.addEventListener('blur', releaseAllKeys);
