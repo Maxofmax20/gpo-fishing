@@ -246,6 +246,17 @@ impl WebhookQueue {
         });
     }
 
+    pub fn reconnected(&self, photo: Option<Vec<u8>>) {
+        self.send(Notification {
+            title: "✅ Roblox Reconnected".into(),
+            desc: "Auto-reconnect engine successfully recovered the session. Autofishing resumed!".into(),
+            color: COLOR_GREEN,
+            fields: vec![("Status".into(), "Running".into())],
+            photo,
+            custom_telegram_html: Some("✅ <b>Roblox Reconnected</b>\nAuto-reconnect engine successfully recovered the session! Autofishing resumed.".into()),
+        });
+    }
+
     pub fn bait_depleted(&self) {
         let flag = self.settings.as_ref().map(|s| s.read().webhook.bait_alert).unwrap_or(true);
         if !flag {
@@ -533,10 +544,23 @@ pub fn post_telegram_photo(token: &str, chat_id: &str, photo: &[u8], caption: &s
         .file_name("catch.png")
         .mime_str("image/png")
         .map_err(|e| e.to_string())?;
+    let inline_keyboard = serde_json::json!({
+        "inline_keyboard": [
+            [
+                { "text": "⏸️ Pause", "callback_data": "/pause" },
+                { "text": "🔄 Recast", "callback_data": "/recast" }
+            ],
+            [
+                { "text": "🛒 Buy Bait", "callback_data": "/buybait" },
+                { "text": "📊 Status", "callback_data": "/status" }
+            ]
+        ]
+    });
     let form = reqwest::blocking::multipart::Form::new()
         .text("chat_id", chat_id.to_string())
         .text("caption", caption.to_string())
         .text("parse_mode", "HTML".to_string())
+        .text("reply_markup", inline_keyboard.to_string())
         .part("photo", part);
     let resp = client.post(&url).multipart(form).send().map_err(|e| e.to_string())?;
     let status = resp.status();

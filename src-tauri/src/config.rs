@@ -137,6 +137,9 @@ pub struct Features {
     pub telegram_remote: bool,
     pub discord_rpc: bool,
     pub multi_roblox: bool,
+    pub auto_reconnect: bool,
+    pub vip_server_url: String,
+    pub sound_alerts: bool,
 }
 
 impl Default for Features {
@@ -153,6 +156,9 @@ impl Default for Features {
             telegram_remote: true,
             discord_rpc: true,
             multi_roblox: true,
+            auto_reconnect: true,
+            vip_server_url: String::new(),
+            sound_alerts: true,
         }
     }
 }

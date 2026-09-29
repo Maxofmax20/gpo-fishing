@@ -161,6 +161,28 @@ fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
                     offset = up_id + 1;
                 }
 
+                // Check for inline keyboard button clicks (callback queries)
+                if let Some(cb) = update.get("callback_query") {
+                    let cb_id = cb.get("id").and_then(|i| i.as_str()).unwrap_or("");
+                    let data = cb.get("data").and_then(|d| d.as_str()).unwrap_or("").trim();
+                    let chat_id = cb
+                        .get("message")
+                        .and_then(|m| m.get("chat"))
+                        .and_then(|c| c.get("id"))
+                        .map(|id| id.to_string())
+                        .unwrap_or_default();
+                    let chat_id_clean = chat_id.trim_matches('"').to_string();
+                    if chat_id_clean == expected_chat || expected_chat.is_empty() {
+                        handle_command(&bot, &settings, &mut boss_tracker, &token, &chat_id_clean, data);
+                        let ack_url = format!("https://api.telegram.org/bot{token}/answerCallbackQuery");
+                        let _ = client.post(&ack_url).json(&serde_json::json!({
+                            "callback_query_id": cb_id,
+                            "text": format!("Action executed: {data}")
+                        })).send();
+                    }
+                    continue;
+                }
+
                 let Some(msg) = update.get("message") else {
                     continue;
                 };

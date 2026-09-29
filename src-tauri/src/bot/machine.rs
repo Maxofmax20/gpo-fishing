@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use crate::core::controller::Tracker;
 use crate::core::fruit;
-use crate::core::types::{Frame, Key, PxRect, RelRect};
+use crate::core::types::{Frame, Key, MouseButton, PxPoint, PxRect, RelPoint, RelRect};
 use crate::core::vision;
 use crate::events::{BotEvent, BotState, TrackFrame};
 
@@ -23,6 +23,7 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
     let mut tracker = Tracker::default();
     let mut last_hash: u64 = 0;
     let mut spawn_checked_at = Instant::now() - Duration::from_secs(3600);
+    let mut anti_afk_at = Instant::now();
     let mut rod_equipped = false;
 
     if !wait_for_roblox(ctx, false) {
@@ -37,14 +38,17 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
 
     while ctx.alive() {
         ctx.touch();
+        if anti_afk_at.elapsed() >= Duration::from_secs(480) {
+            anti_afk_at = Instant::now();
+            trigger_anti_afk(ctx);
+        }
         if ctx.roblox_rect().is_none() && !wait_for_roblox(ctx, true) {
             return;
         }
         if let Some(reason) = check_disconnect(ctx) {
-            ctx.set_state(BotState::Paused, Some(format!("Roblox disconnected: {reason}")));
-            ctx.log_warn(&format!("⚠️ Roblox disconnect detected: {reason}"));
-            let photo = capture_screenshot_bytes(ctx);
-            ctx.webhook.disconnect(&reason, photo);
+            if handle_disconnect_flow(ctx, &reason, &mut rod_equipped) {
+                continue;
+            }
             return;
         }
         if !ensure_front(ctx) {
@@ -72,10 +76,9 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
         match outcome {
             Outcome::Stopped => return,
             Outcome::Disconnected(reason) => {
-                ctx.set_state(BotState::Paused, Some(format!("Roblox disconnected: {reason}")));
-                ctx.log_warn(&format!("⚠️ Roblox disconnect detected: {reason}"));
-                let photo = capture_screenshot_bytes(ctx);
-                ctx.webhook.disconnect(&reason, photo);
+                if handle_disconnect_flow(ctx, &reason, &mut rod_equipped) {
+                    continue;
+                }
                 return;
             }
             Outcome::Ended => {
@@ -136,10 +139,9 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
             }
             Outcome::Timeout => {
                 if let Some(reason) = check_disconnect(ctx) {
-                    ctx.set_state(BotState::Paused, Some(format!("Roblox disconnected: {reason}")));
-                    ctx.log_warn(&format!("⚠️ Roblox disconnect detected: {reason}"));
-                    let photo = capture_screenshot_bytes(ctx);
-                    ctx.webhook.disconnect(&reason, photo);
+                    if handle_disconnect_flow(ctx, &reason, &mut rod_equipped) {
+                        continue;
+                    }
                     return;
                 }
                 ctx.session.lock().record(false);
@@ -148,10 +150,9 @@ pub fn run(ctx: &Ctx, skip_setup: bool) {
             }
             Outcome::Lost => {
                 if let Some(reason) = check_disconnect(ctx) {
-                    ctx.set_state(BotState::Paused, Some(format!("Roblox disconnected: {reason}")));
-                    ctx.log_warn(&format!("⚠️ Roblox disconnect detected: {reason}"));
-                    let photo = capture_screenshot_bytes(ctx);
-                    ctx.webhook.disconnect(&reason, photo);
+                    if handle_disconnect_flow(ctx, &reason, &mut rod_equipped) {
+                        continue;
+                    }
                     return;
                 }
                 ctx.session.lock().record(false);
@@ -199,10 +200,10 @@ fn ensure_front(ctx: &Ctx) -> bool {
             return wait_for_roblox(ctx, true);
         }
         if let Some(reason) = check_disconnect(ctx) {
-            ctx.set_state(BotState::Paused, Some(format!("Roblox disconnected: {reason}")));
-            ctx.log_warn(&format!("⚠️ Roblox disconnect detected: {reason}"));
-            let photo = capture_screenshot_bytes(ctx);
-            ctx.webhook.disconnect(&reason, photo);
+            let mut rod_dummy = false;
+            if handle_disconnect_flow(ctx, &reason, &mut rod_dummy) {
+                return true;
+            }
             return false;
         }
         if ctx.ensure_roblox_focus() {
@@ -270,6 +271,104 @@ pub(super) fn capture_screenshot_bytes(ctx: &Ctx) -> Option<Vec<u8>> {
         .and_then(|r| ctx.platform.capture.grab(r).ok())
         .map(|f| f.downscale(1280))
         .and_then(|f| f.to_png_bytes().ok())
+}
+
+pub(super) fn trigger_anti_afk(ctx: &Ctx) {
+    if let Some(rect) = ctx.roblox_rect() {
+        let center = RelPoint { x: 0.50, y: 0.50 }.to_px(&rect);
+        ctx.platform.input.move_to(center);
+        let _ = ctx.sleep_ms(30);
+        let nudge = PxPoint { x: center.x + 2, y: center.y };
+        ctx.platform.input.move_to(nudge);
+        ctx.log_debug("Anti-AFK: idle kick prevention timer refreshed");
+    }
+}
+
+pub(super) fn attempt_reconnect(ctx: &Ctx, reason: &str, rod_equipped: &mut bool) -> bool {
+    ctx.set_state(BotState::Recovering, Some(format!("Auto-reconnecting: {reason}")));
+
+    // 1. Click Roblox 'Reconnect' button on disconnect modal (approx center-right: 0.58, 0.59)
+    if let Some(rect) = ctx.roblox_rect() {
+        let reconnect_pt = RelPoint { x: 0.58, y: 0.59 };
+        let px = reconnect_pt.to_px(&rect);
+        ctx.log_info("Auto-reconnect: Clicking Roblox 'Reconnect' button...");
+        ctx.platform.input.move_to(px);
+        let _ = ctx.sleep_ms(30);
+        ctx.platform.input.button(MouseButton::Left, true);
+        let _ = ctx.sleep_ms(60);
+        ctx.platform.input.button(MouseButton::Left, false);
+    }
+
+    // 2. Wait up to 15s to check if Roblox reconnects
+    let mut reconnected = false;
+    for _ in 0..30 {
+        if !ctx.alive() {
+            return false;
+        }
+        if !ctx.sleep_ms(500) {
+            return false;
+        }
+        if check_disconnect(ctx).is_none() && ctx.roblox_rect().is_some() {
+            reconnected = true;
+            break;
+        }
+    }
+
+    // 3. If modal still present, attempt VIP URL or rejoin relaunch if configured
+    if !reconnected {
+        let vip = ctx.settings.read().features.vip_server_url.trim().to_string();
+        if !vip.is_empty() {
+            ctx.log_info(&format!("Auto-reconnect: Launching via VIP URL: {vip}"));
+            let _ = std::process::Command::new("cmd").args(["/C", "start", "", &vip]).spawn();
+        }
+    }
+
+    // 4. Wait for Roblox window to become available
+    if !wait_for_roblox(ctx, false) {
+        return false;
+    }
+
+    // 5. Wait 12s for character assets to load
+    ctx.log_info("Roblox window found! Waiting 12s for character to load...");
+    for _ in 0..24 {
+        if !ctx.alive() {
+            return false;
+        }
+        if !ctx.sleep_ms(500) {
+            return false;
+        }
+    }
+
+    // 6. Ensure in front and equip rod
+    if !ensure_front(ctx) {
+        return false;
+    }
+    *rod_equipped = false;
+    if !actions::ensure_rod_equipped(ctx, rod_equipped) {
+        return false;
+    }
+
+    ctx.log_info("✅ Auto-reconnect successful! Resuming autofish.");
+    ctx.webhook.reconnected(None);
+    ctx.set_state(BotState::WaitingForBite, None);
+    true
+}
+
+fn handle_disconnect_flow(ctx: &Ctx, reason: &str, rod_equipped: &mut bool) -> bool {
+    let photo = capture_screenshot_bytes(ctx);
+    ctx.webhook.disconnect(reason, photo);
+
+    let auto_reconnect = ctx.settings.read().features.auto_reconnect;
+    if auto_reconnect && ctx.alive() {
+        ctx.log_warn(&format!("⚠️ Roblox disconnect: {reason}. Auto-reconnect active!"));
+        if attempt_reconnect(ctx, reason, rod_equipped) {
+            return true;
+        }
+    }
+
+    ctx.set_state(BotState::Paused, Some(format!("Roblox disconnected: {reason}")));
+    ctx.log_warn(&format!("⚠️ Roblox disconnect detected: {reason} (Bot paused)"));
+    false
 }
 
 fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_checked_at: &mut Instant) -> Outcome {

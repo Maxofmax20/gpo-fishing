@@ -362,6 +362,8 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "recorder": crate::bot::recorder::get_status(),
         "macros": crate::bot::recorder::load_macros(&bot.ctx().store),
         "keyboard_light": crate::laptop_light::get_keyboard_light_status(),
+        "auto_reconnect": s.features.auto_reconnect,
+        "vip_server_url": s.features.vip_server_url.clone(),
     });
 
     let body = payload.to_string();
@@ -737,6 +739,21 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
                 );
             });
             "Update initiated! The app will install and auto-resume fishing."
+        }
+        "set_vip_url" => {
+            if let Some(val) = parsed.get("value").and_then(|v| v.as_str()) {
+                let mut s = settings.write();
+                s.features.vip_server_url = val.trim().to_string();
+                let _ = bot.ctx().store.save(&s);
+            }
+            "VIP server link saved"
+        }
+        "toggle_auto_reconnect" => {
+            let mut s = settings.write();
+            s.features.auto_reconnect = !s.features.auto_reconnect;
+            let on = s.features.auto_reconnect;
+            let _ = bot.ctx().store.save(&s);
+            if on { "Auto-reconnect enabled" } else { "Auto-reconnect disabled" }
         }
         _ => "Unknown action",
     };
@@ -2016,6 +2033,38 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
           <div style="font-size: 0.8rem; color: var(--text-mute);">Loading timers...</div>
         </div>
       </div>
+
+      <!-- MOBILE AUDIO ALERTS & PUSH NOTIFICATIONS -->
+      <div class="card">
+        <div class="card-label">🔔 MOBILE AUDIO ALERTS &amp; PUSH</div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button id="btn-sound-toggle" class="btn" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #10b981, #059669); color: #fff;" onclick="toggleSoundAlerts()">
+            <span>🔊</span><span>SOUND: ON</span>
+          </button>
+          <button class="btn btn-sub" style="flex: 1; padding: 12px;" onclick="requestMobileNotifications()">
+            <span>📲</span><span>ENABLE PUSH</span>
+          </button>
+          <button class="btn btn-sub" style="padding: 12px;" onclick="playFanfare('fruit')" title="Test sound">
+            <span>🎵</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- AUTO-RECONNECT & VIP SERVER LINK -->
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div class="card-label">🛡️ AUTO-RECONNECT &amp; VIP LINK</div>
+          <button id="btn-reconnect-toggle" class="status-badge badge-running" style="cursor: pointer;" onclick="toggleAutoReconnect()">ACTIVE</button>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <input id="txt-vip-url" type="text" placeholder="Roblox VIP / Private Server Link"
+                 style="background: #14151a; color: #fff; border: 1px solid var(--card-border); border-radius: 10px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; flex: 1; outline: none;" />
+          <button class="btn btn-sub" style="padding: 8px 14px;" onclick="saveVipUrl()">
+            💾 SAVE
+          </button>
+        </div>
+        <div style="font-size: 0.72rem; color: var(--text-mute);">When Roblox disconnects (Error 277/268), the macro clicks Reconnect or launches this VIP link!</div>
+      </div>
     </section>
 
   </main>
@@ -2057,6 +2106,163 @@ let userSlidingBright = false;
 let localRuntimeSec = 0;
 let bossesState = [];
 let serverTimeDelta = 0;
+
+// Web Audio Synthesizer for Mobile Alarms & Fanfares
+let audioCtx = null;
+let soundEnabled = localStorage.getItem('gpo_sound_enabled') !== 'false';
+let lastFruitsCount = null;
+let lastBotState = null;
+
+function initAudio() {
+  if (!audioCtx) {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) audioCtx = new AudioContext();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+document.addEventListener('pointerdown', initAudio, { once: true });
+document.addEventListener('click', initAudio, { once: true });
+
+function playFanfare(type) {
+  if (!soundEnabled) return;
+  initAudio();
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+
+  if (type === 'fruit') {
+    [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, now + i * 0.12);
+      gain.gain.setValueAtTime(0.25, now + i * 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.45);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + i * 0.12);
+      osc.stop(now + i * 0.12 + 0.5);
+    });
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
+  } else if (type === 'boss') {
+    [392.00, 523.25].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, now + i * 0.2);
+      gain.gain.setValueAtTime(0.2, now + i * 0.2);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.2 + 0.6);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + i * 0.2);
+      osc.stop(now + i * 0.2 + 0.65);
+    });
+    if (navigator.vibrate) navigator.vibrate([150, 80, 150]);
+  } else if (type === 'warning') {
+    [880, 440].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, now + i * 0.15);
+      gain.gain.setValueAtTime(0.15, now + i * 0.15);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.15 + 0.25);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + i * 0.15);
+      osc.stop(now + i * 0.15 + 0.3);
+    });
+    if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
+  } else if (type === 'reconnect') {
+    [440, 660, 880].forEach((freq, i) => {
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + i * 0.1);
+      gain.gain.setValueAtTime(0.2, now + i * 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.3);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now + i * 0.1);
+      osc.stop(now + i * 0.1 + 0.35);
+    });
+    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+  }
+}
+
+function toggleSoundAlerts() {
+  soundEnabled = !soundEnabled;
+  localStorage.setItem('gpo_sound_enabled', soundEnabled);
+  updateSoundButtonUi();
+  if (soundEnabled) {
+    playFanfare('fruit');
+    showToast('Sound alarms ENABLED');
+  } else {
+    showToast('Sound alarms MUTED');
+  }
+}
+
+function updateSoundButtonUi() {
+  const btn = document.getElementById('btn-sound-toggle');
+  if (btn) {
+    if (soundEnabled) {
+      btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+      btn.innerHTML = '<span>🔊</span><span>SOUND: ON</span>';
+    } else {
+      btn.style.background = 'rgba(100, 116, 139, 0.25)';
+      btn.innerHTML = '<span>🔇</span><span>SOUND: OFF</span>';
+    }
+  }
+}
+
+function requestMobileNotifications() {
+  if (!('Notification' in window)) {
+    showToast('Notifications not supported in browser');
+    return;
+  }
+  Notification.requestPermission().then(perm => {
+    if (perm === 'granted') {
+      showToast('Notifications ENABLED!');
+      try {
+        new Notification('GPO Autofish Alert', { body: 'Mobile notifications active for fruit drops & bosses!' });
+      } catch (_) {}
+    } else {
+      showToast('Notifications permission: ' + perm);
+    }
+  });
+}
+
+async function saveVipUrl() {
+  const input = document.getElementById('txt-vip-url');
+  if (!input) return;
+  const val = input.value.trim();
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'set_vip_url', value: val })
+    });
+    const d = await res.json();
+    showToast(d.message || 'VIP link saved!');
+  } catch (e) {
+    showToast('Failed to save VIP link: ' + e);
+  }
+}
+
+async function toggleAutoReconnect() {
+  try {
+    const res = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'toggle_auto_reconnect' })
+    });
+    const d = await res.json();
+    showToast(d.message || 'Auto-reconnect toggled');
+    fetchStatus();
+  } catch (e) {
+    showToast('Failed to toggle auto-reconnect');
+  }
+}
 
 if (window.Telegram && window.Telegram.WebApp) {
   const twa = window.Telegram.WebApp;
@@ -2218,6 +2424,43 @@ async function fetchStatus() {
       if (rBri) rBri.value = d.brightness;
       const lBri = document.getElementById('lbl-brightness');
       if (lBri) lBri.innerText = `${d.brightness}%`;
+    }
+
+    // Audio Fanfare & Push Notification for Fruit Drops
+    if (lastFruitsCount !== null && d.fruits > lastFruitsCount) {
+      playFanfare('fruit');
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('🍇 DEVIL FRUIT CAUGHT!', {
+            body: `You caught a new Devil Fruit! Total catches: ${d.fruits}`,
+            icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="40" fill="%23b026ff"/%3E%3C/svg%3E'
+          });
+        } catch (_) {}
+      }
+    }
+    lastFruitsCount = d.fruits;
+
+    if (d.state === 'recovering' && lastBotState !== 'recovering') {
+      playFanfare('warning');
+    } else if (lastBotState === 'recovering' && d.state !== 'recovering') {
+      playFanfare('reconnect');
+    }
+    lastBotState = d.state;
+
+    // Auto-reconnect & VIP Link sync
+    const btnRec = document.getElementById('btn-reconnect-toggle');
+    if (btnRec) {
+      if (d.auto_reconnect) {
+        btnRec.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+        btnRec.innerHTML = '<span>⚡</span><span>AUTO-RECONNECT: ACTIVE</span>';
+      } else {
+        btnRec.style.background = 'rgba(100, 116, 139, 0.25)';
+        btnRec.innerHTML = '<span>🔌</span><span>AUTO-RECONNECT: OFF</span>';
+      }
+    }
+    const txtVip = document.getElementById('txt-vip-url');
+    if (txtVip && document.activeElement !== txtVip && d.vip_server_url !== undefined && !txtVip.value) {
+      txtVip.value = d.vip_server_url;
     }
 
     updateCraftUi(d.crafting);
