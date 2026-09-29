@@ -333,6 +333,73 @@ fn title_case(words: &[&str]) -> String {
         .join(" ")
 }
 
+pub fn is_pity_zero(pity_opt: Option<&str>, raw_text: &str) -> bool {
+    // 1. Structured pity check if provided or extracted
+    let p_str = pity_opt.map(|s| s.to_string()).or_else(|| extract_pity_text(raw_text));
+    if let Some(p) = p_str {
+        let clean = p.trim().to_lowercase();
+        if let Some((curr, total)) = clean.split_once('/') {
+            let clean_curr = curr.replace('o', "0").replace('O', "0");
+            let clean_tot = total.replace('o', "0").replace('O', "0");
+            if let Ok(n) = clean_curr.parse::<u32>() {
+                if n == 0 {
+                    let tot = clean_tot.parse::<u32>().unwrap_or(40);
+                    if tot >= 4 {
+                        return true;
+                    }
+                } else {
+                    return false;
+                }
+            }
+        } else {
+            let clean_curr = clean.replace('o', "0").replace('O', "0");
+            if let Ok(n) = clean_curr.parse::<u32>() {
+                return n == 0;
+            }
+        }
+    }
+
+    // 2. Scan raw text words for "pity" followed by "0", "0/...", "o", etc.
+    let lower = raw_text.to_lowercase();
+    let norm = normalize(raw_text);
+    let words: Vec<&str> = norm.split_whitespace().collect();
+
+    for (i, w) in words.iter().enumerate() {
+        if jaro_winkler(w, "pity") >= 0.82 {
+            if let Some(&next) = words.get(i + 1) {
+                let trimmed = next.trim_matches(|c: char| !c.is_alphanumeric() && c != '/');
+                if let Some((curr, _)) = trimmed.split_once('/') {
+                    let clean_c = curr.replace('o', "0").replace('O', "0");
+                    if let Ok(n) = clean_c.parse::<u32>() {
+                        return n == 0;
+                    }
+                } else {
+                    let clean_c = trimmed.replace('o', "0").replace('O', "0");
+                    if let Ok(n) = clean_c.parse::<u32>() {
+                        return n == 0;
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Check standalone tokens like "0/40" or "0/100" with word boundaries
+    for word in lower.split_whitespace() {
+        let trimmed = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '/');
+        if let Some((curr, total)) = trimmed.split_once('/') {
+            let clean_curr = curr.replace('o', "0").replace('O', "0");
+            let clean_total = total.replace('o', "0").replace('O', "0");
+            if let (Ok(n), Ok(tot)) = (clean_curr.parse::<u32>(), clean_total.parse::<u32>()) {
+                if n == 0 && (tot == 40 || tot == 100 || tot == 4 || tot == 300) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
 pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
     let text = normalize(raw);
     if text.is_empty() {
@@ -348,12 +415,13 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
         return None;
     }
     let pity = extract_pity_text(raw);
-    let is_pity_zero = pity.as_deref().map(|p| p.starts_with("0/")).unwrap_or(false);
+    let zero_pity = is_pity_zero(pity.as_deref(), raw);
 
     if let Some(i) = word_at(&words, "item", thr) {
         let fruit_name = first_fruit(lex, words[i + 1..].iter().copied()).or_else(|| first_fruit(lex, words.iter().copied()))?;
+        let rarity = fruit_rarity(&fruit_name);
         return Some(DropInfo {
-            is_legendary: is_legendary(&words) || is_pity_zero,
+            is_legendary: rarity == FruitRarity::Legendary || rarity == FruitRarity::Mythical || zero_pity,
             text,
             name: Some(fruit_name),
             pity,
@@ -367,8 +435,13 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
         return None;
     }
     let fruit_name = first_fruit(lex, words.iter().copied());
+    let is_leg = fruit_name.as_deref().map(|f| {
+        let r = fruit_rarity(f);
+        r == FruitRarity::Legendary || r == FruitRarity::Mythical
+    }).unwrap_or(false) || zero_pity;
+
     Some(DropInfo {
-        is_legendary: is_legendary(&words) || is_pity_zero,
+        is_legendary: is_leg,
         text,
         name: fruit_name,
         pity,
@@ -382,28 +455,6 @@ fn mentions_spawn(lex: &Lexicon, words: &[&str], thr: f64) -> bool {
 
 fn mentions_pity(words: &[&str]) -> bool {
     words.iter().any(|w| jaro_winkler(w, "pity") >= 0.85)
-}
-
-fn is_zero(w: &str) -> bool {
-    matches!(w, "0" | "o" | "00")
-}
-
-fn is_legendary(words: &[&str]) -> bool {
-    if let Some(i) = words.iter().position(|w| jaro_winkler(w, "pity") >= 0.85) {
-        if words.get(i + 1).is_some_and(|w| is_zero(w)) {
-            return true;
-        }
-    }
-    words.iter().any(|w| {
-        let mut it = w.splitn(2, '/');
-        match (it.next(), it.next()) {
-            (Some(z), Some(rest)) => {
-                let clean_rest = rest.replace('o', "0").replace('O', "0");
-                is_zero(z) && clean_rest.parse::<u32>().is_ok_and(|n| (1..=300).contains(&n))
-            }
-            _ => false,
-        }
-    })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -792,6 +843,29 @@ mod tests {
         assert_eq!(extract_pity_text("legendary pity: 15/40"), Some("15/40".into()));
         assert_eq!(extract_pity_text("legendary pity: 0/4o"), Some("0/40".into()));
         assert_eq!(extract_pity_text("legendary pity: 25/100"), Some("25/100".into()));
+    }
+
+    #[test]
+    fn test_is_pity_zero() {
+        assert!(is_pity_zero(Some("0/40"), ""));
+        assert!(is_pity_zero(Some("0/100"), ""));
+        assert!(is_pity_zero(Some("0/4o"), ""));
+        assert!(is_pity_zero(None, "All-Seeing Eye: YOU GOT A DEVIL FRUIT DROP, CHECK YOUR BACKPACK LEGENDARY PITY: 0/40"));
+        assert!(is_pity_zero(None, "Legendary Pity 0"));
+        assert!(is_pity_zero(None, "Legendary Pity: 0"));
+        assert!(is_pity_zero(None, "Legendary Pity: o"));
+
+        // All non-zero pity cases MUST return FALSE:
+        assert!(!is_pity_zero(Some("19/40"), ";eeing Eye: YOU GOT A DEVIL FRUIT DROP, CHECK YOUR BACKPA( LEGENDARY PITY: 19/4Ci"));
+        assert!(!is_pity_zero(Some("17/40"), ";eeing Eye: YOU GOT AOEVIBFRUIT DROP, CHECK YOUR BACKPA( JLECTENDARY PITY: 17/40"));
+        assert!(!is_pity_zero(Some("10/40"), "You got a Devil Fruit drop! Legendary Pity: 10/40"));
+        assert!(!is_pity_zero(Some("20/40"), "You got a Devil Fruit drop! Legendary Pity: 20/40"));
+        assert!(!is_pity_zero(Some("40/40"), "You got a Devil Fruit drop! Legendary Pity: 40/40"));
+        assert!(!is_pity_zero(Some("10/100"), "You got a Devil Fruit drop! Legendary Pity: 10/100"));
+        assert!(!is_pity_zero(Some("100/100"), "You got a Devil Fruit drop! Legendary Pity: 100/100"));
+        assert!(!is_pity_zero(Some("25/100"), "You got a Devil Fruit drop! Legendary Pity: 25/100"));
+        assert!(!is_pity_zero(None, "Legendary Pity 15"));
+        assert!(!is_pity_zero(None, "Legendary Pity: 10"));
     }
 
     #[test]

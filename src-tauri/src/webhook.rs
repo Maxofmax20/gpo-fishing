@@ -143,13 +143,14 @@ impl WebhookQueue {
         let rarity = crate::core::fruit::fruit_rarity(fruit_name);
         let is_ase = self.settings.as_ref().map(|s| s.read().fruit_storage.all_seeing_eye).unwrap_or(true);
         let cap_str = if is_ase { "40" } else { "100" };
+        let is_pity_zero = crate::core::fruit::is_pity_zero(d.pity.as_deref(), &d.text);
         let pity_info = if let Some(p) = &d.pity {
-            if p.starts_with("0/") || d.is_legendary {
+            if is_pity_zero {
                 format!("🌟 Legendary Pity: {p} (HIT! Guaranteed Legendary/Mythical!)")
             } else {
                 format!("⚡ Legendary Pity: {p}")
             }
-        } else if d.is_legendary {
+        } else if is_pity_zero {
             format!("🌟 Legendary Pity: 0/{cap_str} (HIT! Guaranteed Legendary/Mythical!)")
         } else {
             "⚡ Check backpack".into()
@@ -157,8 +158,10 @@ impl WebhookQueue {
 
         let (title, desc, color) = if rarity == crate::core::fruit::FruitRarity::Mythical {
             ("🔥 MYTHICAL DEVIL FRUIT DROPPED!", format!("🎉 Extraordinary luck! You got a Mythical Devil Fruit: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
-        } else if d.is_legendary || rarity == crate::core::fruit::FruitRarity::Legendary {
-            ("🌟 Legendary Devil Fruit Dropped!", format!("Pity reset to 0! You got a legendary devil fruit: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
+        } else if rarity == crate::core::fruit::FruitRarity::Legendary {
+            ("🌟 Legendary Devil Fruit Dropped!", format!("You got a legendary devil fruit: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
+        } else if is_pity_zero {
+            ("🌟 Pity 0 Devil Fruit Dropped!", format!("Pity reset to 0! Guaranteed drop: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
         } else if rarity != crate::core::fruit::FruitRarity::Unknown {
             ("🍇 Devil Fruit Dropped!", format!("You got a {} devil fruit: {fruit_name}.\n\n{pity_info}", rarity.as_str()), COLOR_PURPLE)
         } else {

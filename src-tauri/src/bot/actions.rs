@@ -782,10 +782,13 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
         }
 
         if !protect_drop {
-            if !key_hold(ctx, Key::Backspace, Duration::from_millis(120)) {
+            if !key_hold(ctx, Key::Backspace, Duration::from_millis(180)) {
                 return false;
             }
             backspace_pressed = true;
+            // Tap Backspace again to ensure Roblox processes the drop command without missing
+            ctx.sleep_ms(60);
+            let _ = key_tap(ctx, Key::Backspace);
 
             // Wait 120ms for Roblox to render "Dropped [Fruit] will despawn in 10 minutes" banner
             ctx.sleep_ms(120);
@@ -831,8 +834,10 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool) -> bool {
                 }
             }
 
-            // Break out immediately so slot 2 doesn't wipe or cover the drop banner!
-            break;
+            // If drop banner or storage banner was detected, break out immediately
+            if detected_banner.is_some() {
+                break;
+            }
         } else {
             ctx.log_info("🛡️ Protected fruit kept in slot (drop prevented)");
             if detected_banner.is_some() {

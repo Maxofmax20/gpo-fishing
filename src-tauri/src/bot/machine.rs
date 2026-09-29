@@ -605,44 +605,20 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         });
         let rarity = fruit::fruit_rarity(&fruit_name);
 
-        let is_ase = s.fruit_storage.all_seeing_eye;
-        let pity_cap = if is_ase { 40 } else { s.fruit_storage.pity_cap.max(1) };
-        let prev_pity = ctx.session.lock().pity_legendary;
-        let is_pity_zero = d.is_legendary
-            || prev_pity >= pity_cap
-            || d.pity.as_deref().map(|p| {
-                let clean = p.trim().to_lowercase();
-                clean.starts_with("0/")
-                    || clean == "0"
-                    || clean.starts_with("o/")
-                    || clean == "o"
-                    || clean.starts_with("00/")
-                    || clean.starts_with("0/40")
-                    || clean.starts_with("0/100")
-            }).unwrap_or(false)
-            || {
-                let lower = d.text.to_lowercase();
-                lower.contains("pity 0")
-                    || lower.contains("pity: 0")
-                    || lower.contains("pity o")
-                    || lower.contains("pity: o")
-                    || lower.contains("pity 0/")
-                    || lower.contains("pity: 0/")
-                    || lower.contains("pity 00")
-                    || lower.contains("0/40")
-                    || lower.contains("0/4o")
-                    || lower.contains("0/100")
-                    || lower.contains("0/300")
-            };
+        let is_pity_zero = fruit::is_pity_zero(d.pity.as_deref(), &d.text);
+        let is_known_legendary_or_mythical = rarity == fruit::FruitRarity::Legendary
+            || rarity == fruit::FruitRarity::Mythical;
 
-        let is_high_tier = d.is_legendary || is_pity_zero || rarity.is_high_tier();
-        let is_protected = (s.fruit_storage.never_drop_legendary_or_mythical && is_high_tier)
+        let is_high_tier = is_known_legendary_or_mythical || is_pity_zero;
+        let is_protected = (s.fruit_storage.never_drop_legendary_or_mythical && is_known_legendary_or_mythical)
             || (s.fruit_storage.keep_pity_zero_fruit && is_pity_zero);
 
         let label = if rarity == fruit::FruitRarity::Mythical {
             format!("Mythical devil fruit ({fruit_name})")
-        } else if d.is_legendary || is_pity_zero || rarity == fruit::FruitRarity::Legendary {
+        } else if is_known_legendary_or_mythical {
             format!("Legendary devil fruit ({fruit_name})")
+        } else if is_pity_zero {
+            format!("Guaranteed Pity 0 devil fruit ({fruit_name})")
         } else if rarity != fruit::FruitRarity::Unknown {
             format!("{} devil fruit ({fruit_name})", rarity.as_str())
         } else {
@@ -654,7 +630,7 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
             sess.fruits += 1;
             sess.last_fruit = Some(fruit_name.clone());
             sess.pity_fruit = 0;
-            if is_high_tier || is_pity_zero {
+            if is_pity_zero {
                 sess.pity_legendary = 0;
             }
         }
@@ -662,15 +638,11 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         ctx.emit_stats();
         ctx.emit(BotEvent::FruitDrop(d.clone()));
 
-        let is_legendary_or_mythical = d.is_legendary
-            || rarity == fruit::FruitRarity::Legendary
-            || rarity == fruit::FruitRarity::Mythical;
-
-        // Screenshot on catch: Sent ONLY when pity is 0, or when getting a Legendary/Mythical fruit!
+        // Screenshot on catch: Sent ONLY when pity is actually 0, or when getting a verified Legendary/Mythical fruit!
         let wants_catch_photo = s.webhook.send_screenshot && (
             s.webhook.send_catch_screenshot
             || is_pity_zero
-            || is_legendary_or_mythical
+            || is_known_legendary_or_mythical
         );
 
         let photo = if wants_catch_photo {

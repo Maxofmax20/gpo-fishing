@@ -55,10 +55,96 @@ if (Test-Path $targetFile) {{
     }} catch {{}}
 }}
 
+$cs = @"
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+
+public class EnergyDrv {{
+    private const uint GENERIC_READ = 0x80000000;
+    private const uint GENERIC_WRITE = 0x40000000;
+    private const uint FILE_SHARE_READ = 0x00000001;
+    private const uint FILE_SHARE_WRITE = 0x00000002;
+    private const uint OPEN_EXISTING = 3;
+    private const uint FILE_ATTRIBUTE_NORMAL = 0x80;
+
+    public const uint IOCTL_ENERGY_KEYBOARD = 0x83102144;
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    public static extern SafeFileHandle CreateFile(
+        string lpFileName,
+        uint dwDesiredAccess,
+        uint dwShareMode,
+        IntPtr lpSecurityAttributes,
+        uint dwCreationDisposition,
+        uint dwFlagsAndAttributes,
+        IntPtr hTemplateFile
+    );
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool DeviceIoControl(
+        SafeFileHandle hDevice,
+        uint dwIoControlCode,
+        ref uint lpInBuffer,
+        uint nInBufferSize,
+        out uint lpOutBuffer,
+        uint nOutBufferSize,
+        out uint lpBytesReturned,
+        IntPtr lpOverlapped
+    );
+
+    public static SafeFileHandle Open() {{
+        return CreateFile(@"\\.\EnergyDrv",
+            GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            IntPtr.Zero,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            IntPtr.Zero);
+    }}
+
+    public static int GetState(SafeFileHandle handle) {{
+        uint inBuffer = 0x22;
+        uint outBuffer = 0;
+        uint bytesReturned = 0;
+        bool ok = DeviceIoControl(handle, IOCTL_ENERGY_KEYBOARD, ref inBuffer, 4, out outBuffer, 4, out bytesReturned, IntPtr.Zero);
+        if (!ok) {{
+            int err = Marshal.GetLastWin32Error();
+            throw new Exception("DeviceIoControl get failed: " + err);
+        }}
+        return (int)outBuffer;
+    }}
+
+    public static bool SetState(SafeFileHandle handle, int level) {{
+        uint inBuffer = 0x00023;
+        switch (level) {{
+            case 0: inBuffer = 0x00023; break;
+            case 1: inBuffer = 0x10023; break;
+            case 2: inBuffer = 0x20023; break;
+        }}
+        uint outBuffer = 0;
+        uint bytesReturned = 0;
+        return DeviceIoControl(handle, IOCTL_ENERGY_KEYBOARD, ref inBuffer, 4, out outBuffer, 4, out bytesReturned, IntPtr.Zero);
+    }}
+}}
+"@
+
 try {{
-    $instance = Get-CimInstance -Namespace root\wmi -ClassName LENOVO_LIGHTING_METHOD -ErrorAction Stop
-    $currStatus = Invoke-CimMethod -InputObject $instance -MethodName Get_Lighting_Current_Status -Arguments @{{ Lighting_ID = [byte]1 }}
-    $currLevel = [int]$currStatus.Current_Brightness_Level
+    Add-Type -TypeDefinition $cs -ErrorAction SilentlyContinue
+
+    $h = [EnergyDrv]::Open()
+    if ($h.IsInvalid) {{
+        throw "Failed to open EnergyDrv device (error code $([System.Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
+    }}
+
+    $rawState = [EnergyDrv]::GetState($h)
+    $currLevel = switch ($rawState) {{
+        0x1 {{ 0 }}
+        0x3 {{ 1 }}
+        0x5 {{ 2 }}
+        default {{ 0 }}
+    }}
 
     $newLevel = switch ($Action.ToLower()) {{
         "off"    {{ 0 }}
@@ -72,11 +158,8 @@ try {{
         default  {{ if ($currLevel -ge 2) {{ 0 }} else {{ $currLevel + 1 }} }}
     }}
 
-    Invoke-CimMethod -InputObject $instance -MethodName Set_Lighting_Current_Status -Arguments @{{
-        Lighting_ID = [byte]1;
-        Current_State_Type = [byte]1;
-        Current_Brightness_Level = [byte]$newLevel
-    }} | Out-Null
+    [EnergyDrv]::SetState($h, $newLevel) | Out-Null
+    $h.Close()
 
     $statusName = switch ($newLevel) {{ 0 {{ "Off" }} 1 {{ "Low" }} 2 {{ "High" }} default {{ "Unknown" }} }}
     $outObj = @{{
@@ -145,7 +228,7 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-        // Strategy 1: Trigger elevated scheduled task
+        // Strategy 1: Trigger elevated scheduled task if configured
         let sch_status = Command::new("schtasks")
             .args(["/run", "/tn", "GPO_KeyboardBacklight"])
             .creation_flags(CREATE_NO_WINDOW)
@@ -153,10 +236,10 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
 
         if let Ok(status) = sch_status {
             if status.success() {
-                // Poll for updated state file up to 350ms
+                // Poll for updated state file up to 250ms
                 let start = Instant::now();
-                while start.elapsed() < Duration::from_millis(350) {
-                    thread::sleep(Duration::from_millis(40));
+                while start.elapsed() < Duration::from_millis(250) {
+                    thread::sleep(Duration::from_millis(30));
                     if let Ok(m) = fs::metadata(&state_file) {
                         if let Ok(mtime) = m.modified() {
                             if Some(mtime) != prev_mtime {
@@ -165,7 +248,6 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
                         }
                     }
                 }
-                return get_keyboard_light_status();
             }
         }
 
@@ -183,6 +265,18 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
             ])
             .creation_flags(CREATE_NO_WINDOW)
             .status();
+
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(500) {
+            thread::sleep(Duration::from_millis(30));
+            if let Ok(m) = fs::metadata(&state_file) {
+                if let Ok(mtime) = m.modified() {
+                    if Some(mtime) != prev_mtime {
+                        break;
+                    }
+                }
+            }
+        }
     }
 
     get_keyboard_light_status()
