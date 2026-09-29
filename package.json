@@ -1,7 +1,7 @@
 {
   "name": "gpo-autofish",
   "private": true,
-  "version": "4.2.54",
+  "version": "4.2.55",
   "type": "module",
   "scripts": {
     "dev": "vite",

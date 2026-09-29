@@ -1023,17 +1023,23 @@ fn send_html(stream: &mut TcpStream) {
   box-sizing: border-box; margin: 0; padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, sans-serif;
   -webkit-tap-highlight-color: transparent !important;
-  -webkit-touch-callout: none !important;
-  user-select: none !important;
-  -webkit-user-select: none !important;
 }
 
 html, body {
-  background: var(--bg); color: var(--text); min-height: 100vh;
+  background: var(--bg); color: var(--text);
+  width: 100%; min-height: 100%; height: auto;
   background-image: radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.06), transparent 50%), radial-gradient(circle at 100% 100%, rgba(176, 38, 255, 0.05), transparent 50%);
-  overscroll-behavior-y: none !important;
-  touch-action: manipulation;
   overflow-x: hidden;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y pinch-zoom !important;
+  overscroll-behavior-y: contain;
+}
+
+button, .btn, .status-badge, .bottom-nav-bar, .controller-card, .stream-bar, .app-header, .header-btn-toggle {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
 }
 
 input, textarea {
@@ -1044,7 +1050,11 @@ input, textarea {
 
 /* APP SHELL & CONTAINER */
 .app-shell {
-  display: flex; flex-direction: column; min-height: 100vh; position: relative;
+  display: flex; flex-direction: column;
+  min-height: 100vh; min-height: 100dvh;
+  width: 100%; position: relative;
+  overflow-x: hidden; overflow-y: visible;
+  touch-action: pan-y pinch-zoom !important;
 }
 
 /* STICKY TOP APP HEADER */
@@ -1128,15 +1138,17 @@ input, textarea {
 
 /* MAIN CONTENT AREA */
 .app-content {
-  flex: 1; max-width: 680px; width: 100%; margin: 0 auto;
+  flex: 1 0 auto; max-width: 680px; width: 100%; margin: 0 auto;
   padding: 10px 12px calc(115px + var(--safe-bottom)) 12px;
   display: flex; flex-direction: column; gap: 12px;
+  touch-action: pan-y pinch-zoom !important;
 }
 
 /* MOBILE SECTIONS */
 .mobile-section {
-  display: none; flex-direction: column; gap: 12px;
+  display: none; flex-direction: column; gap: 12px; width: 100%;
   animation: mobileFade 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  touch-action: pan-y pinch-zoom !important;
 }
 .mobile-section.active { display: flex; }
 @keyframes mobileFade {
@@ -1149,6 +1161,7 @@ input, textarea {
   background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; padding: 14px;
   display: flex; flex-direction: column; gap: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  touch-action: pan-y pinch-zoom !important;
 }
 .card-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; }
 .card-val { font-size: 1.45rem; font-weight: 800; color: var(--text); }
@@ -1506,6 +1519,7 @@ input, textarea {
 .slider-val { font-family: monospace; color: var(--cyan); }
 input[type=range] {
   -webkit-appearance: none; width: 100%; height: 8px; border-radius: 4px; background: #1e293b; outline: none; cursor: pointer;
+  touch-action: pan-x !important;
 }
 input[type=range]::-webkit-slider-thumb {
   -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); cursor: pointer; transition: transform 0.1s;
@@ -2478,6 +2492,8 @@ if (window.Telegram && window.Telegram.WebApp) {
   const twa = window.Telegram.WebApp;
   twa.ready();
   twa.expand();
+  if (twa.enableClosingConfirmation) twa.enableClosingConfirmation();
+  if (twa.disableVerticalSwipes) twa.disableVerticalSwipes();
   if (twa.setHeaderColor) twa.setHeaderColor('#07090e');
   if (twa.setBackgroundColor) twa.setBackgroundColor('#07090e');
 }
