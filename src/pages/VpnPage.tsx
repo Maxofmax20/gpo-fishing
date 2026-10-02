@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef } from "react";
 import {
   Activity,
   AlertCircle,
@@ -10,12 +10,16 @@ import {
   Zap,
 } from "lucide-react";
 import { api } from "../lib/ipc";
+import { showToast } from "../lib/store";
+import { useVisiblePoll } from "../lib/useVisiblePoll";
 import type { PingResult, VpnEngine, VpnStatus } from "../lib/types";
 import { Button, Pill, Row, Section, Toggle, cx } from "../components/primitives";
 
 export default function VpnPage() {
   const [status, setStatus] = useState<VpnStatus>({
     connected: false,
+    state: "disconnected",
+    managed: false,
     engine: "auto",
     engine_name: "Scanning...",
     ip: "Checking...",
@@ -26,7 +30,22 @@ export default function VpnPage() {
     auto_reconnect: true,
     last_error: null,
     auto_detected: false,
+    process_running: false,
+    tunnel_detected: false,
+    verification_detail: "",
   });
+
+  const STATE_META: Record<VpnStatus["state"], { label: string; tone: "ok" | "warn" | "bad" | "accent" | "mute" }> = {
+    disconnected: { label: "Disconnected", tone: "mute" },
+    connecting: { label: "Connecting…", tone: "accent" },
+    verifying: { label: "Verifying tunnel…", tone: "accent" },
+    connected: { label: "Connected (verified)", tone: "ok" },
+    disconnecting: { label: "Disconnecting…", tone: "warn" },
+    error: { label: "Error", tone: "bad" },
+    unknown: { label: "Unknown (unverified)", tone: "warn" },
+  };
+  const meta = STATE_META[status.state] ?? STATE_META.disconnected;
+  const busyState = status.state === "connecting" || status.state === "verifying" || status.state === "disconnecting";
 
   const [selectedEngine, setSelectedEngine] = useState<VpnEngine>("auto");
   const [busy, setBusy] = useState(false);
@@ -42,34 +61,31 @@ export default function VpnPage() {
     try {
       const s = await api.vpnGetStatus();
       setStatus(s);
-      if (s.connected && s.engine && s.engine !== "none") {
-        if (!selectedEngine || selectedEngine === "auto") {
-          // Keep auto or update
-        }
+      // Sync the engine selector with the backend while disconnected, so the
+      // radio group always reflects reality instead of a stale local choice.
+      if (!s.connected && s.engine && s.engine !== "none") {
+        setSelectedEngine((prev) => (prev === s.engine ? prev : (s.engine as VpnEngine)));
       }
-    } catch {
-      // Ignore initial IPC blips
+    } catch (e) {
+      showToast("warn", `VPN status unavailable: ${String(e)}`);
     }
   };
 
-  useEffect(() => {
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 3000);
-    return () => clearInterval(interval);
-  }, []);
+  useVisiblePoll(fetchStatus, 3000);
 
-  useEffect(() => {
-    if (!showLogs) return;
-    const fetchLogs = () => {
-      api.vpnGetLogs(40).then((l) => {
-        setLogs(l);
-        logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      });
-    };
-    fetchLogs();
-    const t = setInterval(fetchLogs, 2500);
-    return () => clearInterval(t);
-  }, [showLogs]);
+  useVisiblePoll(
+    () => {
+      api
+        .vpnGetLogs(40)
+        .then((l) => {
+          setLogs(l);
+          logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        })
+        .catch((e) => showToast("warn", `VPN logs unavailable: ${String(e)}`));
+    },
+    2500,
+    showLogs,
+  );
 
   const handleToggleConnect = async () => {
     setBusy(true);
@@ -158,20 +174,39 @@ export default function VpnPage() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="font-semibold text-[15px] whitespace-nowrap">
-                {status.connected ? "VPN Active" : "VPN Offline"}
+                {status.connected ? "VPN Active" : meta.label === "Disconnected" ? "VPN Offline" : `VPN ${meta.label}`}
               </span>
               <span className="inline-block whitespace-nowrap">
-                <Pill tone={status.connected ? "ok" : "mute"}>
+                <Pill tone={meta.tone}>
                   {status.connected
                     ? status.engine_name || (status.engine === "dedicated" ? "Dedicated Relay" : status.engine.toUpperCase())
-                    : "Offline"}
+                    : meta.label}
                 </Pill>
               </span>
-              {status.connected && status.auto_detected && (
+              {status.connected && !status.managed && (
+                <span className="inline-block whitespace-nowrap" title="Active VPN detected on this PC but not established by this app">
+                  <Pill tone="accent">External</Pill>
+                </span>
+              )}
+              {status.connected && status.auto_detected && status.managed && (
                 <span className="inline-block whitespace-nowrap">
                   <Pill tone="accent">Auto-Detected</Pill>
                 </span>
               )}
+            </div>
+            {status.verification_detail && (
+              <div className="text-[11px] text-fg-mute mt-1 break-words" title="Verification evidence">
+                {status.state === "connected" ? "✓ " : status.state === "error" || status.state === "unknown" ? "⚠ " : ""}
+                {status.verification_detail}
+              </div>
+            )}
+            <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px] font-mono">
+              <span className={cx("rounded px-1.5 py-0.5", status.process_running ? "bg-ok-soft text-ok" : "bg-white/[0.06] text-fg-mute")}>
+                process: {status.process_running ? "running" : "absent"}
+              </span>
+              <span className={cx("rounded px-1.5 py-0.5", status.tunnel_detected ? "bg-ok-soft text-ok" : "bg-white/[0.06] text-fg-mute")}>
+                tunnel: {status.tunnel_detected ? "detected" : "absent"}
+              </span>
             </div>
             <div className="text-[12px] text-fg-dim mt-1 flex flex-wrap items-center gap-2 font-mono">
               <span className="inline-flex items-center gap-1 whitespace-nowrap">
@@ -204,11 +239,11 @@ export default function VpnPage() {
           <Button
             kind={status.connected ? "danger" : "primary"}
             size="sm"
-            disabled={busy}
+            disabled={busy || busyState}
             onClick={handleToggleConnect}
             icon={<Zap size={14} />}
           >
-            {status.connected ? "Disconnect" : "Connect"}
+            {status.connected ? "Disconnect" : busyState ? "Working…" : "Connect (verified)"}
           </Button>
         </div>
       </div>
@@ -236,7 +271,7 @@ export default function VpnPage() {
               name="vpn_engine"
               checked={selectedEngine === "auto"}
               onChange={() => setSelectedEngine("auto")}
-              disabled={status.connected}
+              disabled={status.connected || busyState}
               className="accent-accent w-4 h-4 cursor-pointer"
             />
           }
@@ -250,7 +285,7 @@ export default function VpnPage() {
               name="vpn_engine"
               checked={selectedEngine === "dedicated"}
               onChange={() => setSelectedEngine("dedicated")}
-              disabled={status.connected}
+              disabled={status.connected || busyState}
               className="accent-accent w-4 h-4 cursor-pointer"
             />
           }
@@ -264,7 +299,7 @@ export default function VpnPage() {
               name="vpn_engine"
               checked={selectedEngine === "warp"}
               onChange={() => setSelectedEngine("warp")}
-              disabled={status.connected}
+              disabled={status.connected || busyState}
               className="accent-accent w-4 h-4 cursor-pointer"
             />
           }
@@ -278,7 +313,7 @@ export default function VpnPage() {
               name="vpn_engine"
               checked={selectedEngine === "psiphon"}
               onChange={() => setSelectedEngine("psiphon")}
-              disabled={status.connected}
+              disabled={status.connected || busyState}
               className="accent-accent w-4 h-4 cursor-pointer"
             />
           }

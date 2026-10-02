@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { api, on } from "../lib/ipc";
-import { useStore } from "../lib/store";
+import { showToast, useStore } from "../lib/store";
+import Toasts from "../components/Toasts";
 import { cx, Dot } from "../components/primitives";
 import { ConnectGate } from "../components/ConnectGate";
 import logo from "../assets/logo.png";
@@ -56,12 +57,35 @@ export default function Panel() {
 
   const [update, setUpdate] = useState<Update | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const autoUpdate = useStore((s) => s.settings?.auto_update ?? true);
+  // Startup check is delayed (never blocks launch) and repeats every 6h.
+  // Offline/network failures toast once and never break the bot. Honors the
+  // Settings › auto-update toggle (manual Check still works when off).
   useEffect(() => {
-    if (!ready) return;
-    check()
-      .then((u) => u && setUpdate(u))
-      .catch(() => undefined);
-  }, [ready]);
+    if (!ready || !autoUpdate) return;
+    let alive = true;
+    let timer: number | undefined;
+    let interval: number | undefined;
+    const runCheck = (quiet: boolean) => {
+      check()
+        .then((u) => {
+          if (alive && u) setUpdate(u);
+        })
+        .catch((e) => {
+          if (!quiet) showToast("warn", `Update check failed (offline?): ${String(e)}`);
+        });
+    };
+    timer = window.setTimeout(() => runCheck(true), 30_000);
+    interval = window.setInterval(() => {
+      if (!document.hidden) runCheck(true);
+    }, 6 * 3600_000);
+    return () => {
+      alive = false;
+      window.clearTimeout(timer);
+      window.clearInterval(interval);
+    };
+  }, [ready, autoUpdate]);
   const installUpdate = async () => {
     if (!update) return;
     setUpdating("Downloading…");
@@ -69,7 +93,9 @@ export default function Panel() {
       await update.downloadAndInstall();
       setUpdating("Installing, the app will restart.");
     } catch (e) {
-      setUpdating(String(e));
+      const msg = `Update failed — current version stays intact: ${String(e)}`;
+      setUpdating(msg);
+      showToast("error", msg);
     }
   };
 
@@ -129,22 +155,44 @@ export default function Panel() {
             <div className="ml-auto flex items-center gap-1 no-drag">
               <button
                 className="h-7 px-2.5 mr-1 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-medium bg-white/[0.06] text-fg-dim hover:bg-white/[0.12] hover:text-fg transition-colors"
-                onClick={() => api.openUrl("http://localhost:3888")}
-                title="Open Web Dashboard in Browser (http://localhost:3888)"
+                onClick={async () => {
+                  try {
+                    await api.openUrl(await api.webDashboardUrl());
+                  } catch (e) {
+                    showToast("error", `Could not open Web UI: ${String(e)}`);
+                  }
+                }}
+                title="Open authenticated Web Dashboard (token attached automatically)"
               >
                 <Globe size={12} className="text-accent" />
                 Web UI
               </button>
-              {update && (
-                <button
-                  className="h-7 px-2.5 mr-1 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-medium bg-accent-soft text-accent hover:bg-accent/30 disabled:opacity-60"
-                  onClick={installUpdate}
-                  disabled={!!updating}
-                  title={update.body ?? undefined}
-                >
-                  <Download size={12} />
-                  {updating ?? `Update ${update.version}`}
-                </button>
+              {update && !updateDismissed && (
+                <span className="mr-1 inline-flex items-center gap-1">
+                  <button
+                    className="h-7 px-2.5 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-medium bg-accent-soft text-accent hover:bg-accent/30 disabled:opacity-60"
+                    onClick={installUpdate}
+                    disabled={!!updating}
+                    title={update.body ? `Update ${update.version}\n\n${update.body.slice(0, 400)}` : `Update ${update.version}`}
+                  >
+                    <Download size={12} />
+                    {updating ?? `Update ${update.version}`}
+                  </button>
+                  <button
+                    className="h-7 px-2 rounded-lg text-[11px] text-fg-mute hover:text-fg hover:bg-white/[0.06]"
+                    onClick={() => api.openUrl("https://github.com/Maxofmax20/gpo-fishing/releases").catch((e) => showToast("error", `Could not open releases: ${String(e)}`))}
+                    title="View release notes"
+                  >
+                    Notes
+                  </button>
+                  <button
+                    className="h-7 w-6 rounded-lg grid place-items-center text-fg-mute hover:text-fg hover:bg-white/[0.06]"
+                    onClick={() => setUpdateDismissed(true)}
+                    title="Later"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
               )}
               <button className="w-8 h-8 rounded-lg grid place-items-center text-fg-mute hover:bg-white/[0.06] hover:text-fg" onClick={() => getCurrentWindow().minimize()}>
                 <Minus size={15} />
@@ -154,7 +202,7 @@ export default function Panel() {
               </button>
             </div>
           </header>
-          <main className="flex-1 overflow-y-auto">
+          <main className="flex-1 overflow-y-auto relative">
             {!ready && <Booting error={error} />}
             {gated && <ConnectGate onSkip={() => setSkipGate(true)} />}
             {ready && !gated && (
@@ -169,6 +217,7 @@ export default function Panel() {
                 {tab === "settings" && <SettingsPage />}
               </>
             )}
+            <Toasts />
           </main>
         </div>
       </div>

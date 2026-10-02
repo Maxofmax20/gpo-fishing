@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Layers,
   Play,
@@ -18,7 +18,9 @@ import {
   Monitor,
 } from "lucide-react";
 import { api } from "../lib/ipc";
-import { useStore } from "../lib/store";
+import { showToast, useStore } from "../lib/store";
+import { useVisiblePoll } from "../lib/useVisiblePoll";
+import ConfirmModal from "../components/ConfirmModal";
 import type { MultiRobloxStatus, RobloxInstanceInfo, SavedRobloxAccount } from "../lib/types";
 
 export default function MultiRobloxPage() {
@@ -36,6 +38,11 @@ export default function MultiRobloxPage() {
   const [newNote, setNewNote] = useState("");
   const [addingAccount, setAddingAccount] = useState(false);
   const [showCookieHelp, setShowCookieHelp] = useState(false);
+  const [confirmKillAll, setConfirmKillAll] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState<{ id: string; name: string } | null>(null);
+  const [busyConfirm, setBusyConfirm] = useState(false);
+
+  const gpoPlaceId = settings?.game.gpo_place_id ?? 1730877806;
 
   const refreshAll = async () => {
     try {
@@ -46,15 +53,11 @@ export default function MultiRobloxPage() {
       setStatus(statusRes);
       setAccounts(accountsRes);
     } catch (e) {
-      console.error("Failed to refresh multi roblox state:", e);
+      showToast("warn", `Multi-Roblox refresh failed: ${String(e)}`);
     }
   };
 
-  useEffect(() => {
-    refreshAll();
-    const interval = setInterval(refreshAll, 2500);
-    return () => clearInterval(interval);
-  }, []);
+  useVisiblePoll(refreshAll, 2500);
 
   const handleToggle = async (enable: boolean) => {
     setLoading(true);
@@ -97,13 +100,16 @@ export default function MultiRobloxPage() {
   };
 
   const handleKillAll = async () => {
-    if (!window.confirm("Close ALL running Roblox instances?")) return;
+    setBusyConfirm(true);
     try {
       const count = await api.multiRobloxKillAll();
       setActionMsg({ type: "info", text: `Closed ${count} Roblox instances.` });
+      setConfirmKillAll(false);
       await refreshAll();
     } catch (e) {
       setActionMsg({ type: "error", text: `Failed to close all: ${e}` });
+    } finally {
+      setBusyConfirm(false);
     }
   };
 
@@ -142,14 +148,19 @@ export default function MultiRobloxPage() {
     }
   };
 
-  const handleRemoveAccount = async (id: string, name: string) => {
-    if (!window.confirm(`Remove saved account @${name}?`)) return;
+  const handleRemoveAccount = async () => {
+    if (!confirmRemove) return;
+    const { id, name } = confirmRemove;
+    setBusyConfirm(true);
     try {
       await api.multiRobloxRemoveAccount(id);
       setActionMsg({ type: "info", text: `Account @${name} removed.` });
+      setConfirmRemove(null);
       await refreshAll();
     } catch (e) {
       setActionMsg({ type: "error", text: `Failed to remove: ${e}` });
+    } finally {
+      setBusyConfirm(false);
     }
   };
 
@@ -176,13 +187,13 @@ export default function MultiRobloxPage() {
     for (let i = 0; i < accounts.length; i++) {
       const acc = accounts[i];
       try {
-        await api.multiRobloxLaunchAccount(acc.id, 1730877806);
+        await api.multiRobloxLaunchAccount(acc.id, gpoPlaceId);
         // Stagger launches by 3 seconds so Roblox doesn't contend for process start
         if (i < accounts.length - 1) {
           await new Promise((r) => setTimeout(r, 3000));
         }
       } catch (err) {
-        console.error(`Failed to launch ${acc.username}:`, err);
+        setActionMsg({ type: "error", text: `Failed to launch @${acc.username}: ${err}` });
       }
     }
     setActionMsg({ type: "success", text: "All accounts dispatched to launch!" });
@@ -461,7 +472,7 @@ export default function MultiRobloxPage() {
                         {acc.display_name}
                       </span>
                       <button
-                        onClick={() => handleRemoveAccount(acc.id, acc.username)}
+                        onClick={() => setConfirmRemove({ id: acc.id, name: acc.username })}
                         title="Delete account"
                         className="text-stone-500 hover:text-rose-400 p-0.5 transition"
                       >
@@ -492,7 +503,7 @@ export default function MultiRobloxPage() {
 
                 <div className="mt-3 flex items-center gap-2 border-t border-stone-800/80 pt-2.5">
                   <button
-                    onClick={() => handleLaunchAccount(acc.id, acc.username, 1730877806)}
+                    onClick={() => handleLaunchAccount(acc.id, acc.username, gpoPlaceId)}
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-white transition shadow-sm"
                   >
                     <Play className="h-3 w-3 fill-current" />
@@ -536,7 +547,7 @@ export default function MultiRobloxPage() {
             </button>
             {(status?.instances_count ?? 0) > 0 && (
               <button
-                onClick={handleKillAll}
+                onClick={() => setConfirmKillAll(true)}
                 className="flex items-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/20 transition"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -639,6 +650,24 @@ export default function MultiRobloxPage() {
           </div>
         )}
       </div>
+      <ConfirmModal
+        open={confirmKillAll}
+        title="Close all Roblox instances?"
+        body="Every running Roblox window will be terminated, including any active fishing session."
+        confirmLabel="Close all"
+        busy={busyConfirm}
+        onConfirm={handleKillAll}
+        onCancel={() => !busyConfirm && setConfirmKillAll(false)}
+      />
+      <ConfirmModal
+        open={confirmRemove !== null}
+        title={`Remove account @${confirmRemove?.name ?? ""}?`}
+        body="The saved cookie for this account is deleted from this PC. You can re-add it later by pasting the cookie again."
+        confirmLabel="Remove account"
+        busy={busyConfirm}
+        onConfirm={handleRemoveAccount}
+        onCancel={() => !busyConfirm && setConfirmRemove(null)}
+      />
     </div>
   );
 }

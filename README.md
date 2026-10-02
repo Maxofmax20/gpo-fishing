@@ -1,8 +1,22 @@
 [![Discord](https://img.shields.io/badge/Discord-Join%20Server-7289da?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/unPZxXAtfb)
 
-# 🎣 GPO Autofish v4.0 - GUIDE
+# 🎣 GPO Autofish v4.3 - GUIDE
 
 **💬 Join our Discord server:** https://discord.gg/unPZxXAtfb
+
+## 🆕 What's New in v4.3.0?
+
+**GPO Macro Data Collection** (needs no setup — it just works):
+
+- 📼 Macro sessions now automatically collect real gameplay samples (start macro → COLLECTING, stop macro → finalized session)
+- 🎣 Reel episodes captured: waiting, bite, and result frames with OCR + perception verdicts
+- 🧲 Hard examples automatically retained (empty OCR, disagreements, unknowns)
+- 📊 Live counters in the Dashboard (samples, reels, hard examples) plus a session summary on stop
+- 🗂️ Samples reviewed in Setup → Training Dataset (Confirm/Correct/Unknown/Skip) and the versioned `gpo-vision` dataset with validation, baseline scoring, and training-readiness gate
+- 🔒 Collection stores game-UI crops and text only — no tokens, cookies, or chat; macro timing is never blocked (async bounded queue)
+- 🧠 ML remains unavailable until sufficient verified real gameplay data exists — OCR + heuristics keep running the bot
+
+Plus VPN honesty (verified-connected only), typed VPN macro steps, DPAPI secrets, authenticated web dashboard, strict CSP, and a signed auto-updater with stable/beta channels.
 
 ## 🆕 What's New in v4.0?
 
@@ -176,6 +190,29 @@ Auto-update checks GitHub Releases on launch and can be turned off in Settings.
 - **Rod not switching back**: Check the rod key (slot `1`) and bait point configuration
 
 ---
+
+## 🔒 Security & data
+
+- **Web dashboard**: binds to `127.0.0.1:3888` by default and requires a per-install token for every API/stream route. Open it from the Panel's **Web UI** button (token attached automatically). LAN access is opt-in via Settings → Web dashboard (restart required) and still requires the token.
+- **Secrets at rest**: Telegram tokens, Discord webhook URLs, Gemini keys, Roblox cookies and the dashboard token are encrypted with Windows DPAPI (current user scope). Old plaintext configs migrate automatically on first launch.
+- **Backups, not deletions**: settings reset and journal clear keep timestamped backups (`settings.backup-*.json`, `catches.backup-*.csv`) in the data folder (`%AppData%\gpo-autofish`). A corrupt `settings.json` is quarantined (`settings.backup-*.json`) instead of silently reset — the app shows the recovery note in Settings.
+- **Diagnostics**: Setup → Diagnostics → **Run check** probes the live Roblox window (bar/drop/bait-menu/server-time capture, vision confidence, OCR samples, calibration points) with per-item pass/warn/fail. Nothing is simulated.
+- **Signing**: releases are signed; `build_release.ps1` takes the key password from `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (never committed).
+
+## 🚀 Releases & automatic updates
+
+- **Channels**: git tag `vX.Y.Z` publishes a stable release; `vX.Y.Z-beta.N` publishes a prerelease (beta). The app's auto-updater follows stable.
+- **Pipeline** (`.github/workflows/release.yml`): version gate (`scripts/check-versions.ps1` requires tag == `package.json` == `tauri.conf.json` == `Cargo.toml`) → frontend build → Rust tests → audits → signed Tauri build → updater artifacts (`latest.json` + `.sig`) attached to the GitHub Release. Any failure stops the release.
+- **Updater security**: HTTPS GitHub endpoint, minisign public key pinned in `tauri.conf.json`, private key only in GitHub Actions secrets. The updater verifies the signature before installing; a bad signature or malformed metadata aborts and the installed version stays intact.
+- **User experience**: the app checks 30s after launch and every 6h (never blocking, offline-safe), honoring Settings › auto-update. An update banner offers Install, Release Notes, or Later — installation always needs your click. Update failures toast an error and keep the current version.
+
+## 🧠 Perception & VPN state
+
+- **Perception**: OCR readings are fused with a local GPO knowledge base (fruits, fish, bait, UI terms) into structured observations with explainable evidence. Weak evidence yields `unknown` with a reason — the bot never hallucinates entities. Setup › Diagnostics shows per-item configured/detected status plus the perception verdict.
+- **GPO Wiki sync (opt-in)**: Setup › Devil fruits › GPO knowledge base can import devil-fruit pages from the public Grand Piece Online Wiki API. Imports are validated, keep provenance, and never overwrite curated entries. No automatic syncing happens.
+- **Learning dataset**: with trace recording on, uncertain observations are saved to `%AppData%\gpo-autofish\dataset` for later labeling (Setup › Learning dataset). Nothing trains a model automatically.
+- **VPN honesty**: the VPN page shows the evidence-based state (`disconnected/connecting/verifying/connected/disconnecting/error/unknown`) with process/tunnel evidence. `Connected` appears only after a verified tunnel. Macros never touch VPN unless you append an explicit VPN step (Macros › VPN Steps); verification timeouts stop the macro unless the step is marked optional.
+- **Vision models**: the architecture supports pluggable vision providers, but no trained GPO detection model ships yet — bar/fish/marker heuristics back the live provider. Status: architecture ready, model training pending.
 
 ## 📁 Project Structure
 

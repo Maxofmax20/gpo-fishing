@@ -53,6 +53,7 @@ pub fn build_state() -> AppState {
     let (tx, rx) = unbounded::<BotEvent>();
     let bot = Bot::new(platform.clone(), Arc::clone(&settings), Arc::clone(&roblox), tx.clone(), Arc::clone(&webhook), Arc::clone(&store));
     crate::bot::recorder::init_roblox_ref(Arc::clone(&roblox), Arc::clone(&store));
+    crate::bot::recorder::set_vpn_provider(Arc::clone(&vpn) as Arc<dyn crate::vpn::VpnControl>);
 
     AppState {
         platform,

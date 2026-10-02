@@ -189,6 +189,8 @@ export type Settings = {
     api_key: string;
     model: string;
   };
+  web: { allow_lan: boolean; token: string };
+  game: { spawn_banner: RelRect; disconnect_region: RelRect; reconnect_point: RelPoint; gpo_place_id: number };
 };
 
 export type Snapshot = {
@@ -245,7 +247,183 @@ export type RegionPreview = {
   reading: Geometry | null;
 };
 
-export type OcrTest = { text: string; drop: DropInfo | null; spawn: SpawnInfo | null };
+export type OcrTest = {
+  text: string;
+  ocr_variant: string;
+  drop: DropInfo | null;
+  spawn: SpawnInfo | null;
+  observation: Observation;
+};
+
+export type Evidence = { kind: string; detail: string; weight: number };
+
+export type EntityMatch = {
+  entity_id: string;
+  canonical_name: string;
+  category: string;
+  confidence: number;
+  evidence: Evidence[];
+};
+
+export type Observation = {
+  timestamp_ms: number;
+  source: string;
+  region: string;
+  screen: string;
+  ocr: { text: string; region: string } | null;
+  vision_hint: { label: string; confidence: number } | null;
+  candidates: EntityMatch[];
+  confidence: number;
+  entity: EntityMatch | null;
+  unknown_reason: string | null;
+};
+
+export type DatasetSample = {
+  id: string;
+  timestamp_ms: number;
+  event_type: string;
+  region: string;
+  game_state: string;
+  ocr_text: string;
+  observation: Observation;
+  needs_label: boolean;
+  label: string | null;
+  label_correct: boolean | null;
+  png_file: string;
+};
+
+export type KnowledgeStats = {
+  version: number;
+  entities: number;
+  fruits: number;
+  fish: number;
+  bait: number;
+  ui_terms: number;
+  overlay: number;
+};
+
+export type KnowledgeEntity = { id: string; name: string; category: string };
+
+export type MlAnnotation = {
+  image_id: string;
+  dataset_version: number;
+  session_id: string;
+  task: string;
+  ocr_text: string;
+  region_name: string;
+  ui_label: string | null;
+  bbox: { x: number; y: number; w: number; h: number } | null;
+  game_state: string | null;
+  entity_id: string | null;
+  annotator: string;
+  timestamp_ms: number;
+  source: string;
+  confidence: number | null;
+  hard_example: boolean;
+  hard_reason: string | null;
+  corrections: { at_ms: number; prev_label: string | null; note: string }[];
+};
+
+export type DatasetReport = {
+  dataset: string;
+  images: number;
+  labeled: number;
+  unlabeled: number;
+  classes: Record<string, number>;
+  sessions_train: number;
+  sessions_validation: number;
+  sessions_test: number;
+  leakage_sessions: string[];
+  corrupt_files: string[];
+  missing_labels: number;
+  invalid_entity_ids: string[];
+  duplicate_groups: number;
+  near_duplicate_pairs: number;
+  invalid_bboxes: string[];
+  orphan_annotations: string[];
+  orphan_images: string[];
+  min_max_class_ratio: number;
+  ok: boolean;
+};
+
+export type StageMetrics = {
+  n: number;
+  accuracy: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  unknown_rate: number;
+  mean_latency_ms: number;
+};
+
+export type BaselineReport = {
+  dataset: string;
+  labeled_samples: number;
+  insufficient_data: boolean;
+  stages: Record<string, StageMetrics>;
+  confusion: Record<string, Record<string, number>>;
+  notes: string[];
+};
+
+export type MlSessionState = {
+  collecting: boolean;
+  session_id: string | null;
+  samples: number;
+  reels: number;
+  hard_examples: number;
+  dropped: number;
+  quality_ok: boolean | null;
+  quality_warnings: string[];
+  pending_annotation: number;
+  total_samples: number;
+};
+
+export type TrainingReadiness = {
+  ready: boolean;
+  training: string;
+  verified: number;
+  required_verified: number;
+  sessions: number;
+  required_sessions: number;
+  test_sessions: number;
+  class_coverage_ok: boolean;
+  leakage_ok: boolean;
+  validation_ok: boolean;
+  reasons: string[];
+};
+
+export type MlModelStatus = {
+  available: boolean;
+  name: string | null;
+  version: string | null;
+  dataset: string | null;
+  runtime: string | null;
+  classes: string[];
+  reason: string | null;
+};
+
+export type WikiSyncResult = {
+  category_titles: number;
+  fetched_pages: number;
+  truncated: boolean;
+  parsed: number;
+  added: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+};
+
+export type HealthItem = {
+  id: string;
+  label: string;
+  status: "pass" | "warn" | "fail" | string;
+  detail: string;
+  score: number | null;
+  configured: boolean;
+  detected: boolean;
+};
+
+export type HealthCheck = { roblox: boolean; knowledge_entities: number; items: HealthItem[] };
 
 export const STATE_LABEL: Record<BotState, string> = {
   stopped: "Idle",
@@ -278,13 +456,19 @@ export const TARGET_LABEL: Record<OverlayTarget, string> = {
   rod_slot: "Rod slot indicator (optional)",
 };
 
+export type VpnMacroAction = "connect" | "disconnect" | "wait_connected" | "wait_disconnected";
+
 export type MacroStep =
   | { type: "Click"; rx: number; ry: number; button: string; delay_ms: number }
   | { type: "Drag"; start_rx: number; start_ry: number; end_rx: number; end_ry: number; duration_ms: number; delay_ms: number }
   | { type: "KeyTap"; key: string; delay_ms: number }
   | { type: "KeyHold"; key: string; duration_ms: number; delay_ms: number }
   | { type: "MouseMove"; rx: number; ry: number; delay_ms: number }
-  | { type: "Sleep"; ms: number };
+  | { type: "Sleep"; ms: number }
+  | { type: "VpnConnect"; engine: string; timeout_s: number; required: boolean }
+  | { type: "VpnDisconnect"; timeout_s: number }
+  | { type: "VpnWaitConnected"; timeout_s: number; required: boolean }
+  | { type: "VpnWaitDisconnected"; timeout_s: number };
 
 export type CustomMacro = {
   id: string;
@@ -292,6 +476,8 @@ export type CustomMacro = {
   created_at: string;
   steps: MacroStep[];
 };
+
+export type RecordMode = "pc" | "web";
 
 export type RecorderStatus = {
   is_recording: boolean;
@@ -306,8 +492,21 @@ export type RecorderStatus = {
 
 export type VpnEngine = "auto" | "dedicated" | "warp" | "psiphon" | "wireguard" | "proton" | "windscribe" | "openvpn" | "tailscale" | "mullvad" | "nord" | "clash" | "nekobox" | "v2ray" | "generic" | "none" | (string & {});
 
+export type VpnState =
+  | "disconnected"
+  | "connecting"
+  | "verifying"
+  | "connected"
+  | "disconnecting"
+  | "error"
+  | "unknown";
+
 export type VpnStatus = {
   connected: boolean;
+  /** Evidence-based lifecycle state. `connected` is true ONLY when verified. */
+  state: VpnState;
+  /** True only when this app established the verified connection. */
+  managed: boolean;
   engine: string;
   engine_name?: string;
   ip: string;
@@ -318,6 +517,9 @@ export type VpnStatus = {
   auto_reconnect: boolean;
   last_error: string | null;
   auto_detected?: boolean;
+  process_running: boolean;
+  tunnel_detected: boolean;
+  verification_detail: string;
 };
 
 export type PingResult = {

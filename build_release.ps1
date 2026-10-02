@@ -2,7 +2,10 @@ $ErrorActionPreference = "Stop"
 $keyPath = Join-Path $PSScriptRoot ".tauri\updater_key"
 $env:TAURI_SIGNING_PRIVATE_KEY_PATH = $keyPath
 $env:TAURI_SIGNING_PRIVATE_KEY = (Get-Content -Raw $keyPath)
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "gpo-autofish"
+# Never hardcode the signing password: take it from the environment
+# (CI: TAURI_SIGNING_PRIVATE_KEY_PASSWORD secret). Local dev keys created by
+# MakeItExe.bat use an empty password, which is the default here.
+if (-not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "" }
 
 $pkg = Get-Content (Join-Path $PSScriptRoot "package.json") | ConvertFrom-Json
 $ver = $pkg.version

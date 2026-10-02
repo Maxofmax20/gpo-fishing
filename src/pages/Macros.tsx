@@ -15,9 +15,12 @@ import {
   Check,
   X,
   Laptop,
+  Shield,
 } from "lucide-react";
 import { api, on } from "../lib/ipc";
-import type { CustomMacro, RecorderStatus } from "../lib/types";
+import { showToast } from "../lib/store";
+import { useVisiblePoll } from "../lib/useVisiblePoll";
+import type { CustomMacro, RecordMode, RecorderStatus, VpnMacroAction } from "../lib/types";
 import {
   Button,
   CustomSelect,
@@ -43,7 +46,7 @@ export default function Macros() {
   });
   const [selectedMacroName, setSelectedMacroName] = useState("");
   const [recordName, setRecordName] = useState("Craft Rare Bait");
-  const [recordMode, setRecordMode] = useState<"pc" | "web">("pc");
+  const [recordMode, setRecordMode] = useState<RecordMode>("pc");
   const [speed, setSpeed] = useState("1.0");
   const [loopCount, setLoopCount] = useState("1");
   const [isRenaming, setIsRenaming] = useState(false);
@@ -62,22 +65,18 @@ export default function Macros() {
         setSelectedMacroName(list[0].name);
       }
     } catch (e) {
-      console.warn("Failed to poll macros:", e);
+      showToast("warn", `Macro refresh failed: ${String(e)}`);
     }
   };
 
+  useVisiblePoll(refresh, status.is_recording || status.is_playing ? 700 : 2000);
+
   useEffect(() => {
-    refresh();
-    const interval = setInterval(
-      refresh,
-      status.is_recording || status.is_playing ? 700 : 2000,
-    );
     const unlistenPromise = on("macro:status_changed", () => refresh());
     return () => {
-      clearInterval(interval);
       unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [status.is_recording, status.is_playing]);
+  }, []);
 
   const activeMacro =
     macros.find((m) => m.name === selectedMacroName || m.id === selectedMacroName) ||
@@ -90,7 +89,7 @@ export default function Macros() {
       await api.macroRecord("start", name, recordMode);
       await refresh();
     } catch (e) {
-      console.error(e);
+      showToast("error", `Macro action failed: ${String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -106,7 +105,7 @@ export default function Macros() {
       }
       await refresh();
     } catch (e) {
-      console.error(e);
+      showToast("error", `Macro action failed: ${String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -118,7 +117,7 @@ export default function Macros() {
       await api.macroRecord("cancel");
       await refresh();
     } catch (e) {
-      console.error(e);
+      showToast("error", `Macro action failed: ${String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -134,7 +133,7 @@ export default function Macros() {
       await api.macroPlay(loop ? "loop" : "play", activeMacro.name, loop, sp, maxLoops);
       await refresh();
     } catch (e) {
-      console.error(e);
+      showToast("error", `Macro action failed: ${String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -150,7 +149,7 @@ export default function Macros() {
       setIsRenaming(false);
       await refresh();
     } catch (e) {
-      console.error(e);
+      showToast("error", `Macro action failed: ${String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -162,7 +161,7 @@ export default function Macros() {
       await api.macroPlay("stop");
       await refresh();
     } catch (e) {
-      console.error(e);
+      showToast("error", `Macro action failed: ${String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -176,7 +175,7 @@ export default function Macros() {
       setSelectedMacroName("");
       await refresh();
     } catch (e) {
-      console.error(e);
+      showToast("error", `Macro action failed: ${String(e)}`);
     } finally {
       setBusy(false);
     }
@@ -495,9 +494,29 @@ export default function Macros() {
                             <MousePointer size={12} />
                             <span>Move to ({(step.rx * 100).toFixed(1)}%, {(step.ry * 100).toFixed(1)}%)</span>
                           </span>
-                        ) : (
-                          <span className="text-fg-dim">SLEEP {(step as any).ms}ms</span>
-                        )}
+                        ) : step.type === "Sleep" ? (
+                          <span className="text-fg-dim">SLEEP {step.ms}ms</span>
+                        ) : step.type === "VpnConnect" ? (
+                          <span className="flex items-center gap-1.5 text-teal-300">
+                            <Shield size={12} />
+                            <span>VPN CONNECT {step.engine.toUpperCase()} (verify ≤{step.timeout_s}s{step.required ? ", required" : ", optional"})</span>
+                          </span>
+                        ) : step.type === "VpnDisconnect" ? (
+                          <span className="flex items-center gap-1.5 text-teal-300">
+                            <Shield size={12} />
+                            <span>VPN DISCONNECT (verify ≤{step.timeout_s}s)</span>
+                          </span>
+                        ) : step.type === "VpnWaitConnected" ? (
+                          <span className="flex items-center gap-1.5 text-teal-300">
+                            <Shield size={12} />
+                            <span>VPN WAIT CONNECTED (≤{step.timeout_s}s{step.required ? ", required" : ", optional"})</span>
+                          </span>
+                        ) : step.type === "VpnWaitDisconnected" ? (
+                          <span className="flex items-center gap-1.5 text-teal-300">
+                            <Shield size={12} />
+                            <span>VPN WAIT DISCONNECTED (≤{step.timeout_s}s)</span>
+                          </span>
+                        ) : null}
                       </div>
 
                       {"delay_ms" in step && (
@@ -515,19 +534,35 @@ export default function Macros() {
         )}
       </Section>
 
-      {/* 2. RECORD NEW MACRO */}
+      {/* 2. VPN STEPS */}
+      <Section title="VPN Steps">
+        <Row
+          title="Append VPN action"
+          sub="Macros never touch VPN by themselves: without one of these steps the VPN stays disconnected. Connect/Wait steps verify a real tunnel and stop the macro on timeout unless marked optional."
+          open={openSection === "vpn"}
+          onToggle={() => toggle("vpn")}
+        >
+          <VpnStepEditor
+            macroName={activeMacro?.name ?? ""}
+            disabled={busy || !activeMacro}
+            onAppended={refresh}
+          />
+        </Row>
+      </Section>
+
+      {/* 3. RECORD NEW MACRO */}
       <Section title="Action Recorder">
         <Row
           title="Recording Source"
           sub="PC Game captures directly from the live Roblox window. Web Remote captures from mobile/browser stream."
           right={
-            <Segmented
+            <Segmented<RecordMode>
               value={recordMode}
               options={[
                 { value: "pc", label: "🖥️ PC Game Window" },
                 { value: "web", label: "🌐 Web Remote" },
               ]}
-              onChange={(v) => setRecordMode(v as "pc" | "web")}
+              onChange={(v) => setRecordMode(v)}
             />
           }
         />
@@ -561,6 +596,80 @@ export default function Macros() {
           }
         />
       </Section>
+    </div>
+  );
+}
+
+function VpnStepEditor({ macroName, disabled, onAppended }: { macroName: string; disabled: boolean; onAppended: () => void }) {
+  const [action, setAction] = useState<VpnMacroAction>("connect");
+  const [engine, setEngine] = useState("auto");
+  const [timeout, setTimeout] = useState(20);
+  const [required, setRequired] = useState(true);
+  const [appending, setAppending] = useState(false);
+
+  const append = async () => {
+    if (!macroName) return;
+    setAppending(true);
+    try {
+      await api.macroAppendVpnStep(macroName, action, action === "connect" ? engine : undefined, timeout, required);
+      onAppended();
+    } catch (e) {
+      showToast("error", `Could not append VPN step: ${String(e)}`);
+    } finally {
+      setAppending(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <CustomSelect
+          value={action}
+          options={[
+            { value: "connect", label: "Connect VPN" },
+            { value: "disconnect", label: "Disconnect VPN" },
+            { value: "wait_connected", label: "Wait for connected" },
+            { value: "wait_disconnected", label: "Wait for disconnected" },
+          ]}
+          onChange={(v) => setAction(v as VpnMacroAction)}
+        />
+        {action === "connect" && (
+          <CustomSelect
+            value={engine}
+            options={[
+              { value: "auto", label: "Auto engine" },
+              { value: "dedicated", label: "Dedicated relay" },
+              { value: "warp", label: "Cloudflare WARP" },
+              { value: "psiphon", label: "Psiphon" },
+            ]}
+            onChange={setEngine}
+          />
+        )}
+        <label className="flex items-center gap-1.5 text-[12px] text-fg-dim">
+          Timeout
+          <input
+            type="number"
+            min={5}
+            max={120}
+            value={timeout}
+            onChange={(e) => setTimeout(Math.min(120, Math.max(5, Number(e.target.value) || 20)))}
+            className="w-16 rounded-lg bg-black/30 border border-line px-2 py-1 text-[12px] font-mono text-fg"
+          />
+          s
+        </label>
+        {(action === "connect" || action === "wait_connected") && (
+          <label className="flex items-center gap-1.5 text-[12px] text-fg-dim cursor-pointer">
+            <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} className="accent-accent" />
+            Required (stop macro on failure)
+          </label>
+        )}
+        <Button size="sm" kind="primary" disabled={disabled || appending || !macroName} onClick={append} icon={<Shield size={13} />}>
+          {appending ? "Adding…" : "Append step"}
+        </Button>
+      </div>
+      <div className="text-[11px] text-fg-mute">
+        Timeouts use real seconds and are never scaled by playback speed. VPN steps are appended to the selected macro above.
+      </div>
     </div>
   );
 }

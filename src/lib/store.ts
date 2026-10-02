@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { api, on } from "./ipc";
-import type { BotState, LogLine, Reading, Settings, Stats, WindowInfo } from "./types";
+import type { BotState, LogLine, MlSessionState, Reading, Settings, Stats, WindowInfo } from "./types";
+
+export type Toast = { id: number; kind: "error" | "warn" | "info"; msg: string };
 
 type Store = {
   ready: boolean;
@@ -17,11 +19,32 @@ type Store = {
   reading: Reading | null;
   saving: boolean;
   lastEvent: { kind: string; text: string; ts: number } | null;
+  ml: MlSessionState | null;
+  toasts: Toast[];
   init: () => Promise<void>;
   refresh: () => Promise<void>;
   update: (mutate: (s: Settings) => void) => Promise<void>;
   setSettings: (s: Settings) => void;
+  toast: (kind: Toast["kind"], msg: string) => void;
+  dismissToast: (id: number) => void;
 };
+
+let toastId = 1;
+
+/** Surface a backend/UI error to the global toast stack (auto-expires). */
+export function showToast(kind: Toast["kind"], msg: string) {
+  useStore.getState().toast(kind, msg);
+}
+
+/** Wrap an async UI action: backend `Result Err` strings reach the user instead of console. */
+export async function toastOnError<T>(p: Promise<T>, context: string): Promise<T | undefined> {
+  try {
+    return await p;
+  } catch (e) {
+    showToast("error", `${context}: ${String(e)}`);
+    return undefined;
+  }
+}
 
 const EMPTY_STATS: Stats = {
   fish: 0,
@@ -64,6 +87,17 @@ export const useStore = create<Store>((set, get) => ({
   reading: null,
   saving: false,
   lastEvent: null,
+  ml: null,
+  toasts: [],
+
+  toast: (kind, msg) =>
+    set((s) => {
+      const id = toastId++;
+      // Auto-expire after 8s so transient backend errors don't pile up.
+      window.setTimeout(() => get().dismissToast(id), 8000);
+      return { toasts: [...s.toasts.slice(-3), { id, kind, msg }] };
+    }),
+  dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 
   init: async () => {
     if (!subscribed) {
@@ -88,6 +122,15 @@ export const useStore = create<Store>((set, get) => ({
       on("bot:fruit_spawn", (p) => set({ lastEvent: { kind: "spawn", text: `${p.name ?? "A fruit"} spawned${p.location ? ` at ${p.location}` : ""}`, ts: Date.now() } }));
       on("bot:purchase", (p) => set({ lastEvent: { kind: "purchase", text: `Bought ${p.amount} bait`, ts: Date.now() } }));
       on("bot:recovery", (p) => set({ lastEvent: { kind: "recovery", text: `Recovered (#${p.attempt})`, ts: Date.now() } }));
+      on("bot:ml_session", (p) => {
+        set({ ml: p });
+        if (!p.collecting && p.session_id) {
+          get().toast(
+            "info",
+            `ML DATA session ${p.quality_ok === false ? "complete with warnings" : "complete"}: ${p.samples} samples, ${p.hard_examples} hard, ${p.pending_annotation} pending annotation.`,
+          );
+        }
+      });
     }
     for (let attempt = 0; attempt < 20; attempt++) {
       try {

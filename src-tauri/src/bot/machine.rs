@@ -104,6 +104,10 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
                 }
 
                 let (verdict, text) = verify_catch(ctx);
+                // Training-data collection: one sample per ended reel, only
+                // when the user enabled trace recording. Best-effort and
+                // never on the timing-critical path (single grab + write).
+                maybe_collect_ml_sample(ctx, &verdict, &text);
                 match verdict {
                     fruit::CatchVerdict::Failed => {
                         ctx.session.lock().record_failed();
@@ -255,12 +259,8 @@ pub(super) fn check_disconnect(ctx: &Ctx) -> Option<String> {
     }
     let client = ctx.roblox_rect()?;
     // The Roblox disconnect modal is centered in the client area
-    let center_region = RelRect {
-        x: 0.20,
-        y: 0.20,
-        w: 0.60,
-        h: 0.60,
-    };
+    // (tunable via Settings → game.disconnect_region).
+    let center_region = ctx.settings.read().game.disconnect_region;
     let px_rect = center_region.to_px(&client);
     let frame = grab_rect(ctx, px_rect)?;
     let text = ctx.platform.ocr.read(&frame).ok()?;
@@ -288,9 +288,10 @@ pub(super) fn trigger_anti_afk(ctx: &Ctx) {
 pub(super) fn attempt_reconnect(ctx: &Arc<Ctx>, reason: &str, rod_equipped: &mut bool) -> bool {
     ctx.set_state(BotState::Recovering, Some(format!("Auto-reconnecting: {reason}")));
 
-    // 1. Click Roblox 'Reconnect' button on disconnect modal (approx center-right: 0.58, 0.59)
+    // 1. Click Roblox 'Reconnect' button on disconnect modal
+    // (tunable via Settings → game.reconnect_point).
     if let Some(rect) = ctx.roblox_rect() {
-        let reconnect_pt = RelPoint { x: 0.58, y: 0.59 };
+        let reconnect_pt = ctx.settings.read().game.reconnect_point;
         let px = reconnect_pt.to_px(&rect);
         ctx.log_info("Auto-reconnect: Clicking Roblox 'Reconnect' button...");
         ctx.platform.input.move_to(px);
@@ -409,6 +410,25 @@ fn handle_disconnect_flow(ctx: &Arc<Ctx>, reason: &str, rod_equipped: &mut bool)
 
 fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_checked_at: &mut Instant) -> Outcome {
     ctx.set_state(BotState::WaitingForBite, None);
+    // Episode capture: WAITING state, once per cast (trace-gated, async).
+    if ctx.settings.read().fishing.trace {
+        if let Some(client) = ctx.roblox_rect() {
+            let bar_region = ctx.settings.read().regions.bar;
+            if let Some(frame) = grab_rect(ctx, bar_region.to_px(&client)) {
+                submit_ml_frame(
+                    ctx,
+                    &frame,
+                    crate::core::ml_dataset::MlTask::UiDetection,
+                    Some(crate::core::ml_dataset::UiLabel::FishingBar),
+                    Some(crate::core::ml_dataset::GameStateLabel::WaitingForBite),
+                    "",
+                    "bar",
+                    None,
+                    None,
+                );
+            }
+        }
+    }
     let started = Instant::now();
     let mut disconnect_checked_at = Instant::now() - Duration::from_secs(3600);
     let mut tracking_since: Option<Instant> = None;
@@ -508,6 +528,21 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_check
                     hold_watch = None;
                     ctx.set_state(BotState::Tracking, None);
                     ctx.log_debug("Bite confirmed; tracking");
+                    // Episode capture: BITE moment with the confirming frame
+                    // (trace-gated, async — encode is a few ms, once per reel).
+                    if ctx.settings.read().fishing.trace {
+                        submit_ml_frame(
+                            ctx,
+                            &frame,
+                            crate::core::ml_dataset::MlTask::UiDetection,
+                            Some(crate::core::ml_dataset::UiLabel::FishingBar),
+                            Some(crate::core::ml_dataset::GameStateLabel::Bite),
+                            "",
+                            "bar",
+                            None,
+                            None,
+                        );
+                    }
                     if trace_enabled {
                         match Trace::start(&ctx.store.logs_dir(), gains) {
                             Ok(t) => trace = Some(t),
@@ -586,8 +621,9 @@ pub(crate) fn check_spawn(ctx: &Ctx, last_hash: &mut u64) {
             return;
         }
     }
-    // Use wide banner region across top of screen (15% to 85% width) to ensure wide ASE text is captured
-    let banner_region = RelRect { x: 0.15, y: 0.02, w: 0.70, h: 0.16 };
+    // Use wide banner region across top of screen (tunable via
+    // Settings → game.spawn_banner) to ensure wide ASE text is captured.
+    let banner_region = ctx.settings.read().game.spawn_banner;
     let Some(frame) = grab_region(ctx, banner_region) else { return };
     let hash = frame.average_hash();
     if hash == *last_hash {
@@ -636,6 +672,100 @@ pub(crate) fn check_spawn(ctx: &Ctx, last_hash: &mut u64) {
             ctx.webhook.spawn(&info, photo_bytes);
         }
     }
+}
+
+/// Submit one frame to the async ML collector (never blocks: bounded queue
+/// sheds load when full). No active session or trace off → counted drop.
+#[allow(clippy::too_many_arguments)]
+fn submit_ml_frame(
+    ctx: &Ctx,
+    frame: &Frame,
+    task: crate::core::ml_dataset::MlTask,
+    ui_label: Option<crate::core::ml_dataset::UiLabel>,
+    game_state: Option<crate::core::ml_dataset::GameStateLabel>,
+    ocr_text: &str,
+    region: &str,
+    entity_id: Option<String>,
+    hard_reason: Option<String>,
+) {
+    if ctx.ml.active_session_id().is_none() {
+        return;
+    }
+    let png = match frame.to_png_bytes() {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    ctx.ml.submit(crate::bot::ml_collect::SampleJob {
+        png,
+        session_id: String::new(),
+        task,
+        ui_label,
+        game_state,
+        ocr_text: ocr_text.to_string(),
+        region: region.to_string(),
+        entity_id,
+        hard_reason,
+        source: "gameplay".to_string(),
+    });
+}
+
+/// Submit one RESULT sample per ended reel (async, trace-gated).
+/// Hard-example mining: empty OCR, unverdictable catches, rules/knowledge
+/// disagreement, and perception-unknown are retained with reasons so the
+/// dataset naturally accumulates difficult cases during normal play.
+fn maybe_collect_ml_sample(ctx: &Ctx, verdict: &fruit::CatchVerdict, text: &str) {
+    let (trace_on, drop_region, fuzzy_threshold, lex) = {
+        let s = ctx.settings.read();
+        (s.fishing.trace, s.regions.drop, s.lexicon.fuzzy_threshold, s.lexicon.clone())
+    };
+    if !trace_on {
+        return;
+    }
+    ctx.ml.count_reel();
+    let frame = match grab_region(ctx, drop_region) {
+        Some(f) => f,
+        None => return,
+    };
+    let kb = ctx.store.effective_knowledge();
+    let obs = crate::core::perception::correlate_text(
+        &kb,
+        text,
+        "drop",
+        crate::core::perception::ScreenKind::Fishing,
+        fuzzy_threshold,
+        0.80,
+        None,
+    );
+    let rules_say_drop = fruit::detect_drop(&lex, text).is_some();
+    let kb_says_fruit = obs.entity.as_ref().is_some_and(|m| m.category == "fruit");
+    let mut hard_reasons: Vec<&str> = Vec::new();
+    if text.trim().is_empty() {
+        hard_reasons.push("empty OCR on catch");
+    }
+    if *verdict == fruit::CatchVerdict::Unknown {
+        hard_reasons.push("unverdictable catch");
+    }
+    if rules_say_drop != kb_says_fruit {
+        hard_reasons.push("rules/knowledge disagreement");
+    }
+    if obs.entity.is_none() {
+        hard_reasons.push("perception unknown");
+    }
+    let hard = if hard_reasons.is_empty() { None } else { Some(hard_reasons.join("; ")) };
+    let entity = obs.entity.as_ref().map(|m| {
+        kb.find_by_name(&m.canonical_name).map(|e| e.id.clone()).unwrap_or_else(|| m.entity_id.clone())
+    });
+    submit_ml_frame(
+        ctx,
+        &frame,
+        crate::core::ml_dataset::MlTask::EntityRecognition,
+        None,
+        Some(crate::core::ml_dataset::GameStateLabel::CatchResult),
+        text,
+        "drop",
+        entity,
+        hard,
+    );
 }
 
 fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String) {
@@ -827,6 +957,7 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
     use std::sync::Arc;
 
     use parking_lot::RwLock;
@@ -932,5 +1063,235 @@ mod tests {
         let mut t = Instant::now();
         let out = fish_cycle(&ctx, &mut tracker, &mut hash, &mut t);
         assert!(matches!(out, Outcome::Timeout));
+    }
+
+    static ML_PIPE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    fn make_collect_ctx(
+        frames: Vec<Frame>,
+        ocr_texts: Vec<String>,
+    ) -> (Arc<Ctx>, PathBuf) {
+        let n = ML_PIPE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("gpo-mlpipe-{n}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let mut settings = Settings::default();
+        settings.fishing.scan_timeout_s = 5.0;
+        settings.fishing.scan_hz = 200;
+        settings.fishing.track_hz = 200;
+        settings.fishing.min_track_s = 0.0;
+        settings.fishing.trace = true; // collection armed
+        settings.watchdog.enabled = false;
+        let cap = Arc::new(ScriptedCapture::default());
+        for f in frames {
+            cap.push(f);
+        }
+        let ocr = Arc::new(ScriptedOcr::default());
+        for t in ocr_texts {
+            ocr.texts.lock().push_back(t);
+        }
+        let platform = Platform {
+            window: Arc::new(crate::core::platform::mock::MockWindow::default()),
+            capture: cap,
+            input: Arc::new(RecordingInput::default()),
+            ocr,
+        };
+        let roblox = Arc::new(RwLock::new(Some(WindowInfo {
+            client: PxRect { x: 0, y: 0, w: 1920, h: 1080 },
+            is_foreground: true,
+            visible: true,
+            dpi: 96,
+        })));
+        let store = Arc::new(crate::config::Store::new(dir.clone()));
+        let ctx = Arc::new(Ctx::new(
+            platform,
+            Arc::new(RwLock::new(settings)),
+            roblox,
+            tx,
+            Arc::new(WebhookQueue::disabled()),
+            store,
+        ));
+        ctx.running.store(true, std::sync::atomic::Ordering::SeqCst);
+        (ctx, dir)
+    }
+
+    fn reel_frames() -> Vec<Frame> {
+        let mut v = Vec::new();
+        for _ in 0..3 {
+            v.push(blank());
+        }
+        for _ in 0..5 {
+            v.push(bar_frame(40));
+        }
+        for _ in 0..3 {
+            v.push(bar_frame(140));
+        }
+        for _ in 0..10 {
+            v.push(blank());
+        }
+        v
+    }
+
+    #[test]
+    fn reel_end_collects_real_pipeline_sample() {
+        // Full production path with scripted frames (plumbing test, not
+        // accuracy): fish_cycle WAITING/BITE hooks + verify + RESULT hook →
+        // async writer → dataset rows + valid PNGs on disk.
+        let texts = vec!["You caught a Suna devil fruit!".to_string(); 12];
+        let (ctx, dir) = make_collect_ctx(reel_frames(), texts);
+        ctx.ml.begin_session("test-4.3.0");
+        let mut tracker = Tracker::default();
+        let mut hash = 0;
+        let mut t = Instant::now();
+        let out = fish_cycle(&ctx, &mut tracker, &mut hash, &mut t);
+        assert!(matches!(out, Outcome::Ended), "scripted reel must end");
+        let (verdict, text) = verify_catch(&ctx);
+        maybe_collect_ml_sample(&ctx, &verdict, &text);
+        let summary = ctx.ml.end_session().expect("session summary");
+        assert!(summary.samples >= 2, "WAITING + RESULT samples expected, got {:?}", summary);
+        assert_eq!(summary.dropped, 0, "bounded queue must not shed at reel rate");
+        // Rows on disk with valid PNGs; session finalized complete.
+        let ds = crate::core::ml_dataset::MlDatasetStore::new(dir.clone());
+        let rows = ds.annotations();
+        assert!(!rows.is_empty());
+        for row in &rows {
+            let p = ds.root().join("images").join(format!("{}.png", row.image_id));
+            assert!(crate::core::ml_dataset::png_file_valid(&p), "sample PNG must decode");
+        }
+        assert!(rows.iter().any(|r| r.region_name == "bar"), "episode WAITING/BITE frames expected");
+        // The RESULT reading merges into the identical-pixel row (dedup):
+        // its OCR text + entity must survive, not be lost.
+        assert!(
+            rows.iter().any(|r| r.ocr_text.contains("Suna")),
+            "RESULT OCR text must persist, got: {:?}",
+            rows.iter().map(|r| r.ocr_text.clone()).collect::<Vec<_>>()
+        );
+        assert!(
+            rows.iter().any(|r| r.entity_id.as_deref() == Some("fruit:suna")),
+            "RESULT entity must persist"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn empty_ocr_reel_is_mined_as_hard_example() {
+        // No OCR text at all: verdict Unknown + empty text must yield a
+        // hard-flagged RESULT row (never silently dropped, never faked).
+        let (ctx, dir) = make_collect_ctx(reel_frames(), vec![]);
+        ctx.ml.begin_session("test-4.3.0");
+        let mut tracker = Tracker::default();
+        let mut hash = 0;
+        let mut t = Instant::now();
+        let out = fish_cycle(&ctx, &mut tracker, &mut hash, &mut t);
+        assert!(matches!(out, Outcome::Ended));
+        let (verdict, text) = verify_catch(&ctx);
+        assert_eq!(verdict, fruit::CatchVerdict::Unknown);
+        maybe_collect_ml_sample(&ctx, &verdict, &text);
+        ctx.ml.end_session().expect("summary");
+        let ds = crate::core::ml_dataset::MlDatasetStore::new(dir.clone());
+        let rows = ds.annotations();
+        assert!(!rows.is_empty(), "episode frames must be stored");
+        let hard = rows.iter().find(|r| r.hard_example).expect("a hard-flagged row");
+        assert!(hard.hard_reason.as_deref().unwrap_or("").contains("empty OCR"), "got: {:?}", hard.hard_reason);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn drain_ml_session(rx: &crossbeam_channel::Receiver<BotEvent>) -> Vec<crate::events::MlSessionState> {
+        let mut out = Vec::new();
+        while let Ok(ev) = rx.try_recv() {
+            if let BotEvent::MlSession(st) = ev {
+                out.push(st);
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn bot_start_stop_drives_ml_collection_session() {
+        static C: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = C.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("gpo-bot-ml-{n}"));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let mut settings = Settings::default();
+        settings.fishing.scan_timeout_s = 1.0;
+        settings.fishing.scan_hz = 200;
+        settings.fishing.track_hz = 200;
+        settings.watchdog.enabled = false;
+        settings.fishing.trace = true; // collection armed
+        let settings = Arc::new(RwLock::new(settings));
+        let cap = Arc::new(ScriptedCapture::default());
+        for _ in 0..200 {
+            cap.push(blank());
+        }
+        let platform = Platform {
+            window: Arc::new(crate::core::platform::mock::MockWindow::default()),
+            capture: cap,
+            input: Arc::new(RecordingInput::default()),
+            ocr: Arc::new(ScriptedOcr::default()),
+        };
+        let roblox = Arc::new(RwLock::new(Some(WindowInfo {
+            client: PxRect { x: 0, y: 0, w: 1920, h: 1080 },
+            is_foreground: true,
+            visible: true,
+            dpi: 96,
+        })));
+        let store = Arc::new(crate::config::Store::new(dir.clone()));
+        let bot = crate::bot::Bot::new(
+            platform,
+            Arc::clone(&settings),
+            roblox,
+            tx,
+            Arc::new(WebhookQueue::disabled()),
+            Arc::clone(&store),
+        );
+
+        // START MACRO → collector starts (no separate recording mode).
+        bot.start();
+        assert!(bot.ctx().ml.is_collecting());
+        let session_id = bot.ctx().ml.active_session_id().expect("session id");
+        let started = drain_ml_session(&rx);
+        assert!(
+            started.iter().any(|s| s.collecting && s.session_id.as_deref() == Some(session_id.as_str())),
+            "must emit collecting state on start"
+        );
+
+        // Let a reel cycle run (blank frames → quick timeouts, WAITING
+        // samples submitted each cycle).
+        std::thread::sleep(std::time::Duration::from_millis(2500));
+
+        // STOP MACRO → collector finalizes with a summary event.
+        bot.stop();
+        assert!(!bot.ctx().ml.is_collecting());
+        let mut saw_final = false;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while std::time::Instant::now() < deadline && !saw_final {
+            for st in drain_ml_session(&rx) {
+                if !st.collecting && st.session_id.as_deref() == Some(session_id.as_str()) {
+                    saw_final = true;
+                }
+            }
+            if !saw_final {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
+        assert!(saw_final, "must emit finalized session on stop");
+
+        // Session file finalized on disk; dataset rows appended, none lost.
+        let meta_path = dir.join("sessions").join(format!("{session_id}.json"));
+        let meta: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&meta_path).expect("session file")).unwrap();
+        assert_eq!(meta.get("complete").and_then(|v| v.as_bool()), Some(true));
+
+        // RESTART → brand-new session, old session file preserved.
+        bot.start();
+        let session2 = bot.ctx().ml.active_session_id().expect("session 2");
+        assert_ne!(session_id, session2);
+        bot.stop();
+        assert!(dir.join("sessions").join(format!("{session_id}.json")).exists());
+        assert!(dir.join("sessions").join(format!("{session2}.json")).exists());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

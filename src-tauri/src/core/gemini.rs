@@ -66,7 +66,7 @@ pub fn scan_bait_stock_gemini(frame: &Frame, api_key: &str, model: &str) -> Resu
         .post(&url)
         .json(&payload)
         .send()
-        .map_err(|e| format!("Gemini API request failed: {e}"))?;
+        .map_err(|e| format!("Gemini API request failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     let body_text = response
@@ -146,7 +146,7 @@ pub fn test_gemini_connection(api_key: &str, model: &str) -> Result<String, Stri
         .post(&url)
         .json(&payload)
         .send()
-        .map_err(|e| format!("Connection failed: {e}"))?;
+        .map_err(|e| format!("Connection failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     if status.is_success() {
@@ -245,7 +245,7 @@ Respond ONLY with valid JSON in this format:
         .post(&url)
         .json(&payload)
         .send()
-        .map_err(|e| format!("Gemini API request failed: {e}"))?;
+        .map_err(|e| format!("Gemini API request failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     let body_text = response
@@ -329,7 +329,7 @@ pub fn rewrite_fruit_message_gemini(
         .post(&url)
         .json(&payload)
         .send()
-        .map_err(|e| format!("Gemini API request failed: {e}"))?;
+        .map_err(|e| format!("Gemini API request failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     let body_text = response
@@ -416,7 +416,7 @@ pub fn rewrite_spawn_message_gemini(
         .post(&url)
         .json(&payload)
         .send()
-        .map_err(|e| format!("Gemini API request failed: {e}"))?;
+        .map_err(|e| format!("Gemini API request failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     let body_text = response
@@ -521,7 +521,7 @@ pub fn interpret_smart_bot_command(
         .post(&url)
         .json(&payload)
         .send()
-        .map_err(|e| format!("Gemini API request failed: {e}"))?;
+        .map_err(|e| format!("Gemini API request failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     let body_text = response

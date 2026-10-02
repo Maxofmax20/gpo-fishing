@@ -1,14 +1,18 @@
 ﻿import { useEffect, useState, useMemo } from "react";
 import { Fish, FolderOpen, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
 import { api } from "../lib/ipc";
+import { showToast } from "../lib/store";
 import type { CatchRecord } from "../lib/types";
 import { Button, Pill, Section, cx } from "../components/primitives";
+import ConfirmModal from "../components/ConfirmModal";
 
 export default function Journal() {
   const [catches, setCatches] = useState<CatchRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "fish" | "fruit">("all");
   const [search, setSearch] = useState("");
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const refresh = async () => {
     setLoading(true);
@@ -16,7 +20,7 @@ export default function Journal() {
       const data = await api.getCatches();
       setCatches(data);
     } catch (e) {
-      console.error("Failed to load catches:", e);
+      showToast("error", `Could not load journal: ${String(e)}`);
     } finally {
       setLoading(false);
     }
@@ -27,18 +31,21 @@ export default function Journal() {
   }, []);
 
   const clear = async () => {
-    if (confirm("Are you sure you want to clear your catch journal history?")) {
-      try {
-        await api.clearCatches();
-        setCatches([]);
-      } catch (e) {
-        console.error("Failed to clear catches:", e);
-      }
+    setClearing(true);
+    try {
+      await api.clearCatches();
+      setCatches([]);
+      setConfirmClear(false);
+      showToast("info", "Journal cleared. A backup CSV was kept in the data folder.");
+    } catch (e) {
+      showToast("error", `Could not clear journal: ${String(e)}`);
+    } finally {
+      setClearing(false);
     }
   };
 
   const openCsv = () => {
-    api.openCatches().catch((e) => console.error("Failed to open catches:", e));
+    api.openCatches().catch((e) => showToast("error", `Could not open CSV: ${String(e)}`));
   };
 
   const totalFish = useMemo(() => catches.filter((c) => c.kind === "fish").length, [catches]);
@@ -96,8 +103,18 @@ export default function Journal() {
           </Button>
           <Button size="sm" onClick={refresh} icon={<RefreshCw size={13} className={loading ? "animate-spin" : ""} />} />
           {catches.length > 0 && (
-            <Button size="sm" kind="danger" onClick={clear} icon={<Trash2 size={13} />} />
+            <Button size="sm" kind="danger" onClick={() => setConfirmClear(true)} icon={<Trash2 size={13} />} />
           )}
+          <ConfirmModal
+            open={confirmClear}
+            title="Clear catch journal?"
+            body={`This deletes all ${catches.length} recorded catches from catches.csv.`}
+            backupNote="A timestamped backup CSV is kept in the data folder first."
+            confirmLabel="Clear journal"
+            busy={clearing}
+            onConfirm={clear}
+            onCancel={() => !clearing && setConfirmClear(false)}
+          />
         </div>
 
         {/* Filter Pills */}

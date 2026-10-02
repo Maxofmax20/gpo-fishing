@@ -98,7 +98,7 @@ impl MultiRobloxManager {
     pub fn new(data_dir: PathBuf) -> Self {
         let accounts_path = data_dir.join("accounts.json");
         let backup_path = data_dir.join("accounts.backup.json");
-        let accounts = if accounts_path.is_file() {
+        let mut accounts = if accounts_path.is_file() {
             match std::fs::read_to_string(&accounts_path) {
                 Ok(s) => match serde_json::from_str::<Vec<SavedRobloxAccount>>(&s) {
                     Ok(accs) => accs,
@@ -127,8 +127,10 @@ impl MultiRobloxManager {
         } else {
             Vec::new()
         };
+        // Legacy plaintext cookies pass through; encrypted ones decrypt.
+        Self::decrypt_cookies(&mut accounts);
 
-        Self {
+        let mgr = Self {
             enabled: AtomicBool::new(false),
             mutex_handle: Mutex::new(None),
             event_handle: Mutex::new(None),
@@ -140,7 +142,14 @@ impl MultiRobloxManager {
             last_scan: Mutex::new(Instant::now() - Duration::from_secs(10)),
             accounts: Mutex::new(accounts),
             accounts_path,
+        };
+        // Write-through migration: persist DPAPI-encrypted cookies so legacy
+        // plaintext files are upgraded on first launch after update.
+        if !mgr.accounts.lock().is_empty() {
+            let snapshot = mgr.accounts.lock().clone();
+            let _ = mgr.save_accounts_locked(&snapshot);
         }
+        mgr
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -374,6 +383,9 @@ impl MultiRobloxManager {
             .iter()
             .map(|acc| {
                 let mut a = acc.clone();
+                // Never expose the session cookie to the UI layer; the
+                // frontend only needs identity/display fields.
+                a.cookie.clear();
                 if let Some(inst) = running_instances.iter().find(|i| {
                     i.user_id.as_deref() == Some(&acc.user_id.to_string())
                         || i.username.as_deref().map(|u| u.eq_ignore_ascii_case(&acc.username)).unwrap_or(false)
@@ -440,11 +452,39 @@ impl MultiRobloxManager {
     }
 
     fn save_accounts_locked(&self, accounts: &[SavedRobloxAccount]) -> Result<(), String> {
-        let json = serde_json::to_string_pretty(accounts).map_err(|e| e.to_string())?;
-        std::fs::write(&self.accounts_path, &json).map_err(|e| format!("Failed to save accounts: {e}"))?;
+        // Cookies are encrypted at rest (DPAPI user scope); memory keeps
+        // plaintext for launch/validation. Legacy plaintext files are
+        // migrated on the next load.
+        let stored: Vec<SavedRobloxAccount> = accounts
+            .iter()
+            .map(|a| {
+                let mut c = a.clone();
+                if !c.cookie.is_empty() && !crate::core::secrets::is_protected(&c.cookie) {
+                    if let Ok(enc) = crate::core::secrets::protect(&c.cookie) {
+                        c.cookie = enc;
+                    }
+                }
+                c
+            })
+            .collect();
+        let json = serde_json::to_string_pretty(&stored).map_err(|e| e.to_string())?;
+        // Atomic write (tmp + rename) so a power/process failure mid-save
+        // cannot leave a truncated accounts.json as the only copy.
+        let tmp = self.accounts_path.with_extension("json.tmp");
+        std::fs::write(&tmp, &json).map_err(|e| format!("Failed to save accounts: {e}"))?;
+        std::fs::rename(&tmp, &self.accounts_path).map_err(|e| format!("Failed to save accounts: {e}"))?;
         let backup_path = self.accounts_path.with_file_name("accounts.backup.json");
         let _ = std::fs::write(backup_path, &json);
         Ok(())
+    }
+
+    /// Decrypt `ENC1:` cookies in place (legacy plaintext passes through).
+    fn decrypt_cookies(accounts: &mut [SavedRobloxAccount]) {
+        for a in accounts.iter_mut() {
+            if crate::core::secrets::is_protected(&a.cookie) {
+                a.cookie = crate::core::secrets::maybe_unprotect(&a.cookie);
+            }
+        }
     }
 
     pub fn launch_account(&self, id: &str, place_id: Option<u64>) -> Result<(), String> {
@@ -460,7 +500,7 @@ impl MultiRobloxManager {
             acc.cookie.clone()
         };
 
-        launch_with_cookie(&cookie, place_id.unwrap_or(1730877806))
+        launch_with_cookie(&cookie, place_id.unwrap_or(crate::config::DEFAULT_GPO_PLACE_ID))
     }
 
     fn resolve_user(&self, user_id: &str) -> Option<UserCacheEntry> {

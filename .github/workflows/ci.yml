@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  quality-gates:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: clippy
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Frontend build (tsc --noEmit + vite build)
+        run: npm run build
+
+      - name: Rust tests
+        run: cargo test
+        working-directory: src-tauri
+
+      # Report-only: the codebase carries pre-existing Clippy lints outside
+      # this hardening pass (digit_model/fruit/boss_tracker). New code must
+      # still be Clippy-clean (verified in review).
+      - name: Clippy (report)
+        run: cargo clippy --lib --tests --message-format short
+        working-directory: src-tauri
+
+      - name: npm audit (high+ only fail)
+        run: npm audit --audit-level=high
+
+      - name: Secret scan (gitleaks-style grep)
+        shell: pwsh
+        run: |
+          $patterns = @(
+            'TAURI_SIGNING_PRIVATE_KEY_PASSWORD\s*=\s*"[^"]+"',
+            'discord\.com/api/webhooks/[A-Za-z0-9_\-/]+',
+            'xox[bap]-',
+            'AIza[0-9A-Za-z\-_]{20,}',
+            '_ROBLOSECURITY_[A-Za-z0-9+/=]{20,}'
+          )
+          $hits = @()
+          foreach ($p in $patterns) {
+            $hits += Select-String -Path 'src/**/*','src-tauri/src/**/*','*.ps1','*.bat','.env*','src-tauri/.env*' -Pattern $p -ErrorAction SilentlyContinue |
+              Where-Object { $_.Filename -notlike '*test*' -and $_.Line -notmatch 'synthetic-' }
+          }
+          if ($hits.Count -gt 0) { $hits | ForEach-Object { Write-Output "$($_.Path):$($_.LineNumber)" }; exit 1 }
+          Write-Output "secret scan clean"

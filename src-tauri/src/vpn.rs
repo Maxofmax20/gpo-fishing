@@ -16,11 +16,57 @@ const DEDICATED_SERVER_PORT: u16 = 443;
 const SINGBOX_EXE: &str = r"C:\VPN\sing-box.exe";
 const SINGBOX_CONFIG: &str = r"C:\VPN\sing-box-client.json";
 const SINGBOX_LOG: &str = r"C:\VPN\sing-box.log";
+const PSIPHON_EXE: &str = r"C:\VPN\psiphon3.exe";
 const WARP_CLI_DEFAULT: &str = r"C:\Program Files\Cloudflare\Cloudflare WARP\warp-cli.exe";
+/// Human-readable label for the dedicated relay probe target.
+const DEDICATED_RELAY_LABEL: &str = "92.5.127.89:443 (Frankfurt)";
+
+/// Evidence-based VPN lifecycle. `Connected` is reported ONLY after
+/// `verify_connection()` succeeds — never on spawn, exit code, selection,
+/// or previous state. `Unknown` means something VPN-shaped was seen but no
+/// engine verified: it must never be presented as connected.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VpnState {
+    Disconnected,
+    Connecting,
+    Verifying,
+    Connected,
+    Disconnecting,
+    Error,
+    Unknown,
+}
+
+impl VpnState {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            VpnState::Disconnected => "disconnected",
+            VpnState::Connecting => "connecting",
+            VpnState::Verifying => "verifying",
+            VpnState::Connected => "connected",
+            VpnState::Disconnecting => "disconnecting",
+            VpnState::Error => "error",
+            VpnState::Unknown => "unknown",
+        }
+    }
+}
+
+/// Per-check evidence behind a state. Shown in the UI so users (and macros)
+/// can see WHY the app believes what it believes.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct VpnEvidence {
+    pub process_running: bool,
+    pub tunnel_detected: bool,
+    pub cli_reports_connected: bool,
+    pub detail: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VpnStatus {
     pub connected: bool,
+    pub state: VpnState,
+    /// True when THIS app established the connection (vs externally active).
+    pub managed: bool,
     pub engine: String,
     pub engine_name: String,
     pub ip: String,
@@ -31,7 +77,34 @@ pub struct VpnStatus {
     pub auto_reconnect: bool,
     pub last_error: Option<String>,
     pub auto_detected: bool,
+    pub process_running: bool,
+    pub tunnel_detected: bool,
+    pub verification_detail: String,
 }
+
+/// Raw OS observations fed into [`evaluate_evidence`]. Real collectors fill
+/// this from processes/netsh/CLI; tests inject synthetic snapshots, so all
+/// verification decisions are unit-testable without a VPN provider.
+#[derive(Debug, Clone, Default)]
+pub struct EvidenceSnapshot {
+    /// Lowercase exe names, e.g. `sing-box.exe`.
+    pub processes: Vec<String>,
+    /// Raw `netsh interface show interface` output lines.
+    pub netsh_lines: Vec<String>,
+    /// `warp-cli status` stdout, when warp is relevant/available.
+    pub warp_status: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Verification {
+    pub connected: bool,
+    pub evidence: VpnEvidence,
+}
+
+/// Default time `connect()` waits for verification before failing.
+pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+/// Time `disconnect()` waits for processes to vanish.
+const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PingResult {
@@ -56,6 +129,9 @@ pub struct DetectedVpn {
 
 pub struct VpnManager {
     connected: AtomicBool,
+    state: Mutex<VpnState>,
+    /// True only when THIS app established the verified connection.
+    managed: AtomicBool,
     engine: Mutex<String>,
     engine_name: Mutex<String>,
     auto_detected: AtomicBool,
@@ -65,14 +141,27 @@ pub struct VpnManager {
     last_city: Arc<Mutex<String>>,
     last_latency: Mutex<Option<u64>>,
     last_error: Mutex<Option<String>>,
+    state_reason: Mutex<Option<String>>,
+    evidence: Mutex<VpnEvidence>,
     auto_reconnect: AtomicBool,
     user_disconnected: AtomicBool,
+}
+
+/// Control surface used by macro steps. Implemented by [`VpnManager`];
+/// tests substitute a scripted fake. Production code must never fake success.
+pub trait VpnControl: Send + Sync {
+    fn vpn_state(&self) -> VpnState;
+    fn vpn_connect_verified(&self, engine: &str, timeout: Duration) -> Result<VpnStatus, String>;
+    fn vpn_disconnect_verified(&self, timeout: Duration) -> Result<VpnStatus, String>;
+    fn vpn_wait_for(&self, want_connected: bool, timeout: Duration) -> Result<VpnStatus, String>;
 }
 
 impl VpnManager {
     pub fn new() -> Arc<Self> {
         let mgr = Arc::new(Self {
             connected: AtomicBool::new(false),
+            state: Mutex::new(VpnState::Disconnected),
+            managed: AtomicBool::new(false),
             engine: Mutex::new("none".to_string()),
             engine_name: Mutex::new("Offline".to_string()),
             auto_detected: AtomicBool::new(false),
@@ -82,11 +171,14 @@ impl VpnManager {
             last_city: Arc::new(Mutex::new("".to_string())),
             last_latency: Mutex::new(None),
             last_error: Mutex::new(None),
+            state_reason: Mutex::new(None),
+            evidence: Mutex::new(VpnEvidence::default()),
             auto_reconnect: AtomicBool::new(true),
             user_disconnected: AtomicBool::new(false),
         });
 
-        // Detect any currently active VPN on launch
+        // Startup: desired state is DISCONNECTED. Only adopt a genuinely
+        // verified external connection (marked unmanaged/external).
         mgr.sync_process_state();
 
         // Spawn watchdog thread
@@ -102,6 +194,44 @@ impl VpnManager {
             .ok();
 
         mgr
+    }
+
+    /// Deterministic construction for tests: DISCONNECTED, no OS probing,
+    /// no watchdog thread.
+    #[cfg(test)]
+    fn new_isolated() -> Self {
+        Self {
+            connected: AtomicBool::new(false),
+            state: Mutex::new(VpnState::Disconnected),
+            managed: AtomicBool::new(false),
+            engine: Mutex::new("none".to_string()),
+            engine_name: Mutex::new("Offline".to_string()),
+            auto_detected: AtomicBool::new(false),
+            start_time: Mutex::new(None),
+            last_ip: Arc::new(Mutex::new(String::new())),
+            last_country: Arc::new(Mutex::new(String::new())),
+            last_city: Arc::new(Mutex::new(String::new())),
+            last_latency: Mutex::new(None),
+            last_error: Mutex::new(None),
+            state_reason: Mutex::new(None),
+            evidence: Mutex::new(VpnEvidence::default()),
+            auto_reconnect: AtomicBool::new(true),
+            user_disconnected: AtomicBool::new(false),
+        }
+    }
+
+    fn set_state(&self, state: VpnState, reason: Option<String>) {
+        *self.state.lock() = state;
+        *self.state_reason.lock() = reason;
+        self.connected.store(state == VpnState::Connected, Ordering::SeqCst);
+    }
+
+    pub fn vpn_state(&self) -> VpnState {
+        *self.state.lock()
+    }
+
+    fn set_evidence(&self, ev: VpnEvidence) {
+        *self.evidence.lock() = ev;
     }
 
     fn get_running_process_names() -> Vec<String> {
@@ -231,6 +361,211 @@ impl VpnManager {
         None
     }
 
+    fn netsh_lines() -> Vec<String> {
+        #[cfg(windows)]
+        {
+            let mut cmd = Command::new("netsh");
+            cmd.args(["interface", "show", "interface"]);
+            cmd.creation_flags(CREATE_NO_WINDOW);
+            if let Ok(output) = cmd.output() {
+                return String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .map(|l| l.to_string())
+                    .collect();
+            }
+        }
+        Vec::new()
+    }
+
+    fn warp_status_stdout() -> Option<String> {
+        #[cfg(windows)]
+        {
+            let bin = if Path::new(WARP_CLI_DEFAULT).exists() {
+                WARP_CLI_DEFAULT
+            } else {
+                "warp-cli"
+            };
+            let mut cmd = Command::new(bin);
+            cmd.arg("status");
+            cmd.creation_flags(CREATE_NO_WINDOW);
+            if let Ok(output) = cmd.output() {
+                return Some(String::from_utf8_lossy(&output.stdout).to_string());
+            }
+        }
+        None
+    }
+
+    /// Collect one OS evidence snapshot (processes + netsh + warp CLI).
+    pub fn collect_snapshot() -> EvidenceSnapshot {
+        EvidenceSnapshot {
+            processes: Self::get_running_process_names(),
+            netsh_lines: Self::netsh_lines(),
+            warp_status: Self::warp_status_stdout(),
+        }
+    }
+
+    fn snap_has_proc(snap: &EvidenceSnapshot, names: &[&str]) -> bool {
+        snap.processes.iter().any(|p| names.iter().any(|n| p == n))
+    }
+
+    /// A line counts as a connected tunnel iff it names a tunnel-like
+    /// interface AND says connected AND does not say disconnected. An
+    /// optional keyword narrows to one engine (e.g. `cloudflarewarp`).
+    fn snap_has_tunnel(snap: &EvidenceSnapshot, keyword: Option<&str>) -> bool {
+        snap.netsh_lines.iter().any(|line| {
+            let lower = line.to_lowercase();
+            let connected_like =
+                lower.contains("connected") || lower.contains("connesso") || lower.contains("verbunden");
+            if !connected_like || lower.contains("disconnected") {
+                return false;
+            }
+            let tunnel_like = lower.contains("vpn")
+                || lower.contains("wintun")
+                || lower.contains("wireguard")
+                || lower.contains("sing-box")
+                || lower.contains("cloudflarewarp")
+                || lower.contains("warp")
+                || lower.contains("tap")
+                || lower.contains("tun")
+                || lower.contains("psiphon");
+            if !tunnel_like {
+                return false;
+            }
+            match keyword {
+                Some(k) => lower.contains(k),
+                None => true,
+            }
+        })
+    }
+
+    fn snap_warp_cli_connected(snap: &EvidenceSnapshot) -> bool {
+        match &snap.warp_status {
+            Some(out) => {
+                (out.contains("Connected") || out.contains("connected"))
+                    && !out.contains("Disconnected")
+                    && !out.contains("disconnected")
+            }
+            None => false,
+        }
+    }
+
+    /// Pure verification decision: process evidence AND tunnel evidence are
+    /// BOTH required for `connected = true`. Process-without-tunnel is an
+    /// explicit non-connected verdict (spec: never infer a tunnel).
+    /// `engine` is the lower-case engine id, or `"auto"` to accept the first
+    /// verifiable engine in priority order.
+    pub fn evaluate_evidence(engine: &str, snap: &EvidenceSnapshot) -> Verification {
+        let engine = engine.to_ascii_lowercase();
+        // (id, display, process names, tunnel keyword)
+        const TABLE: &[(&str, &str, &[&str], Option<&str>)] = &[
+            ("dedicated", "Dedicated Relay (sing-box)", &["sing-box.exe"], None),
+            ("warp", "Cloudflare WARP", &["warp-svc.exe", "cloudflare warp.exe"], Some("warp")),
+            ("psiphon", "Psiphon Tunnel", &["psiphon3.exe", "psiphond.exe"], Some("psiphon")),
+            ("wireguard", "WireGuard Tunnel", &["wireguard.exe"], Some("wireguard")),
+            ("proton", "Proton VPN", &["protonvpn.exe", "protonvpn.service.exe"], Some("proton")),
+            ("windscribe", "Windscribe VPN", &["windscribe.exe", "windscribe-service.exe"], Some("windscribe")),
+            ("openvpn", "OpenVPN Tunnel", &["openvpn.exe", "openvpnserv.exe"], Some("openvpn")),
+            ("tailscale", "Tailscale Mesh", &["tailscale-ipn.exe", "tailscaled.exe"], Some("tailscale")),
+            ("mullvad", "Mullvad VPN", &["mullvad-vpn.exe", "mullvad-daemon.exe"], Some("mullvad")),
+            ("nord", "NordVPN", &["nordvpn.exe", "nordvpn-service.exe"], Some("nord")),
+            ("clash", "Clash / Mihomo", &["clash.exe", "clash-meta.exe", "mihomo.exe"], None),
+            ("nekobox", "NekoBox / NekoRay", &["nekobox.exe", "nekoray.exe"], None),
+            ("v2ray", "Xray / V2Ray", &["xray.exe", "v2ray.exe"], None),
+        ];
+
+        // WARP additionally consults its CLI (strongest signal for that engine).
+        if engine == "warp" || engine == "auto" {
+            let cli = Self::snap_warp_cli_connected(snap);
+            let tunnel = Self::snap_has_tunnel(snap, Some("warp"));
+            let proc = Self::snap_has_proc(snap, &["warp-svc.exe", "cloudflare warp.exe"]);
+            if engine == "warp" {
+                let connected = cli && tunnel;
+                return Verification {
+                    connected,
+                    evidence: VpnEvidence {
+                        process_running: proc,
+                        tunnel_detected: tunnel,
+                        cli_reports_connected: cli,
+                        detail: if connected {
+                            "warp-cli reports Connected and CloudflareWARP tunnel interface is up.".into()
+                        } else if cli && !tunnel {
+                            "warp-cli reports Connected but no WARP tunnel interface detected.".into()
+                        } else if tunnel && !cli {
+                            "WARP tunnel interface present but warp-cli does not report Connected.".into()
+                        } else {
+                            "No WARP process, CLI confirmation, or tunnel interface.".into()
+                        },
+                    },
+                };
+            }
+            if cli && tunnel {
+                return Verification {
+                    connected: true,
+                    evidence: VpnEvidence {
+                        process_running: proc,
+                        tunnel_detected: true,
+                        cli_reports_connected: true,
+                        detail: "warp-cli reports Connected and CloudflareWARP tunnel interface is up.".into(),
+                    },
+                };
+            }
+        }
+
+        for (id, _display, procs, keyword) in TABLE {
+            if engine != "auto" && engine != *id {
+                continue;
+            }
+            if *id == "warp" {
+                continue; // handled above (CLI-gated)
+            }
+            let proc = Self::snap_has_proc(snap, procs);
+            if !proc {
+                continue;
+            }
+            let tunnel = Self::snap_has_tunnel(snap, *keyword);
+            if tunnel {
+                return Verification {
+                    connected: true,
+                    evidence: VpnEvidence {
+                        process_running: true,
+                        tunnel_detected: true,
+                        cli_reports_connected: false,
+                        detail: format!("Process {0} running and matching tunnel interface detected.", procs.join("/")),
+                    },
+                };
+            }
+            // Process present but tunnel absent: NOT connected (strict).
+            if engine != "auto" {
+                return Verification {
+                    connected: false,
+                    evidence: VpnEvidence {
+                        process_running: true,
+                        tunnel_detected: false,
+                        cli_reports_connected: false,
+                        detail: format!(
+                            "Process {0} running but no matching tunnel interface detected — not connected.",
+                            procs.join("/")
+                        ),
+                    },
+                };
+            }
+        }
+
+        Verification {
+            connected: false,
+            evidence: VpnEvidence {
+                process_running: false,
+                tunnel_detected: false,
+                cli_reports_connected: false,
+                detail: if engine == "auto" {
+                    "No verifiable VPN engine detected.".into()
+                } else {
+                    format!("Engine '{engine}' not running (no process match).")
+                },
+            },
+        }
+    }
+
     pub fn detect_active_vpn() -> Option<DetectedVpn> {
         let procs = Self::get_running_process_names();
 
@@ -349,31 +684,82 @@ impl VpnManager {
         None
     }
 
+    /// Reconcile in-memory state with OS evidence. Never fabricates
+    /// `Connected`: managed connections that lose verification become
+    /// `Error`; externally visible VPNs become `Connected` only when
+    /// verified (marked unmanaged), else `Unknown`.
     pub fn sync_process_state(&self) {
-        if let Some(detected) = Self::detect_active_vpn() {
-            let was_connected = self.connected.load(Ordering::SeqCst);
-            let prev_engine = self.engine.lock().clone();
+        match *self.state.lock() {
+            VpnState::Connecting | VpnState::Verifying | VpnState::Disconnecting => return,
+            VpnState::Error => return, // latched until an explicit action
+            _ => {}
+        }
 
-            self.connected.store(true, Ordering::SeqCst);
-            *self.engine.lock() = detected.engine.clone();
-            *self.engine_name.lock() = detected.display_name.clone();
+        let managed = self.managed.load(Ordering::SeqCst);
+        if managed {
+            // A connection WE established: re-verify the same engine.
+            let engine = self.engine.lock().clone();
+            let v = Self::evaluate_evidence(&engine, &Self::collect_snapshot());
+            self.set_evidence(v.evidence.clone());
+            if v.connected {
+                if self.vpn_state() != VpnState::Connected {
+                    self.set_state(VpnState::Connected, None);
+                    if self.start_time.lock().is_none() {
+                        *self.start_time.lock() = Some(Instant::now());
+                    }
+                }
+            } else if self.vpn_state() == VpnState::Connected {
+                let reason = format!("Managed '{engine}' connection lost: {}", v.evidence.detail);
+                self.set_state(VpnState::Error, Some(reason.clone()));
+                *self.last_error.lock() = Some(reason);
+                tracing::warn!("VPN: {}", self.last_error.lock().as_deref().unwrap_or("lost"));
+            }
+            return;
+        }
+
+        // Unmanaged: adopt a genuinely verified external connection, else
+        // Unknown (never Connected) when something VPN-shaped is visible.
+        let snap = Self::collect_snapshot();
+        let v = Self::evaluate_evidence("auto", &snap);
+        self.set_evidence(v.evidence.clone());
+        if v.connected {
+            let detected = Self::detect_active_vpn();
+            let (engine, name) = detected
+                .map(|d| (d.engine, d.display_name))
+                .unwrap_or_else(|| ("generic".to_string(), "VPN (external)".to_string()));
+            let prev = self.engine.lock().clone();
+            let was_connected = self.vpn_state() == VpnState::Connected;
+            *self.engine.lock() = engine;
+            *self.engine_name.lock() = name.clone();
             self.auto_detected.store(true, Ordering::SeqCst);
             self.user_disconnected.store(false, Ordering::SeqCst);
-
-            if !was_connected || prev_engine != detected.engine {
+            self.set_state(VpnState::Connected, Some("externally managed connection".into()));
+            if !was_connected || prev != self.engine.lock().clone() {
                 if self.start_time.lock().is_none() {
                     *self.start_time.lock() = Some(Instant::now());
                 }
-                tracing::info!("VPN: Active engine detected: {}", detected.display_name);
+                tracing::info!("VPN: verified external connection: {}", name);
                 self.refresh_ip_async();
             }
-        } else if self.connected.load(Ordering::SeqCst) {
-            // No VPN is currently running
-            self.connected.store(false, Ordering::SeqCst);
+        } else if Self::detect_active_vpn().is_some() {
+            // VPN-shaped activity without verification: Unknown, not Connected.
+            if self.vpn_state() != VpnState::Unknown {
+                self.set_state(
+                    VpnState::Unknown,
+                    Some(format!("Unverified VPN activity: {}", v.evidence.detail)),
+                );
+                *self.engine.lock() = "unknown".to_string();
+                *self.engine_name.lock() = "Unverified VPN".to_string();
+                self.auto_detected.store(true, Ordering::SeqCst);
+                *self.start_time.lock() = None;
+            }
+        } else if self.vpn_state() != VpnState::Disconnected {
+            self.set_state(VpnState::Disconnected, None);
             *self.engine.lock() = "none".to_string();
             *self.engine_name.lock() = "Offline".to_string();
             *self.start_time.lock() = None;
             self.auto_detected.store(false, Ordering::SeqCst);
+            self.managed.store(false, Ordering::SeqCst);
             self.refresh_ip_async();
         }
     }
@@ -386,20 +772,26 @@ impl VpnManager {
             return;
         }
 
+        // Auto-reconnect a managed dedicated relay that dropped. Full
+        // verified cycle (not spawn-only); skipped while a cycle is already
+        // in flight to avoid overlap.
         let current_engine = self.engine.lock().clone();
-        if current_engine == "dedicated" && self.auto_reconnect.load(Ordering::SeqCst) {
-            let procs = Self::get_running_process_names();
-            if !procs.iter().any(|p| p == "sing-box.exe") {
-                tracing::warn!("VPN Watchdog: sing-box process died unexpectedly! Auto-reconnecting...");
-                let _ = self.connect_dedicated();
-            }
+        let st = self.vpn_state();
+        if current_engine == "dedicated"
+            && self.managed.load(Ordering::SeqCst)
+            && self.auto_reconnect.load(Ordering::SeqCst)
+            && matches!(st, VpnState::Disconnected | VpnState::Error)
+        {
+            tracing::warn!("VPN Watchdog: managed relay down ({:?}); reconnecting with verification...", st);
+            let _ = self.connect_verified("dedicated", Duration::from_secs(10));
         }
     }
 
     pub fn get_status(&self) -> VpnStatus {
         self.sync_process_state();
 
-        let connected = self.connected.load(Ordering::SeqCst);
+        let state = self.vpn_state();
+        let connected = state == VpnState::Connected;
         let uptime_secs = if connected {
             self.start_time
                 .lock()
@@ -408,9 +800,12 @@ impl VpnManager {
         } else {
             0
         };
+        let ev = self.evidence.lock().clone();
 
         VpnStatus {
             connected,
+            state,
+            managed: self.managed.load(Ordering::SeqCst),
             engine: self.engine.lock().clone(),
             engine_name: self.engine_name.lock().clone(),
             ip: self.last_ip.lock().clone(),
@@ -419,63 +814,117 @@ impl VpnManager {
             latency_ms: *self.last_latency.lock(),
             uptime_secs,
             auto_reconnect: self.auto_reconnect.load(Ordering::SeqCst),
-            last_error: self.last_error.lock().clone(),
+            last_error: self
+                .last_error
+                .lock()
+                .clone()
+                .or_else(|| self.state_reason.lock().clone()),
             auto_detected: self.auto_detected.load(Ordering::SeqCst),
+            process_running: ev.process_running,
+            tunnel_detected: ev.tunnel_detected,
+            verification_detail: ev.detail,
         }
     }
 
+    /// Request a connection and return success ONLY after verification.
+    /// `CONNECTING → VERIFYING → CONNECTED`, else `ERROR` (+ `Err`).
+    /// A selected engine or a sent command is never reported as connected.
     pub fn connect(&self, engine: &str) -> Result<VpnStatus, String> {
+        self.connect_verified(engine, DEFAULT_CONNECT_TIMEOUT)
+    }
+
+    pub fn connect_verified(&self, engine: &str, timeout: Duration) -> Result<VpnStatus, String> {
+        let engine = engine.trim().to_ascii_lowercase();
         self.user_disconnected.store(false, Ordering::SeqCst);
         *self.last_error.lock() = None;
+        self.set_state(VpnState::Connecting, Some(format!("connecting via {engine}")));
+        *self.engine.lock() = engine.clone();
 
-        match engine {
-            "auto" => {
+        // "auto": adopt a verified external connection if present, else fall
+        // through to the preferred local engines.
+        if engine == "auto" {
+            let v = Self::evaluate_evidence("auto", &Self::collect_snapshot());
+            self.set_evidence(v.evidence.clone());
+            if v.connected {
                 if let Some(detected) = Self::detect_active_vpn() {
-                    self.connected.store(true, Ordering::SeqCst);
                     *self.engine.lock() = detected.engine.clone();
                     *self.engine_name.lock() = detected.display_name.clone();
                     self.auto_detected.store(true, Ordering::SeqCst);
-                    if self.start_time.lock().is_none() {
-                        *self.start_time.lock() = Some(Instant::now());
-                    }
-                    tracing::info!("VPN: Bound to active {}", detected.display_name);
-                } else if Path::new(SINGBOX_EXE).exists() {
-                    self.connect_dedicated()?;
-                } else {
-                    self.connect_warp()?;
+                    self.managed.store(false, Ordering::SeqCst);
+                    self.set_state(VpnState::Connected, Some("verified external connection".into()));
+                    *self.start_time.lock() = Some(Instant::now());
+                    tracing::info!("VPN: Bound to verified {}", self.engine_name.lock());
+                    self.refresh_ip_async();
+                    return Ok(self.get_status());
                 }
             }
-            "dedicated" => self.connect_dedicated()?,
-            "warp" => self.connect_warp()?,
-            "psiphon" => self.connect_psiphon()?,
-            _ => {
-                if let Some(detected) = Self::detect_active_vpn() {
-                    if detected.engine == engine {
-                        self.connected.store(true, Ordering::SeqCst);
-                        *self.engine.lock() = detected.engine;
-                        *self.engine_name.lock() = detected.display_name;
-                        self.auto_detected.store(true, Ordering::SeqCst);
-                    }
-                } else {
-                    return Err(format!("Unknown engine: {}", engine));
-                }
+            if Path::new(SINGBOX_EXE).exists() {
+                return self.connect_verified("dedicated", timeout);
             }
+            return self.connect_verified("warp", timeout);
+        }
+
+        // Display name up front (state shows Connecting with engine context).
+        *self.engine_name.lock() = match engine.as_str() {
+            "dedicated" => "Dedicated Relay (sing-box)".to_string(),
+            "warp" => "Cloudflare WARP".to_string(),
+            "psiphon" => "Psiphon Tunnel".to_string(),
+            other => format!("VPN ({other})"),
         };
 
-        self.refresh_ip_async();
-        Ok(self.get_status())
+        // Spawn only — success here means "command sent", NOT connected.
+        let spawn_result = match engine.as_str() {
+            "dedicated" => self.spawn_dedicated(),
+            "warp" => self.spawn_warp(),
+            "psiphon" => self.spawn_psiphon(),
+            other => Err(format!(
+                "Unknown engine '{other}'. Supported: auto, dedicated, warp, psiphon."
+            )),
+        };
+        if let Err(e) = spawn_result {
+            *self.last_error.lock() = Some(e.clone());
+            self.set_state(VpnState::Error, Some(e.clone()));
+            self.managed.store(false, Ordering::SeqCst);
+            return Err(e);
+        }
+
+        // VERIFYING: poll evidence until verified or timeout.
+        self.set_state(VpnState::Verifying, Some(format!("verifying {engine} tunnel")));
+        let deadline = Instant::now() + timeout;
+        let mut last_detail = String::from("no verification result yet");
+        while Instant::now() < deadline {
+            let v = Self::evaluate_evidence(&engine, &Self::collect_snapshot());
+            self.set_evidence(v.evidence.clone());
+            last_detail = v.evidence.detail.clone();
+            if v.connected {
+                self.managed.store(true, Ordering::SeqCst);
+                self.auto_detected.store(false, Ordering::SeqCst);
+                self.set_state(VpnState::Connected, None);
+                *self.start_time.lock() = Some(Instant::now());
+                tracing::info!("VPN: verified connected via {}", self.engine_name.lock());
+                self.refresh_ip_async();
+                return Ok(self.get_status());
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+
+        let reason = format!("Verification timeout after {}s: {last_detail}", timeout.as_secs());
+        *self.last_error.lock() = Some(reason.clone());
+        self.set_state(VpnState::Error, Some(reason.clone()));
+        self.managed.store(false, Ordering::SeqCst);
+        // Best-effort cleanup of a half-started tunnel.
+        Self::kill_engine_processes(&engine);
+        Err(reason)
     }
 
-    fn connect_dedicated(&self) -> Result<(), String> {
+    /// Spawn-only: sends the connect command. Success means the command was
+    /// accepted — it says NOTHING about connectivity (verified later).
+    fn spawn_dedicated(&self) -> Result<(), String> {
         if !Path::new(SINGBOX_EXE).exists() {
-            let err = format!("sing-box executable not found at {}", SINGBOX_EXE);
-            *self.last_error.lock() = Some(err.clone());
-            return Err(err);
+            return Err(format!("sing-box executable not found at {SINGBOX_EXE}"));
         }
         if !Path::new(SINGBOX_CONFIG).exists() {
-            let err = format!("sing-box config not found at {}", SINGBOX_CONFIG);
-            *self.last_error.lock() = Some(err.clone());
-            return Err(err);
+            return Err(format!("sing-box config not found at {SINGBOX_CONFIG}"));
         }
 
         // Clean up any stale instances first
@@ -489,30 +938,14 @@ impl VpnManager {
 
         match cmd.spawn() {
             Ok(_) => {
-                std::thread::sleep(Duration::from_millis(800));
-                let procs = Self::get_running_process_names();
-                if !procs.iter().any(|p| p == "sing-box.exe") {
-                    let err = "sing-box failed to initialize TUN interface. Ensure app has administrator privileges.".to_string();
-                    *self.last_error.lock() = Some(err.clone());
-                    return Err(err);
-                }
-                self.connected.store(true, Ordering::SeqCst);
-                *self.engine.lock() = "dedicated".to_string();
-                *self.engine_name.lock() = "Dedicated Relay (sing-box)".to_string();
-                self.auto_detected.store(false, Ordering::SeqCst);
-                *self.start_time.lock() = Some(Instant::now());
-                tracing::info!("VPN: Connected via Dedicated Relay");
+                tracing::info!("VPN: sing-box spawn requested; verifying tunnel...");
                 Ok(())
             }
-            Err(e) => {
-                let err = format!("Failed to spawn sing-box: {}", e);
-                *self.last_error.lock() = Some(err.clone());
-                Err(err)
-            }
+            Err(e) => Err(format!("Failed to spawn sing-box: {e}")),
         }
     }
 
-    fn connect_warp(&self) -> Result<(), String> {
+    fn spawn_warp(&self) -> Result<(), String> {
         let bin = if Path::new(WARP_CLI_DEFAULT).exists() {
             WARP_CLI_DEFAULT
         } else {
@@ -526,50 +959,31 @@ impl VpnManager {
         match cmd.output() {
             Ok(out) => {
                 if out.status.success() {
-                    self.connected.store(true, Ordering::SeqCst);
-                    *self.engine.lock() = "warp".to_string();
-                    *self.engine_name.lock() = "Cloudflare WARP".to_string();
-                    self.auto_detected.store(false, Ordering::SeqCst);
-                    *self.start_time.lock() = Some(Instant::now());
-                    tracing::info!("VPN: Connected via Cloudflare WARP");
+                    tracing::info!("VPN: warp-cli connect accepted; verifying tunnel...");
                     Ok(())
                 } else {
-                    let err = String::from_utf8_lossy(&out.stderr).to_string();
-                    *self.last_error.lock() = Some(err.clone());
-                    Err(err)
+                    Err(String::from_utf8_lossy(&out.stderr).to_string())
                 }
             }
-            Err(e) => {
-                let err = format!("warp-cli command failed: {}", e);
-                *self.last_error.lock() = Some(err.clone());
-                Err(err)
-            }
+            Err(e) => Err(format!("warp-cli command failed: {e}")),
         }
     }
 
-    fn connect_psiphon(&self) -> Result<(), String> {
-        let path = r"C:\VPN\psiphon3.exe";
+    fn spawn_psiphon(&self) -> Result<(), String> {
+        let path = PSIPHON_EXE;
         if !Path::new(path).exists() {
             return Err("Psiphon executable not found in C:\\VPN".to_string());
         }
         let mut cmd = Command::new(path);
         #[cfg(windows)]
         cmd.creation_flags(CREATE_NO_WINDOW);
-        cmd.spawn().map_err(|e| format!("Failed to run Psiphon: {}", e))?;
-
-        self.connected.store(true, Ordering::SeqCst);
-        *self.engine.lock() = "psiphon".to_string();
-        *self.engine_name.lock() = "Psiphon Tunnel".to_string();
-        self.auto_detected.store(false, Ordering::SeqCst);
-        *self.start_time.lock() = Some(Instant::now());
+        cmd.spawn().map_err(|e| format!("Failed to run Psiphon: {e}"))?;
+        tracing::info!("VPN: psiphon spawn requested; verifying tunnel...");
         Ok(())
     }
 
-    pub fn disconnect(&self) -> Result<VpnStatus, String> {
-        self.user_disconnected.store(true, Ordering::SeqCst);
-        let engine = self.engine.lock().clone();
-
-        match engine.as_str() {
+    fn kill_engine_processes(engine: &str) {
+        match engine {
             "warp" => {
                 let bin = if Path::new(WARP_CLI_DEFAULT).exists() {
                     WARP_CLI_DEFAULT
@@ -582,9 +996,7 @@ impl VpnManager {
                 cmd.creation_flags(CREATE_NO_WINDOW);
                 let _ = cmd.output();
             }
-            "dedicated" => {
-                Self::kill_process("sing-box.exe");
-            }
+            "dedicated" => Self::kill_process("sing-box.exe"),
             "psiphon" => {
                 Self::kill_process("psiphon3.exe");
                 Self::kill_process("psiphond.exe");
@@ -624,16 +1036,76 @@ impl VpnManager {
                 }
             }
         }
+    }
 
-        self.connected.store(false, Ordering::SeqCst);
-        *self.engine.lock() = "none".to_string();
-        *self.engine_name.lock() = "Offline".to_string();
-        *self.start_time.lock() = None;
-        self.auto_detected.store(false, Ordering::SeqCst);
-        tracing::info!("VPN: Disconnected");
+    pub fn disconnect(&self) -> Result<VpnStatus, String> {
+        self.disconnect_verified(DISCONNECT_TIMEOUT)
+    }
 
-        self.refresh_ip_async();
-        Ok(self.get_status())
+    /// `DISCONNECTING → DISCONNECTED`, verified by evidence absence. Fails to
+    /// `Error` if engine processes persist past the timeout.
+    pub fn disconnect_verified(&self, timeout: Duration) -> Result<VpnStatus, String> {
+        self.user_disconnected.store(true, Ordering::SeqCst);
+        let engine = self.engine.lock().clone();
+        self.set_state(VpnState::Disconnecting, Some(format!("disconnecting {engine}")));
+        Self::kill_engine_processes(&engine);
+
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            let snap = Self::collect_snapshot();
+            // Disconnected when NEITHER this engine's processes NOR any
+            // tunnel interface remain.
+            let engine_procs = match engine.as_str() {
+                "dedicated" => vec!["sing-box.exe"],
+                "warp" => vec!["warp-svc.exe"],
+                "psiphon" => vec!["psiphon3.exe", "psiphond.exe"],
+                _ => vec![],
+            };
+            let procs_left = Self::snap_has_proc(&snap, &engine_procs);
+            let no_tunnel = !Self::snap_has_tunnel(&snap, None);
+            if !procs_left && (no_tunnel || engine_procs.is_empty()) {
+                self.managed.store(false, Ordering::SeqCst);
+                *self.engine.lock() = "none".to_string();
+                *self.engine_name.lock() = "Offline".to_string();
+                *self.start_time.lock() = None;
+                self.auto_detected.store(false, Ordering::SeqCst);
+                *self.last_error.lock() = None;
+                self.set_evidence(VpnEvidence::default());
+                self.set_state(VpnState::Disconnected, None);
+                tracing::info!("VPN: verified disconnected");
+                self.refresh_ip_async();
+                return Ok(self.get_status());
+            }
+            std::thread::sleep(Duration::from_millis(400));
+        }
+
+        let reason = format!("Disconnect timeout: '{engine}' processes persist after {}s.", timeout.as_secs());
+        *self.last_error.lock() = Some(reason.clone());
+        self.set_state(VpnState::Error, Some(reason.clone()));
+        Err(reason)
+    }
+
+    /// Block until `want_connected` matches verified reality, or timeout.
+    /// Side-effect free (never connects/disconnects by itself).
+    pub fn wait_for(&self, want_connected: bool, timeout: Duration) -> Result<VpnStatus, String> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let st = self.get_status();
+            if st.connected == want_connected {
+                return Ok(st);
+            }
+            if Instant::now() >= deadline {
+                return Err(format!(
+                    "VPN wait timeout after {}s: expected {}, observed {} (engine {}, {}).",
+                    timeout.as_secs(),
+                    if want_connected { "connected" } else { "disconnected" },
+                    st.state.as_str(),
+                    st.engine,
+                    st.verification_detail,
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(400));
+        }
     }
 
     fn kill_process(name: &str) {
@@ -657,14 +1129,14 @@ impl VpnManager {
                 PingResult {
                     success: true,
                     latency_ms: ms,
-                    target: "92.5.127.89:443 (Frankfurt)".into(),
+                    target: DEDICATED_RELAY_LABEL.into(),
                     error: None,
                 }
             }
             Err(e) => PingResult {
                 success: false,
                 latency_ms: 0,
-                target: "92.5.127.89:443 (Frankfurt)".into(),
+                target: DEDICATED_RELAY_LABEL.into(),
                 error: Some(e.to_string()),
             },
         }
@@ -732,5 +1204,149 @@ impl VpnManager {
                 }
             }
         });
+    }
+}
+
+impl VpnControl for VpnManager {
+    fn vpn_state(&self) -> VpnState {
+        VpnManager::vpn_state(self)
+    }
+
+    fn vpn_connect_verified(&self, engine: &str, timeout: Duration) -> Result<VpnStatus, String> {
+        self.connect_verified(engine, timeout)
+    }
+
+    fn vpn_disconnect_verified(&self, timeout: Duration) -> Result<VpnStatus, String> {
+        self.disconnect_verified(timeout)
+    }
+
+    fn vpn_wait_for(&self, want_connected: bool, timeout: Duration) -> Result<VpnStatus, String> {
+        self.wait_for(want_connected, timeout)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn snap(procs: &[&str], netsh: &[&str], warp: Option<&str>) -> EvidenceSnapshot {
+        EvidenceSnapshot {
+            processes: procs.iter().map(|s| s.to_string()).collect(),
+            netsh_lines: netsh.iter().map(|s| s.to_string()).collect(),
+            warp_status: warp.map(|s| s.to_string()),
+        }
+    }
+
+    const TUN_LINE: &str = "Connected  Dedicated  sing-box TUN";
+    const WARP_LINE: &str = "Connected  Dedicated  CloudflareWARP";
+    const WIFI_LINE: &str = "Connected  Dedicated  Wi-Fi";
+    const DIS_LINE: &str = "Disconnected  Dedicated  sing-box TUN";
+
+    #[test]
+    fn fresh_state_is_disconnected() {
+        let mgr = VpnManager::new_isolated();
+        assert_eq!(mgr.vpn_state(), VpnState::Disconnected);
+        assert!(!mgr.connected.load(Ordering::SeqCst));
+        assert!(!mgr.managed.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn selection_alone_never_connects() {
+        // Merely naming an engine (no evidence) must not verify.
+        let s = snap(&[], &[], None);
+        assert!(!VpnManager::evaluate_evidence("dedicated", &s).connected);
+        assert!(!VpnManager::evaluate_evidence("warp", &s).connected);
+        assert!(!VpnManager::evaluate_evidence("auto", &s).connected);
+    }
+
+    #[test]
+    fn empty_snapshot_is_not_unknown_nor_connected() {
+        let v = VpnManager::evaluate_evidence("auto", &snap(&[], &[], None));
+        assert!(!v.connected);
+        assert!(!v.evidence.process_running);
+        assert!(!v.evidence.tunnel_detected);
+    }
+
+    #[test]
+    fn dedicated_process_plus_tunnel_verifies() {
+        let v = VpnManager::evaluate_evidence("dedicated", &snap(&["sing-box.exe"], &[TUN_LINE], None));
+        assert!(v.connected);
+        assert!(v.evidence.process_running);
+        assert!(v.evidence.tunnel_detected);
+    }
+
+    #[test]
+    fn dedicated_process_without_tunnel_is_not_connected() {
+        // The core false-Connected bug: process alone must NOT verify.
+        let v = VpnManager::evaluate_evidence("dedicated", &snap(&["sing-box.exe"], &[WIFI_LINE], None));
+        assert!(!v.connected);
+        assert!(v.evidence.process_running);
+        assert!(!v.evidence.tunnel_detected);
+        assert!(v.evidence.detail.contains("no matching tunnel"));
+    }
+
+    #[test]
+    fn disconnected_interface_line_does_not_count() {
+        let v = VpnManager::evaluate_evidence("dedicated", &snap(&["sing-box.exe"], &[DIS_LINE], None));
+        assert!(!v.connected);
+    }
+
+    #[test]
+    fn warp_requires_cli_and_tunnel() {
+        let cli = "Status update: Connected";
+        let ok = snap(&["warp-svc.exe"], &[WARP_LINE], Some(cli));
+        let v = VpnManager::evaluate_evidence("warp", &ok);
+        assert!(v.connected);
+        assert!(v.evidence.cli_reports_connected);
+
+        // CLI success alone (exit-code-only, the old bug) is NOT enough.
+        let cli_only = snap(&["warp-svc.exe"], &[WIFI_LINE], Some(cli));
+        let v2 = VpnManager::evaluate_evidence("warp", &cli_only);
+        assert!(!v2.connected);
+
+        // Tunnel without CLI confirmation is NOT enough either.
+        let tun_only = snap(&["warp-svc.exe"], &[WARP_LINE], Some("Status update: Disconnected"));
+        let v3 = VpnManager::evaluate_evidence("warp", &tun_only);
+        assert!(!v3.connected);
+    }
+
+    #[test]
+    fn auto_accepts_first_verifiable_engine() {
+        let s = snap(&["sing-box.exe", "warp-svc.exe"], &[TUN_LINE], Some("Disconnected"));
+        let v = VpnManager::evaluate_evidence("auto", &s);
+        assert!(v.connected, "dedicated verifies even with warp present-but-down");
+
+        let none = snap(&["warp-svc.exe"], &[WIFI_LINE], Some("Disconnected"));
+        let v2 = VpnManager::evaluate_evidence("auto", &none);
+        assert!(!v2.connected);
+    }
+
+    #[test]
+    fn unknown_engine_never_verifies() {
+        let v = VpnManager::evaluate_evidence("fictional", &snap(&["sing-box.exe"], &[TUN_LINE], None));
+        assert!(!v.connected);
+    }
+
+    #[test]
+    fn generic_tunnel_keyword_matches_vpn_adapters() {
+        let line = "Connected  Dedicated  VPN Adapter (ProtonVPN)";
+        let v = VpnManager::evaluate_evidence(
+            "proton",
+            &snap(&["protonvpn.exe"], &[line], None),
+        );
+        assert!(v.connected);
+    }
+
+    #[test]
+    fn state_serializes_snake_case() {
+        assert_eq!(serde_json::to_string(&VpnState::Connected).unwrap(), "\"connected\"");
+        assert_eq!(serde_json::to_string(&VpnState::Verifying).unwrap(), "\"verifying\"");
+    }
+
+    #[test]
+    fn error_state_is_not_connected() {
+        for st in [VpnState::Disconnected, VpnState::Connecting, VpnState::Verifying, VpnState::Disconnecting, VpnState::Error, VpnState::Unknown] {
+            assert_ne!(st, VpnState::Connected, "{st:?} must never read as connected");
+        }
     }
 }

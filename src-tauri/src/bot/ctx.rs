@@ -11,6 +11,7 @@ use crate::core::types::{MouseButton, PxRect, WindowInfo};
 use crate::events::{now_ms, BotEvent, BotState, LogLevel, LogLine};
 use crate::webhook::WebhookQueue;
 
+use super::ml_collect::MlCollector;
 use super::session::Session;
 
 pub struct Ctx {
@@ -20,6 +21,7 @@ pub struct Ctx {
     pub events: Sender<BotEvent>,
     pub webhook: Arc<WebhookQueue>,
     pub store: Arc<Store>,
+    pub ml: Arc<MlCollector>,
     pub session: Mutex<Session>,
     pub running: AtomicBool,
     pub mouse_held: AtomicBool,
@@ -38,6 +40,7 @@ impl Ctx {
         store: Arc<Store>,
     ) -> Self {
         let session = Session::with_base(store.load_stats());
+        let ml = MlCollector::new(store.dir().to_path_buf());
         Self {
             platform,
             settings,
@@ -45,6 +48,7 @@ impl Ctx {
             events,
             webhook,
             store,
+            ml,
             session: Mutex::new(session),
             running: AtomicBool::new(false),
             mouse_held: AtomicBool::new(false),

@@ -612,7 +612,10 @@ fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>) {
                 match res {
                     Ok(_) => break,
                     Err(e) => {
-                        tracing::warn!("discord webhook attempt {} failed: {e}", attempt + 1);
+                        // reqwest errors echo the request URL, which IS the
+                        // secret webhook URL — redact before logging.
+                        let safe = crate::core::secrets::redact(&e, &[&url]);
+                        tracing::warn!("discord webhook attempt {} failed: {safe}", attempt + 1);
                         std::thread::sleep(delay);
                         delay *= 2;
                     }
@@ -650,7 +653,9 @@ fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>) {
                 match res {
                     Ok(_) => break,
                     Err(e) => {
-                        tracing::warn!("telegram attempt {} failed: {e}", attempt + 1);
+                        // Telegram API URLs embed the bot token — redact it.
+                        let safe = crate::core::secrets::redact(&e, &[&tg_token, &tg_chat]);
+                        tracing::warn!("telegram attempt {} failed: {safe}", attempt + 1);
                         std::thread::sleep(delay);
                         delay *= 2;
                     }

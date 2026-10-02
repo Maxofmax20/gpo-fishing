@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Pause, Play, Repeat, Square } from "lucide-react";
 import { api } from "../lib/ipc";
-import { useStore, isActive } from "../lib/store";
+import { showToast, useStore, isActive } from "../lib/store";
+import { useVisiblePoll } from "../lib/useVisiblePoll";
 import { STATE_LABEL } from "../lib/types";
 import { Button, CustomSelect, Pill, Section, cx, fmtRuntime } from "../components/primitives";
 import { StateBadge } from "../components/StateIcon";
@@ -46,10 +47,16 @@ export default function Dashboard({
           </div>
         </div>
         <div className="flex gap-1.5">
-          <Button kind={active ? "default" : "primary"} onClick={() => api.botToggle()} icon={active ? <Pause size={14} /> : <Play size={14} />}>
+          <Button
+            kind={active ? "default" : "primary"}
+            onClick={() => api.botToggle().catch((e) => showToast("error", `Bot toggle failed: ${String(e)}`))}
+            icon={active ? <Pause size={14} /> : <Play size={14} />}
+          >
             {active ? "Pause" : state === "paused" ? "Resume" : "Start"}
           </Button>
-          {(active || state === "paused") && <Button kind="danger" onClick={() => api.botStop()} icon={<Square size={13} />} />}
+          {(active || state === "paused") && (
+            <Button kind="danger" onClick={() => api.botStop().catch((e) => showToast("error", `Bot stop failed: ${String(e)}`))} icon={<Square size={13} />} />
+          )}
         </div>
       </div>
       <div className="px-4 pb-3 text-[11px] text-fg-mute">
@@ -149,6 +156,10 @@ export default function Dashboard({
         />
       </Section>
 
+      <Section title="ML Data">
+        <MlDataCard />
+      </Section>
+
       <Section title="Live">
         <LiveAreas />
       </Section>
@@ -156,6 +167,43 @@ export default function Dashboard({
       <Section title="Activity">
         <LogList height={220} />
       </Section>
+    </div>
+  );
+}
+
+function MlDataCard() {
+  const ml = useStore((s) => s.ml);
+  if (!ml) {
+    return (
+      <div className="px-4 py-2.5 text-[12px] text-fg-mute">
+        Start the macro to collect training samples automatically.
+      </div>
+    );
+  }
+  const shortId = ml.session_id ? ml.session_id.split("_").slice(-1)[0] ?? ml.session_id : null;
+  return (
+    <div className="px-4 py-2.5 flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <Pill tone={ml.collecting ? "ok" : "mute"}>
+          {ml.collecting ? "● ML DATA: COLLECTING" : "ML DATA: session complete"}
+        </Pill>
+        {shortId && <span className="font-mono text-[11px] text-fg-mute">session {shortId}</span>}
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[12px] text-fg-dim">
+        <span>Samples: <b className="text-fg">{ml.samples}</b></span>
+        <span>Reels: <b className="text-fg">{ml.reels}</b></span>
+        <span>Hard: <b className="text-warn">{ml.hard_examples}</b></span>
+        {ml.dropped > 0 && <span>Dropped: <b className="text-bad">{ml.dropped}</b></span>}
+      </div>
+      {!ml.collecting && ml.session_id && (
+        <div className="text-[11px] text-fg-dim">
+          Collected {ml.samples} samples ({ml.hard_examples} hard) · {ml.pending_annotation} pending annotation · {ml.total_samples} total
+          {ml.quality_ok === false && <span className="text-bad"> · quality WARNING</span>}
+          {ml.quality_warnings.slice(0, 2).map((w) => (
+            <div key={w} className="text-bad break-words">{w.slice(0, 160)}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -202,17 +250,10 @@ function QuickMacroRow({
           setSelectedName(list[0].name);
         }
       })
-      .catch(() => undefined);
+      .catch((e) => showToast("warn", `Macro status unavailable: ${String(e)}`));
   };
 
-  useEffect(() => {
-    refresh();
-    const t = setInterval(
-      refresh,
-      status?.is_recording || status?.is_playing ? 800 : 2500,
-    );
-    return () => clearInterval(t);
-  }, [status?.is_recording, status?.is_playing]);
+  useVisiblePoll(refresh, status?.is_recording || status?.is_playing ? 800 : 2500);
 
   const activeMacro =
     macros.find((m) => m.name === selectedName || m.id === selectedName) || macros[0];

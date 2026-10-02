@@ -90,6 +90,23 @@ pub struct LogLine {
     pub msg: String,
 }
 
+/// Collection session snapshot pushed to the UI (live counters while
+/// collecting, final summary when the macro stops).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct MlSessionState {
+    pub collecting: bool,
+    pub session_id: Option<String>,
+    pub samples: u64,
+    pub reels: u64,
+    pub hard_examples: u64,
+    pub dropped: u64,
+    pub quality_ok: Option<bool>,
+    pub quality_warnings: Vec<String>,
+    pub pending_annotation: u64,
+    pub total_samples: u64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BotEvent {
@@ -102,6 +119,7 @@ pub enum BotEvent {
     Purchase { amount: u32 },
     Recovery { attempt: u32, reason: String },
     Roblox(Option<WindowInfo>),
+    MlSession(MlSessionState),
 }
 
 impl BotEvent {
@@ -116,6 +134,7 @@ impl BotEvent {
             BotEvent::Purchase { .. } => "bot:purchase",
             BotEvent::Recovery { .. } => "bot:recovery",
             BotEvent::Roblox(_) => "roblox:changed",
+            BotEvent::MlSession(_) => "bot:ml_session",
         }
     }
 }

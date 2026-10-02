@@ -86,13 +86,22 @@ pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
         .name("web-server".into())
         .spawn(move || {
             let port = 3888;
-            let listener = match TcpListener::bind(format!("0.0.0.0:{port}")) {
+            // Loopback-only by default. LAN exposure is an explicit opt-in
+            // (`web.allow_lan`) because every POST endpoint drives input.
+            // NOTE: toggling `allow_lan` takes effect on next app start.
+            let allow_lan = settings.read().web.allow_lan;
+            let bind_addr = if allow_lan { format!("0.0.0.0:{port}") } else { format!("127.0.0.1:{port}") };
+            let listener = match TcpListener::bind(&bind_addr) {
                 Ok(l) => {
-                    tracing::info!("Web Dashboard running at http://0.0.0.0:{port}");
+                    if allow_lan {
+                        tracing::info!("Web Dashboard running at http://0.0.0.0:{port} (LAN enabled, token required)");
+                    } else {
+                        tracing::info!("Web Dashboard running at http://127.0.0.1:{port} (loopback only)");
+                    }
                     l
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to bind web server on port {port}: {e}");
+                    tracing::warn!("Failed to bind web server on {bind_addr}: {e}");
                     return;
                 }
             };
@@ -109,17 +118,141 @@ pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
         .expect("spawn web-server thread");
 }
 
+/// Extract a header value (case-insensitive name) from a raw HTTP request.
+fn header_value(req: &str, name: &str) -> Option<String> {
+    let prefix = format!("{}:", name.to_ascii_lowercase());
+    req.lines().skip(1).find_map(|l| {
+        let t = l.trim();
+        if t.len() > prefix.len() && t[..prefix.len()].to_ascii_lowercase() == prefix {
+            Some(t[prefix.len()..].trim().to_string())
+        } else {
+            None
+        }
+    })
+}
+
+/// Extract `token=<hex>` from a URL query string (no decoding needed: hex).
+fn query_token(query: &str) -> Option<String> {
+    query.split('&').find_map(|p| p.strip_prefix("token=").map(|v| v.to_string()))
+}
+
+/// True when either credential matches the per-install dashboard token.
+/// Fail-closed: an empty expected token never authorizes. Comparison is
+/// constant-time so response latency cannot oracle the token byte-by-byte.
+fn is_authorized(
+    settings: &Arc<RwLock<Settings>>,
+    bearer: Option<String>,
+    qtoken: Option<String>,
+) -> bool {
+    use crate::core::secrets::tokens_equal;
+    let expected = settings.read().web.token.clone();
+    if expected.is_empty() {
+        return false;
+    }
+    bearer.as_deref().is_some_and(|b| tokens_equal(b, &expected))
+        || qtoken.as_deref().is_some_and(|q| tokens_equal(q, &expected))
+}
+
+/// Restricted CORS: reflect the Origin only for loopback origins, plus
+/// private-LAN origins when LAN mode is on. Everything else gets no
+/// `Access-Control-Allow-Origin` (same-origin dashboard needs none).
+fn cors_origin_for(req: &str, allow_lan: bool) -> Option<String> {
+    let origin = header_value(req, "origin")?;
+    let low = origin.to_ascii_lowercase();
+    if low.starts_with("http://localhost") || low.starts_with("http://127.0.0.1") {
+        return Some(origin);
+    }
+    if allow_lan
+        && (low.starts_with("http://192.168.")
+            || low.starts_with("http://10.")
+            || low.starts_with("http://172.16.")
+            || low.starts_with("http://172.17.")
+            || low.starts_with("http://172.18"))
+    {
+        return Some(origin);
+    }
+    None
+}
+
+fn send_unauthorized(stream: &mut TcpStream) {
+    let msg = "Unauthorized: missing or invalid dashboard token. Open the dashboard from the app Panel so the token is attached.";
+    let resp = format!(
+        "HTTP/1.1 401 Unauthorized\r\nContent-Type: text/plain\r\nWWW-Authenticate: Bearer\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        msg.len(),
+        msg
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn send_forbidden(stream: &mut TcpStream) {
+    let msg = "Forbidden: LAN access is disabled. Enable it in Settings (Web dashboard) if you need remote access.";
+    let resp = format!(
+        "HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        msg.len(),
+        msg
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+/// Read one full HTTP request: loop until headers complete, then read
+/// exactly Content-Length body bytes. A single `read()` races TCP
+/// segmentation (headers and body often arrive separately), which used to
+/// truncate POST bodies into "unknown action" failures.
+fn read_full_request(stream: &mut TcpStream) -> Option<String> {
+    let mut buf = Vec::with_capacity(4096);
+    let mut tmp = [0u8; 4096];
+    loop {
+        match stream.read(&mut tmp) {
+            Ok(0) => break,
+            Ok(n) => {
+                buf.extend_from_slice(&tmp[..n]);
+                if buf.len() > 65536 {
+                    return None;
+                }
+                if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            Err(_) => return None,
+        }
+    }
+    let text = String::from_utf8_lossy(&buf).into_owned();
+    let split = text.find("\r\n\r\n")?;
+    let (head, mut body) = (text[..split].to_string(), text[split + 4..].as_bytes().to_vec());
+    let want = content_length(&head).unwrap_or(0).min(1 << 20);
+    while body.len() < want {
+        match stream.read(&mut tmp) {
+            Ok(0) => break,
+            Ok(n) => body.extend_from_slice(&tmp[..n]),
+            Err(_) => break,
+        }
+        if body.len() > 1 << 20 {
+            break;
+        }
+    }
+    body.truncate(want);
+    Some(format!("{head}\r\n\r\n{}", String::from_utf8_lossy(&body)))
+}
+
+fn content_length(head: &str) -> Option<usize> {
+    head.lines().skip(1).find_map(|l| {
+        let t = l.trim();
+        if t.len() > 15 && t[..15].eq_ignore_ascii_case("content-length:") {
+            t[15..].trim().parse::<usize>().ok()
+        } else {
+            None
+        }
+    })
+}
+
 fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Settings>>) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
 
-    let mut buf = [0u8; 4096];
-    let n = match stream.read(&mut buf) {
-        Ok(n) if n > 0 => n,
+    let req_str = match read_full_request(&mut stream) {
+        Some(s) if !s.is_empty() => s,
         _ => return,
     };
-
-    let req_str = String::from_utf8_lossy(&buf[..n]);
     let first_line = req_str.lines().next().unwrap_or("");
     let parts: Vec<&str> = first_line.split_whitespace().collect();
     if parts.len() < 2 {
@@ -129,14 +262,53 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     let method = parts[0];
     let path = parts[1];
 
+    // Request origin for restricted CORS (same-origin dashboard needs none).
+    let allow_lan = settings.read().web.allow_lan;
+    let origin_allow = cors_origin_for(&req_str, allow_lan);
+
     if method == "OPTIONS" {
-        let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type\r\n\r\n";
+        let allow = origin_allow
+            .map(|o| format!("Access-Control-Allow-Origin: {o}\r\n"))
+            .unwrap_or_default();
+        let resp = format!("HTTP/1.1 204 No Content\r\n{allow}Access-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: Content-Type, Authorization\r\nVary: Origin\r\n\r\n");
         let _ = stream.write_all(resp.as_bytes());
         return;
     }
 
     let raw_path = path.split('?').next().unwrap_or(path);
     let query = path.split('?').nth(1).unwrap_or("");
+
+    let from_loopback = stream.peer_addr().map(|a| a.ip().is_loopback()).unwrap_or(false);
+    if !allow_lan && !from_loopback {
+        send_forbidden(&mut stream);
+        return;
+    }
+
+    // Authentication: per-install token via `Authorization: Bearer` (preferred)
+    // or `?token=` (required for <img> stream/screenshot URLs).
+    let authed = {
+        let bearer = header_value(&req_str, "authorization").and_then(|h| {
+            h.strip_prefix("Bearer ")
+                .map(|v| v.trim().to_string())
+                .or_else(|| h.strip_prefix("bearer ").map(|v| v.trim().to_string()))
+        });
+        let qtoken = query_token(query);
+        is_authorized(settings, bearer, qtoken)
+    };
+    // Never log the raw path: it may contain `?token=`.
+    let safe_path = crate::core::secrets::strip_token_from_uri(path);
+
+    // Public shell + gated API: the HTML shell carries no secrets and the
+    // embedded JS attaches the token (stored from the Panel-provided
+    // `?token=` on first visit). Everything that reads or drives the PC
+    // requires the token — including on loopback, so a leaked token is
+    // still needed for abuse.
+    let needs_auth = raw_path != "/" && raw_path != "/index.html";
+    if needs_auth && !authed {
+        tracing::warn!("web dashboard: unauthorized {} {}", method, safe_path);
+        send_unauthorized(&mut stream);
+        return;
+    }
 
     if raw_path == "/" || raw_path == "/index.html" {
         send_html(&mut stream);
@@ -204,7 +376,7 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
 }
 
 fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>, query: &str) {
-    let mut fps: u32 = 20;
+    let mut fps: u32 = 8;
     let mut scale: usize = 720;
     let mut quality: u8 = 70;
 
@@ -212,19 +384,20 @@ fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>, query: &str) {
         let mut kv = param.split('=');
         if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
             match k {
+                // Bounded to prevent abusive CPU/LAN usage (DoD: fps<=10).
                 "fps" => {
                     if let Ok(n) = v.parse::<u32>() {
-                        fps = n.clamp(5, 60);
+                        fps = n.clamp(1, 10);
                     }
                 }
                 "scale" => {
                     if let Ok(n) = v.parse::<usize>() {
-                        scale = n;
+                        scale = n.clamp(240, 1080);
                     }
                 }
                 "q" | "quality" => {
                     if let Ok(n) = v.parse::<u8>() {
-                        quality = n.clamp(20, 95);
+                        quality = n.clamp(30, 85);
                     }
                 }
                 _ => {}
@@ -237,7 +410,6 @@ fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>, query: &str) {
     let header = "HTTP/1.1 200 OK\r\n\
                   Content-Type: multipart/x-mixed-replace; boundary=frame\r\n\
                   Cache-Control: no-cache, no-store, must-revalidate\r\n\
-                  Access-Control-Allow-Origin: *\r\n\
                   Connection: close\r\n\r\n";
     if stream.write_all(header.as_bytes()).is_err() {
         return;
@@ -383,7 +555,7 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
 
     let body = payload.to_string();
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         body.len(),
         body
     );
@@ -400,12 +572,12 @@ fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>, query: &str) {
             match k {
                 "scale" => {
                     if let Ok(n) = v.parse::<usize>() {
-                        scale = n;
+                        scale = n.clamp(240, 1080);
                     }
                 }
                 "q" | "quality" => {
                     if let Ok(n) = v.parse::<u8>() {
-                        quality = n.clamp(20, 95);
+                        quality = n.clamp(30, 85);
                     }
                 }
                 _ => {}
@@ -423,7 +595,7 @@ fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>, query: &str) {
     if let Some(bytes) = fresh_bytes {
         *LAST_FRAME.write() = Some(bytes.clone());
         let header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             bytes.len()
         );
         let _ = stream.write_all(header.as_bytes());
@@ -433,7 +605,7 @@ fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>, query: &str) {
 
     if let Some(cached) = LAST_FRAME.read().as_ref() {
         let header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             cached.len()
         );
         let _ = stream.write_all(header.as_bytes());
@@ -443,7 +615,7 @@ fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>, query: &str) {
 
     let msg = "Waiting for Roblox window...";
     let resp = format!(
-        "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 503 Service Unavailable\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         msg.len(),
         msg
     );
@@ -486,7 +658,7 @@ fn handle_click(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
         bot.ctx().platform.input.button(btn, false);
     }
 
-    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
     let _ = stream.write_all(resp.as_bytes());
 }
 
@@ -510,7 +682,7 @@ fn handle_drag(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     crate::bot::recorder::record_drag(start_rx, start_ry, end_rx, end_ry, duration_ms);
 
     if record_only {
-        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
         let _ = stream.write_all(resp.as_bytes());
         return;
     }
@@ -546,7 +718,7 @@ fn handle_drag(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
         bot.ctx().platform.input.button(btn, false);
     }
 
-    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
     let _ = stream.write_all(resp.as_bytes());
 }
 
@@ -572,7 +744,7 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     if act == "release_all" || act == "reset" {
         bot.ctx().platform.input.button(crate::core::types::MouseButton::Left, false);
         bot.ctx().platform.input.button(crate::core::types::MouseButton::Right, false);
-        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
         let _ = stream.write_all(resp.as_bytes());
         return;
     }
@@ -602,7 +774,7 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
         }
     }
 
-    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
     let _ = stream.write_all(resp.as_bytes());
 }
 
@@ -619,7 +791,7 @@ fn handle_key(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
 
     if is_heartbeat || key_str == "heartbeat" {
         // Just refresh the activity timestamp, keys remain held!
-        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
         let _ = stream.write_all(resp.as_bytes());
         return;
     }
@@ -694,7 +866,7 @@ fn handle_key(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
         }
     }
 
-    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+    let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
     let _ = stream.write_all(resp.as_bytes());
 }
 
@@ -828,7 +1000,7 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
 
     let reply = json!({ "ok": true, "message": res_msg }).to_string();
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         reply.len(),
         reply
     );
@@ -859,7 +1031,7 @@ fn handle_craft(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
 
     let reply = json!({ "ok": ok, "message": msg }).to_string();
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         reply.len(),
         reply
     );
@@ -893,7 +1065,7 @@ fn handle_macro_record(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
 
     let reply = json!({ "ok": ok, "message": msg }).to_string();
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         reply.len(),
         reply
     );
@@ -920,7 +1092,7 @@ fn handle_macro_play(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
 
     let reply = json!({ "ok": ok, "message": msg }).to_string();
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         reply.len(),
         reply
     );
@@ -932,7 +1104,7 @@ fn handle_macro_list(stream: &mut TcpStream, bot: &Arc<Bot>) {
     let status = crate::bot::recorder::get_status();
     let reply = json!({ "ok": true, "macros": macros, "status": status }).to_string();
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         reply.len(),
         reply
     );
@@ -949,7 +1121,7 @@ fn handle_macro_rename(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     };
     let reply = json!({ "ok": ok, "message": msg }).to_string();
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         reply.len(),
         reply
     );
@@ -965,7 +1137,7 @@ fn handle_macro_delete(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     };
     let reply = json!({ "ok": ok, "message": msg }).to_string();
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         reply.len(),
         reply
     );
@@ -976,7 +1148,7 @@ fn send_keyboard_light_status(stream: &mut TcpStream) {
     let st = crate::laptop_light::get_keyboard_light_status();
     let body = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         body.len(),
         body
     );
@@ -991,7 +1163,7 @@ fn handle_keyboard_light(stream: &mut TcpStream, body: &str) {
     let out = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
 
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         out.len(),
         out
     );
@@ -1002,7 +1174,7 @@ fn send_fan_status(stream: &mut TcpStream) {
     let st = crate::laptop_fan::get_fan_status();
     let body = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         body.len(),
         body
     );
@@ -1022,7 +1194,7 @@ fn handle_fan_set(stream: &mut TcpStream, body: &str) {
     };
     let out = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         out.len(),
         out
     );
@@ -1045,13 +1217,29 @@ fn send_html(stream: &mut TcpStream) {
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#07090e">
 <meta name="format-detection" content="telephone=no">
+<meta name="referrer" content="no-referrer">
 <title>GPO Autofish Mobile</title>
 <!-- Embedded Favicon & Apple Touch Icon -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2300f0ff'/%3E%3Cstop offset='100%25' stop-color='%23b026ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='%2307090e'/%3E%3Ccircle cx='50' cy='50' r='38' stroke='url(%23g)' stroke-width='4' fill='none' opacity='0.4'/%3E%3Cpath d='M50 20 L58 42 L80 50 L58 58 L50 80 L42 58 L20 50 L42 42 Z' fill='url(%23g)'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2300f0ff'/%3E%3Cstop offset='100%25' stop-color='%23b026ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='%2307090e'/%3E%3Ccircle cx='50' cy='50' r='38' stroke='url(%23g)' stroke-width='4' fill='none' opacity='0.4'/%3E%3Cpath d='M50 20 L58 42 L80 50 L58 58 L50 80 L42 58 L20 50 L42 42 Z' fill='url(%23g)'/%3E%3C/svg%3E">
 <!-- Embedded Web App Manifest -->
 <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22GPO%20Autofish%20CyberDeck%22%2C%22short_name%22%3A%22GPO%20Macro%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%2307090e%22%2C%22theme_color%22%3A%22%2307090e%22%7D">
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+// GPO dashboard auth plumbing (no remote JS: all guards on window.Telegram
+// already tolerate its absence). The Panel opens this page as /?token=<hex>
+// on first visit; the token is persisted to localStorage (URL cleaned) and
+// attached as `Authorization: Bearer` to every /api/* fetch call, plus as
+// ?token= on <img> stream/screenshot URLs which cannot carry headers.
+(function(){try{
+var q=null;try{q=new URLSearchParams(location.search).get('token');}catch(e){}
+if(q&&/^[0-9a-fA-F]{16,128}$/.test(q)){try{localStorage.setItem('gpo_api_token',q);}catch(e){}try{history.replaceState(null,'',location.pathname);}catch(e){}}
+var t='';try{t=localStorage.getItem('gpo_api_token')||'';}catch(e){}
+window.__GPO_TOKEN=t;
+window.__gpoUrl=function(url){if(!t)return url;return url+(url.indexOf('?')>=0?'&':'?')+'token='+encodeURIComponent(t);};
+if(window.fetch){var _of=window.fetch;window.fetch=function(u,o){o=o||{};var s=typeof u==='string'?u:(u&&u.url)||'';if(s.indexOf('/api/')===0&&t){try{if(o.headers instanceof Headers){if(!o.headers.has('Authorization'))o.headers.set('Authorization','Bearer '+t);}else{o.headers=o.headers||{};if(!o.headers['Authorization']&&!o.headers['authorization'])o.headers['Authorization']='Bearer '+t;}}catch(e){}}return _of(u,o);};}
+document.addEventListener('DOMContentLoaded',function(){var img=document.getElementById('screen-img');if(img&&(!img.getAttribute('src'))&&window.__gpoUrl){img.src=window.__gpoUrl('/api/stream');}});
+}catch(e){}})();
+</script>
 <style>
 :root {
   --bg: #07090e;
@@ -1824,7 +2012,7 @@ input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
         </div>
 
         <div id="screen-container" class="screen-box" oncontextmenu="return false;">
-          <img id="screen-img" class="screen-img" src="/api/stream" alt="" draggable="false" oncontextmenu="return false;" onerror="fallbackSnapshot()" />
+          <img id="screen-img" class="screen-img" src="" alt="" draggable="false" oncontextmenu="return false;" onerror="fallbackSnapshot()" />
 
           <!-- Fullscreen Floating Bar -->
           <div id="fs-floating-bar" class="fs-floating-bar">
@@ -2997,7 +3185,7 @@ function updateStreamLabels() {
 function reloadStream() {
   const img = document.getElementById('screen-img');
   if (!img) return;
-  const url = `/api/stream?fps=${currentFps}&scale=${currentScale}&q=${currentQuality}&t=` + Date.now();
+  const url = (window.__gpoUrl||function(u){return u;})(`/api/stream?fps=${currentFps}&scale=${currentScale}&q=${currentQuality}&t=` + Date.now());
   img.src = url;
 }
 
@@ -4228,7 +4416,7 @@ function onBrightRelease(val) {
 function fallbackSnapshot() {
   const img = document.getElementById('screen-img');
   if (img) {
-    img.src = `/api/screenshot?scale=${currentScale}&q=${currentQuality}&t=` + Date.now();
+    img.src = (window.__gpoUrl||function(u){return u;})(`/api/screenshot?scale=${currentScale}&q=${currentQuality}&t=` + Date.now());
   }
 }
 
@@ -4248,9 +4436,91 @@ fetchStatus();
 "##;
 
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         html.len(),
         html
     );
     let _ = stream.write_all(resp.as_bytes());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Settings;
+
+    fn settings_with_token(token: &str) -> Arc<RwLock<Settings>> {
+        let mut s = Settings::default();
+        s.web.token = token.into();
+        Arc::new(RwLock::new(s))
+    }
+
+    #[test]
+    fn bearer_or_query_token_authorizes() {
+        let st = settings_with_token("tok123");
+        assert!(is_authorized(&st, Some("tok123".into()), None));
+        assert!(is_authorized(&st, None, Some("tok123".into())));
+        assert!(!is_authorized(&st, Some("wrong".into()), None));
+        assert!(!is_authorized(&st, None, None));
+        assert!(!is_authorized(&st, Some("tok123 ".into()), None));
+    }
+
+    #[test]
+    fn empty_expected_token_never_authorizes() {
+        let st = settings_with_token("");
+        assert!(!is_authorized(&st, Some(String::new()), None));
+        assert!(!is_authorized(&st, None, None));
+    }
+
+    #[test]
+    fn query_token_extraction() {
+        assert_eq!(query_token("fps=5&token=abc123"), Some("abc123".into()));
+        assert_eq!(query_token("token=abc123&fps=5"), Some("abc123".into()));
+        assert_eq!(query_token("fps=5"), None);
+        assert_eq!(query_token(""), None);
+    }
+
+    #[test]
+    fn header_extraction_is_case_insensitive() {
+        let req = "POST /api/click HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer abc\r\n\r\n";
+        assert_eq!(header_value(req, "authorization"), Some("Bearer abc".into()));
+        assert_eq!(header_value(req, "ORIGIN"), None);
+        let req2 = "GET / HTTP/1.1\r\norigin: http://localhost:3888\r\n\r\n";
+        assert_eq!(header_value(req2, "Origin"), Some("http://localhost:3888".into()));
+    }
+
+    #[test]
+    fn split_post_body_reassembles() {
+        use std::io::Write;
+        use std::net::TcpListener;
+        // Simulate TCP segmentation: headers first, body 100ms later.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let writer = std::thread::spawn(move || {
+            let mut s = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+            s.write_all(b"POST /api/action HTTP/1.1\r\nHost: x\r\nContent-Length: 18\r\n\r\n").unwrap();
+            s.flush().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            s.write_all(br#"{"action":"start"}"#).unwrap();
+            s.flush().unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        });
+        let (mut server, _) = listener.accept().unwrap();
+        server.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        let req = read_full_request(&mut server).expect("request assembles");
+        assert!(req.contains("POST /api/action"), "got: {req}");
+        assert!(req.contains(r#"{"action":"start"}"#), "body must survive segmentation, got: {req}");
+        writer.join().unwrap();
+    }
+
+    #[test]
+    fn cors_only_allows_loopback_by_default() {
+        let loopback = "GET / HTTP/1.1\r\nOrigin: http://127.0.0.1:3888\r\n\r\n";
+        let lan = "GET / HTTP/1.1\r\nOrigin: http://192.168.1.5:3000\r\n\r\n";
+        let evil = "GET / HTTP/1.1\r\nOrigin: https://evil.example\r\n\r\n";
+        assert!(cors_origin_for(loopback, false).is_some());
+        assert!(cors_origin_for(lan, false).is_none());
+        assert!(cors_origin_for(lan, true).is_some());
+        assert!(cors_origin_for(evil, true).is_none());
+        assert!(cors_origin_for("GET / HTTP/1.1\r\n\r\n", true).is_none());
+    }
 }

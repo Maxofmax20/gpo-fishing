@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Send, Camera, PencilRuler, Sparkles } from "lucide-react";
 import { api } from "../lib/ipc";
-import { useStore } from "../lib/store";
+import { showToast, useStore } from "../lib/store";
+import type { BaitTier } from "../lib/types";
 import { PointField } from "../components/PointField";
 import { Button, cx, Kbd, KeyCapture, Pill, Row, Section, Segmented, Slider, Step, Steps, Stepper, TextField, Toggle } from "../components/primitives";
 
@@ -12,7 +13,13 @@ export default function Features() {
   const ocrAvailable = useStore((st) => st.ocrAvailable);
   const [open, setOpen] = useState<string | null>(null);
   const [whTest, setWhTest] = useState<"idle" | "ok" | string>("idle");
-  if (!s) return null;
+  if (!s) {
+    return (
+      <div className="pb-4 pt-2">
+        <div className="rounded-xl border border-line p-4 text-[12px] text-fg-dim">Loading settings…</div>
+      </div>
+    );
+  }
   const toggle = (k: string) => setOpen((o) => (o === k ? null : k));
   const baitReady = !!s.points.bait[0];
   const shopReady = !!s.points.purchase[0] && !!s.points.purchase[1];
@@ -59,7 +66,9 @@ export default function Features() {
       await api.webhookTest();
       setWhTest("ok");
     } catch (e) {
-      setWhTest(String(e));
+      const msg = String(e);
+      setWhTest(msg);
+      showToast("error", `Webhook test failed: ${msg}`);
     }
   };
 
@@ -116,9 +125,9 @@ export default function Features() {
               <div className="p-2.5 rounded bg-bg-card/70 border border-line space-y-3">
                 <div>
                   <div className="text-[11px] font-medium text-fg-dim mb-1">Target Bait Tier</div>
-                  <Segmented
+                  <Segmented<BaitTier>
                     value={s.purchase.bait_tier ?? "common"}
-                    onChange={(v) => update((x) => void (x.purchase.bait_tier = v as any))}
+                    onChange={(v) => update((x) => void (x.purchase.bait_tier = v))}
                     options={[
                       { value: "common", label: "Common" },
                       { value: "rare", label: "Rare" },
@@ -471,7 +480,7 @@ export default function Features() {
                 try {
                   await api.multiRobloxSetEnabled(v);
                 } catch (e) {
-                  console.error(e);
+                  showToast("error", `Could not toggle Multi-Roblox: ${String(e)}`);
                 }
               }}
             />
@@ -499,14 +508,14 @@ export default function Features() {
         >
           <div className="mb-3">
             <div className="text-[12px] text-fg-dim mb-1.5 font-medium">Notification Provider</div>
-            <Segmented
+            <Segmented<"telegram" | "discord" | "both">
               value={s.webhook.provider || "telegram"}
               options={[
                 { value: "telegram", label: "Telegram" },
                 { value: "discord", label: "Discord" },
                 { value: "both", label: "Both" },
               ]}
-              onChange={(v) => update((x) => void (x.webhook.provider = v as any))}
+              onChange={(v) => update((x) => void (x.webhook.provider = v))}
             />
           </div>
 

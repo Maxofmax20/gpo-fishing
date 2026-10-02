@@ -20,7 +20,11 @@ export function LiveAreas() {
   useEffect(() => {
     if (!roblox || !regions) return;
     let alive = true;
+    let inFlight = false;
     const tick = async () => {
+      // Pause capture polling while hidden; keep last frame (by design).
+      if (document.hidden || inFlight) return;
+      inFlight = true;
       try {
         const [b, d, bm] = await Promise.all([
           api.regionPreview(regions.bar, 200),
@@ -34,13 +38,20 @@ export function LiveAreas() {
         }
       } catch {
         /* Roblox hidden or capture failed; keep last frame */
+      } finally {
+        inFlight = false;
       }
     };
     tick();
     const t = setInterval(tick, active ? 700 : 2000);
+    const onVis = () => {
+      if (!document.hidden) tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       alive = false;
       clearInterval(t);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [
     roblox?.client.w,

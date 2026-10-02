@@ -3,8 +3,12 @@ use std::path::PathBuf;
 use gpo_autofish_lib::core::types::Frame;
 use gpo_autofish_lib::core::vision::{self, Palette};
 
+fn fixtures_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/reels")
+}
+
 fn fixtures() -> Vec<PathBuf> {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/reels");
+    let dir = fixtures_dir();
     let mut out = Vec::new();
     if let Ok(rd) = std::fs::read_dir(dir) {
         for e in rd.flatten() {
@@ -26,9 +30,18 @@ fn load(p: &PathBuf) -> Frame {
 
 #[test]
 fn replay_dumped_frames() {
+    // A missing directory is a repo layout bug (fail); an empty directory is
+    // an explicit coverage gap: real gameplay captures are not checked in,
+    // so replay coverage is intentionally zero and detection is covered by
+    // the vision unit tests instead. Never commit synthetic filler PNGs here.
+    assert!(
+        fixtures_dir().is_dir(),
+        "fixtures dir missing: {}",
+        fixtures_dir().display()
+    );
     let files = fixtures();
     if files.is_empty() {
-        eprintln!("no fixtures in tests/fixtures/reels; skipping");
+        eprintln!("WARNING: tests/fixtures/reels has no PNG fixtures — replay coverage is 0 frames by design (no real captures available). This pass is NOT detection coverage.");
         return;
     }
     let p = Palette::default();

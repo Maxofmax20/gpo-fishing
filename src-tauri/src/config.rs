@@ -8,7 +8,11 @@ use crate::core::fruit::Lexicon;
 use crate::core::types::{PxRect, RelPoint, RelRect};
 use crate::core::vision::Palette;
 
-pub const SETTINGS_VERSION: u32 = 12;
+pub const SETTINGS_VERSION: u32 = 13;
+
+/// Default Roblox place id for GPO joins/account launches (centralized;
+/// previously hardcoded at call sites). Overridable via `game.gpo_place_id`.
+pub const DEFAULT_GPO_PLACE_ID: u64 = 1730877806;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -441,6 +445,46 @@ impl Default for GeminiSettings {
     }
 }
 
+/// Local web-dashboard (remote control) configuration.
+///
+/// The dashboard binds to loopback by default. LAN exposure is an explicit
+/// opt-in (`allow_lan`) and every mutating/screenshot endpoint requires the
+/// per-install `token` (see `bot::web_server`).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct WebDashboard {
+    pub allow_lan: bool,
+    pub token: String,
+}
+
+/// Game-specific constants that were previously hardcoded across the bot.
+///
+/// Centralized here so tuning no longer requires a rebuild. These are
+/// relative (0..1) window coordinates unless noted.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct GameConfig {
+    /// World spawn banner scan area (drop-message banner at top of screen).
+    pub spawn_banner: RelRect,
+    /// Disconnect-modal scan area (center of the client window).
+    pub disconnect_region: RelRect,
+    /// Reconnect button click point on the disconnect dialog.
+    pub reconnect_point: RelPoint,
+    /// Default GPO Roblox place id used for (re)joins and account launches.
+    pub gpo_place_id: u64,
+}
+
+impl Default for GameConfig {
+    fn default() -> Self {
+        Self {
+            spawn_banner: RelRect { x: 0.15, y: 0.02, w: 0.70, h: 0.16 },
+            disconnect_region: RelRect { x: 0.20, y: 0.20, w: 0.60, h: 0.60 },
+            reconnect_point: RelPoint { x: 0.58, y: 0.59 },
+            gpo_place_id: DEFAULT_GPO_PLACE_ID,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -462,17 +506,60 @@ pub struct Settings {
     pub watchdog: Watchdog,
     pub auto_update: bool,
     pub gemini: GeminiSettings,
+    pub web: WebDashboard,
+    pub game: GameConfig,
 }
 
 impl Settings {
     pub fn fruit_alerts(&self) -> bool {
         self.webhook.enabled && (self.webhook.spawn || self.webhook.fruit_drop)
     }
+
+    /// Encrypt all secret-bearing fields in place for storage.
+    /// Plaintext values are migrated to `ENC1:` form; already-protected or
+    /// empty values are left untouched. Idempotent.
+    pub fn encrypt_secrets_for_storage(&mut self) {
+        for field in [
+            &mut self.webhook.url,
+            &mut self.webhook.telegram_bot_token,
+            &mut self.webhook.telegram_chat_id,
+            &mut self.gemini.api_key,
+            &mut self.web.token,
+        ] {
+            if !field.is_empty() && !crate::core::secrets::is_protected(field) {
+                if let Ok(enc) = crate::core::secrets::protect(field) {
+                    *field = enc;
+                }
+            }
+        }
+    }
+
+    /// Decrypt `ENC1:` fields after loading; legacy plaintext passes through.
+    pub fn decrypt_secrets_after_load(&mut self) {
+        for field in [
+            &mut self.webhook.url,
+            &mut self.webhook.telegram_bot_token,
+            &mut self.webhook.telegram_chat_id,
+            &mut self.gemini.api_key,
+            &mut self.web.token,
+        ] {
+            if crate::core::secrets::is_protected(field) {
+                *field = crate::core::secrets::maybe_unprotect(field);
+            }
+        }
+    }
+
+    /// Ensure the per-install web-dashboard token exists (migration for v13).
+    pub fn ensure_web_token(&mut self) {
+        if self.web.token.is_empty() {
+            self.web.token = crate::core::secrets::generate_token_hex(32);
+        }
+    }
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self {
+        let mut s = Self {
             version: SETTINGS_VERSION,
             regions: Regions::default(),
             points: Points::default(),
@@ -491,7 +578,11 @@ impl Default for Settings {
             watchdog: Watchdog::default(),
             auto_update: true,
             gemini: GeminiSettings::default(),
-        }
+            web: WebDashboard::default(),
+            game: GameConfig::default(),
+        };
+        s.ensure_web_token();
+        s
     }
 }
 
@@ -507,11 +598,24 @@ pub enum ConfigError {
 
 pub struct Store {
     dir: PathBuf,
+    /// Human-readable error from the last `load()` (e.g. corrupt file that
+    /// was quarantined). Surfaced to the UI via `settings_load_error`.
+    load_error: parking_lot::Mutex<Option<String>>,
 }
 
 impl Store {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir }
+        Self { dir, load_error: parking_lot::Mutex::new(None) }
+    }
+
+    /// Error recorded during the last `load()`, if the settings file was
+    /// corrupt and had to be quarantined. `None` means a clean load.
+    pub fn take_load_error(&self) -> Option<String> {
+        self.load_error.lock().take()
+    }
+
+    pub fn peek_load_error(&self) -> Option<String> {
+        self.load_error.lock().clone()
     }
 
     pub fn dir(&self) -> &Path {
@@ -562,6 +666,42 @@ impl Store {
         write_atomic(&self.stats_path(), &serde_json::to_vec_pretty(l)?)
     }
 
+    /// Canonical catches location: `<data_dir>/catches.csv` (single source of
+    /// truth; the legacy `./catches.csv` dual-write was removed to prevent
+    /// divergence — see `migrate_legacy_catches`).
+    pub fn catches_path(&self) -> PathBuf {
+        self.dir.join("catches.csv")
+    }
+
+    /// One-time migration of a legacy `./catches.csv` into the canonical
+    /// data-dir location. The legacy file is renamed (never deleted
+    /// silently) so no rows can be lost.
+    pub fn migrate_legacy_catches(&self) {
+        let canonical = self.catches_path();
+        let legacy = PathBuf::from("catches.csv");
+        if canonical.exists() || !legacy.is_file() {
+            return;
+        }
+        let _ = fs::create_dir_all(&self.dir);
+        if fs::rename(&legacy, &canonical).is_ok() {
+            tracing::info!("Migrated legacy ./catches.csv to {}", canonical.display());
+        } else if let (Ok(old), Ok(cur)) = (fs::read(&legacy), fs::read(&canonical)) {
+            // Fallback: append legacy rows (minus header) then archive legacy.
+            use std::io::Write;
+            if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&canonical) {
+                let _ = cur;
+                let text = String::from_utf8_lossy(&old);
+                for (i, line) in text.lines().enumerate() {
+                    if i == 0 && line.starts_with("Timestamp") {
+                        continue;
+                    }
+                    let _ = writeln!(f, "{line}");
+                }
+            }
+            let _ = fs::rename(&legacy, PathBuf::from("catches.csv.migrated"));
+        }
+    }
+
     pub fn record_catch(&self, kind: &str, name: &str, raw: &str) {
         use std::io::Write;
         let ts = current_time_str();
@@ -569,9 +709,8 @@ impl Store {
         let safe_raw = raw.replace('"', "\"\"").replace(['\r', '\n'], " ");
         let line = format!("{ts},{kind},\"{safe_name}\",\"{safe_raw}\"\n");
 
-        // 1. In app data directory: catches.csv
         let _ = fs::create_dir_all(&self.dir);
-        let csv_path = self.dir.join("catches.csv");
+        let csv_path = self.catches_path();
         let write_header = !csv_path.exists();
         if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&csv_path) {
             if write_header {
@@ -579,21 +718,12 @@ impl Store {
             }
             let _ = f.write_all(line.as_bytes());
         }
-
-        // 2. Also append to current directory catches.csv if running from a local folder
-        let local_csv = PathBuf::from("catches.csv");
-        let local_header = !local_csv.exists();
-        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&local_csv) {
-            if local_header {
-                let _ = f.write_all(b"Timestamp,Type,Name,RawText\n");
-            }
-            let _ = f.write_all(line.as_bytes());
-        }
     }
 
     pub fn get_catches(&self) -> Vec<CatchRecord> {
+        self.migrate_legacy_catches();
         let mut list = Vec::new();
-        let csv_path = self.dir.join("catches.csv");
+        let csv_path = self.catches_path();
         let path = if csv_path.exists() {
             csv_path
         } else if Path::new("catches.csv").exists() {
@@ -627,14 +757,36 @@ impl Store {
     }
 
     pub fn clear_catches(&self) -> Result<(), String> {
-        let csv_path = self.dir.join("catches.csv");
+        let csv_path = self.catches_path();
         if csv_path.exists() {
-            let _ = fs::remove_file(csv_path);
+            // Recoverable backup BEFORE destructive mutation. If the backup
+            // itself fails, refuse to delete: the recovery guarantee comes
+            // first.
+            backup_file(&csv_path).ok_or_else(|| "Cannot clear journal: backup of catches.csv failed".to_string())?;
+            fs::remove_file(&csv_path).map_err(|e| e.to_string())?;
         }
-        if Path::new("catches.csv").exists() {
-            let _ = fs::remove_file("catches.csv");
+        // Also quarantine a stray legacy file instead of deleting it unseen.
+        let legacy = PathBuf::from("catches.csv");
+        if legacy.exists() {
+            // Legacy stray: backup best-effort, then remove (canonical copy
+            // already migrated by get_catches/record paths).
+            backup_file(&legacy);
+            let _ = fs::remove_file(&legacy);
         }
         Ok(())
+    }
+
+    /// Create a recoverable timestamped backup of `settings.json` before a
+    /// destructive `settings_reset`.
+    /// - `Ok(None)`: no settings file exists, nothing to back up.
+    /// - `Ok(Some(path))`: backup written.
+    /// - `Err`: backup failed — the caller must NOT proceed with the reset.
+    pub fn backup_settings(&self) -> Result<Option<PathBuf>, String> {
+        let p = self.settings_path();
+        if !p.exists() {
+            return Ok(None);
+        }
+        backup_file(&p).map(Some).ok_or_else(|| "Cannot reset: backup of settings.json failed".to_string())
     }
 
     pub fn resume_state_path(&self) -> PathBuf {
@@ -678,11 +830,30 @@ impl Store {
     }
 
     pub fn load(&self) -> Settings {
-        let mut settings = match fs::read_to_string(self.settings_path()) {
-            Ok(s) => serde_json::from_str::<Settings>(&s).unwrap_or_else(|e| {
-                tracing::warn!("settings parse failed ({e}); using defaults");
-                Settings::default()
-            }),
+        let settings_path = self.settings_path();
+        // Fresh installs have no file yet: persist defaults immediately so
+        // generated values (notably the per-install web token) are stable
+        // across restarts instead of regenerated every launch.
+        let fresh_install = !settings_path.exists();
+        let mut settings = match fs::read_to_string(&settings_path) {
+            Ok(s) => match serde_json::from_str::<Settings>(&s) {
+                Ok(mut parsed) => {
+                    parsed.decrypt_secrets_after_load();
+                    parsed
+                }
+                Err(e) => {
+                    // Never silently reset: quarantine the corrupt file so the
+                    // user can recover it, then fall back to defaults.
+                    let backup = backup_file(&settings_path);
+                    let msg = format!(
+                        "Settings file was corrupt ({e}). A backup was kept at {}. Defaults were loaded; re-configure and re-save to overwrite.",
+                        backup.map(|p| p.display().to_string()).unwrap_or_else(|| "<backup failed>".into())
+                    );
+                    tracing::error!("{msg}");
+                    *self.load_error.lock() = Some(msg);
+                    Settings::default()
+                }
+            },
             Err(_) => Settings::default(),
         };
         if settings.version < SETTINGS_VERSION {
@@ -732,7 +903,20 @@ impl Store {
                     settings.regions.bait_menu = Regions::default().bait_menu;
                 }
             }
+            if settings.version < 13 {
+                // v13: per-install web-dashboard token + centralized game config.
+                settings.ensure_web_token();
+                if settings.game.gpo_place_id == 0 {
+                    settings.game.gpo_place_id = GameConfig::default().gpo_place_id;
+                }
+            }
             settings.version = SETTINGS_VERSION;
+            let _ = self.save(&settings);
+        }
+        // Self-heal a missing web token even on current-version files
+        // (e.g. hand-edited configs), then persist.
+        if settings.web.token.is_empty() {
+            settings.ensure_web_token();
             let _ = self.save(&settings);
         }
         if settings.ui.panel_size[0] < 400 || settings.ui.panel_size[1] < 520 {
@@ -742,12 +926,18 @@ impl Store {
             ];
             let _ = self.save(&settings);
         }
+        if fresh_install {
+            let _ = self.save(&settings);
+        }
         settings
     }
 
     pub fn save(&self, s: &Settings) -> Result<(), ConfigError> {
         fs::create_dir_all(&self.dir)?;
-        write_atomic(&self.settings_path(), &serde_json::to_vec_pretty(s)?)
+        // Secrets are encrypted at rest; the in-memory value stays plaintext.
+        let mut stored = s.clone();
+        stored.encrypt_secrets_for_storage();
+        write_atomic(&self.settings_path(), &serde_json::to_vec_pretty(&stored)?)
     }
 
     pub fn list_presets(&self) -> Vec<String> {
@@ -776,14 +966,51 @@ impl Store {
         Ok(self.presets_dir().join(format!("{name}.json")))
     }
 
+    fn knowledge_path(&self) -> PathBuf {
+        self.dir.join("knowledge_custom.json")
+    }
+
+    /// Wiki/curator overlay entities (persisted imports). Merged over the
+    /// compiled bundled base; never replaces it on disk.
+    pub fn load_knowledge_overlay(&self) -> Vec<crate::core::knowledge::ImportEntity> {
+        std::fs::read_to_string(self.knowledge_path())
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default()
+    }
+
+    pub fn save_knowledge_overlay(
+        &self,
+        items: &[crate::core::knowledge::ImportEntity],
+    ) -> Result<(), ConfigError> {
+        fs::create_dir_all(&self.dir)?;
+        write_atomic(&self.knowledge_path(), &serde_json::to_vec_pretty(items)?)
+    }
+
+    /// Effective knowledge: bundled base + validated persisted overlay.
+    /// Cheap (~hundreds of entities); built per diagnostics call, never in
+    /// the hot fishing loop.
+    pub fn effective_knowledge(&self) -> crate::core::knowledge::KnowledgeBase {
+        let mut kb = crate::core::knowledge::KnowledgeBase::bundled().clone();
+        let overlay = self.load_knowledge_overlay();
+        if !overlay.is_empty() {
+            kb.merge_import(&overlay, false);
+        }
+        kb
+    }
+
     pub fn save_preset(&self, name: &str, s: &Settings) -> Result<(), ConfigError> {
         fs::create_dir_all(self.presets_dir())?;
-        write_atomic(&self.preset_path(name)?, &serde_json::to_vec_pretty(s)?)
+        let mut stored = s.clone();
+        stored.encrypt_secrets_for_storage();
+        write_atomic(&self.preset_path(name)?, &serde_json::to_vec_pretty(&stored)?)
     }
 
     pub fn load_preset(&self, name: &str) -> Result<Settings, ConfigError> {
         let s = fs::read_to_string(self.preset_path(name)?)?;
-        Ok(serde_json::from_str(&s)?)
+        let mut parsed: Settings = serde_json::from_str(&s)?;
+        parsed.decrypt_secrets_after_load();
+        Ok(parsed)
     }
 
     pub fn delete_preset(&self, name: &str) -> Result<(), ConfigError> {
@@ -797,6 +1024,16 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
     fs::write(&tmp, bytes)?;
     fs::rename(&tmp, path)?;
     Ok(())
+}
+
+/// Copy `path` to a sibling `<stem>.backup-<timestamp>.<ext>` file.
+/// Best-effort: returns the backup path on success, `None` otherwise.
+/// Used before destructive operations (clear/reset) and for quarantining
+/// corrupt configs so user data is never silently destroyed.
+pub fn backup_file(path: &Path) -> Option<PathBuf> {
+    let stamp = current_time_str().replace([':', ' '], "-");
+    let backup = path.with_extension(format!("backup-{stamp}.{}", path.extension().and_then(|e| e.to_str()).unwrap_or("bak")));
+    fs::copy(path, &backup).ok().map(|_| backup)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -830,6 +1067,13 @@ fn parse_csv_line(line: &str) -> Vec<String> {
     }
     fields.push(current.trim().to_string());
     fields
+}
+
+/// Day-granular session id (`sess-YYYY-MM-DD`). Coarse on purpose: frames
+/// from the same day always share a session, so session-hashed dataset
+/// splits can never leak near-identical consecutive frames across sets.
+pub fn current_date_id() -> String {
+    format!("sess-{}", current_time_str()[..10].to_string())
 }
 
 fn current_time_str() -> String {
@@ -985,6 +1229,91 @@ mod tests {
         let s: Settings = serde_json::from_str(r#"{"features":{"auto_bait":true}}"#).unwrap();
         assert!(s.features.auto_bait);
         assert_eq!(s.purchase.amount, 100);
+    }
+
+    #[test]
+    fn secrets_encrypt_decrypt_round_trip_through_store() {
+        let dir = std::env::temp_dir().join(format!("gpo-cfg-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = Store::new(dir.clone());
+        let mut s = Settings::default();
+        s.webhook.url = "https://synthetic-webhook-url-12345678".into();
+        s.webhook.telegram_bot_token = "synthetic-bot-token-abcdef123456".into();
+        s.webhook.telegram_chat_id = "synthetic-chat-999999".into();
+        s.gemini.api_key = "synthetic-gemini-key-xyz987".into();
+        store.save(&s).expect("save");
+
+        // Serialized form must never contain plaintext secrets.
+        let raw = std::fs::read_to_string(dir.join("settings.json")).unwrap();
+        assert!(!raw.contains("synthetic-webhook-url-12345678"));
+        assert!(!raw.contains("synthetic-bot-token-abcdef123456"));
+        assert!(!raw.contains("synthetic-gemini-key-xyz987"));
+        assert!(raw.contains("ENC1:") || raw.contains("ENC0:"));
+
+        // Reload yields identical values (decrypt-on-load).
+        let back = store.load();
+        assert_eq!(back.webhook.url, "https://synthetic-webhook-url-12345678");
+        assert_eq!(back.webhook.telegram_bot_token, "synthetic-bot-token-abcdef123456");
+        assert_eq!(back.webhook.telegram_chat_id, "synthetic-chat-999999");
+        assert_eq!(back.gemini.api_key, "synthetic-gemini-key-xyz987");
+        assert!(!back.web.token.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn legacy_plaintext_settings_migrate_to_encrypted() {
+        let dir = std::env::temp_dir().join(format!("gpo-cfg-legacy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Simulate an old install: plaintext secrets, old version, no token.
+        let legacy = serde_json::json!({
+            "version": 12,
+            "webhook": {"url": "https://legacy-plaintext-hook-12345678", "enabled": true},
+            "web": {"allow_lan": false, "token": ""},
+        });
+        std::fs::write(dir.join("settings.json"), serde_json::to_vec_pretty(&legacy).unwrap()).unwrap();
+        let store = Store::new(dir.clone());
+        let back = store.load();
+        assert_eq!(back.webhook.url, "https://legacy-plaintext-hook-12345678");
+        assert_eq!(back.version, SETTINGS_VERSION);
+        assert!(!back.web.token.is_empty());
+        // Saved file is now encrypted.
+        let raw = std::fs::read_to_string(dir.join("settings.json")).unwrap();
+        assert!(!raw.contains("legacy-plaintext-hook-12345678"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fresh_install_persists_stable_web_token() {
+        let dir = std::env::temp_dir().join(format!("gpo-cfg-fresh-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        // First launch: no file → defaults generated AND persisted.
+        let first = Store::new(dir.clone()).load();
+        assert!(!first.web.token.is_empty());
+        assert!(dir.join("settings.json").exists());
+        // Simulated restart: a new Store must read back the SAME token.
+        let second = Store::new(dir.clone()).load();
+        assert_eq!(second.web.token, first.web.token);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn corrupt_settings_are_quarantined_not_silently_reset() {
+        let dir = std::env::temp_dir().join(format!("gpo-cfg-corrupt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("settings.json"), b"{not valid json!!!").unwrap();
+        let store = Store::new(dir.clone());
+        let back = store.load();
+        assert_eq!(back.version, SETTINGS_VERSION);
+        // A quarantine backup must exist alongside the (overwritten-on-next-save) file.
+        let kept = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().contains("backup-"));
+        assert!(kept, "corrupt settings file must be backed up");
+        assert!(store.peek_load_error().is_some());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { check } from "@tauri-apps/plugin-updater";
-import { Download, FolderOpen, RotateCcw, Save, Trash2, Upload } from "lucide-react";
+import { Download, FolderOpen, Globe, RotateCcw, Save, Trash2, Upload } from "lucide-react";
 import { api } from "../lib/ipc";
-import { useStore } from "../lib/store";
+import { showToast, useStore } from "../lib/store";
 import { Button, KeyCapture, Pill, Row, Section, Segmented, Slider, Stepper, TextField, Toggle } from "../components/primitives";
+import ConfirmModal from "../components/ConfirmModal";
 
 export default function SettingsPage() {
   const s = useStore((st) => st.settings);
@@ -15,20 +16,48 @@ export default function SettingsPage() {
   const [presetName, setPresetName] = useState("");
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
   const [dataDir, setDataDir] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [tokenRevealed, setTokenRevealed] = useState(false);
 
   useEffect(() => {
-    api.presetList().then(setPresets);
-    api.dataDir().then(setDataDir);
+    api.presetList().then(setPresets).catch((e) => showToast("warn", `Could not list presets: ${String(e)}`));
+    api.dataDir().then(setDataDir).catch(() => undefined);
+    api.settingsLoadError().then(setLoadError).catch(() => undefined);
   }, []);
 
-  if (!s) return null;
+  if (!s) {
+    return (
+      <div className="pb-4 pt-2">
+        <div className="rounded-xl border border-line p-4 text-[12px] text-fg-dim">Loading settings…</div>
+      </div>
+    );
+  }
   const toggle = (k: string) => setOpen((o) => (o === k ? null : k));
 
   const savePreset = async () => {
     if (!presetName.trim()) return;
-    await api.presetSave(presetName.trim());
-    setPresets(await api.presetList());
-    setPresetName("");
+    try {
+      await api.presetSave(presetName.trim());
+      setPresets(await api.presetList());
+      setPresetName("");
+    } catch (e) {
+      showToast("error", `Could not save preset: ${String(e)}`);
+    }
+  };
+
+  const doReset = async () => {
+    setResetting(true);
+    try {
+      setSettings(await api.settingsReset());
+      setConfirmReset(false);
+      showToast("info", "Settings reset. A backup of the previous file was kept in the data folder.");
+    } catch (e) {
+      showToast("error", `Reset failed: ${String(e)}`);
+    } finally {
+      setResetting(false);
+    }
   };
 
   const checkUpdate = async () => {
@@ -56,15 +85,30 @@ export default function SettingsPage() {
       if (!f) return;
       try {
         setSettings(await api.legacyImport(await f.text()));
+        showToast("info", "Legacy settings imported.");
       } catch (e) {
-        setUpdateMsg(String(e));
+        showToast("error", `Import failed: ${String(e)}`);
       }
     };
     input.click();
   };
 
+  const openDashboard = async () => {
+    try {
+      await api.openUrl(await api.webDashboardUrl());
+    } catch (e) {
+      showToast("error", `Could not open dashboard: ${String(e)}`);
+    }
+  };
+
   return (
     <div className="pb-4 pt-2">
+      {loadError && (
+        <div className="mb-3 rounded-xl border border-bad/50 bg-bad-soft p-3 text-[12px] text-bad">
+          <div className="font-semibold mb-1">Settings file was corrupt on load</div>
+          <div className="break-words select-text">{loadError}</div>
+        </div>
+      )}
       <Section title="Tracking">
         <Row title="Tracking" sub="Physics mode models the catch zone's acceleration and input latency. Lookahead is the fallback." open={open === "ctl"} onToggle={() => toggle("ctl")}>
           <Field label="Mode">
@@ -190,15 +234,29 @@ export default function SettingsPage() {
             title={p}
             right={
               <>
-                <Button size="sm" onClick={async () => setSettings(await api.presetLoad(p))} icon={<Upload size={13} />}>
+                <Button
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      setSettings(await api.presetLoad(p));
+                    } catch (e) {
+                      showToast("error", `Could not load preset: ${String(e)}`);
+                    }
+                  }}
+                  icon={<Upload size={13} />}
+                >
                   Load
                 </Button>
                 <Button
                   size="sm"
                   kind="ghost"
                   onClick={async () => {
-                    await api.presetDelete(p);
-                    setPresets(await api.presetList());
+                    try {
+                      await api.presetDelete(p);
+                      setPresets(await api.presetList());
+                    } catch (e) {
+                      showToast("error", `Could not delete preset: ${String(e)}`);
+                    }
                   }}
                   icon={<Trash2 size={13} />}
                 />
@@ -217,12 +275,100 @@ export default function SettingsPage() {
         />
         <Row
           title="Reset everything"
+          sub="Backs up first; you can restore from the data folder."
           right={
-            <Button size="sm" kind="danger" onClick={async () => setSettings(await api.settingsReset())} icon={<RotateCcw size={13} />}>
+            <Button size="sm" kind="danger" onClick={() => setConfirmReset(true)} icon={<RotateCcw size={13} />}>
               Reset
             </Button>
           }
         />
+      </Section>
+
+      <ConfirmModal
+        open={confirmReset}
+        title="Reset all settings?"
+        body="Every calibration area, key, purchase point, webhook and AI setting returns to defaults. The current settings.json is backed up first."
+        backupNote="Backup is kept as settings.backup-<timestamp>.json in the data folder."
+        confirmLabel="Reset everything"
+        busy={resetting}
+        onConfirm={doReset}
+        onCancel={() => !resetting && setConfirmReset(false)}
+      />
+
+      <Section title="Web dashboard">
+        <Row
+          title="Remote dashboard"
+          sub="Browser control at 127.0.0.1:3888. Every action needs the per-install token, which the app attaches automatically."
+          right={
+            <Button size="sm" kind="ghost" onClick={openDashboard} icon={<Globe size={13} />}>
+              Open
+            </Button>
+          }
+        />
+        <Row
+          title="Allow LAN access"
+          sub={s.web.allow_lan ? "Exposed to your local network (token still required). Takes effect after restart." : "Loopback only. Enable only on networks you trust; restart required."}
+          right={
+            <Toggle
+              value={s.web.allow_lan}
+              onChange={async (v) => {
+                try {
+                  setSettings(await api.webSetAllowLan(v));
+                  if (v) showToast("warn", "LAN access turns on after you restart the app.");
+                } catch (e) {
+                  showToast("error", `Could not change LAN mode: ${String(e)}`);
+                }
+              }}
+            />
+          }
+        />
+        <Row
+          title="Dashboard token"
+          sub="Masked by default. Reveal only to type it into a LAN device's browser (?token=), then hide it again. Rotating invalidates saved bookmarks."
+          right={
+            <Button
+              size="sm"
+              onClick={async () => {
+                try {
+                  setSettings(await api.webRegenerateToken());
+                  setTokenRevealed(false);
+                  showToast("info", "Dashboard token rotated.");
+                } catch (e) {
+                  showToast("error", `Could not rotate token: ${String(e)}`);
+                }
+              }}
+            >
+              Rotate token
+            </Button>
+          }
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[12px] select-text">
+              {tokenRevealed ? s.web.token || "(none)" : s.web.token ? `${s.web.token.slice(0, 4)}${"•".repeat(8)}` : "(none)"}
+            </span>
+            {s.web.token && (
+              <>
+                <Button size="sm" kind="ghost" onClick={() => setTokenRevealed((v) => !v)}>
+                  {tokenRevealed ? "Hide" : "Reveal"}
+                </Button>
+                <Button
+                  size="sm"
+                  kind="ghost"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(`http://127.0.0.1:3888/?token=${s.web.token}`);
+                      showToast("info", "Dashboard URL with token copied. It grants full control — share carefully.");
+                    } catch (e) {
+                      showToast("error", `Copy failed: ${String(e)}`);
+                    }
+                  }}
+                >
+                  Copy URL
+                </Button>
+              </>
+            )}
+          </div>
+        </Row>
       </Section>
 
       <Section title="App">
@@ -244,7 +390,12 @@ export default function SettingsPage() {
           title="Data folder"
           sub={<span className="font-mono text-[11px] select-text">{dataDir}</span>}
           right={
-            <Button size="sm" kind="ghost" onClick={() => api.openUrl(dataDir)} icon={<FolderOpen size={13} />} />
+            <Button
+              size="sm"
+              kind="ghost"
+              onClick={() => api.openUrl(dataDir).catch((e) => showToast("error", `Could not open folder: ${String(e)}`))}
+              icon={<FolderOpen size={13} />}
+            />
           }
         />
         <Row

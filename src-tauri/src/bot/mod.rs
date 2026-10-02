@@ -2,6 +2,7 @@ pub mod actions;
 pub mod crafting;
 pub mod ctx;
 pub mod machine;
+pub mod ml_collect;
 pub mod session;
 pub mod trace;
 pub mod watchdog;
@@ -81,11 +82,19 @@ impl Bot {
             let mut sess = self.ctx.session.lock();
             *sess = sess.next_session();
         }
+        // Arm gameplay data collection for this macro run (normal start is
+        // enough — no separate recording mode). Trace-gated downstream.
+        let session_id = self.ctx.ml.begin_session(env!("CARGO_PKG_VERSION"));
+        self.emit_ml_session(None);
         self.ctx.emit_stats();
         self.spawn_loop(resume);
         self.spawn_watchdog();
         crate::laptop_fan::on_bot_state_changed(true);
-        self.ctx.log_info(if resume { "Resumed" } else { "Started" });
+        self.ctx.log_info(&if resume {
+            format!("Resumed (ML session {session_id} collecting)")
+        } else {
+            format!("Started (ML session {session_id} collecting)")
+        });
     }
 
     pub fn pause(&self) {
@@ -99,6 +108,7 @@ impl Bot {
         self.halt();
         crate::laptop_fan::on_bot_state_changed(false);
         self.ctx.session.lock().pause();
+        self.finalize_ml_session("paused");
         self.ctx.emit_stats();
     }
 
@@ -113,7 +123,53 @@ impl Bot {
         self.halt();
         crate::laptop_fan::on_bot_state_changed(false);
         self.ctx.session.lock().pause();
+        if was {
+            self.finalize_ml_session("stopped");
+        }
         self.ctx.emit_stats();
+    }
+
+    /// Finalize the active collection session (flush, validate subset,
+    /// summarize) and push it to the UI. No active session → silent no-op.
+    fn finalize_ml_session(&self, why: &str) {
+        if let Some(summary) = self.ctx.ml.end_session() {
+            self.ctx.log_info(&format!(
+                "ML DATA session complete: {} samples, {} reels, {} hard examples, quality {} ({} pending annotation, {} total)",
+                summary.samples,
+                summary.reels,
+                summary.hard_examples,
+                if summary.quality_ok { "PASS" } else { "WARNING" },
+                summary.pending_annotation,
+                summary.total_samples,
+            ));
+            for w in &summary.quality_warnings {
+                self.ctx.log_warn(&format!("ML DATA quality: {w}"));
+            }
+            self.emit_ml_session(Some(&summary));
+            let _ = why;
+        }
+    }
+
+    fn emit_ml_session(&self, summary: Option<&crate::bot::ml_collect::SessionSummary>) {
+        let snap = self.ctx.ml.stats_snapshot();
+        let st = crate::events::MlSessionState {
+            // After finalization the live session is gone; the summary
+            // carries the id (without this the UI could never match the
+            // session-complete event to its session).
+            collecting: summary.is_none() && snap.collecting,
+            session_id: summary
+                .map(|s| s.session_id.clone())
+                .or(snap.session_id),
+            samples: snap.written,
+            reels: snap.reels,
+            hard_examples: snap.hard_examples,
+            dropped: snap.dropped,
+            quality_ok: summary.map(|s| s.quality_ok),
+            quality_warnings: summary.map(|s| s.quality_warnings.clone()).unwrap_or_default(),
+            pending_annotation: summary.map(|s| s.pending_annotation).unwrap_or(0),
+            total_samples: summary.map(|s| s.total_samples).unwrap_or(0),
+        };
+        self.ctx.emit(BotEvent::MlSession(st));
     }
 
     pub fn toggle(self: &Arc<Self>) {
