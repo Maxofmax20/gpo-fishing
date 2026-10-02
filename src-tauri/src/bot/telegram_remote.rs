@@ -766,19 +766,25 @@ fn handle_command(
         }
         "/web" | "/dashboard" | "web" | "dashboard" => {
             let local_ip = crate::bot::web_server::get_local_ip().unwrap_or_else(|| "127.0.0.1".into());
-            let lan_url = format!("http://{local_ip}:3888");
-            let local_url = "http://localhost:3888";
+            // The dashboard token is required for every API call AND the
+            // stream <img> (query param). Without it the link opens to an
+            // "Unauthorized" page — so the button carries the token. This
+            // chat is the owner's authorized chat; never forward this link.
+            let dash_token = settings.read().web.token.clone();
+            let lan_url = dashboard_authed_url(&format!("http://{local_ip}:3888"), &dash_token);
+            let local_url = dashboard_authed_url("http://localhost:3888", &dash_token);
             let reply = format!(
-                "🌐 <b>GPO Autofish Web Dashboard</b>\n\n\
+                "🌐 <b>GPO Cyberdeck Webapp</b>\n\n\
                  • <b>Local PC</b>: <code>{local_url}</code>\n\
                  • <b>Mobile (Same Wi-Fi)</b>: <code>{lan_url}</code>\n\n\
-                 <i>Access real-time stats, Roblox live screen, sound & brightness sliders, and 1-tap macro controls from any phone or browser!</i>"
+                 Remote • Stats • Studio • Craft • System tabs with live Roblox screen, touch controls, macro studio and thermal hub.\n\n\
+                 <i>🔑 This link carries your dashboard token — do not share it.</i>"
             );
             let _ = crate::webhook::post_telegram_with_button(
                 token,
                 chat_id,
                 &reply,
-                "🌐 Open Web Dashboard",
+                "🌐 Open Webapp",
                 &lan_url,
             );
         }
@@ -1288,4 +1294,40 @@ pub fn check_and_apply_update(
 
     std::thread::sleep(Duration::from_millis(600));
     std::process::exit(0);
+}
+
+/// Dashboard URL with the per-install token attached, so the Telegram
+/// webapp button opens the authenticated app instead of an
+/// "Unauthorized" page. Empty token → plain base URL (never emits `?token=`).
+pub fn dashboard_authed_url(base: &str, token: &str) -> String {
+    if token.trim().is_empty() {
+        base.to_string()
+    } else {
+        format!("{base}?token={token}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn webapp_link_carries_token() {
+        assert_eq!(
+            dashboard_authed_url("http://192.168.1.3:3888", "tok123"),
+            "http://192.168.1.3:3888?token=tok123"
+        );
+    }
+
+    #[test]
+    fn webapp_link_without_token_has_no_query() {
+        assert_eq!(
+            dashboard_authed_url("http://localhost:3888", ""),
+            "http://localhost:3888"
+        );
+        assert_eq!(
+            dashboard_authed_url("http://localhost:3888", "   "),
+            "http://localhost:3888"
+        );
+    }
 }

@@ -303,7 +303,13 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     // `?token=` on first visit). Everything that reads or drives the PC
     // requires the token — including on loopback, so a leaked token is
     // still needed for abuse.
-    let needs_auth = raw_path != "/" && raw_path != "/index.html";
+    let needs_auth = raw_path != "/"
+        && raw_path != "/index.html"
+        && raw_path != "/stats"
+        && raw_path != "/studio"
+        && raw_path != "/craft"
+        && raw_path != "/system"
+        && !raw_path.starts_with("/assets/");
     if needs_auth && !authed {
         tracing::warn!("web dashboard: unauthorized {} {}", method, safe_path);
         send_unauthorized(&mut stream);
@@ -311,7 +317,17 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     }
 
     if raw_path == "/" || raw_path == "/index.html" {
-        send_html(&mut stream);
+        send_html_page(&mut stream, WEB_REMOTE_HTML);
+    } else if raw_path == "/stats" {
+        send_html_page(&mut stream, WEB_STATS_HTML);
+    } else if raw_path == "/studio" {
+        send_html_page(&mut stream, WEB_STUDIO_HTML);
+    } else if raw_path == "/craft" {
+        send_html_page(&mut stream, WEB_CRAFT_HTML);
+    } else if raw_path == "/system" {
+        send_html_page(&mut stream, WEB_SYSTEM_HTML);
+    } else if serve_asset(&mut stream, raw_path) {
+        // handled
     } else if raw_path == "/api/status" {
         send_status(&mut stream, bot, settings);
     } else if raw_path == "/api/stream" {
@@ -551,6 +567,7 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "rejoin_macro_name": s.features.rejoin_macro_name.clone(),
         "legendary_only": s.webhook.legendary_only,
         "send_drop_screenshot": s.webhook.send_drop_screenshot,
+        "recent_catches": recent_catches(&bot.ctx().store),
     });
 
     let body = payload.to_string();
@@ -560,6 +577,75 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         body
     );
     let _ = stream.write_all(resp.as_bytes());
+}
+
+/// Last catch log rows for the telemetry loot feed (newest first).
+/// Tolerant mini-CSV reader: `Timestamp,Type,Name,RawText` with optional
+/// quoting. Never fails the status call — any read/parse problem yields [].
+fn recent_catches(store: &crate::config::Store) -> serde_json::Value {
+    let raw = std::fs::read_to_string(store.catches_path()).unwrap_or_default();
+    let mut rows: Vec<(String, String, String, String)> = Vec::new();
+    for line in raw.lines().rev() {
+        if rows.len() >= 6 {
+            break;
+        }
+        let line = line.trim_end_matches('\r');
+        if line.trim().is_empty() || line.starts_with("Timestamp,") {
+            continue;
+        }
+        let fields = split_csv_line(line);
+        if fields.len() < 3 {
+            continue;
+        }
+        rows.push((
+            fields[0].clone(),
+            fields[1].clone(),
+            fields[2].clone(),
+            fields.get(3).cloned().unwrap_or_default(),
+        ));
+    }
+    let arr: Vec<serde_json::Value> = rows
+        .into_iter()
+        .map(|(timestamp, kind, name, raw_text)| {
+            serde_json::json!({
+                "timestamp": timestamp,
+                "type": kind,
+                "name": if name.trim().is_empty() { "Unknown" } else { name.as_str() },
+                "raw": raw_text,
+            })
+        })
+        .collect();
+    serde_json::Value::Array(arr)
+}
+
+fn split_csv_line(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut cur = String::new();
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if in_quotes {
+            if c == '"' {
+                if chars.peek() == Some(&'"') {
+                    cur.push('"');
+                    chars.next();
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                cur.push(c);
+            }
+        } else if c == '"' {
+            in_quotes = true;
+        } else if c == ',' {
+            fields.push(cur.trim().to_string());
+            cur = String::new();
+        } else {
+            cur.push(c);
+        }
+    }
+    fields.push(cur.trim().to_string());
+    fields
 }
 
 fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>, query: &str) {
@@ -1201,3246 +1287,122 @@ fn handle_fan_set(stream: &mut TcpStream, body: &str) {
     let _ = stream.write_all(resp.as_bytes());
 }
 
-fn send_html(stream: &mut TcpStream) {
-    let html = r##"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
-<!-- Mobile / PWA App Meta Tags -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="GPO CyberDeck">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#07090e">
-<meta name="format-detection" content="telephone=no">
-<meta name="referrer" content="no-referrer">
-<title>GPO Autofish Mobile</title>
-<!-- Embedded Favicon & Apple Touch Icon -->
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2300f0ff'/%3E%3Cstop offset='100%25' stop-color='%23b026ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='%2307090e'/%3E%3Ccircle cx='50' cy='50' r='38' stroke='url(%23g)' stroke-width='4' fill='none' opacity='0.4'/%3E%3Cpath d='M50 20 L58 42 L80 50 L58 58 L50 80 L42 58 L20 50 L42 42 Z' fill='url(%23g)'/%3E%3C/svg%3E">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%2300f0ff'/%3E%3Cstop offset='100%25' stop-color='%23b026ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='%2307090e'/%3E%3Ccircle cx='50' cy='50' r='38' stroke='url(%23g)' stroke-width='4' fill='none' opacity='0.4'/%3E%3Cpath d='M50 20 L58 42 L80 50 L58 58 L50 80 L42 58 L20 50 L42 42 Z' fill='url(%23g)'/%3E%3C/svg%3E">
-<!-- Embedded Web App Manifest -->
-<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22GPO%20Autofish%20CyberDeck%22%2C%22short_name%22%3A%22GPO%20Macro%22%2C%22start_url%22%3A%22%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%2307090e%22%2C%22theme_color%22%3A%22%2307090e%22%7D">
-<script>
-// GPO dashboard auth plumbing (no remote JS: all guards on window.Telegram
-// already tolerate its absence). The Panel opens this page as /?token=<hex>
-// on first visit; the token is persisted to localStorage (URL cleaned) and
-// attached as `Authorization: Bearer` to every /api/* fetch call, plus as
-// ?token= on <img> stream/screenshot URLs which cannot carry headers.
-(function(){try{
-var q=null;try{q=new URLSearchParams(location.search).get('token');}catch(e){}
-if(q&&/^[0-9a-fA-F]{16,128}$/.test(q)){try{localStorage.setItem('gpo_api_token',q);}catch(e){}try{history.replaceState(null,'',location.pathname);}catch(e){}}
-var t='';try{t=localStorage.getItem('gpo_api_token')||'';}catch(e){}
-window.__GPO_TOKEN=t;
-window.__gpoUrl=function(url){if(!t)return url;return url+(url.indexOf('?')>=0?'&':'?')+'token='+encodeURIComponent(t);};
-if(window.fetch){var _of=window.fetch;window.fetch=function(u,o){o=o||{};var s=typeof u==='string'?u:(u&&u.url)||'';if(s.indexOf('/api/')===0&&t){try{if(o.headers instanceof Headers){if(!o.headers.has('Authorization'))o.headers.set('Authorization','Bearer '+t);}else{o.headers=o.headers||{};if(!o.headers['Authorization']&&!o.headers['authorization'])o.headers['Authorization']='Bearer '+t;}}catch(e){}}return _of(u,o);};}
-document.addEventListener('DOMContentLoaded',function(){var img=document.getElementById('screen-img');if(img&&(!img.getAttribute('src'))&&window.__gpoUrl){img.src=window.__gpoUrl('/api/stream');}});
-}catch(e){}})();
-</script>
-<style>
-:root {
-  --bg: #07090e;
-  --bg-surface: #0c101a;
-  --card: rgba(14, 20, 32, 0.88);
-  --card-border: rgba(30, 41, 59, 0.8);
-  --card-highlight: rgba(255, 255, 255, 0.05);
-  --cyan: #00f0ff;
-  --purple: #b026ff;
-  --emerald: #10b981;
-  --amber: #f59e0b;
-  --rose: #ef4444;
-  --text: #f8fafc;
-  --text-dim: #94a3b8;
-  --text-mute: #64748b;
-  --safe-bottom: env(safe-area-inset-bottom, 16px);
-  --safe-top: env(safe-area-inset-top, 0px);
-}
-
-* {
-  box-sizing: border-box; margin: 0; padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, sans-serif;
-  -webkit-tap-highlight-color: transparent !important;
-}
-
-html, body {
-  margin: 0; padding: 0;
-  width: 100%; height: 100%; height: 100dvh;
-  overflow: hidden;
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: var(--bg); color: var(--text);
-  background-image: radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.06), transparent 50%), radial-gradient(circle at 100% 100%, rgba(176, 38, 255, 0.05), transparent 50%);
-}
-
-button, .btn, .status-badge, .bottom-nav-bar, .controller-card, .stream-bar, .app-header, .header-btn-toggle {
-  user-select: none !important;
-  -webkit-user-select: none !important;
-  -webkit-touch-callout: none !important;
-}
-
-input, textarea {
-  user-select: text !important;
-  -webkit-user-select: text !important;
-  -webkit-touch-callout: default !important;
-}
-
-/* APP SHELL & CONTAINER */
-.app-shell {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  width: 100%; height: 100%; height: 100dvh;
-  display: flex; flex-direction: column;
-  overflow-y: scroll !important;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch !important;
-  overscroll-behavior-y: contain;
-}
-
-/* STICKY TOP APP HEADER */
-.app-header {
-  position: sticky; top: 0; z-index: 900;
-  padding: max(8px, var(--safe-top)) 12px 8px 12px;
-  background: rgba(7, 9, 14, 0.94);
-  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  display: flex; justify-content: space-between; align-items: center; gap: 8px;
-}
-
-.brand { display: flex; align-items: center; gap: 8px; min-width: 0; flex-shrink: 1; }
-.brand-avatar {
-  width: 32px; height: 32px; border-radius: 9px;
-  background: linear-gradient(135deg, rgba(0, 240, 255, 0.25), rgba(176, 38, 255, 0.25));
-  border: 1px solid var(--cyan);
-  display: flex; align-items: center; justify-content: center; font-size: 1rem;
-  box-shadow: 0 0 12px rgba(0, 240, 255, 0.35); flex-shrink: 0;
-}
-.brand-text { display: flex; flex-direction: column; min-width: 0; }
-.brand-title {
-  font-size: 0.92rem; font-weight: 800; letter-spacing: -0.2px;
-  background: linear-gradient(135deg, var(--cyan), #c084fc);
-  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-
-.header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
-
-.header-btn-toggle {
-  height: 32px; padding: 0 12px; border-radius: 999px;
-  background: linear-gradient(135deg, #00d2ff, #0084ff); color: #fff;
-  border: 1px solid rgba(255,255,255,0.25); font-size: 0.72rem; font-weight: 800;
-  display: flex; align-items: center; gap: 5px; cursor: pointer;
-  box-shadow: 0 2px 10px rgba(0, 132, 255, 0.4); transition: all 0.15s ease;
-  user-select: none; -webkit-user-select: none;
-}
-.header-btn-toggle.active {
-  background: linear-gradient(135deg, #f59e0b, #d97706);
-  box-shadow: 0 2px 10px rgba(245, 158, 11, 0.4);
-}
-.header-btn-toggle:active { transform: scale(0.95); }
-
-.status-badge {
-  padding: 5px 10px; border-radius: 999px; font-size: 0.68rem; font-weight: 800;
-  letter-spacing: 0.4px; text-transform: uppercase; display: flex; align-items: center; gap: 5px;
-  border: 1px solid transparent; transition: all 0.25s ease; white-space: nowrap;
-}
-.badge-running { background: rgba(16, 185, 129, 0.16); color: var(--emerald); border-color: rgba(16, 185, 129, 0.4); box-shadow: 0 0 12px rgba(16, 185, 129, 0.25); }
-.badge-paused { background: rgba(245, 158, 11, 0.16); color: var(--amber); border-color: rgba(245, 158, 11, 0.4); box-shadow: 0 0 12px rgba(245, 158, 11, 0.25); }
-.badge-stopped { background: rgba(100, 116, 139, 0.16); color: var(--text-dim); border-color: rgba(100, 116, 139, 0.3); }
-
-/* SUB-HEADER RIBBON */
-.sub-header-bar {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 5px 14px 6px 14px; background: rgba(12, 16, 26, 0.85);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-size: 0.68rem;
-}
-.sub-bar-left { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-family: monospace; }
-.sub-bar-right { display: flex; align-items: center; gap: 8px; }
-.live-dot-mini { width: 7px; height: 7px; border-radius: 50%; background: var(--emerald); box-shadow: 0 0 6px var(--emerald); }
-
-.toggle-spawn-badge {
-  cursor: pointer; padding: 4px 8px; border-radius: 999px; font-size: 0.66rem; font-weight: 700;
-  background: rgba(176, 38, 255, 0.15); color: #d8b4fe; border: 1px solid rgba(176, 38, 255, 0.35);
-  transition: all 0.2s ease; user-select: none;
-}
-.toggle-spawn-badge.off {
-  background: rgba(100, 116, 139, 0.12); color: var(--text-mute); border-color: rgba(100, 116, 139, 0.25);
-}
-
-.toggle-sound-mini {
-  cursor: pointer; padding: 4px 8px; border-radius: 999px; font-size: 0.66rem; font-weight: 700;
-  background: rgba(16, 185, 129, 0.18); color: #a7f3d0; border: 1px solid rgba(16, 185, 129, 0.35);
-  user-select: none;
-}
-.toggle-sound-mini.muted {
-  background: rgba(100, 116, 139, 0.15); color: var(--text-mute); border-color: rgba(100, 116, 139, 0.25);
-}
-
-/* MAIN CONTENT AREA */
-.app-content {
-  flex: 1 0 auto; max-width: 680px; width: 100%; margin: 0 auto;
-  padding: 10px 12px calc(125px + var(--safe-bottom)) 12px;
-  display: flex; flex-direction: column; gap: 12px;
-}
-
-/* MOBILE SECTIONS */
-.mobile-section {
-  display: none; flex-direction: column; gap: 12px; width: 100%;
-  animation: mobileFade 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.mobile-section.active { display: flex; }
-@keyframes mobileFade {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* CARDS */
-.card {
-  background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; padding: 14px;
-  display: flex; flex-direction: column; gap: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-}
-.card-label { font-size: 0.72rem; color: var(--text-dim); text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px; }
-.card-val { font-size: 1.45rem; font-weight: 800; color: var(--text); }
-.card-val.fruit { color: #d8b4fe; text-shadow: 0 0 16px rgba(176, 38, 255, 0.35); }
-.card-meta { font-size: 0.72rem; color: var(--text-mute); }
-
-/* STATS GAUGES & GRIDS */
-.stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.gauge-bar-bg {
-  width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 999px;
-  overflow: hidden; margin-top: 4px;
-}
-.gauge-bar-fill {
-  height: 100%; width: 0%; border-radius: 999px;
-  background: linear-gradient(90deg, var(--cyan), var(--purple));
-  transition: width 0.4s ease;
-}
-
-/* STREAM WRAPPER & TOOLBAR */
-.stream-wrapper {
-  background: var(--card); border: 1px solid var(--card-border); border-radius: 16px; overflow: hidden;
-  position: relative; box-shadow: 0 12px 36px rgba(0,0,0,0.5); transition: all 0.25s ease;
-}
-.stream-bar {
-  display: flex; justify-content: space-between; align-items: center; padding: 10px 12px;
-  background: rgba(0,0,0,0.45); border-bottom: 1px solid var(--card-border); font-size: 0.74rem; font-weight: 600;
-  gap: 6px; flex-wrap: wrap;
-}
-.stream-indicator { display: flex; align-items: center; gap: 6px; }
-.live-dot { width: 8px; height: 8px; border-radius: 50%; background: #64748b; transition: all 0.3s; }
-.live-dot.on { background: var(--emerald); box-shadow: 0 0 10px var(--emerald); animation: pulseDot 1.5s infinite; }
-@keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-
-.stream-tools-group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.stream-tool-btn {
-  height: 32px; padding: 0 9px; font-size: 0.72rem; font-weight: 700; border-radius: 8px;
-  background: rgba(30, 41, 59, 0.85); border: 1px solid var(--card-border); color: var(--text);
-  display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer;
-  user-select: none; transition: all 0.15s ease; white-space: nowrap;
-}
-.stream-tool-btn:hover, .stream-tool-btn:active { background: rgba(51, 65, 85, 0.95); }
-.stream-tool-btn.active {
-  background: rgba(0, 240, 255, 0.2); border-color: var(--cyan); color: var(--cyan);
-}
-
-.screen-box {
-  width: 100%; min-height: 220px; background: #030508; display: flex; align-items: center; justify-content: center;
-  position: relative; overflow: hidden; cursor: crosshair; touch-action: none;
-}
-.screen-img {
-  width: 100%; max-height: 480px; object-fit: contain; display: block; user-select: none;
-  pointer-events: none !important; -webkit-user-drag: none !important;
-}
-
-.click-ripple {
-  position: absolute; width: 24px; height: 24px; border-radius: 50%;
-  border: 2px solid var(--cyan); background: rgba(0, 240, 255, 0.3);
-  transform: translate(-50%, -50%) scale(0.2); pointer-events: none;
-  animation: ripple 0.4s ease-out forwards; z-index: 9999;
-}
-@keyframes ripple {
-  0% { transform: translate(-50%, -50%) scale(0.2); opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
-}
-
-.touch-drag-indicator {
-  position: absolute; width: 50px; height: 50px; border-radius: 50%;
-  border: 2px solid var(--cyan); background: rgba(0, 240, 255, 0.2);
-  transform: translate(-50%, -50%) scale(0.9); pointer-events: none; z-index: 10000;
-  box-shadow: 0 0 18px rgba(0, 240, 255, 0.6), inset 0 0 14px rgba(0, 240, 255, 0.35);
-  display: flex; align-items: center; justify-content: center;
-  transition: border-color 0.15s, background 0.15s, transform 0.08s ease-out;
-}
-.touch-drag-indicator.right-mode {
-  border-color: var(--purple); background: rgba(176, 38, 255, 0.22);
-  box-shadow: 0 0 18px rgba(176, 38, 255, 0.6), inset 0 0 14px rgba(176, 38, 255, 0.35);
-}
-.touch-drag-indicator.dragging {
-  transform: translate(-50%, -50%) scale(1.22); border-width: 2.5px;
-}
-.touch-drag-indicator-core {
-  width: 10px; height: 10px; border-radius: 50%; background: #fff;
-  box-shadow: 0 0 8px #fff; pointer-events: none;
-}
-
-/* FULLSCREEN IMMERSIVE MODE */
-.stream-wrapper.fullscreen-active {
-  position: fixed !important; top: 0 !important; left: 0 !important;
-  width: 100vw !important; height: 100vh !important; max-width: 100vw !important; max-height: 100vh !important;
-  border-radius: 0 !important; border: none !important; z-index: 999999 !important;
-  background: #000 !important; display: flex !important; flex-direction: column !important;
-  margin: 0 !important; padding: 0 !important;
-}
-.stream-wrapper.fullscreen-active.rotated-90 {
-  width: 100vh !important; height: 100vw !important;
-  position: fixed !important; top: 50% !important; left: 50% !important;
-  transform: translate(-50%, -50%) rotate(90deg) !important;
-}
-.stream-wrapper.fullscreen-active .stream-bar { display: none !important; }
-.stream-wrapper.fullscreen-active .screen-box {
-  flex: 1 !important; width: 100%; height: 100%;
-  max-height: 100% !important; min-height: 100% !important; border-radius: 0 !important;
-}
-.stream-wrapper.fullscreen-active .screen-img {
-  width: 100%; height: 100%; max-height: 100% !important; object-fit: contain !important;
-}
-
-.fs-floating-bar {
-  display: none; position: absolute; top: 12px; left: 12px; right: 12px;
-  z-index: 100000; pointer-events: none; justify-content: space-between; align-items: center;
-}
-.stream-wrapper.fullscreen-active .fs-floating-bar { display: flex; }
-.fs-badge-group { display: flex; align-items: center; gap: 8px; pointer-events: auto; }
-.fs-stream-pill {
-  background: rgba(16, 22, 34, 0.85); border: 1px solid var(--card-border); padding: 4px 10px;
-  border-radius: 999px; font-size: 0.7rem; font-family: monospace; font-weight: 800;
-  color: var(--cyan); backdrop-filter: blur(10px); box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-}
-.fs-btn {
-  pointer-events: auto; background: rgba(16, 22, 34, 0.85); border: 1px solid var(--card-border);
-  color: var(--text); padding: 6px 12px; border-radius: 999px; font-size: 0.72rem; font-weight: 800;
-  cursor: pointer; backdrop-filter: blur(10px); transition: all 0.15s; display: flex; align-items: center;
-  gap: 5px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); user-select: none;
-}
-.fs-btn:active { transform: scale(0.95); }
-.fs-btn.active { background: rgba(0, 240, 255, 0.2); border-color: var(--cyan); color: var(--cyan); }
-.fs-btn-close {
-  background: rgba(239, 68, 68, 0.3); border-color: rgba(239, 68, 68, 0.5); color: #fca5a5;
-}
-
-.fs-controls-overlay {
-  display: none; position: absolute; inset: 0; z-index: 99999;
-  pointer-events: none; flex-direction: column; justify-content: space-between;
-  padding: 58px 16px 20px 16px;
-}
-.stream-wrapper.fullscreen-active .fs-controls-overlay.visible { display: flex; }
-.fs-quick-bar {
-  display: flex; justify-content: center; gap: 8px; pointer-events: none; flex-wrap: wrap;
-}
-.fs-mini-btn {
-  pointer-events: auto; background: rgba(16, 22, 34, 0.85); border: 1px solid rgba(255, 255, 255, 0.2);
-  color: var(--text); padding: 6px 12px; border-radius: 8px; font-size: 0.72rem; font-weight: 700;
-  cursor: pointer; backdrop-filter: blur(10px); box-shadow: 0 4px 14px rgba(0,0,0,0.5);
-  transition: all 0.15s; user-select: none;
-}
-.fs-mini-btn:active { transform: scale(0.95); }
-
-.fs-bottom-controls {
-  display: flex; justify-content: space-between; align-items: flex-end;
-  pointer-events: none; gap: 12px; width: 100%;
-}
-.fs-pad-cluster { display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
-.fs-cluster-label {
-  font-size: 0.65rem; font-weight: 800; color: var(--text-dim); letter-spacing: 0.5px;
-  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
-}
-.fs-pad-btn {
-  pointer-events: auto; backdrop-filter: blur(12px);
-  background: rgba(16, 22, 34, 0.75) !important;
-  border: 1px solid rgba(255, 255, 255, 0.2) !important;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.6);
-}
-
-/* ERGONOMIC TOUCH GAMEPAD */
-.controller-card {
-  background: linear-gradient(180deg, rgba(16, 24, 39, 0.88) 0%, rgba(10, 15, 26, 0.96) 100%);
-  border: 1px solid rgba(0, 240, 255, 0.25);
-  border-radius: 18px; padding: 12px;
-  display: flex; flex-direction: column; gap: 10px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-}
-.controller-layout {
-  display: flex; flex-direction: column; gap: 10px; width: 100%;
-}
-.controller-sticks-row {
-  display: flex; justify-content: space-around; align-items: center; width: 100%; gap: 10px;
-}
-.controller-actions-row {
-  display: flex; justify-content: space-between; align-items: center; width: 100%;
-  padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.08); gap: 8px;
-}
-.actions-left-group, .actions-right-group {
-  display: flex; align-items: center; gap: 8px;
-}
-
-/* CIRCULAR DPAD & ARROW PADS */
-.fs-dpad-circle, .mobile-dpad-circle {
-  width: 135px; height: 135px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(16, 24, 39, 0.95) 0%, rgba(3, 7, 18, 0.98) 100%);
-  border: 2px solid rgba(0, 240, 255, 0.35);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7), inset 0 0 16px rgba(0, 240, 255, 0.12);
-  backdrop-filter: blur(16px); position: relative; display: flex; align-items: center; justify-content: center;
-  pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none !important;
-  cursor: grab;
-}
-.fs-dpad-circle:active, .mobile-dpad-circle:active {
-  cursor: grabbing; border-color: var(--cyan); box-shadow: 0 0 20px rgba(0, 240, 255, 0.35);
-}
-.fs-dpad-center {
-  width: 44px; height: 44px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 240, 255, 0.35) 0%, rgba(15, 23, 42, 0.95) 100%);
-  border: 2px solid rgba(0, 240, 255, 0.65);
-  box-shadow: 0 0 14px rgba(0, 240, 255, 0.45);
-  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
-  pointer-events: none; will-change: transform; transition: transform 0.04s ease-out;
-}
-.fs-dpad-btn-w {
-  position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
-  width: 44px; height: 38px; border-radius: 12px 12px 6px 6px;
-}
-.fs-dpad-btn-s {
-  position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
-  width: 44px; height: 38px; border-radius: 6px 6px 12px 12px;
-}
-.fs-dpad-btn-a {
-  position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
-  width: 38px; height: 44px; border-radius: 12px 6px 6px 12px;
-}
-.fs-dpad-btn-d {
-  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
-  width: 38px; height: 44px; border-radius: 6px 12px 12px 6px;
-}
-
-.fs-arrow-circle, .mobile-arrow-circle {
-  width: 135px; height: 135px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(16, 24, 39, 0.95) 0%, rgba(3, 7, 18, 0.98) 100%);
-  border: 2px solid rgba(59, 130, 246, 0.4);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7), inset 0 0 16px rgba(59, 130, 246, 0.15);
-  backdrop-filter: blur(16px); position: relative; display: flex; align-items: center; justify-content: center;
-  pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none !important;
-  cursor: grab;
-}
-.fs-arrow-circle:active, .mobile-arrow-circle:active {
-  cursor: grabbing; border-color: #60a5fa; box-shadow: 0 0 20px rgba(59, 130, 246, 0.35);
-}
-.fs-arrow-center {
-  width: 44px; height: 44px; border-radius: 50%;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.35) 0%, rgba(15, 23, 42, 0.95) 100%);
-  border: 2px solid rgba(59, 130, 246, 0.65);
-  box-shadow: 0 0 14px rgba(59, 130, 246, 0.45);
-  display: flex; align-items: center; justify-content: center; font-size: 1.15rem;
-  pointer-events: none; will-change: transform; transition: transform 0.04s ease-out;
-}
-.fs-arrow-btn-up {
-  position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
-  width: 44px; height: 38px; border-radius: 12px 12px 6px 6px;
-  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
-}
-.fs-arrow-btn-down {
-  position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
-  width: 44px; height: 38px; border-radius: 6px 6px 12px 12px;
-  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
-}
-.fs-arrow-btn-left {
-  position: absolute; left: 4px; top: 50%; transform: translateY(-50%);
-  width: 38px; height: 44px; border-radius: 12px 6px 6px 12px;
-  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
-}
-.fs-arrow-btn-right {
-  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
-  width: 38px; height: 44px; border-radius: 6px 12px 12px 6px;
-  color: #60a5fa !important; border-color: rgba(96, 165, 250, 0.35) !important; font-size: 1.1rem !important;
-}
-
-.fs-right-group {
-  display: flex; gap: 10px; align-items: center; pointer-events: none; flex-wrap: wrap; justify-content: flex-end;
-}
-.fs-actions-column {
-  display: flex; flex-direction: column; gap: 8px; align-items: flex-end; pointer-events: none;
-}
-.fs-round-action-btn {
-  width: 44px; height: 44px; border-radius: 50% !important;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 0.85rem; font-weight: 800;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
-}
-.fs-round-jump-btn {
-  width: 52px; height: 52px; border-radius: 50% !important;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.45), rgba(5, 150, 105, 0.7)) !important;
-  border: 2px solid var(--emerald) !important;
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.45) !important;
-  font-size: 0.95rem; font-weight: 800; color: #fff;
-}
-.fs-round-jump-btn:active, .fs-round-jump-btn.pressed {
-  background: var(--emerald) !important; color: #000 !important;
-  box-shadow: 0 0 30px var(--emerald) !important; transform: scale(0.94);
-}
-
-.dpad-btn {
-  background: rgba(30, 41, 59, 0.75); border: 1.5px solid rgba(255, 255, 255, 0.15); border-radius: 12px; color: var(--text);
-  font-weight: 800; font-size: 0.95rem; display: flex; align-items: center; justify-content: center;
-  cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none;
-  transition: all 0.12s cubic-bezier(0.2, 0.8, 0.4, 1); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-.dpad-btn:active, .dpad-btn.pressed {
-  background: var(--cyan); color: #000; box-shadow: 0 0 20px var(--cyan); transform: scale(0.94);
-}
-.pad-arrow-btn {
-  font-size: 1.15rem; color: #60a5fa; border-color: rgba(96, 165, 250, 0.35); background: rgba(23, 37, 84, 0.5);
-}
-.pad-arrow-btn:active, .pad-arrow-btn.pressed {
-  background: #3b82f6 !important; color: #fff !important; box-shadow: 0 0 20px #3b82f6 !important; transform: scale(0.94);
-}
-
-.pad-action-btn {
-  padding: 10px 14px; background: rgba(30, 41, 59, 0.75); border: 1.5px solid rgba(255, 255, 255, 0.15); border-radius: 12px;
-  color: var(--text); font-weight: 800; font-size: 0.8rem; cursor: pointer; user-select: none;
-  touch-action: none; transition: all 0.12s cubic-bezier(0.2, 0.8, 0.4, 1);
-  display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-}
-.pad-action-btn:active, .pad-action-btn.pressed {
-  background: var(--purple); color: #fff; box-shadow: 0 0 20px var(--purple); transform: scale(0.94);
-}
-.pad-action-btn.btn-jump {
-  border-color: rgba(16, 185, 129, 0.4); color: #a7f3d0; background: rgba(6, 78, 59, 0.4);
-}
-.pad-action-btn.btn-jump:active, .pad-action-btn.btn-jump.pressed {
-  background: var(--emerald); color: #000; box-shadow: 0 0 20px var(--emerald);
-}
-.btn-shift { border-color: rgba(176, 38, 255, 0.4); color: #d8b4fe; }
-
-/* ACTION BUTTONS & GRIDS */
-.action-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-.btn {
-  padding: 12px 14px; border-radius: 12px; border: 1px solid transparent; font-size: 0.85rem; font-weight: 700;
-  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.15s ease;
-  user-select: none;
-}
-.btn:active { transform: scale(0.96); }
-.btn-toggle { background: linear-gradient(135deg, #00d2ff, #0084ff); color: #fff; box-shadow: 0 4px 18px rgba(0, 140, 255, 0.35); }
-.btn-toggle.paused { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 18px rgba(245, 158, 11, 0.35); }
-.btn-sub { background: rgba(30, 41, 59, 0.6); color: var(--text); border-color: var(--card-border); }
-.btn-update { background: rgba(176, 38, 255, 0.15); color: #d8b4fe; border-color: rgba(176, 38, 255, 0.4); }
-
-/* KEYBOARD LIGHT BUTTONS */
-.kbd-btn {
-  padding: 10px 4px; border-radius: 10px; border: 1.5px solid rgba(255,255,255,0.12);
-  background: rgba(30, 41, 59, 0.7); color: var(--text); font-weight: 700; font-size: 0.8rem;
-  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;
-  transition: all 0.15s ease; user-select: none;
-}
-.kbd-btn:active { transform: scale(0.95); }
-.kbd-btn.active {
-  border-color: #a855f7 !important;
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.3), rgba(147, 51, 234, 0.45)) !important;
-  color: #fff !important; box-shadow: 0 0 14px rgba(168, 85, 247, 0.45);
-}
-
-/* FAN BUTTONS */
-.fan-btn {
-  padding: 10px 4px; border-radius: 10px; border: 1.5px solid rgba(255,255,255,0.12);
-  background: rgba(30, 41, 59, 0.7); color: var(--text); font-weight: 700; font-size: 0.8rem;
-  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px;
-  transition: all 0.15s ease; user-select: none;
-}
-.fan-btn:active { transform: scale(0.95); }
-.fan-btn.active-quiet {
-  border-color: #3b82f6 !important; background: linear-gradient(135deg, rgba(59, 130, 246, 0.35), rgba(37, 99, 235, 0.5)) !important;
-  color: #fff !important; box-shadow: 0 0 14px rgba(59, 130, 246, 0.45);
-}
-.fan-btn.active-balance {
-  border-color: #06b6d4 !important; background: linear-gradient(135deg, rgba(6, 182, 212, 0.35), rgba(8, 145, 178, 0.5)) !important;
-  color: #fff !important; box-shadow: 0 0 14px rgba(6, 182, 212, 0.45);
-}
-.fan-btn.active-perf {
-  border-color: #f97316 !important; background: linear-gradient(135deg, rgba(249, 115, 22, 0.35), rgba(234, 88, 12, 0.5)) !important;
-  color: #fff !important; box-shadow: 0 0 14px rgba(249, 115, 22, 0.45);
-}
-.fan-btn.active-turbo {
-  border-color: #f43f5e !important; background: linear-gradient(135deg, rgba(244, 63, 94, 0.35), rgba(225, 29, 72, 0.55)) !important;
-  color: #fff !important; box-shadow: 0 0 16px rgba(244, 63, 94, 0.55);
-}
-
-/* SLIDERS */
-.sliders-grid { display: flex; flex-direction: column; gap: 12px; }
-.slider-group { display: flex; flex-direction: column; gap: 8px; }
-.slider-head { display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 700; }
-.slider-val { font-family: monospace; color: var(--cyan); }
-input[type=range] {
-  -webkit-appearance: none; width: 100%; height: 8px; border-radius: 4px; background: #1e293b; outline: none; cursor: pointer;
-  touch-action: pan-x !important;
-}
-input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 12px var(--cyan); cursor: pointer; transition: transform 0.1s;
-}
-input[type=range]::-webkit-slider-thumb:active { transform: scale(1.25); }
-
-/* BOSS TIMERS */
-.boss-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
-.boss-card {
-  background: rgba(16, 22, 34, 0.7); border: 1px solid var(--card-border); border-radius: 12px; padding: 10px 12px;
-  display: flex; justify-content: space-between; align-items: center;
-}
-.boss-title { font-size: 0.82rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-.boss-countdown { font-size: 0.84rem; font-weight: 800; font-family: monospace; color: var(--cyan); }
-.boss-spawned { color: var(--emerald); text-shadow: 0 0 10px rgba(16, 185, 129, 0.6); animation: pulseSpawn 1.5s infinite; }
-.boss-soon { color: var(--amber); }
-@keyframes pulseSpawn { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-
-/* CUSTOM DROPDOWNS */
-.custom-dropdown { position: relative; display: inline-block; flex: 1; min-width: 140px; }
-.custom-dropdown-btn {
-  width: 100%; height: 42px; padding: 0 12px; background: #14151a; border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 10px; color: var(--text); font-size: 0.82rem; font-weight: 700;
-  display: flex; align-items: center; justify-content: space-between; gap: 6px; cursor: pointer;
-}
-.custom-dropdown.open .custom-dropdown-btn { border-color: var(--cyan); box-shadow: 0 0 12px rgba(0, 240, 255, 0.3); }
-.custom-dropdown.open .dropdown-chevron { transform: rotate(180deg); }
-.dropdown-chevron { font-size: 0.7rem; color: var(--text-dim); transition: transform 0.2s ease; }
-.custom-dropdown-menu {
-  display: none; position: absolute; top: calc(100% + 4px); left: 0; min-width: 100%; max-width: 320px;
-  max-height: 240px; overflow-y: auto; background: #14151a; border: 1px solid rgba(255, 255, 255, 0.18);
-  border-radius: 12px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8); z-index: 1000; padding: 6px;
-}
-.custom-dropdown.open .custom-dropdown-menu { display: flex; flex-direction: column; gap: 3px; }
-.custom-dropdown-item {
-  padding: 8px 10px; border-radius: 8px; font-size: 0.8rem; color: var(--text-dim); cursor: pointer;
-  display: flex; align-items: center; justify-content: space-between; gap: 6px;
-}
-.custom-dropdown-item.active { background: rgba(0, 240, 255, 0.15); color: var(--cyan); font-weight: 700; }
-.dropdown-item-sub { font-size: 0.68rem; color: var(--text-mute); font-family: monospace; }
-
-/* MACRO PILLS & INSPECTOR */
-.macro-pill-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.macro-pill-btn {
-  background: rgba(30, 41, 59, 0.7); border: 1px solid var(--card-border); color: var(--text-dim);
-  padding: 6px 10px; border-radius: 8px; font-size: 0.74rem; font-weight: 700; cursor: pointer;
-}
-.macro-pill-btn.active {
-  background: rgba(0, 240, 255, 0.16); border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
-}
-.macro-pill-btn.active-purple {
-  background: rgba(176, 38, 255, 0.18); border-color: #c084fc; color: #e9d5ff; box-shadow: 0 0 12px rgba(176, 38, 255, 0.3);
-}
-.macro-hotkey-box {
-  background: rgba(0, 240, 255, 0.05); border: 1px dashed rgba(0, 240, 255, 0.3);
-  border-radius: 8px; padding: 8px 10px; font-size: 0.72rem; color: #94a3b8; display: flex; align-items: center; gap: 8px;
-}
-.macro-steps-box {
-  background: rgba(3, 5, 8, 0.7); border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px; padding: 8px; max-height: 180px; overflow-y: auto;
-  font-family: monospace; font-size: 0.7rem; display: flex; flex-direction: column; gap: 4px;
-}
-.macro-step-row {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 4px 6px; border-radius: 6px; background: rgba(255,255,255,0.02);
-}
-
-/* FIXED BOTTOM APP TAB BAR */
-.bottom-nav-bar {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
-  height: calc(58px + var(--safe-bottom));
-  padding-bottom: var(--safe-bottom);
-  background: rgba(10, 14, 23, 0.94);
-  border-top: 1px solid rgba(255, 255, 255, 0.09);
-  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
-  display: flex; justify-content: space-around; align-items: center;
-}
-.bottom-nav-item {
-  flex: 1; height: 100%; border: none; background: transparent;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  color: var(--text-mute); cursor: pointer; transition: all 0.15s ease; position: relative;
-}
-.bottom-nav-item .nav-icon { font-size: 1.25rem; transition: transform 0.15s ease; }
-.bottom-nav-item .nav-label { font-size: 0.65rem; font-weight: 700; letter-spacing: 0.2px; }
-.bottom-nav-item.active { color: var(--cyan); }
-.bottom-nav-item.active .nav-icon { transform: scale(1.12); filter: drop-shadow(0 0 8px rgba(0, 240, 255, 0.4)); }
-.bottom-nav-item.active::after {
-  content: ''; position: absolute; top: 0; width: 36px; height: 2px;
-  background: var(--cyan); border-radius: 999px; box-shadow: 0 0 10px var(--cyan);
-}
-.bottom-nav-item:active { transform: scale(0.92); }
-
-/* TOAST */
-#toast {
-  position: fixed; bottom: calc(68px + var(--safe-bottom)); left: 50%; transform: translateX(-50%) translateY(100px);
-  background: rgba(16, 22, 34, 0.96); border: 1px solid var(--cyan); color: var(--text);
-  padding: 8px 18px; border-radius: 999px; font-size: 0.8rem; font-weight: 700;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 18px rgba(0,240,255,0.25);
-  transition: transform 0.26s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-  pointer-events: none; z-index: 10000; white-space: nowrap;
-}
-#toast.show { transform: translateX(-50%) translateY(0); }
-</style>
-</head>
-<body>
-<div class="app-shell">
-  <!-- TOP APP HEADER -->
-  <header class="app-header" id="app-header">
-    <div class="brand">
-      <div class="brand-avatar">⚡</div>
-      <div class="brand-text">
-        <div class="brand-title">GPO CYBERDECK</div>
-      </div>
-    </div>
-    <div class="header-actions">
-      <div id="status-pill" class="status-badge badge-stopped">STOPPED</div>
-      <button id="btn-header-toggle" class="header-btn-toggle" onclick="togglePlay()">
-        <span>▶</span><span>START</span>
-      </button>
-    </div>
-  </header>
-
-  <!-- SUB-HEADER STATUS RIBBON -->
-  <div class="sub-header-bar">
-    <div class="sub-bar-left">
-      <span class="live-dot-mini"></span>
-      <span id="host-sub">CONNECTING...</span>
-    </div>
-    <div class="sub-bar-right">
-      <div id="badge-fruit" class="toggle-spawn-badge" onclick="toggleSpawnAlerts()" title="Toggle fruit spawn alerts">🍇 ALERTS: ON</div>
-      <div id="badge-sound-mini" class="toggle-sound-mini" onclick="toggleSoundAlerts()" title="Toggle sound alarms">🔊</div>
-    </div>
-  </div>
-
-  <!-- MAIN SCROLLABLE APP CONTENT -->
-  <main class="app-content">
-
-    <!-- TAB 1: REMOTE CONTROLS & LIVE STREAM -->
-    <section id="sec-remote" class="mobile-section active">
-      <!-- LIVE VIDEO STREAM -->
-      <div class="stream-wrapper" id="stream-wrapper">
-        <div class="stream-bar" id="stream-bar">
-          <div class="stream-indicator">
-            <div id="stream-dot" class="live-dot on"></div>
-            <span style="font-weight: 800;">LIVE</span>
-            <span id="stream-fps-badge" style="font-family: monospace; color: var(--cyan); font-size: 0.7rem; font-weight: 800;">20 FPS</span>
-            <span id="stream-res-badge" style="font-family: monospace; color: var(--amber); font-size: 0.7rem; font-weight: 800;">720p</span>
-          </div>
-
-          <div class="stream-tools-group">
-            <!-- FPS Selector Dropdown -->
-            <div class="custom-dropdown" id="dropdown-fps" style="min-width: 86px; flex: initial;">
-              <button type="button" class="stream-tool-btn" onclick="toggleDropdown('dropdown-fps')" title="Change Frame Rate">
-                <span id="dropdown-fps-label">⚡ 20 FPS</span>
-                <span class="dropdown-chevron">▼</span>
-              </button>
-              <div class="custom-dropdown-menu" id="dropdown-fps-menu" style="min-width: 130px;">
-                <div class="custom-dropdown-item" data-val="10" onclick="setStreamFps(10)">
-                  <span>10 FPS (Eco)</span>
-                </div>
-                <div class="custom-dropdown-item" data-val="15" onclick="setStreamFps(15)">
-                  <span>15 FPS</span>
-                </div>
-                <div class="custom-dropdown-item active" data-val="20" onclick="setStreamFps(20)">
-                  <span>20 FPS (Default)</span>
-                  <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
-                </div>
-                <div class="custom-dropdown-item" data-val="30" onclick="setStreamFps(30)">
-                  <span>30 FPS (Smooth)</span>
-                </div>
-                <div class="custom-dropdown-item" data-val="60" onclick="setStreamFps(60)">
-                  <span>60 FPS (Ultra)</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Quality Selector Dropdown -->
-            <div class="custom-dropdown" id="dropdown-quality" style="min-width: 86px; flex: initial;">
-              <button type="button" class="stream-tool-btn" onclick="toggleDropdown('dropdown-quality')" title="Change Resolution">
-                <span id="dropdown-quality-label">📺 720p</span>
-                <span class="dropdown-chevron">▼</span>
-              </button>
-              <div class="custom-dropdown-menu" id="dropdown-quality-menu" style="min-width: 150px;">
-                <div class="custom-dropdown-item" data-val="480" onclick="setStreamQuality(480, 50, '480p (Low)')">
-                  <div style="flex:1;text-align:left;">
-                    <div style="font-weight:700;">480p (Low)</div>
-                    <div class="dropdown-item-sub">Data Saver</div>
-                  </div>
-                </div>
-                <div class="custom-dropdown-item active" data-val="720" onclick="setStreamQuality(720, 70, '720p (Balanced)')">
-                  <div style="flex:1;text-align:left;">
-                    <div style="font-weight:700;">720p (Balanced)</div>
-                    <div class="dropdown-item-sub">Default HD</div>
-                  </div>
-                  <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
-                </div>
-                <div class="custom-dropdown-item" data-val="1080" onclick="setStreamQuality(1080, 85, '1080p (Crisp)')">
-                  <div style="flex:1;text-align:left;">
-                    <div style="font-weight:700;">1080p (Crisp)</div>
-                    <div class="dropdown-item-sub">High Detail</div>
-                  </div>
-                </div>
-                <div class="custom-dropdown-item" data-val="0" onclick="setStreamQuality(0, 92, 'Original (Max)')">
-                  <div style="flex:1;text-align:left;">
-                    <div style="font-weight:700;">Original (Max)</div>
-                    <div class="dropdown-item-sub">Native Display</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tap to Click / Drag Toggle Button -->
-            <button type="button" class="stream-tool-btn active" id="stream-tool-drag" onclick="toggleHoldDragMode()" title="Toggle Tap to Click vs Pan Camera" style="min-width: 70px;">
-              <span id="stream-drag-label">👆 TAP</span>
-            </button>
-
-            <!-- Rotate Button -->
-            <button type="button" class="stream-tool-btn" id="stream-tool-rotate" onclick="toggleRotate()" title="Rotate 90° Landscape">
-              <span>🔄</span>
-            </button>
-
-            <!-- Fullscreen Button -->
-            <button type="button" class="stream-tool-btn" onclick="toggleFullscreen()" title="Full Screen View" style="background: linear-gradient(135deg, rgba(0, 240, 255, 0.25), rgba(176, 38, 255, 0.25)); border-color: var(--cyan); color: #fff; font-weight: 800;">
-              <span>⛶</span>
-            </button>
-          </div>
-        </div>
-
-        <div id="screen-container" class="screen-box" oncontextmenu="return false;">
-          <img id="screen-img" class="screen-img" src="" alt="" draggable="false" oncontextmenu="return false;" onerror="fallbackSnapshot()" />
-
-          <!-- Fullscreen Floating Bar -->
-          <div id="fs-floating-bar" class="fs-floating-bar">
-            <div class="fs-badge-group">
-              <div id="fs-status-pill" class="status-badge badge-stopped" style="font-size: 0.68rem; padding: 4px 10px;">STOPPED</div>
-              <div id="fs-stream-info" class="fs-stream-pill">20 FPS • 720p</div>
-            </div>
-            <div style="display: flex; gap: 6px; align-items: center; pointer-events: auto;">
-              <button class="fs-btn active" id="btn-fs-drag" onclick="toggleHoldDragMode()">
-                <span id="fs-drag-icon">👆</span>
-                <span id="fs-drag-label">TAP</span>
-              </button>
-              <button class="fs-btn" id="btn-click-mode" onclick="toggleClickMode()">
-                <span id="click-mode-icon">🎯</span>
-                <span id="click-mode-label">CLICK</span>
-              </button>
-              <button class="fs-btn" id="btn-fs-rotate" onclick="toggleRotate()">
-                <span>🔄</span>
-              </button>
-              <button class="fs-btn" id="btn-fs-overlay-toggle" onclick="toggleFullscreenControls()">
-                <span id="fs-ctrl-icon">🎮</span>
-                <span id="fs-ctrl-label">PAD</span>
-              </button>
-              <button class="fs-btn fs-btn-close" onclick="exitFullscreen()">
-                <span>✖</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Fullscreen Controls Overlay -->
-          <div id="fs-controls-overlay" class="fs-controls-overlay visible">
-            <div class="fs-quick-bar">
-              <button class="fs-mini-btn" id="btn-fs-toggle" onclick="togglePlay()">▶ START</button>
-              <button class="fs-mini-btn" onclick="doAction('recast')">🔄 RECAST</button>
-              <button class="fs-mini-btn" onclick="doAction('buy_bait')">🛒 BUY BAIT</button>
-              <button class="fs-mini-btn" id="btn-fs-mute" onclick="toggleMute()">🔇 MUTE</button>
-            </div>
-
-            <div class="fs-bottom-controls">
-              <!-- Left: Circular D-Pad Joystick -->
-              <div class="fs-pad-cluster">
-                <div class="fs-cluster-label">🏃 MOVEMENT (WASD)</div>
-                <div class="fs-dpad-circle" id="fs-stick-walk">
-                  <div class="fs-dpad-center" id="fs-stick-walk-knob">🏃</div>
-                  <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w">▲</button>
-                  <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s">▼</button>
-                  <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a">◀</button>
-                  <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d">▶</button>
-                </div>
-              </div>
-
-              <!-- Right: Camera & Actions -->
-              <div class="fs-right-group">
-                <div class="fs-pad-cluster" style="align-items: center;">
-                  <div class="fs-cluster-label" style="color: #60a5fa;">👀 CAMERA</div>
-                  <div class="fs-arrow-circle" id="fs-stick-cam">
-                    <div class="fs-arrow-center" id="fs-stick-cam-knob">📷</div>
-                    <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-up" data-key="up">▲</button>
-                    <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-down" data-key="down">▼</button>
-                    <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-left" data-key="left">◀</button>
-                    <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-right" data-key="right">▶</button>
-                  </div>
-                </div>
-
-                <div class="fs-pad-cluster" style="align-items: flex-end;">
-                  <div class="fs-cluster-label">⚡ ACTIONS</div>
-                  <div class="fs-actions-column">
-                    <div style="display: flex; gap: 6px; align-items: center;">
-                      <button type="button" class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 6px 12px; font-size: 0.72rem;">⚡ SHIFT</button>
-                      <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Chat (T)">💬</button>
-                    </div>
-                    <div style="display: flex; gap: 6px; align-items: center;">
-                      <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="1" title="Rod (1)">🎣</button>
-                      <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="e" title="Interact (E)">🖐️</button>
-                      <button type="button" class="pad-action-btn fs-pad-btn fs-round-jump-btn" data-key="space" title="Jump (Space)">🦘</button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- MOBILE DUAL-THUMB GAMEPAD -->
-      <div class="controller-card">
-        <div class="controller-layout">
-          <!-- Row 1: Dual Circular Joysticks (Walk Left, Camera Right) -->
-          <div class="controller-sticks-row">
-            <!-- Left: Dynamic WASD Joystick -->
-            <div class="pad-cluster">
-              <div class="cluster-label">🏃 WALK (WASD)</div>
-              <div class="mobile-dpad-circle" id="stick-walk">
-                <div class="fs-dpad-center" id="stick-walk-knob">🏃</div>
-                <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-w" data-key="w">▲</button>
-                <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-s" data-key="s">▼</button>
-                <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-a" data-key="a">◀</button>
-                <button type="button" class="dpad-btn fs-pad-btn fs-dpad-btn-d" data-key="d">▶</button>
-              </div>
-            </div>
-
-            <!-- Right: Dynamic Camera Joystick -->
-            <div class="pad-cluster">
-              <div class="cluster-label" style="color: #60a5fa;">👀 CAMERA</div>
-              <div class="mobile-arrow-circle" id="stick-cam">
-                <div class="fs-arrow-center" id="stick-cam-knob">📷</div>
-                <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-up" data-key="up">▲</button>
-                <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-down" data-key="down">▼</button>
-                <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-left" data-key="left">◀</button>
-                <button type="button" class="dpad-btn fs-pad-btn pad-arrow-btn fs-arrow-btn-right" data-key="right">▶</button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Row 2: Ergonomic Quick Action Buttons -->
-          <div class="controller-actions-row">
-            <div class="actions-left-group">
-              <button type="button" class="pad-action-btn fs-pad-btn btn-shift" data-key="shift" style="border-radius: 999px !important; padding: 8px 14px; font-size: 0.74rem;">⚡ SPRINT</button>
-              <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="t" title="Chat (T)">💬</button>
-            </div>
-            <div class="actions-right-group">
-              <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="1" title="Equip Rod (1)">🎣</button>
-              <button type="button" class="pad-action-btn fs-pad-btn fs-round-action-btn" data-key="e" title="Interact / Reel (E)">🖐️</button>
-              <button type="button" class="pad-action-btn fs-pad-btn fs-round-jump-btn" data-key="space" title="Jump / Geppo (Space)">🦘</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- QUICK MACRO ACTION BUTTONS -->
-      <div class="action-grid">
-        <button id="btn-toggle" class="btn btn-toggle" onclick="togglePlay()" style="grid-column: span 2; padding: 14px;">
-          <span id="toggle-icon">▶️</span>
-          <span id="toggle-label">START MACRO</span>
-        </button>
-        <button class="btn btn-sub" onclick="doAction('recast')">🔄 RECAST</button>
-        <button class="btn btn-sub" onclick="doAction('buy_bait')">🛒 BUY BAIT</button>
-        <button id="btn-mute" class="btn btn-sub" onclick="toggleMute()">🔇 MUTE</button>
-        <button class="btn btn-update" onclick="doUpdate()">🚀 UPDATE</button>
-      </div>
-    </section>
-
-    <!-- TAB 2: STATS & DASHBOARD -->
-    <section id="sec-stats" class="mobile-section">
-      <!-- PRIMARY CATCH METRICS -->
-      <div class="stat-grid">
-        <div class="card">
-          <div class="card-label">🐟 Fish Caught</div>
-          <div class="card-val" id="val-fish">0</div>
-          <div class="card-meta" id="val-rate">0% rate</div>
-        </div>
-        <div class="card">
-          <div class="card-label">🍇 Devil Fruits</div>
-          <div class="card-val fruit" id="val-fruits">0</div>
-          <div class="card-meta" id="val-pity">Pity: 0</div>
-        </div>
-        <div class="card">
-          <div class="card-label">🌟 Legendary Pity</div>
-          <div class="card-val" id="val-leg-pity" style="color: var(--amber);">0</div>
-          <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-leg-pity"></div></div>
-          <div class="card-meta">Toward 100 guaranteed</div>
-        </div>
-        <div class="card">
-          <div class="card-label">⏱️ Runtime</div>
-          <div class="card-val" id="val-runtime" style="font-size: 1.25rem;">00:00:00</div>
-          <div class="card-meta">Current session</div>
-        </div>
-      </div>
-
-      <!-- BAIT & RESTOCK METRICS -->
-      <div class="stat-grid">
-        <div class="card">
-          <div class="card-label">🛒 Orders Placed</div>
-          <div class="card-val" id="val-orders">0</div>
-          <div class="card-meta" id="val-auto-buy">Auto-buy ON</div>
-        </div>
-        <div class="card">
-          <div class="card-label">⏳ Next Restock</div>
-          <div class="card-val" id="val-restock" style="color: var(--cyan); font-size: 1.25rem;">0 / 10</div>
-          <div class="gauge-bar-bg"><div class="gauge-bar-fill" id="bar-restock" style="background:var(--cyan)"></div></div>
-          <div class="card-meta">Catches until restock</div>
-        </div>
-        <div class="card">
-          <div class="card-label">🎯 Active Tier</div>
-          <div class="card-val" id="val-tier" style="color: #60a5fa; font-size: 1.15rem;">Common</div>
-          <div class="card-meta">Purchase priority</div>
-        </div>
-        <div class="card">
-          <div class="card-label">🛡️ Leg. Reserve</div>
-          <div class="card-val" id="val-reserve" style="color: var(--amber); font-size: 1.15rem;">0</div>
-          <div class="card-meta">Protected stock</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- TAB 3: STEP RECORDER & MACRO STUDIO -->
-    <section id="sec-macro" class="mobile-section">
-      <div class="card" style="border-color: rgba(0, 240, 255, 0.4); background: rgba(0, 240, 255, 0.03);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-          <div class="card-label" style="color: var(--cyan); display: flex; align-items: center; gap: 6px;">
-            <span>📼 MACRO RECORDER &amp; STUDIO</span>
-          </div>
-          <div id="macro-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
-        </div>
-
-        <!-- 1. RECORD CONTROLS -->
-        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--card-border); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">1. RECORD WORKFLOW</span>
-            <span id="record-count-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--amber); font-weight: 800;">READY</span>
-          </div>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <input id="txt-macro-name" type="text" placeholder="Macro Name" value="Craft Rare Bait"
-                   style="background: #14151a; color: #fff; border: 1px solid var(--card-border); border-radius: 10px; padding: 8px 12px; font-size: 0.85rem; font-weight: 700; flex: 1; min-width: 140px; outline: none;" />
-            <button id="btn-record-toggle" class="btn" style="background: linear-gradient(135deg, #00f0ff, #0284c7); color: #000; flex: 1; min-width: 130px; padding: 10px 12px;" onclick="toggleRecord()">
-              <span id="record-btn-icon">⏺️</span>
-              <span id="record-btn-label">RECORD</span>
-            </button>
-            <button id="btn-record-cancel" class="btn btn-sub" style="display: none; padding: 10px 12px;" onclick="cancelRecord()">❌ CANCEL</button>
-          </div>
-          <div id="record-hint" style="font-size: 0.72rem; color: var(--text-mute);">
-            Tap Record, then tap live screen and press controls (T, E, WASD). Timing is captured!
-          </div>
-        </div>
-
-        <!-- 2. PLAYBACK CONTROLS -->
-        <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid var(--card-border); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.75rem; font-weight: 800; color: var(--text-dim);">2. PLAY / LOOP MACRO</span>
-            <span id="play-loop-badge" style="font-size: 0.75rem; font-family: monospace; color: var(--cyan); font-weight: 800;">READY</span>
-          </div>
-
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <div class="custom-dropdown" id="dropdown-macro" style="flex: 1;">
-              <button type="button" class="custom-dropdown-btn" onclick="toggleDropdown('dropdown-macro')">
-                <span class="dropdown-label" id="dropdown-macro-label">(No macros saved)</span>
-                <span class="dropdown-chevron">▼</span>
-              </button>
-              <div class="custom-dropdown-menu" id="dropdown-macro-menu">
-                <div class="custom-dropdown-item" style="color:var(--text-mute);cursor:default;">(No macros saved yet)</div>
-              </div>
-            </div>
-            <button class="btn btn-sub" style="padding: 10px 12px; font-size: 0.8rem;" onclick="renameSelectedMacro()" title="Rename">✏️</button>
-            <button class="btn btn-sub" style="padding: 10px 12px; font-size: 0.8rem;" onclick="deleteSelectedMacro()" title="Delete">🗑️</button>
-          </div>
-
-          <!-- Loop Repetition Pills -->
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding-top: 2px;">
-            <span style="font-size: 0.72rem; font-weight: 700; color: var(--text-dim);">🔁 Loop Count:</span>
-            <div class="macro-pill-group" id="loop-pills">
-              <button class="macro-pill-btn active-purple" onclick="setWebLoopCount(1, this)">1x</button>
-              <button class="macro-pill-btn" onclick="setWebLoopCount(5, this)">5x</button>
-              <button class="macro-pill-btn" onclick="setWebLoopCount(10, this)">10x</button>
-              <button class="macro-pill-btn" onclick="setWebLoopCount(25, this)">25x</button>
-              <button class="macro-pill-btn" onclick="setWebLoopCount(0, this)">∞ Endless</button>
-            </div>
-          </div>
-
-          <!-- Playback Speed Pills -->
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
-            <span style="font-size: 0.72rem; font-weight: 700; color: var(--text-dim);">⚡ Speed:</span>
-            <div class="macro-pill-group" id="speed-pills">
-              <button class="macro-pill-btn active" onclick="setWebSpeed(1.0, this)">1x</button>
-              <button class="macro-pill-btn" onclick="setWebSpeed(2.0, this)">2x</button>
-              <button class="macro-pill-btn" onclick="setWebSpeed(5.0, this)">5x</button>
-              <button class="macro-pill-btn" onclick="setWebSpeed(10.0, this)">10x</button>
-              <button class="macro-pill-btn" onclick="setWebSpeed(25.0, this)">25x</button>
-              <button class="macro-pill-btn" onclick="setWebSpeed(50.0, this)">50x</button>
-              <button class="macro-pill-btn" onclick="setWebSpeed(100.0, this)">100x ⚡</button>
-            </div>
-          </div>
-
-          <!-- Play / Loop / Stop Action Buttons -->
-          <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px;">
-            <button id="btn-macro-play" class="btn" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; flex: 1; padding: 10px 12px;" onclick="playMacro(false)">
-              ▶️ PLAY ONCE
-            </button>
-            <button id="btn-macro-loop" class="btn" style="background: linear-gradient(135deg, #b026ff, #7c3aed); color: #fff; flex: 1; padding: 10px 12px;" onclick="playMacro(true)">
-              🔁 LOOP PLAY
-            </button>
-            <button id="btn-macro-stop" class="btn" style="background: linear-gradient(135deg, #ef4444, #dc2626); color: #fff; flex: 1; padding: 10px 14px; display: none;" onclick="stopMacro()">
-              🛑 STOP PLAYBACK
-            </button>
-          </div>
-
-          <!-- Step Inspector -->
-          <details id="macro-steps-details" style="margin-top: 4px;" open>
-            <summary style="font-size: 0.74rem; font-weight: 700; color: var(--cyan); cursor: pointer; user-select: none;">
-              🎞️ Step Inspector (<span id="macro-steps-count">0</span> steps)
-            </summary>
-            <div id="macro-steps-list" class="macro-steps-box" style="margin-top: 6px;">
-              <div style="color: var(--text-mute);">Select a macro to inspect steps...</div>
-            </div>
-          </details>
-        </div>
-        <div id="macro-msg" style="font-size: 0.72rem; color: var(--text-mute); margin-top: 4px;">Record any workflow once and replay or loop it smoothly!</div>
-      </div>
-    </section>
-
-    <!-- TAB 4: AUTO CRAFT BAIT -->
-    <section id="sec-craft" class="mobile-section">
-      <div class="card" style="border-color: rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.04);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <div class="card-label" style="color: var(--amber);">🔨 AUTO CRAFT (BLACKSMITH SEN)</div>
-          <div id="craft-status-badge" class="status-badge badge-stopped" style="font-size: 0.7rem; padding: 3px 8px;">IDLE</div>
-        </div>
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-          <!-- Custom Craft Dropdown -->
-          <div class="custom-dropdown" id="dropdown-craft" style="width: 100%;">
-            <button type="button" class="custom-dropdown-btn" onclick="toggleDropdown('dropdown-craft')">
-              <span class="dropdown-label" id="dropdown-craft-label">🍇 Rare Fish Bait</span>
-              <span class="dropdown-chevron">▼</span>
-            </button>
-            <div class="custom-dropdown-menu" id="dropdown-craft-menu">
-              <div class="custom-dropdown-item active" data-val="rare" onclick="selectCraftTier('rare', '🍇 Rare Fish Bait')">
-                <span>🍇 Rare Fish Bait</span>
-                <span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>
-              </div>
-              <div class="custom-dropdown-item" data-val="legendary" onclick="selectCraftTier('legendary', '👑 Legendary Fish Bait')">
-                <span>👑 Legendary Fish Bait</span>
-              </div>
-              <div class="custom-dropdown-item" data-val="all" onclick="selectCraftTier('all', '🌟 All (Legendary &amp; Rare)')">
-                <span>🌟 All (Legendary &amp; Rare)</span>
-              </div>
-            </div>
-          </div>
-
-          <button id="btn-craft-toggle" class="btn" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #000; padding: 14px;" onclick="toggleAutoCraft()">
-            <span id="craft-btn-icon">🔨</span>
-            <span id="craft-btn-label">START AUTO CRAFT</span>
-          </button>
-        </div>
-        <div id="craft-msg" style="font-size: 0.75rem; color: var(--text-mute); margin-top: 6px;">Stand at Blacksmith Sen with caught fish in inventory, then tap Start.</div>
-      </div>
-    </section>
-
-    <!-- TAB 5: SYSTEM & SETTINGS -->
-    <section id="sec-system" class="mobile-section">
-      <!-- LAPTOP FAN & THERMAL CONTROL -->
-      <div class="card" style="border-color: rgba(0, 240, 255, 0.35); background: rgba(0, 240, 255, 0.04);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-          <div class="card-label" style="color: var(--cyan); display: flex; align-items: center; gap: 6px;">
-            <span>🌀 FAN &amp; THERMAL HUB</span>
-            <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(0,240,255,0.15); border: 1px solid rgba(0,240,255,0.3); color: #a5f3fc;">LENOVO LOQ</span>
-          </div>
-          <div id="fan-mode-badge" class="status-badge" style="font-size: 0.7rem; padding: 3px 8px; background: rgba(6,182,212,0.15); color: #06b6d4; border: 1px solid rgba(6,182,212,0.3);">BALANCE (AUTO)</div>
-        </div>
-
-        <!-- Live Telemetry Stat Pills -->
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 6px 0;">
-          <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px; text-align: center;">
-            <div style="font-size: 0.65rem; color: var(--text-dim); font-weight: 700;">CPU TEMP</div>
-            <div id="telemetry-cpu-temp" style="font-size: 0.95rem; font-weight: 800; color: #38bdf8;">--°C</div>
-          </div>
-          <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px; text-align: center;">
-            <div style="font-size: 0.65rem; color: var(--text-dim); font-weight: 700;">GPU TEMP</div>
-            <div id="telemetry-gpu-temp" style="font-size: 0.95rem; font-weight: 800; color: #34d399;">--°C</div>
-          </div>
-          <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px; text-align: center;">
-            <div style="font-size: 0.65rem; color: var(--text-dim); font-weight: 700;">GPU POWER</div>
-            <div id="telemetry-gpu-power" style="font-size: 0.95rem; font-weight: 800; color: #fbbf24;">-- W</div>
-          </div>
-          <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px; text-align: center;">
-            <div style="font-size: 0.65rem; color: var(--text-dim); font-weight: 700;">EST. FAN</div>
-            <div id="telemetry-fan-rpm" style="font-size: 0.8rem; font-weight: 800; color: #c084fc; margin-top: 2px;">~2800 RPM</div>
-          </div>
-        </div>
-
-        <!-- 4 Fan Mode Buttons -->
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px;">
-          <button id="btn-fan-quiet" class="fan-btn" onclick="setFanMode('quiet')">💤 QUIET</button>
-          <button id="btn-fan-balance" class="fan-btn" onclick="setFanMode('balance')">⚖️ BALANCE</button>
-          <button id="btn-fan-perf" class="fan-btn" onclick="setFanMode('performance')">⚡ PERF</button>
-          <button id="btn-fan-turbo" class="fan-btn" style="border-color: rgba(244,63,94,0.4); color: #fda4af;" onclick="setFanMode('turbo')">🚀 TURBO</button>
-        </div>
-
-        <!-- Fan Speed Slider -->
-        <div class="slider-group" style="margin-top: 8px;">
-          <div class="slider-head">
-            <span style="font-size: 0.72rem; color: var(--text-dim); font-weight: 700;">FAN SPEED SLIDER</span>
-            <span id="lbl-fan-pct" class="slider-val">50% (Balance)</span>
-          </div>
-          <input id="rng-fan-speed" type="range" min="0" max="100" value="50"
-                 oninput="onFanSliderInput(this.value)"
-                 onchange="onFanSliderRelease(this.value)" />
-        </div>
-
-        <!-- Auto-Turbo Switch -->
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06);">
-          <div style="font-size: 0.75rem; color: var(--text-dim); display: flex; align-items: center; gap: 6px;">
-            <span>❄️ Auto-Turbo on Fishing:</span>
-            <span style="color: var(--text-mute); font-size: 0.7rem;">Ramps to Turbo while active</span>
-          </div>
-          <button id="btn-auto-turbo" class="header-btn-toggle" style="font-size: 0.75rem; padding: 4px 10px;" onclick="toggleAutoTurbo()">
-            <span>ON</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- LAPTOP KEYBOARD LIGHT CONTROL -->
-      <div class="card" style="border-color: rgba(168, 85, 247, 0.35); background: rgba(168, 85, 247, 0.04);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-          <div class="card-label" style="color: #c084fc; display: flex; align-items: center; gap: 6px;">
-            <span>⌨️ KEYBOARD LIGHT</span>
-            <span style="font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(168,85,247,0.15); border: 1px solid rgba(168,85,247,0.3); color: #e9d5ff;">LENOVO LOQ</span>
-          </div>
-          <div id="kbd-light-badge" class="status-badge" style="font-size: 0.7rem; padding: 3px 8px; background: rgba(255,255,255,0.08); color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15);">UNKNOWN</div>
-        </div>
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
-          <button id="btn-kbd-off" class="kbd-btn" onclick="setKbdLight('off')">🌑 OFF</button>
-          <button id="btn-kbd-low" class="kbd-btn" onclick="setKbdLight('low')">🔅 LOW</button>
-          <button id="btn-kbd-high" class="kbd-btn" onclick="setKbdLight('high')">🔆 HIGH</button>
-          <button id="btn-kbd-cycle" class="kbd-btn" style="border-color: rgba(168,85,247,0.4);" onclick="setKbdLight('cycle')">🔄 CYCLE</button>
-        </div>
-      </div>
-
-      <!-- AUDIO & SCREEN CONTROLS -->
-      <div class="card">
-        <div class="sliders-grid">
-          <div class="slider-group">
-            <div class="slider-head">
-              <span>🔊 AUDIO VOLUME</span>
-              <span id="lbl-volume" class="slider-val">50%</span>
-            </div>
-            <input id="rng-volume" type="range" min="0" max="100" value="50"
-                   oninput="onVolInput(this.value)"
-                   onchange="onVolRelease(this.value)" />
-          </div>
-
-          <div class="slider-group">
-            <div class="slider-head">
-              <span>💡 SCREEN BRIGHTNESS</span>
-              <span id="lbl-brightness" class="slider-val">80%</span>
-            </div>
-            <input id="rng-brightness" type="range" min="0" max="100" value="80"
-                   oninput="onBrightInput(this.value)"
-                   onchange="onBrightRelease(this.value)" />
-          </div>
-        </div>
-      </div>
-
-      <!-- WORLD BOSS & TIMERS -->
-      <div class="card">
-        <div class="card-label" style="margin-bottom: 6px;">👑 WORLD BOSS &amp; MERCHANT COUNTDOWNS</div>
-        <div id="boss-list" class="boss-grid">
-          <div style="font-size: 0.8rem; color: var(--text-mute);">Loading timers...</div>
-        </div>
-      </div>
-
-      <!-- MOBILE AUDIO ALERTS & PUSH NOTIFICATIONS -->
-      <div class="card">
-        <div class="card-label">🔔 MOBILE AUDIO ALERTS &amp; PUSH</div>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <button id="btn-sound-toggle" class="btn" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #10b981, #059669); color: #fff;" onclick="toggleSoundAlerts()">
-            <span>🔊</span><span>SOUND: ON</span>
-          </button>
-          <button class="btn btn-sub" style="flex: 1; padding: 12px;" onclick="requestMobileNotifications()">
-            <span>📲</span><span>ENABLE PUSH</span>
-          </button>
-          <button class="btn btn-sub" style="padding: 12px;" onclick="playFanfare('fruit')" title="Test sound">
-            <span>🎵</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- NOTIFICATION & SCREENSHOT FILTERS -->
-      <div class="card">
-        <div class="card-label">🛡️ NOTIFICATION &amp; SCREENSHOT FILTERS</div>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <div>
-              <div style="font-size: 0.8rem; font-weight: 700; color: #fff;">🌟 Legendary / Pity 0 Only</div>
-              <div style="font-size: 0.7rem; color: var(--text-mute);">Block spam alerts for Common/Rare/Epic fruits</div>
-            </div>
-            <button id="btn-legendary-toggle" class="status-badge badge-running" style="cursor: pointer;" onclick="toggleLegendaryOnly()">ACTIVE</button>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06);">
-            <div>
-              <div style="font-size: 0.8rem; font-weight: 700; color: #fff;">📸 Drop Screenshots</div>
-              <div style="font-size: 0.7rem; color: var(--text-mute);">Capture screenshot when fruit drops on ground</div>
-            </div>
-            <button id="btn-drop-shot-toggle" class="status-badge badge-running" style="cursor: pointer;" onclick="toggleDropScreenshot()">ACTIVE</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- AUTO-RECONNECT & GPO PRIVATE SERVER JOIN -->
-      <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div class="card-label">🛡️ AUTO-RECONNECT &amp; PRIVATE SERVER</div>
-          <button id="btn-reconnect-toggle" class="status-badge badge-running" style="cursor: pointer;" onclick="toggleAutoReconnect()">ACTIVE</button>
-        </div>
-
-        <!-- 1. GPO Private Server Code -->
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          <div style="font-size: 0.68rem; font-weight: 700; color: var(--text-dim);">GPO PRIVATE SERVER CODE:</div>
-          <div style="display: flex; gap: 8px;">
-            <input id="txt-ps-code" type="text" placeholder="Enter Server Code (e.g. ABC123XYZ)"
-                   style="background: #14151a; color: #fff; border: 1px solid var(--card-border); border-radius: 10px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; flex: 1; outline: none;" />
-            <button class="btn btn-sub" style="padding: 8px 14px; white-space: nowrap;" onclick="savePsCode()">
-              💾 SAVE CODE
-            </button>
-          </div>
-        </div>
-
-        <!-- 2. On-Join Recorded Macro -->
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          <div style="font-size: 0.68rem; font-weight: 700; color: var(--text-dim);">EXECUTE RECORDED JOIN MACRO ON RECONNECT:</div>
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <select id="sel-rejoin-macro" onchange="saveRejoinMacro(this.value)"
-                    style="background: #14151a; color: #fff; border: 1px solid var(--card-border); border-radius: 10px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; flex: 1; outline: none;">
-              <option value="">-- No Macro (Auto-click Reconnect &amp; enter code) --</option>
-            </select>
-            <button class="btn btn-sub" style="padding: 8px 12px; white-space: nowrap;" onclick="switchTab('macro')" title="Go to Macro Studio">
-              📼 STUDIO
-            </button>
-          </div>
-        </div>
-
-        <!-- 3. VIP URL Link (Optional) -->
-        <div style="display: flex; flex-direction: column; gap: 4px;">
-          <div style="font-size: 0.68rem; font-weight: 700; color: var(--text-dim);">VIP SERVER URL (OPTIONAL LINK):</div>
-          <div style="display: flex; gap: 8px;">
-            <input id="txt-vip-url" type="text" placeholder="Roblox VIP URL (https://roblox.com/...)"
-                   style="background: #14151a; color: #fff; border: 1px solid var(--card-border); border-radius: 10px; padding: 8px 12px; font-size: 0.8rem; font-weight: 600; flex: 1; outline: none;" />
-            <button class="btn btn-sub" style="padding: 8px 14px; white-space: nowrap;" onclick="saveVipUrl()">
-              💾 SAVE URL
-            </button>
-          </div>
-        </div>
-
-        <div style="font-size: 0.72rem; color: var(--text-mute); line-height: 1.4;">
-          💡 When Roblox disconnects, the macro auto-clicks Reconnect. If configured, it executes your recorded Main Menu Join Macro or enters your Private Server Code automatically!
-        </div>
-      </div>
-    </section>
-
-  </main>
-
-  <!-- FIXED BOTTOM DOCK (MOBILE APP TAB BAR) -->
-  <nav class="bottom-nav-bar" id="bottom-nav-bar">
-    <button class="bottom-nav-item active" data-tab="remote" onclick="switchTab('remote', this)">
-      <span class="nav-icon">🎮</span>
-      <span class="nav-label">Remote</span>
-    </button>
-    <button class="bottom-nav-item" data-tab="stats" onclick="switchTab('stats', this)">
-      <span class="nav-icon">📊</span>
-      <span class="nav-label">Stats</span>
-    </button>
-    <button class="bottom-nav-item" data-tab="macro" onclick="switchTab('macro', this)">
-      <span class="nav-icon">📼</span>
-      <span class="nav-label">Studio</span>
-    </button>
-    <button class="bottom-nav-item" data-tab="craft" onclick="switchTab('craft', this)">
-      <span class="nav-icon">🔨</span>
-      <span class="nav-label">Craft</span>
-    </button>
-    <button class="bottom-nav-item" data-tab="system" onclick="switchTab('system', this)">
-      <span class="nav-icon">⚙️</span>
-      <span class="nav-label">System</span>
-    </button>
-  </nav>
-</div>
-
-<div id="toast"></div>
-
-<script>
-let isRunning = false;
-let isPaused = false;
-let isMuted = false;
-let spawnAlerts = true;
-let userSlidingVol = false;
-let userSlidingBright = false;
-let localRuntimeSec = 0;
-let bossesState = [];
-let serverTimeDelta = 0;
-
-// Web Audio Synthesizer for Mobile Alarms & Fanfares
-let audioCtx = null;
-let soundEnabled = localStorage.getItem('gpo_sound_enabled') !== 'false';
-let lastFruitsCount = null;
-let lastBotState = null;
-
-function initAudio() {
-  if (!audioCtx) {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (AudioContext) audioCtx = new AudioContext();
-  }
-  if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume();
-  }
-}
-document.addEventListener('pointerdown', initAudio, { once: true });
-document.addEventListener('click', initAudio, { once: true });
-
-function playFanfare(type) {
-  if (!soundEnabled) return;
-  initAudio();
-  if (!audioCtx) return;
-  const now = audioCtx.currentTime;
-
-  if (type === 'fruit') {
-    [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(freq, now + i * 0.12);
-      gain.gain.setValueAtTime(0.25, now + i * 0.12);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.12 + 0.45);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(now + i * 0.12);
-      osc.stop(now + i * 0.12 + 0.5);
-    });
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
-  } else if (type === 'boss') {
-    [392.00, 523.25].forEach((freq, i) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(freq, now + i * 0.2);
-      gain.gain.setValueAtTime(0.2, now + i * 0.2);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.2 + 0.6);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(now + i * 0.2);
-      osc.stop(now + i * 0.2 + 0.65);
-    });
-    if (navigator.vibrate) navigator.vibrate([150, 80, 150]);
-  } else if (type === 'warning') {
-    [880, 440].forEach((freq, i) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(freq, now + i * 0.15);
-      gain.gain.setValueAtTime(0.15, now + i * 0.15);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.15 + 0.25);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(now + i * 0.15);
-      osc.stop(now + i * 0.15 + 0.3);
-    });
-    if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
-  } else if (type === 'reconnect') {
-    [440, 660, 880].forEach((freq, i) => {
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, now + i * 0.1);
-      gain.gain.setValueAtTime(0.2, now + i * 0.1);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.1 + 0.3);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(now + i * 0.1);
-      osc.stop(now + i * 0.1 + 0.35);
-    });
-    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-  }
-}
-
-function toggleSoundAlerts() {
-  soundEnabled = !soundEnabled;
-  localStorage.setItem('gpo_sound_enabled', soundEnabled);
-  updateSoundButtonUi();
-  if (soundEnabled) {
-    playFanfare('fruit');
-    showToast('Sound alarms ENABLED');
-  } else {
-    showToast('Sound alarms MUTED');
-  }
-}
-
-function updateSoundButtonUi() {
-  const btn = document.getElementById('btn-sound-toggle');
-  if (btn) {
-    if (soundEnabled) {
-      btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
-      btn.innerHTML = '<span>🔊</span><span>SOUND: ON</span>';
-    } else {
-      btn.style.background = 'rgba(100, 116, 139, 0.25)';
-      btn.innerHTML = '<span>🔇</span><span>SOUND: OFF</span>';
-    }
-  }
-}
-
-function requestMobileNotifications() {
-  if (window.Telegram && window.Telegram.WebApp) {
-    const twa = window.Telegram.WebApp;
-    if (twa.HapticFeedback) {
-      try { twa.HapticFeedback.notificationOccurred('success'); } catch (_) {}
-    }
-    showToast('Telegram alerts active! Fruit alerts arrive in your chat.');
-    return;
-  }
-
-  if (!('Notification' in window)) {
-    showToast('Notifications unsupported (Open in Chrome/Safari over HTTPS)');
-    return;
-  }
-
-  if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-    showToast('Browser push requires HTTPS or Telegram WebApp!');
-  }
-
-  try {
-    const handlePerm = (perm) => {
-      if (perm === 'granted') {
-        showToast('Push Notifications ENABLED!');
-        try {
-          new Notification('GPO Autofish Alert', {
-            body: 'Mobile alerts active for Devil Fruits and World Bosses!',
-            icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="40" fill="%2300f0ff"/%3E%3C/svg%3E'
-          });
-        } catch (_) {}
-      } else if (perm === 'denied') {
-        showToast('Notification permission blocked in browser settings');
-      } else {
-        showToast('Notification permission: ' + perm);
-      }
+/// GPO Cyberdeck webapp: five tab pages + vendored static assets.
+///
+/// Pages are plain files under `src/bot/web/` compiled in with
+/// `include_str!` (zero runtime disk dependency). All Tailwind/fonts/JS
+/// assets are vendored (`/assets/*`) so the webapp works fully offline on
+/// the LAN — no CDN. HTML shells carry no secrets; the embedded JS
+/// attaches `?token=` exactly like before.
+const WEB_REMOTE_HTML: &str = include_str!("web/remote.html");
+const WEB_STATS_HTML: &str = include_str!("web/stats.html");
+const WEB_STUDIO_HTML: &str = include_str!("web/studio.html");
+const WEB_CRAFT_HTML: &str = include_str!("web/craft.html");
+const WEB_SYSTEM_HTML: &str = include_str!("web/system.html");
+
+const ASSET_TAILWIND_JS: &[u8] = include_bytes!("web/assets/tailwind.js");
+const ASSET_FONTS_CSS: &str = include_str!("web/assets/fonts.css");
+const ASSET_GPO_CORE_JS: &str = include_str!("web/assets/gpo-core.js");
+const ASSET_GPO_REMOTE_JS: &str = include_str!("web/assets/gpo-remote.js");
+const ASSET_GPO_STATS_JS: &str = include_str!("web/assets/gpo-stats.js");
+const ASSET_GPO_STUDIO_JS: &str = include_str!("web/assets/gpo-studio.js");
+const ASSET_GPO_CRAFT_JS: &str = include_str!("web/assets/gpo-craft.js");
+const ASSET_GPO_SYSTEM_JS: &str = include_str!("web/assets/gpo-system.js");
+
+macro_rules! include_font {
+    ($name:literal) => {
+        include_bytes!(concat!("web/assets/fonts/", $name))
     };
+}
 
-    if (typeof Notification.requestPermission === 'function') {
-      const p = Notification.requestPermission(handlePerm);
-      if (p && typeof p.then === 'function') {
-        p.then(handlePerm).catch(e => showToast('Permission error: ' + e));
-      }
+/// Map every vendored woff2 to its bytes. The list is generated from
+/// `web/assets/fonts/` — a build break here means fonts.css references a
+/// file that was not vendored (fix by re-running the vendor step).
+fn font_bytes(name: &str) -> Option<&'static [u8]> {
+    match name {
+        "sym1.woff2" => Some(include_font!("sym1.woff2")),
+        "w1.woff2" => Some(include_font!("w1.woff2")),
+        "w10.woff2" => Some(include_font!("w10.woff2")),
+        "w11.woff2" => Some(include_font!("w11.woff2")),
+        "w12.woff2" => Some(include_font!("w12.woff2")),
+        "w13.woff2" => Some(include_font!("w13.woff2")),
+        "w14.woff2" => Some(include_font!("w14.woff2")),
+        "w15.woff2" => Some(include_font!("w15.woff2")),
+        "w16.woff2" => Some(include_font!("w16.woff2")),
+        "w2.woff2" => Some(include_font!("w2.woff2")),
+        "w3.woff2" => Some(include_font!("w3.woff2")),
+        "w4.woff2" => Some(include_font!("w4.woff2")),
+        "w5.woff2" => Some(include_font!("w5.woff2")),
+        "w6.woff2" => Some(include_font!("w6.woff2")),
+        "w7.woff2" => Some(include_font!("w7.woff2")),
+        "w8.woff2" => Some(include_font!("w8.woff2")),
+        "w9.woff2" => Some(include_font!("w9.woff2")),
+        _ => None,
     }
-  } catch (e) {
-    showToast('Notification request failed: ' + e);
-  }
 }
 
-async function saveVipUrl() {
-  const input = document.getElementById('txt-vip-url');
-  if (!input) return;
-  const val = input.value.trim();
-  try {
-    const res = await fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'set_vip_url', value: val })
-    });
-    const d = await res.json();
-    showToast(d.message || 'VIP link saved!');
-  } catch (e) {
-    showToast('Failed to save VIP link: ' + e);
-  }
+fn send_bytes(stream: &mut TcpStream, content_type: &str, bytes: &[u8]) {
+    let header = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nCache-Control: public, max-age=86400\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        content_type,
+        bytes.len()
+    );
+    let _ = stream.write_all(header.as_bytes());
+    let _ = stream.write_all(bytes);
 }
 
-async function savePsCode() {
-  const input = document.getElementById('txt-ps-code');
-  if (!input) return;
-  const val = input.value.trim();
-  try {
-    const res = await fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'set_private_server_code', value: val })
-    });
-    const d = await res.json();
-    showToast(d.message || 'Private server code saved!');
-  } catch (e) {
-    showToast('Failed to save server code: ' + e);
-  }
-}
-
-async function saveRejoinMacro(macroName) {
-  try {
-    const res = await fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'set_rejoin_macro', value: macroName })
-    });
-    const d = await res.json();
-    showToast(d.message || 'Rejoin macro updated!');
-  } catch (e) {
-    showToast('Failed to update rejoin macro: ' + e);
-  }
-}
-
-async function toggleAutoReconnect() {
-  try {
-    const res = await fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'toggle_auto_reconnect' })
-    });
-    const d = await res.json();
-    showToast(d.message || 'Auto-reconnect toggled');
-    fetchStatus();
-  } catch (e) {
-    showToast('Failed to toggle auto-reconnect');
-  }
-}
-
-async function toggleLegendaryOnly() {
-  try {
-    const res = await fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'toggle_legendary_only' })
-    });
-    const d = await res.json();
-    showToast(d.message || 'Notification filter updated');
-    fetchStatus();
-  } catch (e) {
-    showToast('Failed to toggle notification filter');
-  }
-}
-
-async function toggleDropScreenshot() {
-  try {
-    const res = await fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'toggle_drop_screenshot' })
-    });
-    const d = await res.json();
-    showToast(d.message || 'Drop screenshot updated');
-    fetchStatus();
-  } catch (e) {
-    showToast('Failed to toggle drop screenshot');
-  }
-}
-
-if (window.Telegram && window.Telegram.WebApp) {
-  const twa = window.Telegram.WebApp;
-  twa.ready();
-  twa.expand();
-  if (twa.enableClosingConfirmation) twa.enableClosingConfirmation();
-  if (twa.disableVerticalSwipes) twa.disableVerticalSwipes();
-  if (twa.setHeaderColor) twa.setHeaderColor('#07090e');
-  if (twa.setBackgroundColor) twa.setBackgroundColor('#07090e');
-}
-
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.innerText = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2200);
-}
-
-function fmtSec(s) {
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = Math.floor(s % 60);
-  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
-}
-
-function formatDuration(sec) {
-  if (sec <= 0) return '00:00';
-  let m = Math.floor(sec / 60);
-  let s = Math.floor(sec % 60);
-  if (m >= 60) {
-    let h = Math.floor(m / 60);
-    m = m % 60;
-    return `${h}h ${String(m).padStart(2,'0')}m`;
-  }
-  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-}
-
-async function fetchStatus() {
-  try {
-    const res = await fetch('/api/status');
-    const d = await res.json();
-
-    isRunning = d.is_running;
-    isPaused = d.paused;
-    isMuted = d.muted;
-    spawnAlerts = d.spawn_alerts;
-    localRuntimeSec = d.runtime_s;
-    serverTimeDelta = d.server_time - Math.floor(Date.now() / 1000);
-    bossesState = d.bosses || [];
-
-    document.getElementById('host-sub').innerText = `${d.local_ip}:3888 • v${d.version}`;
-
-    const fruitBadge = document.getElementById('badge-fruit');
-    if (fruitBadge) {
-      if (spawnAlerts) {
-        fruitBadge.className = 'toggle-spawn-badge';
-        fruitBadge.innerText = '🍇 ALERTS: ON';
-      } else {
-        fruitBadge.className = 'toggle-spawn-badge off';
-        fruitBadge.innerText = '🍇 ALERTS: OFF';
-      }
-    }
-
-    const pill = document.getElementById('status-pill');
-    if (pill) {
-      pill.innerText = d.state.toUpperCase();
-      if (!isRunning) {
-        pill.className = 'status-badge badge-stopped';
-      } else if (isPaused) {
-        pill.className = 'status-badge badge-paused';
-      } else {
-        pill.className = 'status-badge badge-running';
-      }
-    }
-
-    const fsPill = document.getElementById('fs-status-pill');
-    if (fsPill && pill) {
-      fsPill.innerText = d.state.toUpperCase();
-      fsPill.className = pill.className;
-    }
-
-    const tBtn = document.getElementById('btn-toggle');
-    const tLabel = document.getElementById('toggle-label');
-    const tIcon = document.getElementById('toggle-icon');
-    const fsToggleBtn = document.getElementById('btn-fs-toggle');
-    const headerToggle = document.getElementById('btn-header-toggle');
-
-    if (isRunning && !isPaused) {
-      if (tBtn) {
-        tBtn.className = 'btn btn-toggle paused';
-        tLabel.innerText = 'PAUSE MACRO';
-        tIcon.innerText = '⏸️';
-      }
-      if (fsToggleBtn) fsToggleBtn.innerText = '⏸ PAUSE';
-      if (headerToggle) {
-        headerToggle.className = 'header-btn-toggle active';
-        headerToggle.innerHTML = '<span>⏸</span><span>PAUSE</span>';
-      }
-    } else {
-      if (tBtn) {
-        tBtn.className = 'btn btn-toggle';
-        tLabel.innerText = isPaused ? 'RESUME MACRO' : 'START MACRO';
-        tIcon.innerText = '▶️';
-      }
-      if (fsToggleBtn) fsToggleBtn.innerText = isPaused ? '▶ RESUME' : '▶ START';
-      if (headerToggle) {
-        headerToggle.className = 'header-btn-toggle';
-        headerToggle.innerHTML = `<span>▶</span><span>${isPaused ? 'RESUME' : 'START'}</span>`;
-      }
-    }
-
-    const muteBtn = document.getElementById('btn-mute');
-    if (muteBtn) muteBtn.innerText = isMuted ? '🔊 UNMUTE' : '🔇 MUTE';
-    const fsMuteBtn = document.getElementById('btn-fs-mute');
-    if (fsMuteBtn) fsMuteBtn.innerText = isMuted ? '🔊 UNMUTE' : '🔇 MUTE';
-
-    const elFish = document.getElementById('val-fish');
-    if (elFish) elFish.innerText = d.fish;
-    const elRate = document.getElementById('val-rate');
-    if (elRate) elRate.innerText = `${d.success_rate}% rate`;
-    const elFruits = document.getElementById('val-fruits');
-    if (elFruits) elFruits.innerText = d.fruits;
-    const elPity = document.getElementById('val-pity');
-    if (elPity) elPity.innerText = `Pity: ⚡ ${d.pity_fruit}`;
-    const elLegPity = document.getElementById('val-leg-pity');
-    if (elLegPity) elLegPity.innerText = d.pity_legendary;
-
-    // Progress Gauges
-    const barLegPity = document.getElementById('bar-leg-pity');
-    if (barLegPity) {
-      const legP = Math.min(100, Math.max(0, parseInt(d.pity_legendary || 0, 10)));
-      barLegPity.style.width = `${legP}%`;
-    }
-
-    const elOrders = document.getElementById('val-orders');
-    if (elOrders) elOrders.innerText = d.bait_purchased;
-    const elAutoBuy = document.getElementById('val-auto-buy');
-    if (elAutoBuy) elAutoBuy.innerText = d.auto_purchase ? 'Auto-buy ON' : 'Auto-buy OFF';
-    const elRestock = document.getElementById('val-restock');
-    if (elRestock) elRestock.innerText = `${d.since_purchase} / ${d.every_n_catches}`;
-
-    const barRestock = document.getElementById('bar-restock');
-    if (barRestock && d.every_n_catches > 0) {
-      const pct = Math.min(100, Math.max(0, Math.round((d.since_purchase / d.every_n_catches) * 100)));
-      barRestock.style.width = `${pct}%`;
-    }
-
-    const elTier = document.getElementById('val-tier');
-    if (elTier) elTier.innerText = d.bait_tier;
-    const elReserve = document.getElementById('val-reserve');
-    if (elReserve) elReserve.innerText = d.legendary_reserve;
-
-    if (!userSlidingVol) {
-      const rVol = document.getElementById('rng-volume');
-      if (rVol) rVol.value = d.volume;
-      const lVol = document.getElementById('lbl-volume');
-      if (lVol) lVol.innerText = `${d.volume}%`;
-    }
-    if (!userSlidingBright) {
-      const rBri = document.getElementById('rng-brightness');
-      if (rBri) rBri.value = d.brightness;
-      const lBri = document.getElementById('lbl-brightness');
-      if (lBri) lBri.innerText = `${d.brightness}%`;
-    }
-
-    // Audio Fanfare & Push Notification for Fruit Drops
-    if (lastFruitsCount !== null && d.fruits > lastFruitsCount) {
-      playFanfare('fruit');
-      if ('Notification' in window && Notification.permission === 'granted') {
-        try {
-          new Notification('🍇 DEVIL FRUIT CAUGHT!', {
-            body: `You caught a new Devil Fruit! Total catches: ${d.fruits}`,
-            icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Ccircle cx="50" cy="50" r="40" fill="%23b026ff"/%3E%3C/svg%3E'
-          });
-        } catch (_) {}
-      }
-    }
-    lastFruitsCount = d.fruits;
-
-    if (d.state === 'recovering' && lastBotState !== 'recovering') {
-      playFanfare('warning');
-    } else if (lastBotState === 'recovering' && d.state !== 'recovering') {
-      playFanfare('reconnect');
-    }
-    lastBotState = d.state;
-
-    // Auto-reconnect & VIP Link sync
-    const btnRec = document.getElementById('btn-reconnect-toggle');
-    if (btnRec) {
-      if (d.auto_reconnect) {
-        btnRec.style.background = 'linear-gradient(135deg, #10b981, #059669)';
-        btnRec.innerHTML = '<span>⚡</span><span>AUTO-RECONNECT: ACTIVE</span>';
-      } else {
-        btnRec.style.background = 'rgba(100, 116, 139, 0.25)';
-        btnRec.innerHTML = '<span>🔌</span><span>AUTO-RECONNECT: OFF</span>';
-      }
-    }
-    const txtVip = document.getElementById('txt-vip-url');
-    if (txtVip && document.activeElement !== txtVip && d.vip_server_url !== undefined && !txtVip.value) {
-      txtVip.value = d.vip_server_url;
-    }
-    const txtPs = document.getElementById('txt-ps-code');
-    if (txtPs && document.activeElement !== txtPs && d.private_server_code !== undefined && !txtPs.value) {
-      txtPs.value = d.private_server_code;
-    }
-    const selRejoin = document.getElementById('sel-rejoin-macro');
-    if (selRejoin && d.macros && document.activeElement !== selRejoin) {
-      const curVal = selRejoin.value || d.rejoin_macro_name || '';
-      let optHtml = '<option value="">-- No Macro (Auto-click Reconnect & enter code) --</option>';
-      for (const m of d.macros) {
-        const isSel = (m.name === curVal) ? 'selected' : '';
-        optHtml += `<option value="${m.name}" ${isSel}>📼 ${m.name} (${m.steps.length} steps)</option>`;
-      }
-      selRejoin.innerHTML = optHtml;
-    }
-
-    // Filter toggles sync
-    const btnLeg = document.getElementById('btn-legendary-toggle');
-    if (btnLeg && d.legendary_only !== undefined) {
-      if (d.legendary_only) {
-        btnLeg.className = 'status-badge badge-running';
-        btnLeg.innerText = 'ACTIVE';
-      } else {
-        btnLeg.className = 'status-badge badge-stopped';
-        btnLeg.innerText = 'OFF (ALL)';
-      }
-    }
-    const btnDropShot = document.getElementById('btn-drop-shot-toggle');
-    if (btnDropShot && d.send_drop_screenshot !== undefined) {
-      if (d.send_drop_screenshot) {
-        btnDropShot.className = 'status-badge badge-running';
-        btnDropShot.innerText = 'ACTIVE';
-      } else {
-        btnDropShot.className = 'status-badge badge-stopped';
-        btnDropShot.innerText = 'OFF';
-      }
-    }
-
-    updateCraftUi(d.crafting);
-    updateMacroUi(d.recorder, d.macros);
-    if (d.keyboard_light) updateKbdLightUi(d.keyboard_light);
-    if (d.fan) updateFanUi(d.fan);
-
-    renderTimers();
-  } catch (e) {
-    console.warn('Status poll failed:', e);
-  }
-}
-
-// 1s TIMER TICK
-function tickTimersLocally() {
-  if (isRunning && !isPaused) {
-    localRuntimeSec += 1;
-    const rt = document.getElementById('val-runtime');
-    if (rt) rt.innerText = fmtSec(localRuntimeSec);
-  }
-  renderTimers();
-}
-
-function renderTimers() {
-  if (!bossesState || bossesState.length === 0) return;
-  const currentUnix = Math.floor(Date.now() / 1000) + serverTimeDelta;
-  let bHtml = '';
-  for (const b of bossesState) {
-    let rem = Math.max(0, b.target_spawn - currentUnix);
-    let tClass = 'boss-countdown';
-    let tText = formatDuration(rem);
-    if (rem <= 0) {
-      tClass += ' boss-spawned';
-      tText = 'SPAWNED NOW!';
-    } else if (rem <= 300) {
-      tClass += ' boss-soon';
-      tText = `SOON (${formatDuration(rem)})`;
-    }
-    bHtml += `
-      <div class="boss-card">
-        <div class="boss-title"><span>${b.emoji}</span><span>${b.name}</span></div>
-        <div class="${tClass}">${tText}</div>
-      </div>`;
-  }
-  const bList = document.getElementById('boss-list');
-  if (bList) bList.innerHTML = bHtml;
-}
-
-// STREAM QUALITY & FPS MANAGEMENT
-let currentFps = parseInt(localStorage.getItem('gpo_stream_fps') || '20', 10);
-let currentScale = parseInt(localStorage.getItem('gpo_stream_scale') || '720', 10);
-let currentQuality = parseInt(localStorage.getItem('gpo_stream_quality') || '70', 10);
-let currentQualityLabel = localStorage.getItem('gpo_stream_quality_label') || '720p (Balanced)';
-let isFullscreen = false;
-let isControlsOverlayVisible = true;
-
-function setStreamFps(fps) {
-  currentFps = fps;
-  localStorage.setItem('gpo_stream_fps', fps);
-  updateStreamLabels();
-  reloadStream();
-  document.querySelectorAll('#dropdown-fps-menu .custom-dropdown-item').forEach(el => {
-    el.classList.toggle('active', el.getAttribute('data-val') == fps);
-    const check = el.querySelector('.item-check');
-    if (check) check.remove();
-    if (el.getAttribute('data-val') == fps) {
-      el.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
-    }
-  });
-  const menu = document.getElementById('dropdown-fps');
-  if (menu) menu.classList.remove('open');
-}
-
-function setStreamQuality(scale, q, label) {
-  currentScale = scale;
-  currentQuality = q;
-  currentQualityLabel = label;
-  localStorage.setItem('gpo_stream_scale', scale);
-  localStorage.setItem('gpo_stream_quality', q);
-  localStorage.setItem('gpo_stream_quality_label', label);
-  updateStreamLabels();
-  reloadStream();
-  document.querySelectorAll('#dropdown-quality-menu .custom-dropdown-item').forEach(el => {
-    el.classList.toggle('active', el.getAttribute('data-val') == scale);
-    const check = el.querySelector('.item-check');
-    if (check) check.remove();
-    if (el.getAttribute('data-val') == scale) {
-      el.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
-    }
-  });
-  const menu = document.getElementById('dropdown-quality');
-  if (menu) menu.classList.remove('open');
-}
-
-function updateStreamLabels() {
-  const fpsBadge = document.getElementById('stream-fps-badge');
-  const fpsLabel = document.getElementById('dropdown-fps-label');
-  const resBadge = document.getElementById('stream-res-badge');
-  const resLabel = document.getElementById('dropdown-quality-label');
-  const fsInfo = document.getElementById('fs-stream-info');
-
-  const shortRes = currentScale === 0 ? 'MAX' : `${currentScale}p`;
-  if (fpsBadge) fpsBadge.innerText = `${currentFps} FPS`;
-  if (fpsLabel) fpsLabel.innerText = `⚡ ${currentFps} FPS`;
-  if (resBadge) resBadge.innerText = shortRes;
-  if (resLabel) resLabel.innerText = `📺 ${shortRes}`;
-  if (fsInfo) fsInfo.innerText = `${currentFps} FPS • ${shortRes}`;
-}
-
-function reloadStream() {
-  const img = document.getElementById('screen-img');
-  if (!img) return;
-  const url = (window.__gpoUrl||function(u){return u;})(`/api/stream?fps=${currentFps}&scale=${currentScale}&q=${currentQuality}&t=` + Date.now());
-  img.src = url;
-}
-
-function toggleFullscreen() {
-  if (!isFullscreen) enterFullscreen();
-  else exitFullscreen();
-}
-
-function enterFullscreen() {
-  isFullscreen = true;
-  const wrap = document.getElementById('stream-wrapper');
-  if (wrap) wrap.classList.add('fullscreen-active');
-  const bNav = document.getElementById('bottom-nav-bar');
-  if (bNav) bNav.style.display = 'none';
-  const aHead = document.getElementById('app-header');
-  if (aHead) aHead.style.display = 'none';
-
-  const docEl = document.documentElement;
-  try {
-    if (docEl.requestFullscreen) docEl.requestFullscreen();
-    else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen();
-  } catch (_) {}
-}
-
-function exitFullscreen() {
-  isFullscreen = false;
-  const wrap = document.getElementById('stream-wrapper');
-  if (wrap) {
-    wrap.classList.remove('fullscreen-active');
-    wrap.classList.remove('rotated-90');
-  }
-  const bNav = document.getElementById('bottom-nav-bar');
-  if (bNav) bNav.style.display = 'flex';
-  const aHead = document.getElementById('app-header');
-  if (aHead) aHead.style.display = 'flex';
-
-  updateRotateButtons(false);
-  try {
-    if (document.exitFullscreen) document.exitFullscreen();
-    else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-  } catch (_) {}
-}
-
-let isRotated = false;
-function toggleRotate() {
-  isRotated = !isRotated;
-  const wrap = document.getElementById('stream-wrapper');
-  if (!isFullscreen) enterFullscreen();
-  if (wrap) {
-    if (isRotated) wrap.classList.add('rotated-90');
-    else wrap.classList.remove('rotated-90');
-  }
-  updateRotateButtons(isRotated);
-}
-
-function updateRotateButtons(rot) {
-  const b1 = document.getElementById('stream-tool-rotate');
-  const b2 = document.getElementById('btn-fs-rotate');
-  [b1, b2].forEach(b => {
-    if (b) {
-      if (rot) b.classList.add('active');
-      else b.classList.remove('active');
-    }
-  });
-}
-
-let isRightClickMode = false;
-function toggleClickMode() {
-  isRightClickMode = !isRightClickMode;
-  const icon = document.getElementById('click-mode-icon');
-  const label = document.getElementById('click-mode-label');
-  const btn = document.getElementById('btn-click-mode');
-  if (isRightClickMode) {
-    if (icon) icon.innerText = '👀';
-    if (label) label.innerText = 'LOOK';
-    if (btn) btn.classList.add('active');
-    showToast('Touch set to Camera Look (Right-Click)');
-  } else {
-    if (icon) icon.innerText = '🎯';
-    if (label) label.innerText = 'CLICK';
-    if (btn) btn.classList.remove('active');
-    showToast('Touch set to Primary Click (Left-Click)');
-  }
-}
-
-function toggleFullscreenControls() {
-  isControlsOverlayVisible = !isControlsOverlayVisible;
-  const overlay = document.getElementById('fs-controls-overlay');
-  const btn = document.getElementById('btn-fs-overlay-toggle');
-  if (overlay) overlay.classList.toggle('visible', isControlsOverlayVisible);
-  if (btn) btn.classList.toggle('active', isControlsOverlayVisible);
-}
-
-let isHoldDragMode = false;
-function toggleHoldDragMode() {
-  isHoldDragMode = !isHoldDragMode;
-  const btnTool = document.getElementById('stream-tool-drag');
-  const lblTool = document.getElementById('stream-drag-label');
-  const btnFs = document.getElementById('btn-fs-drag');
-  const lblFs = document.getElementById('fs-drag-label');
-  const iconFs = document.getElementById('fs-drag-icon');
-
-  if (isHoldDragMode) {
-    if (btnTool) btnTool.classList.add('active');
-    if (lblTool) lblTool.innerText = '🖐️ DRAG';
-    if (btnFs) btnFs.classList.add('active');
-    if (lblFs) lblFs.innerText = 'DRAG';
-    if (iconFs) iconFs.innerText = '🖐️';
-    showToast('Touch mode: Camera Hold & Drag');
-  } else {
-    if (btnTool) btnTool.classList.remove('active');
-    if (lblTool) lblTool.innerText = '👆 TAP';
-    if (btnFs) btnFs.classList.remove('active');
-    if (lblFs) lblFs.innerText = 'TAP';
-    if (iconFs) iconFs.innerText = '👆';
-    showToast('Touch mode: Direct Tap to Click');
-  }
-}
-
-// SCREEN TOUCH CONTROLLER (PRECISE LETTERBOX COMPENSATION + VISUAL FEEDBACK)
-let touchPointerId = null;
-let touchStartX = 0;
-let touchStartY = 0;
-let touchStartRelX = 0;
-let touchStartRelY = 0;
-let touchStartTime = 0;
-let touchIndicatorEl = null;
-let touchMoveThrottle = 0;
-
-function getScreenRelCoords(clientX, clientY) {
-  const img = document.getElementById('screen-img');
-  if (!img) return null;
-  const rect = img.getBoundingClientRect();
-  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
-    return null;
-  }
-
-  const nw = img.naturalWidth || rect.width;
-  const nh = img.naturalHeight || rect.height;
-  const naturalAspect = (nw > 0 && nh > 0) ? (nw / nh) : (rect.width / rect.height);
-  const renderAspect = rect.width / (rect.height || 1);
-
-  let renderedW = rect.width;
-  let renderedH = rect.height;
-  let offsetX = 0;
-  let offsetY = 0;
-
-  if (renderAspect > naturalAspect) {
-    // Letterbox on left / right
-    renderedW = rect.height * naturalAspect;
-    offsetX = (rect.width - renderedW) / 2;
-  } else {
-    // Letterbox on top / bottom
-    renderedH = rect.width / naturalAspect;
-    offsetY = (rect.height - renderedH) / 2;
-  }
-
-  const clickX = clientX - rect.left - offsetX;
-  const clickY = clientY - rect.top - offsetY;
-
-  if (clickX < 0 || clickX > renderedW || clickY < 0 || clickY > renderedH) {
-    return null;
-  }
-
-  const rx = clickX / renderedW;
-  const ry = clickY / renderedH;
-
-  return {
-    rx: Math.max(0, Math.min(1, rx)),
-    ry: Math.max(0, Math.min(1, ry)),
-    rect
-  };
-}
-
-function showTouchRipple(clientX, clientY) {
-  const container = document.getElementById('screen-container');
-  if (!container) return;
-  const cRect = container.getBoundingClientRect();
-  const rip = document.createElement('div');
-  rip.className = 'click-ripple';
-  rip.style.left = `${clientX - cRect.left}px`;
-  rip.style.top = `${clientY - cRect.top}px`;
-  container.appendChild(rip);
-  setTimeout(() => rip.remove(), 450);
-}
-
-function updateIndicatorPos(clientX, clientY) {
-  if (!touchIndicatorEl) return;
-  const container = document.getElementById('screen-container');
-  if (!container) return;
-  const cRect = container.getBoundingClientRect();
-  const ox = clientX - cRect.left;
-  const oy = clientY - cRect.top;
-  touchIndicatorEl.style.left = `${ox}px`;
-  touchIndicatorEl.style.top = `${oy}px`;
-}
-
-function onScreenPointerDown(e) {
-  if (touchPointerId !== null) return;
-  const coords = getScreenRelCoords(e.clientX, e.clientY);
-  if (!coords) return;
-
-  touchPointerId = e.pointerId;
-  touchStartX = e.clientX;
-  touchStartY = e.clientY;
-  touchStartRelX = coords.rx;
-  touchStartRelY = coords.ry;
-  touchStartTime = Date.now();
-
-  const container = document.getElementById('screen-container');
-  try { container.setPointerCapture(e.pointerId); } catch (_) {}
-
-  showTouchRipple(e.clientX, e.clientY);
-  if (navigator.vibrate) navigator.vibrate(10);
-
-  if (isHoldDragMode) {
-    touchIndicatorEl = document.createElement('div');
-    touchIndicatorEl.className = 'touch-drag-indicator' + (isRightClickMode ? ' right-mode' : '');
-    touchIndicatorEl.innerHTML = '<div class="touch-drag-indicator-core"></div>';
-    container.appendChild(touchIndicatorEl);
-    updateIndicatorPos(e.clientX, e.clientY);
-
-    const btn = isRightClickMode ? 'right' : 'left';
-    fetch('/api/mouse', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'down', button: btn, rx: coords.rx, ry: coords.ry })
-    }).catch(() => {});
-  }
-}
-
-function onScreenPointerMove(e) {
-  if (e.pointerId !== touchPointerId) return;
-  updateIndicatorPos(e.clientX, e.clientY);
-
-  const now = Date.now();
-  if (now - touchMoveThrottle < 20) return;
-  touchMoveThrottle = now;
-
-  const coords = getScreenRelCoords(e.clientX, e.clientY);
-  if (!coords) return;
-
-  if (isHoldDragMode) {
-    if (touchIndicatorEl) touchIndicatorEl.classList.add('dragging');
-    fetch('/api/mouse', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'move', rx: coords.rx, ry: coords.ry })
-    }).catch(() => {});
-  }
-}
-
-function onScreenPointerUp(e) {
-  if (e.pointerId !== touchPointerId) return;
-  const container = document.getElementById('screen-container');
-  try { container.releasePointerCapture(e.pointerId); } catch (_) {}
-
-  const duration = Date.now() - touchStartTime;
-  const dist = Math.hypot(e.clientX - touchStartX, e.clientY - touchStartY);
-  const coords = getScreenRelCoords(e.clientX, e.clientY) || { rx: touchStartRelX, ry: touchStartRelY };
-
-  if (isHoldDragMode) {
-    const btn = isRightClickMode ? 'right' : 'left';
-    fetch('/api/mouse', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'up', button: btn, rx: coords.rx, ry: coords.ry })
-    }).catch(() => {});
-
-    if (dist < 10 && duration < 300) {
-      fetch('/api/click', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rx: coords.rx, ry: coords.ry, button: isRightClickMode ? 'right' : 'left' })
-      }).catch(() => {});
-    }
-  } else {
-    // Direct Tap Mode: instant precise click
-    fetch('/api/click', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rx: coords.rx, ry: coords.ry, button: isRightClickMode ? 'right' : 'left' })
-    }).catch(() => {});
-  }
-
-  if (touchIndicatorEl) {
-    touchIndicatorEl.remove();
-    touchIndicatorEl = null;
-  }
-  touchPointerId = null;
-}
-
-function onScreenPointerCancel(e) {
-  if (e.pointerId !== touchPointerId) return;
-  const container = document.getElementById('screen-container');
-  try { container.releasePointerCapture(e.pointerId); } catch (_) {}
-  if (isHoldDragMode) {
-    fetch('/api/mouse', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'up', button: isRightClickMode ? 'right' : 'left', rx: touchStartRelX, ry: touchStartRelY })
-    }).catch(() => {});
-  }
-  if (touchIndicatorEl) {
-    touchIndicatorEl.remove();
-    touchIndicatorEl = null;
-  }
-  touchPointerId = null;
-}
-
-const sBox = document.getElementById('screen-container');
-if (sBox) {
-  sBox.addEventListener('pointerdown', onScreenPointerDown);
-  sBox.addEventListener('pointermove', onScreenPointerMove);
-  sBox.addEventListener('pointerup', onScreenPointerUp);
-  sBox.addEventListener('pointercancel', onScreenPointerCancel);
-}
-
-// KEYBOARD EMULATION WITH MULTI-TOUCH
-const activeKeys = new Set();
-let heartbeatInterval = null;
-
-function sendKey(k, down, tap = false) {
-  fetch('/api/key', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key: k, down, tap })
-  }).catch(() => {});
-}
-
-function startKeyHeartbeat() {
-  if (heartbeatInterval) return;
-  heartbeatInterval = setInterval(() => {
-    if (activeKeys.size === 0) {
-      clearInterval(heartbeatInterval);
-      heartbeatInterval = null;
-      return;
-    }
-    const keysArray = Array.from(activeKeys);
-    fetch('/api/key', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keys: keysArray, heartbeat: true })
-    }).catch(() => {});
-  }, 450);
-}
-
-function releaseAllKeys() {
-  fetch('/api/key', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'release_all' })
-  }).catch(() => {});
-
-  activeKeys.clear();
-  if (heartbeatInterval) {
-    clearInterval(heartbeatInterval);
-    heartbeatInterval = null;
-  }
-  document.querySelectorAll('.dpad-btn.pressed, .pad-action-btn.pressed').forEach(b => b.classList.remove('pressed'));
-  ['stick-walk-knob', 'stick-cam-knob', 'fs-stick-walk-knob', 'fs-stick-cam-knob'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.transform = 'translate(0px, 0px)';
-  });
-  sendKey('release_all', false);
-}
-
-// TRUE VIRTUAL JOYSTICK CONTROLLER (SMOOTH DRAG, DIAGONALS, AUTO-RELEASE)
-function setupVirtualStick(containerId, knobId, isArrow) {
-  const container = document.getElementById(containerId);
-  const knob = document.getElementById(knobId);
-  if (!container || !knob) return;
-
-  const KEYS = isArrow
-    ? { up: 'up', down: 'down', left: 'left', right: 'right' }
-    : { up: 'w', down: 's', left: 'a', right: 'd' };
-
-  let stickPointerId = null;
-  const currentStickKeys = new Set();
-
-  function updateDirection(dx, dy, dist, maxR) {
-    const deadzone = 10;
-    const nextKeys = new Set();
-
-    if (dist >= deadzone) {
-      const nx = dx / dist;
-      const ny = dy / dist;
-      // 8-directional sensitivity threshold: 0.38 allows natural diagonals
-      if (ny < -0.38) nextKeys.add(KEYS.up);
-      if (ny > 0.38) nextKeys.add(KEYS.down);
-      if (nx < -0.38) nextKeys.add(KEYS.left);
-      if (nx > 0.38) nextKeys.add(KEYS.right);
-    }
-
-    // Release keys no longer active
-    currentStickKeys.forEach(k => {
-      if (!nextKeys.has(k)) {
-        currentStickKeys.delete(k);
-        activeKeys.delete(k);
-        sendKey(k, false);
-        const btn = container.querySelector(`[data-key="${k}"]`);
-        if (btn) btn.classList.remove('pressed');
-      }
-    });
-
-    // Press new keys
-    let newDirection = false;
-    nextKeys.forEach(k => {
-      if (!currentStickKeys.has(k)) {
-        currentStickKeys.add(k);
-        activeKeys.add(k);
-        sendKey(k, true);
-        newDirection = true;
-        const btn = container.querySelector(`[data-key="${k}"]`);
-        if (btn) btn.classList.add('pressed');
-      }
-    });
-
-    if (newDirection) {
-      if (navigator.vibrate) navigator.vibrate(8);
-      startKeyHeartbeat();
-    }
-  }
-
-  function onPointerDown(e) {
-    if (stickPointerId !== null) return;
-    e.preventDefault();
-    e.stopPropagation();
-    stickPointerId = e.pointerId;
-    try { container.setPointerCapture(e.pointerId); } catch (_) {}
-
-    const rect = container.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const dx = e.clientX - centerX;
-    const dy = e.clientY - centerY;
-    const dist = Math.hypot(dx, dy);
-    const maxR = Math.max(20, (rect.width / 2) - 18);
-
-    const clampDist = Math.min(dist, maxR);
-    const angle = Math.atan2(dy, dx);
-    const kx = Math.cos(angle) * clampDist;
-    const ky = Math.sin(angle) * clampDist;
-    knob.style.transform = `translate(${kx}px, ${ky}px)`;
-
-    updateDirection(dx, dy, dist, maxR);
-  }
-
-  function onPointerMove(e) {
-    if (e.pointerId !== stickPointerId) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    const rect = container.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const dx = e.clientX - centerX;
-    const dy = e.clientY - centerY;
-    const dist = Math.hypot(dx, dy);
-    const maxR = Math.max(20, (rect.width / 2) - 18);
-
-    const clampDist = Math.min(dist, maxR);
-    const angle = Math.atan2(dy, dx);
-    const kx = Math.cos(angle) * clampDist;
-    const ky = Math.sin(angle) * clampDist;
-    knob.style.transform = `translate(${kx}px, ${ky}px)`;
-
-    updateDirection(dx, dy, dist, maxR);
-  }
-
-  function onPointerRelease(e) {
-    if (e.pointerId !== stickPointerId) return;
-    e.preventDefault();
-    e.stopPropagation();
-    try { container.releasePointerCapture(e.pointerId); } catch (_) {}
-    stickPointerId = null;
-
-    knob.style.transform = 'translate(0px, 0px)';
-
-    currentStickKeys.forEach(k => {
-      activeKeys.delete(k);
-      sendKey(k, false);
-      const btn = container.querySelector(`[data-key="${k}"]`);
-      if (btn) btn.classList.remove('pressed');
-    });
-    currentStickKeys.clear();
-
-    if (activeKeys.size === 0 && heartbeatInterval) {
-      clearInterval(heartbeatInterval);
-      heartbeatInterval = null;
-    }
-  }
-
-  container.addEventListener('pointerdown', onPointerDown);
-  container.addEventListener('pointermove', onPointerMove);
-  container.addEventListener('pointerup', onPointerRelease);
-  container.addEventListener('pointercancel', onPointerRelease);
-}
-
-// INITIALIZE VIRTUAL JOYSTICKS (CARD & FULLSCREEN)
-setupVirtualStick('stick-walk', 'stick-walk-knob', false);
-setupVirtualStick('stick-cam', 'stick-cam-knob', true);
-setupVirtualStick('fs-stick-walk', 'fs-stick-walk-knob', false);
-setupVirtualStick('fs-stick-cam', 'fs-stick-cam-knob', true);
-
-// ERGONOMIC ACTION BUTTON HANDLERS
-document.querySelectorAll('.pad-action-btn').forEach(btn => {
-  const key = btn.getAttribute('data-key');
-  if (!key) return;
-
-  const press = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try { btn.setPointerCapture(e.pointerId); } catch (_) {}
-    if (activeKeys.has(key)) return;
-    btn.classList.add('pressed');
-    activeKeys.add(key);
-    if (navigator.vibrate) navigator.vibrate(12);
-    sendKey(key, true);
-    startKeyHeartbeat();
-  };
-
-  const release = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    try { btn.releasePointerCapture(e.pointerId); } catch (_) {}
-    btn.classList.remove('pressed');
-    if (activeKeys.has(key)) {
-      activeKeys.delete(key);
-      sendKey(key, false);
-    }
-    if (activeKeys.size === 0 && heartbeatInterval) {
-      clearInterval(heartbeatInterval);
-      heartbeatInterval = null;
-    }
-  };
-
-  btn.addEventListener('pointerdown', press);
-  btn.addEventListener('pointerup', release);
-  btn.addEventListener('pointercancel', release);
-});
-
-window.addEventListener('blur', releaseAllKeys);
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden) releaseAllKeys();
-});
-
-async function doAction(act, val = null) {
-  try {
-    const res = await fetch('/api/action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: act, value: val })
-    });
-    const d = await res.json();
-    if (d.error) showToast('Error: ' + d.error);
-    else showToast('Action sent: ' + act);
-    fetchStatus();
-  } catch (e) {
-    showToast('Failed to trigger ' + act);
-  }
-}
-
-function togglePlay() {
-  if (isRunning && !isPaused) doAction('pause');
-  else if (isRunning && isPaused) doAction('resume');
-  else doAction('start');
-}
-
-function toggleMute() {
-  doAction(isMuted ? 'unmute' : 'mute');
-}
-
-function toggleSpawnAlerts() {
-  doAction('toggle_spawn_alerts');
-}
-
-function doUpdate() {
-  showToast('Triggering update check...');
-  doAction('check_update');
-}
-
-// KEYBOARD BACKLIGHT CONTROLS
-function updateKbdLightUi(kbd) {
-  if (!kbd) return;
-  const badge = document.getElementById('kbd-light-badge');
-  const bOff = document.getElementById('btn-kbd-off');
-  const bLow = document.getElementById('btn-kbd-low');
-  const bHigh = document.getElementById('btn-kbd-high');
-  if (!badge) return;
-
-  const lvl = kbd.level;
-  const st = (kbd.status || '').toLowerCase();
-
-  [bOff, bLow, bHigh].forEach(b => { if (b) b.classList.remove('active'); });
-
-  if (lvl === 0 || st === 'off') {
-    badge.innerText = 'OFF';
-    badge.style.background = 'rgba(255,255,255,0.08)';
-    badge.style.color = '#94a3b8';
-    badge.style.borderColor = 'rgba(255,255,255,0.15)';
-    badge.style.boxShadow = 'none';
-    if (bOff) bOff.classList.add('active');
-  } else if (lvl === 1 || st === 'low') {
-    badge.innerText = 'LOW';
-    badge.style.background = 'rgba(245, 158, 11, 0.2)';
-    badge.style.color = '#fbbf24';
-    badge.style.borderColor = 'rgba(245, 158, 11, 0.4)';
-    badge.style.boxShadow = '0 0 10px rgba(245, 158, 11, 0.3)';
-    if (bLow) bLow.classList.add('active');
-  } else if (lvl === 2 || st === 'high') {
-    badge.innerText = 'HIGH';
-    badge.style.background = 'rgba(168, 85, 247, 0.25)';
-    badge.style.color = '#d8b4fe';
-    badge.style.borderColor = 'rgba(168, 85, 247, 0.5)';
-    badge.style.boxShadow = '0 0 12px rgba(168, 85, 247, 0.45)';
-    if (bHigh) bHigh.classList.add('active');
-  } else {
-    badge.innerText = kbd.status ? kbd.status.toUpperCase() : 'UNKNOWN';
-  }
-}
-
-async function setKbdLight(act) {
-  try {
-    const res = await fetch('/api/keyboard/light', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: act })
-    });
-    const data = await res.json();
-    if (data.status) {
-      updateKbdLightUi(data);
-      showToast('Keyboard light: ' + data.status.toUpperCase());
-    } else if (data.error) {
-      showToast('Light error: ' + data.error);
-    }
-    fetchStatus();
-  } catch (e) {
-    showToast('Failed to set light: ' + e);
-  }
-}
-
-// LAPTOP FAN & THERMAL HUB
-let isDraggingFanSlider = false;
-let currentAutoTurbo = true;
-
-function updateFanUi(fan) {
-  if (!fan) return;
-  const badge = document.getElementById('fan-mode-badge');
-  const bQuiet = document.getElementById('btn-fan-quiet');
-  const bBal = document.getElementById('btn-fan-balance');
-  const bPerf = document.getElementById('btn-fan-perf');
-  const bTurbo = document.getElementById('btn-fan-turbo');
-  const rng = document.getElementById('rng-fan-speed');
-  const lblPct = document.getElementById('lbl-fan-pct');
-  const btnAuto = document.getElementById('btn-auto-turbo');
-
-  const cpuEl = document.getElementById('telemetry-cpu-temp');
-  const gpuEl = document.getElementById('telemetry-gpu-temp');
-  const powEl = document.getElementById('telemetry-gpu-power');
-  const rpmEl = document.getElementById('telemetry-fan-rpm');
-
-  if (cpuEl) cpuEl.innerText = (fan.cpu_temp !== null && fan.cpu_temp !== undefined) ? Math.round(fan.cpu_temp) + '°C' : '--°C';
-  if (gpuEl) gpuEl.innerText = (fan.gpu_temp !== null && fan.gpu_temp !== undefined) ? fan.gpu_temp + '°C' : '--°C';
-  if (powEl) powEl.innerText = (fan.gpu_power !== null && fan.gpu_power !== undefined) ? fan.gpu_power.toFixed(1) + ' W' : '-- W';
-  if (rpmEl) rpmEl.innerText = fan.est_fan_rpm || '~2800 RPM';
-
-  const m = (fan.current_mode || 'balance').toLowerCase();
-
-  if (badge) {
-    badge.innerText = (fan.mode_label || m).toUpperCase();
-    if (m === 'quiet') {
-      badge.style.background = 'rgba(59,130,246,0.15)';
-      badge.style.color = '#60a5fa';
-      badge.style.borderColor = 'rgba(59,130,246,0.4)';
-    } else if (m === 'performance') {
-      badge.style.background = 'rgba(249,115,22,0.15)';
-      badge.style.color = '#fb923c';
-      badge.style.borderColor = 'rgba(249,115,22,0.4)';
-    } else if (m === 'turbo') {
-      badge.style.background = 'rgba(244,63,94,0.2)';
-      badge.style.color = '#fda4af';
-      badge.style.borderColor = 'rgba(244,63,94,0.5)';
-    } else {
-      badge.style.background = 'rgba(6,182,212,0.15)';
-      badge.style.color = '#22d3ee';
-      badge.style.borderColor = 'rgba(6,182,212,0.4)';
-    }
-  }
-
-  [bQuiet, bBal, bPerf, bTurbo].forEach(b => {
-    if (b) {
-      b.classList.remove('active-quiet', 'active-balance', 'active-perf', 'active-turbo');
-    }
-  });
-
-  if (m === 'quiet' && bQuiet) bQuiet.classList.add('active-quiet');
-  else if (m === 'performance' && bPerf) bPerf.classList.add('active-perf');
-  else if (m === 'turbo' && bTurbo) bTurbo.classList.add('active-turbo');
-  else if (bBal) bBal.classList.add('active-balance');
-
-  if (rng && !isDraggingFanSlider) {
-    rng.value = fan.fan_level_pct || (m === 'quiet' ? 25 : m === 'performance' ? 75 : m === 'turbo' ? 100 : 50);
-  }
-  if (lblPct && !isDraggingFanSlider) {
-    lblPct.innerText = (fan.fan_level_pct || 50) + '% (' + (fan.mode_label || 'Auto') + ')';
-  }
-
-  currentAutoTurbo = !!fan.auto_turbo;
-  if (btnAuto) {
-    if (fan.auto_turbo) {
-      btnAuto.className = 'header-btn-toggle toggle-active';
-      btnAuto.innerText = 'ON';
-    } else {
-      btnAuto.className = 'header-btn-toggle toggle-inactive';
-      btnAuto.innerText = 'OFF';
-    }
-  }
-}
-
-function onFanSliderInput(v) {
-  isDraggingFanSlider = true;
-  const lbl = document.getElementById('lbl-fan-pct');
-  const val = parseInt(v, 10);
-  const modeName = val <= 33 ? 'Quiet' : val <= 66 ? 'Balance' : val <= 89 ? 'Performance' : 'Turbo 100%';
-  if (lbl) lbl.innerText = val + '% (' + modeName + ')';
-}
-
-function onFanSliderRelease(v) {
-  isDraggingFanSlider = false;
-  const val = parseInt(v, 10);
-  const mode = val <= 33 ? 'quiet' : val <= 66 ? 'balance' : val <= 89 ? 'performance' : 'turbo';
-  setFanMode(mode);
-}
-
-async function setFanMode(mode) {
-  try {
-    const res = await fetch('/api/fan/set', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode: mode })
-    });
-    const data = await res.json();
-    if (data.success) {
-      updateFanUi(data);
-      showToast('Fan Mode: ' + (data.mode_label || mode).toUpperCase());
-    }
-  } catch (e) {
-    showToast('Failed to set fan: ' + e);
-  }
-}
-
-async function toggleAutoTurbo() {
-  try {
-    currentAutoTurbo = !currentAutoTurbo;
-    const res = await fetch('/api/fan/set', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auto_turbo: currentAutoTurbo })
-    });
-    const data = await res.json();
-    updateFanUi(data);
-    showToast('Auto-Turbo on Fishing: ' + (data.auto_turbo ? 'ENABLED' : 'DISABLED'));
-  } catch (e) {
-    showToast('Failed to toggle auto turbo: ' + e);
-  }
-}
-
-// AUTO CRAFT CONTROLS
-let isCrafting = false;
-function updateCraftUi(c) {
-  if (!c) return;
-  isCrafting = c.is_crafting;
-  const badge = document.getElementById('craft-status-badge');
-  const btn = document.getElementById('btn-craft-toggle');
-  const label = document.getElementById('craft-btn-label');
-  const icon = document.getElementById('craft-btn-icon');
-  const msg = document.getElementById('craft-msg');
-
-  if (!badge || !btn) return;
-
-  if (isCrafting) {
-    badge.className = 'status-badge badge-running';
-    badge.innerText = `CRAFTING (${c.crafted_count})`;
-    btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
-    btn.style.color = '#fff';
-    label.innerText = 'STOP AUTO CRAFT';
-    icon.innerText = '🛑';
-    if (c.message) msg.innerText = c.message;
-  } else {
-    badge.className = 'status-badge badge-stopped';
-    badge.innerText = 'IDLE';
-    btn.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
-    btn.style.color = '#000';
-    label.innerText = 'START AUTO CRAFT';
-    icon.innerText = '🔨';
-    if (c.message) msg.innerText = c.message;
-  }
-}
-
-let selectedCraftTier = "rare";
-let selectedMacroValue = "";
-
-// MOBILE APP TAB SWITCHING
-function switchTab(tab, btn) {
-  localStorage.setItem('gpo_mobile_tab', tab);
-  document.querySelectorAll('.bottom-nav-item').forEach(b => b.classList.remove('active'));
-  const activeBtn = btn || document.querySelector(`.bottom-nav-item[data-tab="${tab}"]`);
-  if (activeBtn) activeBtn.classList.add('active');
-
-  const remoteSec = document.getElementById('sec-remote');
-  const macroSec = document.getElementById('sec-macro');
-  const craftSec = document.getElementById('sec-craft');
-  const statsSec = document.getElementById('sec-stats');
-  const systemSec = document.getElementById('sec-system');
-
-  if (tab === 'all') {
-    [remoteSec, macroSec, craftSec, statsSec, systemSec].forEach(s => { if (s) s.classList.add('active'); });
-  } else {
-    if (remoteSec) remoteSec.classList.toggle('active', tab === 'remote');
-    if (statsSec) statsSec.classList.toggle('active', tab === 'stats');
-    if (macroSec) macroSec.classList.toggle('active', tab === 'macro');
-    if (craftSec) craftSec.classList.toggle('active', tab === 'craft');
-    if (systemSec) systemSec.classList.toggle('active', tab === 'system');
-  }
-
-  if (window.Telegram?.WebApp?.HapticFeedback) {
-    window.Telegram.WebApp.HapticFeedback.selectionChanged();
-  } else if (navigator.vibrate) {
-    navigator.vibrate(10);
-  }
-  const shell = document.querySelector('.app-shell');
-  if (shell) shell.scrollTo({ top: 0, behavior: 'smooth' });
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
-function toggleDropdown(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  const isOpen = el.classList.contains('open');
-  document.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
-  if (!isOpen) {
-    el.classList.add('open');
-  }
-}
-
-document.addEventListener('click', (e) => {
-  if (!e.target.closest('.custom-dropdown')) {
-    document.querySelectorAll('.custom-dropdown').forEach(d => d.classList.remove('open'));
-  }
-});
-
-function selectCraftTier(val, label) {
-  selectedCraftTier = val;
-  const labelEl = document.getElementById('dropdown-craft-label');
-  if (labelEl) labelEl.innerText = label;
-  document.querySelectorAll('#dropdown-craft-menu .custom-dropdown-item').forEach(el => {
-    el.classList.toggle('active', el.getAttribute('data-val') === val);
-    const check = el.querySelector('.item-check');
-    if (check) check.remove();
-    if (el.getAttribute('data-val') === val) {
-      el.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
-    }
-  });
-  const menu = document.getElementById('dropdown-craft');
-  if (menu) menu.classList.remove('open');
-}
-
-function selectMacroItem(val) {
-  selectedMacroValue = val;
-  const m = cachedMacros.find(x => x.name === val || x.id === val);
-  const labelEl = document.getElementById('dropdown-macro-label');
-  if (labelEl && m) labelEl.innerText = `📋 ${m.name} (${m.steps.length} steps)`;
-  document.querySelectorAll('#dropdown-macro-menu .custom-dropdown-item').forEach(el => {
-    el.classList.toggle('active', el.getAttribute('data-val') === val);
-    const check = el.querySelector('.item-check');
-    if (check) check.remove();
-    if (el.getAttribute('data-val') === val) {
-      el.insertAdjacentHTML('beforeend', '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>');
-    }
-  });
-  const menu = document.getElementById('dropdown-macro');
-  if (menu) menu.classList.remove('open');
-  renderMacroSteps(m);
-}
-
-async function toggleAutoCraft() {
-  if (isCrafting) {
-    try {
-      const res = await fetch('/api/craft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'stop' })
-      });
-      const data = await res.json();
-      showToast(data.message || 'Auto-craft stopped');
-      fetchStatus();
-    } catch (e) {
-      showToast('Stop craft failed: ' + e);
-    }
-  } else {
-    try {
-      const res = await fetch('/api/craft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start', tier: selectedCraftTier })
-      });
-      const data = await res.json();
-      showToast(data.message || 'Auto-craft started!');
-      fetchStatus();
-    } catch (e) {
-      showToast('Start craft failed: ' + e);
-    }
-  }
-}
-
-// MACRO STUDIO CONTROLS
-let isRecordingMacro = false;
-let isPlayingMacro = false;
-let webSpeed = 1.0;
-let webLoopCount = 1;
-let cachedMacros = [];
-
-function setWebSpeed(val, btn) {
-  webSpeed = Number(val);
-  document.querySelectorAll('#speed-pills .macro-pill-btn').forEach(b => b.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-}
-
-function setWebLoopCount(val, btn) {
-  webLoopCount = Number(val);
-  document.querySelectorAll('#loop-pills .macro-pill-btn').forEach(b => b.classList.remove('active-purple'));
-  if (btn) btn.classList.add('active-purple');
-}
-
-function renderMacroSteps(m) {
-  const countEl = document.getElementById('macro-steps-count');
-  const listEl = document.getElementById('macro-steps-list');
-  if (!m || !m.steps || m.steps.length === 0) {
-    if (countEl) countEl.innerText = '0';
-    if (listEl) listEl.innerHTML = '<div style="color: var(--text-mute);">No steps recorded for this macro.</div>';
-    return;
-  }
-  if (countEl) countEl.innerText = m.steps.length;
-  let html = '';
-  m.steps.forEach((s, i) => {
-    let desc = '';
-    if (s.type === 'Drag') {
-      desc = `<span style="color:#6ee7b7">🖱️ DRAG (${(s.start_rx*100).toFixed(0)}%, ${(s.start_ry*100).toFixed(0)}%) ➔ (${(s.end_rx*100).toFixed(0)}%, ${(s.end_ry*100).toFixed(0)}%) [${s.duration_ms}ms]</span>`;
-    } else if (s.type === 'Click') {
-      desc = `<span style="color:#67e8f9">👆 ${s.button.toUpperCase()} CLICK (${(s.rx*100).toFixed(0)}%, ${(s.ry*100).toFixed(0)}%)</span>`;
-    } else if (s.type === 'KeyHold') {
-      desc = `<span style="color:#fcd34d">⌨️ HOLD [${s.key.toUpperCase()}] for ${s.duration_ms}ms</span>`;
-    } else if (s.type === 'KeyTap') {
-      desc = `<span style="color:#d8b4fe">⌨️ TAP [${s.key.toUpperCase()}]</span>`;
-    } else if (s.type === 'MouseMove') {
-      desc = `<span style="color:#93c5fd">🖱️ MOVE (${(s.rx*100).toFixed(0)}%, ${(s.ry*100).toFixed(0)}%)</span>`;
-    } else {
-      desc = `<span style="color:#94a3b8">⏳ SLEEP ${s.ms || 0}ms</span>`;
-    }
-    const delay = s.delay_ms ? `<span style="color:#64748b;font-size:0.68rem;">+${s.delay_ms}ms</span>` : '';
-    html += `<div class="macro-step-row"><div><span style="color:#64748b;margin-right:6px;">#${i+1}</span>${desc}</div>${delay}</div>`;
-  });
-  if (listEl) listEl.innerHTML = html;
-}
-
-function updateMacroUi(rec, macros) {
-  if (!rec) return;
-  isRecordingMacro = rec.is_recording;
-  isPlayingMacro = rec.is_playing;
-
-  const stBadge = document.getElementById('macro-status-badge');
-  const countBadge = document.getElementById('record-count-badge');
-  const recToggle = document.getElementById('btn-record-toggle');
-  const recCancel = document.getElementById('btn-record-cancel');
-  const recIcon = document.getElementById('record-btn-icon');
-  const recLabel = document.getElementById('record-btn-label');
-  const recHint = document.getElementById('record-hint');
-
-  const playBadge = document.getElementById('play-loop-badge');
-  const btnPlay = document.getElementById('btn-macro-play');
-  const btnLoop = document.getElementById('btn-macro-loop');
-  const btnStop = document.getElementById('btn-macro-stop');
-  const macroMsg = document.getElementById('macro-msg');
-
-  if (isRecordingMacro) {
-    if (stBadge) {
-      stBadge.className = 'status-badge badge-running';
-      stBadge.innerText = 'RECORDING';
-    }
-    if (countBadge) countBadge.innerText = `${rec.recorded_steps_count} STEPS`;
-    if (recToggle) {
-      recToggle.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
-      recToggle.style.color = '#fff';
-    }
-    if (recIcon) recIcon.innerText = '⏹️';
-    if (recLabel) recLabel.innerText = 'FINISH & SAVE';
-    if (recCancel) recCancel.style.display = 'inline-flex';
-    if (recHint) recHint.innerText = 'Tap live screen or controls (T, E, WASD, 1-5). Each action & delay is saved!';
-  } else {
-    if (countBadge) countBadge.innerText = rec.recorded_steps_count > 0 ? `${rec.recorded_steps_count} STEPS` : 'READY';
-    if (recToggle) {
-      recToggle.style.background = 'linear-gradient(135deg, #00f0ff, #0284c7)';
-      recToggle.style.color = '#000';
-    }
-    if (recIcon) recIcon.innerText = '⏺️';
-    if (recLabel) recLabel.innerText = 'RECORD';
-    if (recCancel) recCancel.style.display = 'none';
-    if (recHint) recHint.innerText = 'Tap Record, then tap live screen and press controls. Captures timing automatically!';
-  }
-
-  if (isPlayingMacro) {
-    if (stBadge) {
-      stBadge.className = 'status-badge badge-running';
-      stBadge.innerText = rec.is_looping ? `LOOP #${rec.current_loop}` : 'PLAYING';
-    }
-    if (playBadge) playBadge.innerText = rec.is_looping ? `LOOPING (#${rec.current_loop}) [${webSpeed}x]` : `PLAYING ONCE [${webSpeed}x]`;
-    if (btnPlay) btnPlay.style.display = 'none';
-    if (btnLoop) btnLoop.style.display = 'none';
-    if (btnStop) btnStop.style.display = 'inline-flex';
-  } else {
-    if (!isRecordingMacro && stBadge) {
-      stBadge.className = 'status-badge badge-stopped';
-      stBadge.innerText = 'IDLE';
-    }
-    if (playBadge) playBadge.innerText = 'READY';
-    if (btnPlay) btnPlay.style.display = 'inline-flex';
-    if (btnLoop) btnLoop.style.display = 'inline-flex';
-    if (btnStop) btnStop.style.display = 'none';
-  }
-
-  if (rec.message && macroMsg) {
-    macroMsg.innerText = rec.message;
-  }
-
-  // Update Custom Macro Dropdown
-  cachedMacros = macros || [];
-  const menu = document.getElementById('dropdown-macro-menu');
-  const labelEl = document.getElementById('dropdown-macro-label');
-  if (menu) {
-    if (!macros || macros.length === 0) {
-      menu.innerHTML = '<div class="custom-dropdown-item" style="color:var(--text-mute);cursor:default;">(No macros saved yet)</div>';
-      if (labelEl) labelEl.innerText = '(No macros saved yet)';
-      selectedMacroValue = '';
-      renderMacroSteps(null);
-    } else {
-      let itemsHtml = '';
-      if (!selectedMacroValue || !macros.some(m => m.name === selectedMacroValue || m.id === selectedMacroValue)) {
-        selectedMacroValue = macros[0].name;
-      }
-      for (const m of macros) {
-        const isSel = (m.name === selectedMacroValue || m.id === selectedMacroValue);
-        itemsHtml += `<div class="custom-dropdown-item ${isSel ? 'active' : ''}" data-val="${m.name}" onclick="selectMacroItem('${m.name.replace(/'/g, "\\'")}')">
-          <div style="flex:1;min-width:0;text-align:left;">
-            <div style="font-weight:700;color:#fff;">${m.name}</div>
-            <div class="dropdown-item-sub">${m.steps.length} steps</div>
-          </div>
-          ${isSel ? '<span class="item-check" style="color:var(--cyan);font-weight:800;">✓</span>' : ''}
-        </div>`;
-      }
-      menu.innerHTML = itemsHtml;
-      const activeM = macros.find(m => m.name === selectedMacroValue || m.id === selectedMacroValue) || macros[0];
-      if (labelEl && activeM) {
-        labelEl.innerText = `📋 ${activeM.name} (${activeM.steps.length} steps)`;
-      }
-      renderMacroSteps(activeM);
-    }
-  }
-}
-
-async function toggleRecord() {
-  if (isRecordingMacro) {
-    const name = document.getElementById('txt-macro-name').value.trim() || 'My Macro';
-    try {
-      const res = await fetch('/api/macro/record', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'stop', name })
-      });
-      const data = await res.json();
-      showToast(data.message || 'Macro saved!');
-      fetchStatus();
-    } catch (e) {
-      showToast('Save failed: ' + e);
-    }
-  } else {
-    try {
-      const res = await fetch('/api/macro/record', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'start', mode: 'web' })
-      });
-      const data = await res.json();
-      showToast(data.message || 'Recording started!');
-      fetchStatus();
-    } catch (e) {
-      showToast('Record start failed: ' + e);
-    }
-  }
-}
-
-async function cancelRecord() {
-  try {
-    const res = await fetch('/api/macro/record', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'cancel' })
-    });
-    const data = await res.json();
-    showToast(data.message || 'Recording cancelled');
-    fetchStatus();
-  } catch (e) {
-    showToast('Cancel failed: ' + e);
-  }
-}
-
-async function renameSelectedMacro() {
-  if (!selectedMacroValue) {
-    showToast('Please select a macro first');
-    return;
-  }
-  const current = selectedMacroValue;
-  const newName = prompt(`Enter new name for macro "${current}":`, current);
-  if (!newName || newName.trim() === '' || newName.trim() === current) return;
-  try {
-    const res = await fetch('/api/macro/rename', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: current, name: newName.trim() })
-    });
-    const data = await res.json();
-    if (data.status === 'ok') {
-      showToast('Macro renamed to ' + newName.trim());
-      selectedMacroValue = newName.trim();
-      fetchStatus();
-    } else {
-      showToast('Rename failed: ' + (data.error || 'unknown'));
-    }
-  } catch (e) {
-    showToast('Rename error: ' + e);
-  }
-}
-
-async function playMacro(isLoop) {
-  if (!selectedMacroValue) {
-    showToast('Please record or select a macro first');
-    return;
-  }
-  try {
-    const res = await fetch('/api/macro/play', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: selectedMacroValue,
-        loop: isLoop,
-        loop_count: isLoop ? webLoopCount : 1,
-        speed: webSpeed
-      })
-    });
-    const data = await res.json();
-    showToast(data.message || (isLoop ? 'Started loop playback' : 'Playing macro once'));
-    fetchStatus();
-  } catch (e) {
-    showToast('Play failed: ' + e);
-  }
-}
-
-async function stopMacro() {
-  try {
-    const res = await fetch('/api/macro/play', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'stop' })
-    });
-    const data = await res.json();
-    showToast(data.message || 'Macro playback stopped');
-    fetchStatus();
-  } catch (e) {
-    showToast('Stop failed: ' + e);
-  }
-}
-
-async function deleteSelectedMacro() {
-  if (!selectedMacroValue) {
-    showToast('No macro selected');
-    return;
-  }
-  if (!confirm(`Are you sure you want to delete macro "${selectedMacroValue}"?`)) return;
-  try {
-    const res = await fetch('/api/macro/delete', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: selectedMacroValue })
-    });
-    const data = await res.json();
-    if (data.status === 'ok') {
-      showToast('Macro deleted');
-      selectedMacroValue = '';
-      fetchStatus();
-    } else {
-      showToast('Delete error: ' + (data.error || 'unknown'));
-    }
-  } catch (e) {
-    showToast('Delete failed: ' + e);
-  }
-}
-
-// SLIDERS
-function onVolInput(val) {
-  userSlidingVol = true;
-  const lbl = document.getElementById('lbl-volume');
-  if (lbl) lbl.innerText = `${val}%`;
-}
-function onVolRelease(val) {
-  userSlidingVol = false;
-  doAction('set_volume', parseFloat(val));
-}
-function onBrightInput(val) {
-  userSlidingBright = true;
-  const lbl = document.getElementById('lbl-brightness');
-  if (lbl) lbl.innerText = `${val}%`;
-}
-function onBrightRelease(val) {
-  userSlidingBright = false;
-  doAction('set_brightness', parseInt(val, 10));
-}
-
-function fallbackSnapshot() {
-  const img = document.getElementById('screen-img');
-  if (img) {
-    img.src = (window.__gpoUrl||function(u){return u;})(`/api/screenshot?scale=${currentScale}&q=${currentQuality}&t=` + Date.now());
-  }
-}
-
-// RESTORE SAVED TAB
-const savedTab = localStorage.getItem('gpo_mobile_tab') || 'remote';
-switchTab(savedTab);
-
-updateStreamLabels();
-reloadStream();
-
-setInterval(fetchStatus, 1500);
-setInterval(tickTimersLocally, 1000);
-fetchStatus();
-</script>
-</body>
-</html>
-"##;
-
+fn send_html_page(stream: &mut TcpStream, html: &str) {
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         html.len(),
         html
     );
     let _ = stream.write_all(resp.as_bytes());
+}
+
+/// Public (unauthenticated) static asset. Returns true when the path was an
+/// asset route (served or 404); false for non-asset paths.
+fn serve_asset(stream: &mut TcpStream, raw_path: &str) -> bool {
+    const PREFIX: &str = "/assets/";
+    if !raw_path.starts_with(PREFIX) {
+        return false;
+    }
+    let name = &raw_path[PREFIX.len()..];
+    // Only flat asset names plus exactly `fonts/<file>.woff2` exist.
+    // Anything else (nesting, `..`, backslashes) is a 404.
+    let is_font = name.strip_prefix("fonts/").is_some_and(|rest| {
+        rest.ends_with(".woff2") && !rest.contains('/') && !rest.contains('\\') && !rest.contains("..")
+    });
+    if (!is_font && (name.contains('/') || name.contains('\\') || name.contains(".."))) || name.is_empty() {
+        let nf = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+        let _ = stream.write_all(nf.as_bytes());
+        return true;
+    }
+    if is_font {
+        let rest = &name["fonts/".len()..];
+        if let Some(bytes) = font_bytes(rest) {
+            send_bytes(stream, "font/woff2", bytes);
+        } else {
+            let nf = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(nf.as_bytes());
+        }
+        return true;
+    }
+    match name {
+        "tailwind.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_TAILWIND_JS),
+        "fonts.css" => send_bytes(stream, "text/css; charset=utf-8", ASSET_FONTS_CSS.as_bytes()),
+        "gpo-core.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_CORE_JS.as_bytes()),
+        "gpo-remote.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_REMOTE_JS.as_bytes()),
+        "gpo-stats.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_STATS_JS.as_bytes()),
+        "gpo-studio.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_STUDIO_JS.as_bytes()),
+        "gpo-craft.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_CRAFT_JS.as_bytes()),
+        "gpo-system.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_SYSTEM_JS.as_bytes()),
+        _ => {
+            let nf = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
+            let _ = stream.write_all(nf.as_bytes());
+        }
+    }
+    true
 }
 
 #[cfg(test)]
@@ -4522,5 +1484,167 @@ mod tests {
         assert!(cors_origin_for(lan, true).is_some());
         assert!(cors_origin_for(evil, true).is_none());
         assert!(cors_origin_for("GET / HTTP/1.1\r\n\r\n", true).is_none());
+    }
+
+    #[test]
+    fn split_csv_line_handles_quotes() {
+        assert_eq!(split_csv_line("a,b,c"), vec!["a", "b", "c"]);
+        assert_eq!(
+            split_csv_line("2026-09-13 11:04:17,fish,\"Fish\",\"u-ev, Item\""),
+            vec!["2026-09-13 11:04:17", "fish", "Fish", "u-ev, Item"]
+        );
+        assert_eq!(
+            split_csv_line("t,fish,\"A \"\"quoted\"\" name\",x"),
+            vec!["t", "fish", "A \"quoted\" name", "x"]
+        );
+        assert_eq!(split_csv_line(""), vec![""]);
+    }
+
+    #[test]
+    fn recent_catches_reads_newest_first_capped() {
+        let dir = std::env::temp_dir().join(format!(
+            "gpo-web-catches-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&dir);
+        let store = crate::config::Store::new(dir.clone());
+        let mut csv = String::from("Timestamp,Type,Name,RawText\n");
+        for i in 0..8 {
+            csv.push_str(&format!("2026-10-0{i} 10:00:0{i},fish,\"Fish {i}\",raw {i}\n"));
+        }
+        std::fs::write(store.catches_path(), csv).unwrap();
+        let val = recent_catches(&store);
+        let arr = val.as_array().expect("array");
+        assert_eq!(arr.len(), 6, "capped at 6, got {arr:?}");
+        assert_eq!(arr[0].get("timestamp").and_then(|v| v.as_str()), Some("2026-10-07 10:00:07"));
+        assert_eq!(arr[0].get("type").and_then(|v| v.as_str()), Some("fish"));
+        assert_eq!(arr[0].get("name").and_then(|v| v.as_str()), Some("Fish 7"));
+        assert_eq!(arr[5].get("name").and_then(|v| v.as_str()), Some("Fish 2"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn recent_catches_missing_file_is_empty() {
+        let dir = std::env::temp_dir().join(format!(
+            "gpo-web-nocatch-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&dir);
+        let store = crate::config::Store::new(dir.clone());
+        assert_eq!(recent_catches(&store), serde_json::json!([]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn vendored_fonts_cover_css_without_remote_refs() {
+        for css in [ASSET_FONTS_CSS] {
+            assert!(!css.contains("https://"), "fonts.css must not fetch remote URLs");
+        }
+        let mut missing = Vec::new();
+        let mut count = 0;
+        for cap in ASSET_FONTS_CSS.split("url(").skip(1) {
+            let end = cap.find(')').unwrap_or(cap.len());
+            let url = cap[..end].trim_matches(|c| c == '\'' || c == '"' || c == ' ');
+            if let Some(file) = url.strip_prefix("fonts/") {
+                count += 1;
+                if font_bytes(file).is_none() {
+                    missing.push(file.to_string());
+                }
+            }
+        }
+        assert!(count >= 10, "expected many vendored font faces, got {count}");
+        assert!(missing.is_empty(), "unvendored font files: {missing:?}");
+    }
+
+    #[test]
+    fn tab_pages_are_self_contained() {
+        for (name, page) in [
+            ("remote", WEB_REMOTE_HTML),
+            ("stats", WEB_STATS_HTML),
+            ("studio", WEB_STUDIO_HTML),
+            ("craft", WEB_CRAFT_HTML),
+            ("system", WEB_SYSTEM_HTML),
+        ] {
+            for needle in [
+                "cdn.tailwindcss.com",
+                "fonts.googleapis.com",
+                "fonts.gstatic.com",
+                "googleusercontent.com",
+            ] {
+                assert!(!page.contains(needle), "{name} must not reference {needle} (offline LAN app)");
+            }
+            assert!(page.contains("/assets/tailwind.js"), "{name} must load vendored tailwind");
+            assert!(page.contains("/assets/fonts.css"), "{name} must load vendored fonts");
+            assert!(page.contains("GPO CYBERDECK"), "{name} must carry the shell");
+        }
+    }
+
+    fn read_response(stream: &mut std::net::TcpStream) -> String {
+        use std::io::Read;
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(3)))
+            .unwrap();
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            match stream.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                Err(_) => break,
+            }
+        }
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    #[test]
+    fn asset_and_page_routes_serve() {
+        use std::io::Write;
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        // Handlers only write (never read the request), so: connect, accept,
+        // serve, drop the server side (EOF), then slurp the response.
+        let fetch = |path: &str| {
+            let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+            let (mut server, _) = listener.accept().unwrap();
+            if path.starts_with("/assets/") {
+                assert!(serve_asset(&mut server, path));
+            } else {
+                send_html_page(&mut server, WEB_STATS_HTML);
+            }
+            drop(server);
+            read_response(&mut client)
+        };
+        let serve = fetch;
+
+        let js = serve("/assets/tailwind.js");
+        assert!(js.starts_with("HTTP/1.1 200 OK"), "tailwind route, got: {}", &js[..js.len().min(60)]);
+        assert!(js.contains("text/javascript"), "js content type, got: {}", &js[..js.len().min(200)]);
+        assert!(js.len() > 100_000, "vendored tailwind must be substantial");
+
+        let css = serve("/assets/fonts.css");
+        assert!(css.starts_with("HTTP/1.1 200 OK"));
+        assert!(css.contains("text/css"));
+
+        let font = serve("/assets/fonts/w1.woff2");
+        assert!(font.starts_with("HTTP/1.1 200 OK"));
+        assert!(font.contains("font/woff2"));
+
+        let missing = serve("/assets/fonts/nope.woff2");
+        assert!(missing.starts_with("HTTP/1.1 404"));
+
+        let traversal = serve("/assets/../secret");
+        assert!(traversal.starts_with("HTTP/1.1 404"));
+
+        let page = serve("/stats");
+        assert!(page.starts_with("HTTP/1.1 200 OK"));
+        assert!(page.contains("text/html"));
+        assert!(page.contains("loot-telemetry-list"), "stats page must carry the loot feed");
     }
 }

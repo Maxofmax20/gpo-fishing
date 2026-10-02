@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><meta content="mobile_tab" name="shell-type"/><link rel="stylesheet" href="/assets/fonts.css"/>
+<script src="/assets/tailwind.js"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { colors: { "surface-container-high": "#262a35", "on-secondary": "#3c0091", "surface-container-highest": "#313540", "tertiary": "#4edea3", "on-error-container": "#ffdad6", "on-surface-variant": "#bcc9cd", "surface-tint": "#4cd7f6", "inverse-primary": "#00687a", "primary-fixed-dim": "#4cd7f6", "primary": "#4cd7f6", "surface-variant": "#313540", "on-tertiary-fixed": "#002113", "surface-bright": "#353944", "on-surface": "#dfe2f1", "on-background": "#dfe2f1", "secondary-fixed": "#e9ddff", "outline": "#869397", "error-container": "#93000a", "primary-container": "#06b6d4", "on-secondary-fixed": "#23005c", "inverse-surface": "#dfe2f1", "on-primary": "#003640", "on-primary-fixed": "#001f26", "surface-dim": "#0f131d", "secondary-fixed-dim": "#d0bcff", "tertiary-fixed": "#6ffbbe", "on-tertiary-fixed-variant": "#005236", "outline-variant": "#3d494c", "on-tertiary": "#003824", "background": "#0f131d", "surface-container-lowest": "#0a0e18", "secondary-container": "#571bc1", "surface-container": "#1c1f2a", "primary-fixed": "#acedff", "on-primary-container": "#00424f", "on-error": "#690005", "surface-container-low": "#171b26", "inverse-on-surface": "#2c303b", "on-tertiary-container": "#00452e", "on-secondary-fixed-variant": "#5516be", "on-primary-fixed-variant": "#004e5c", "tertiary-container": "#1bbd85", "on-secondary-container": "#c4abff", "error": "#ffb4ab", "secondary": "#d0bcff", "surface": "#0f131d", "tertiary-fixed-dim": "#4edea3" }, borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, spacing: { "space-sm": "0.5rem", "space-xs": "0.25rem", "space-xl": "1.75rem", "space-md": "0.75rem", "space-lg": "1.25rem", "margin": "1rem", "gutter": "0.75rem" }, fontFamily: { "headline-lg-mobile": ["Space Grotesk"], "headline-lg": ["Space Grotesk"], "label-lg": ["Space Mono"], "telemetry-num": ["Space Mono"], "body-lg": ["Inter"], "headline-xl-mobile": ["Space Grotesk"], "body-sm": ["Inter"], "body-md": ["Inter"], "headline-md": ["Space Grotesk"], "label-md": ["Space Mono"], "headline-xl": ["Space Grotesk"], "label-sm": ["Space Mono"] }, fontSize: { "headline-lg-mobile": ["20px", {"lineHeight": "26px", "fontWeight": "600"}], "headline-lg": ["28px", {"lineHeight": "34px", "fontWeight": "700"}], "label-lg": ["13px", {"lineHeight": "18px", "fontWeight": "700"}], "telemetry-num": ["24px", {"lineHeight": "28px", "fontWeight": "700"}], "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}], "headline-xl-mobile": ["26px", {"lineHeight": "32px", "fontWeight": "700"}], "body-sm": ["12px", {"lineHeight": "16px", "fontWeight": "400"}], "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}], "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}], "label-md": ["11px", {"lineHeight": "16px", "fontWeight": "700"}], "headline-xl": ["36px", {"lineHeight": "44px", "fontWeight": "700"}], "label-sm": ["10px", {"lineHeight": "14px", "fontWeight": "400"}] } } } }</script><style>
+@layer base{
+  html,body{width:100vw;margin:0;padding:0;background-color:#0f131d;color:#dfe2f1;}
+  body{overscroll-behavior:none;}
+  .pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}
+  .pt-safe{padding-top:env(safe-area-inset-top,0px);}
+  main>:first-child{margin-top:0!important;}
+  main>:last-child{margin-bottom:0!important;}
+}
+::-webkit-scrollbar{display:none;}
+
+/* Radar / Scanline sweep animations */
+@keyframes scanline-sweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(1000%); }
+}
+.animate-scanline {
+  animation: scanline-sweep 4s linear infinite;
+}
+
+@keyframes radar-pulse {
+  0%, 100% { opacity: 0.15; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(1.08); }
+}
+.animate-radar {
+  animation: radar-pulse 3s ease-in-out infinite;
+}
+
+@keyframes macro-pulse-glow {
+  0%, 100% { box-shadow: 0 0 15px rgba(255, 180, 171, 0.4), inset 0 0 10px rgba(255, 180, 171, 0.2); }
+  50% { box-shadow: 0 0 25px rgba(255, 180, 171, 0.7), inset 0 0 18px rgba(255, 180, 171, 0.35); }
+}
+.macro-active-pulse {
+  animation: macro-pulse-glow 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-scanline, .animate-radar, .macro-active-pulse, .animate-pulse {
+    animation: none !important;
+  }
+}
+</style></head><body class="bg-surface font-body-md text-body-md text-on-surface flex flex-col min-h-screen"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/85 backdrop-blur-xl shadow-[0_1px_12px_rgba(0,0,0,0.4)] border-b border-outline-variant/20"><div class="h-20 px-space-md flex flex-col justify-center gap-space-xs"><div class="flex items-center justify-between"><div class="flex items-center gap-space-xs"><div class="w-2 h-2 rounded-full bg-tertiary animate-pulse shadow-[0_0_8px_#4edea3]"></div><span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">data-gpo="hostline">…</span></div><div class="flex items-center gap-space-sm"><div class="px-space-xs py-0.5 rounded-full bg-surface-container-high flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span><span class="font-label-sm text-label-sm text-tertiary uppercase">LIVE 60 FPS • 720p</span></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div><div class="flex items-center justify-between"><div class="flex items-center gap-space-sm"><span class="font-headline-md text-headline-md tracking-tight uppercase text-primary">GPO CYBERDECK</span><span class="font-label-md text-label-md text-on-surface-variant uppercase">/ Remote Deck</span></div><div class="flex items-center gap-space-xs">
+<!-- Audio Synthesizer Toggle Button -->
+<button aria-label="Toggle Sound Effects" class="h-8 px-space-sm min-w-[36px] rounded bg-surface-container hover:bg-surface-bright active:scale-95 text-primary border border-primary/30 flex items-center justify-center gap-1 transition-all shadow-[0_0_8px_rgba(76,215,246,0.2)]" id="sound-toggle-btn" title="SFX Engine Toggle" type="button">
+<span class="material-symbols-outlined text-[16px]" id="sound-toggle-icon">volume_up</span>
+<span class="font-label-sm text-label-sm uppercase font-bold tracking-tight" id="sound-toggle-text">SFX ON</span>
+</button>
+<button class="h-8 px-space-sm min-w-[44px] rounded bg-surface-container hover:bg-surface-bright active:scale-95 text-secondary flex items-center justify-center gap-1 transition-all" id="alerts-btn" type="button"><span class="material-symbols-outlined text-[16px]">notifications_active</span><span class="font-label-sm text-label-sm uppercase hidden sm:inline">Alerts</span></button><button class="h-8 px-space-md min-w-[76px] rounded bg-primary-container text-on-primary hover:bg-primary active:scale-95 font-label-md text-label-md uppercase tracking-wider font-bold flex items-center justify-center shadow-[0_0_12px_rgba(6,182,212,0.35)] transition-all" id="pwr-btn" type="button">PWR ON</button></div></div></div></header><main class="flex flex-col relative w-full pt-20 pb-24 bg-surface min-h-screen"><div class="flex flex-col w-full px-space-md py-space-sm gap-space-md select-none">
+<!-- Live Stream Cyber Viewport Card -->
+<div class="relative w-full rounded-xl overflow-hidden bg-surface-container-lowest shadow-[0_8px_24px_rgba(0,0,0,0.6)] border border-outline-variant/30">
+<!-- Viewport Video Aspect Ratio Container -->
+<div class="relative w-full aspect-video bg-surface-container-lowest flex items-center justify-center overflow-hidden">
+<!-- Simulated High-End Game Stream Feed Placeholder -->
+<img id="gpo-stream" class="absolute inset-0 w-full h-full object-cover opacity-85" alt="Roblox live stream" src=""/>
+<!-- Scanline & HUD Grid Layer Overlay -->
+<div class="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-surface-dim/40 to-surface-dim/90"></div>
+<div class="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(76,215,246,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(76,215,246,0.03)_1px,transparent_1px)] bg-[size:24px_24px]"></div>
+<!-- Dynamic Animated Radar / Scanline Sweep Beam -->
+<div class="absolute inset-x-0 h-10 -top-10 bg-gradient-to-b from-transparent via-primary/15 to-transparent pointer-events-none animate-scanline"></div>
+<!-- Top Overlay Telemetry Chips & Stream Quality Switcher -->
+<div class="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-auto"><!-- Left: Telemetry Indicators -->
+<div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
+<!-- Live Status Badge -->
+<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-lowest/80 backdrop-blur-md shadow-sm border border-outline-variant/30 shrink-0">
+<span class="w-2 h-2 rounded-full bg-tertiary animate-pulse shadow-[0_0_8px_#4edea3]"></span>
+<span class="font-label-sm text-label-sm font-bold text-tertiary uppercase tracking-wider">LIVE</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-medium">60 FPS</span>
+</div>
+<!-- Latency Badge -->
+<div class="flex items-center px-2 py-1 rounded-full bg-surface-container-lowest/80 backdrop-blur-md shadow-sm border border-outline-variant/30 shrink-0">
+<span class="font-label-sm text-label-sm text-primary font-bold">18ms</span>
+</div>
+</div>
+<!-- Right: Stream Quality & Quick Action Controls -->
+<div class="flex items-center gap-1 shrink-0">
+<!-- FPS Selector Dropdown -->
+<button class="h-6 px-2 rounded-full bg-surface-container-high/90 hover:bg-surface-bright active:scale-95 text-on-surface flex items-center gap-0.5 border border-outline-variant/30 transition-all sfx-click" type="button">
+<span class="material-symbols-outlined text-primary text-[12px]">bolt</span><span id="stream-fps-anchor" style="display:none"></span>
+<span class="font-label-sm text-label-sm font-medium">60</span>
+<span class="material-symbols-outlined text-[12px] text-on-surface-variant">arrow_drop_down</span>
+</button>
+<!-- Quality Selector Dropdown -->
+<button class="h-6 px-2 rounded-full bg-surface-container-high/90 hover:bg-surface-bright active:scale-95 text-on-surface flex items-center gap-0.5 border border-outline-variant/30 transition-all sfx-click" type="button">
+<span class="material-symbols-outlined text-secondary text-[12px]">tv</span>
+<span class="font-label-sm text-label-sm font-medium">720p</span>
+<span class="material-symbols-outlined text-[12px] text-on-surface-variant">arrow_drop_down</span>
+</button>
+<!-- Touch Input Mode Badge -->
+<div class="h-6 px-2 rounded-full bg-primary-container/20 text-primary flex items-center gap-1 border border-primary/30 shadow-[0_0_8px_rgba(6,182,212,0.25)]">
+<span class="material-symbols-outlined text-[13px]">touch_app</span>
+<span class="font-label-sm text-label-sm uppercase font-bold tracking-tight" id="tap-mode-label">TAP</span>
+</div>
+<!-- Refresh Stream Button -->
+<button aria-label="Refresh stream" class="w-6 h-6 rounded-full bg-surface-container-high/90 hover:bg-surface-bright active:scale-95 text-on-surface-variant flex items-center justify-center border border-outline-variant/30 transition-all sfx-click" type="button">
+<span class="material-symbols-outlined text-[14px]">refresh</span>
+</button>
+<!-- Fullscreen Button -->
+<button aria-label="Fullscreen stream" class="w-6 h-6 rounded-full bg-surface-container-high/90 hover:bg-surface-bright active:scale-95 text-on-surface-variant flex items-center justify-center border border-outline-variant/30 transition-all sfx-click" type="button">
+<span class="material-symbols-outlined text-[14px]">fullscreen</span>
+</button>
+</div></div>
+<!-- Center Touch Crosshair Aim Marker -->
+<div class="relative w-8 h-8 rounded-full pointer-events-none flex items-center justify-center opacity-60">
+<div class="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_#4cd7f6]"></div>
+<div class="absolute w-6 h-6 rounded-full bg-primary/10"></div>
+</div>
+<!-- In-Stream Floating Event Toast -->
+<div class="absolute bottom-2 left-2 flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-dim/90 backdrop-blur-md border border-outline-variant/30 shadow-md max-w-[80%]">
+<span class="material-symbols-outlined text-tertiary text-[14px] shrink-0 animate-pulse">radio_button_checked</span>
+<span class="font-label-sm text-label-sm text-on-surface truncate tracking-tight" id="stream-event-text">…</span>
+</div>
+</div>
+</div>
+<!-- Dual Ergonomic Touch Controllers Panel -->
+<div class="w-full rounded-xl bg-surface-container-low p-space-md flex flex-col gap-space-md shadow-[0_4px_20px_rgba(0,0,0,0.4)] border border-outline-variant/20">
+<!-- Joystick Row: Walk (WASD) and Camera (Look) -->
+<div class="grid grid-cols-2 gap-space-md items-center">
+<!-- Left Pad: Walk (WASD) -->
+<div class="flex flex-col items-center gap-space-xs">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-primary text-[15px]">directions_run</span>
+<span class="font-label-sm text-label-sm uppercase font-bold text-on-surface tracking-wider">WALK (WASD)</span>
+</div>
+<!-- Touch Pad Housing -->
+<div class="relative w-36 h-36 rounded-full bg-surface-container-lowest flex items-center justify-center shadow-[inset_0_2px_8px_rgba(0,0,0,0.8),0_0_12px_rgba(76,215,246,0.1)] border border-outline-variant/30">
+<!-- Outer Directional Rings -->
+<div class="absolute inset-1.5 rounded-full bg-surface-container/50"></div>
+<!-- UP (W) -->
+<button aria-label="Walk Up" class="pad-btn sfx-thud active:scale-90 active:bg-primary active:text-on-primary absolute top-2 w-9 h-9 rounded-lg bg-surface-container-high hover:bg-surface-bright text-primary flex items-center justify-center shadow-md border border-outline-variant/20 transition-transform" type="button">
+<span class="material-symbols-outlined text-[18px]">keyboard_arrow_up</span>
+</button>
+<!-- LEFT (A) -->
+<button aria-label="Walk Left" class="pad-btn sfx-thud active:scale-90 active:bg-primary active:text-on-primary absolute left-2 w-9 h-9 rounded-lg bg-surface-container-high hover:bg-surface-bright text-primary flex items-center justify-center shadow-md border border-outline-variant/20 transition-transform" type="button">
+<span class="material-symbols-outlined text-[18px]">keyboard_arrow_left</span>
+</button>
+<!-- RIGHT (D) -->
+<button aria-label="Walk Right" class="pad-btn sfx-thud active:scale-90 active:bg-primary active:text-on-primary absolute right-2 w-9 h-9 rounded-lg bg-surface-container-high hover:bg-surface-bright text-primary flex items-center justify-center shadow-md border border-outline-variant/20 transition-transform" type="button">
+<span class="material-symbols-outlined text-[18px]">keyboard_arrow_right</span>
+</button>
+<!-- DOWN (S) -->
+<button aria-label="Walk Down" class="pad-btn sfx-thud active:scale-90 active:bg-primary active:text-on-primary absolute bottom-2 w-9 h-9 rounded-lg bg-surface-container-high hover:bg-surface-bright text-primary flex items-center justify-center shadow-md border border-outline-variant/20 transition-transform" type="button">
+<span class="material-symbols-outlined text-[18px]">keyboard_arrow_down</span>
+</button>
+<!-- Center Action Hub: Run/Sprint Toggle -->
+<button aria-label="Sprint Hub" class="relative z-10 w-11 h-11 rounded-full bg-primary-container text-on-primary flex items-center justify-center shadow-[0_0_14px_rgba(6,182,212,0.5)] active:scale-90 transition-transform sfx-thud" id="center-run-btn" type="button">
+<span class="material-symbols-outlined text-[20px]">sprint</span>
+</button>
+</div>
+</div>
+<!-- Right Pad: Camera Viewport Controls -->
+<div class="flex flex-col items-center gap-space-xs">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-secondary text-[15px]">videocam</span>
+<span class="font-label-sm text-label-sm uppercase font-bold text-on-surface tracking-wider">CAMERA</span>
+</div>
+<!-- Camera Pad Housing -->
+<div class="relative w-36 h-36 rounded-full bg-surface-container-lowest flex items-center justify-center shadow-[inset_0_2px_8px_rgba(0,0,0,0.8),0_0_12px_rgba(208,188,255,0.1)] border border-outline-variant/30">
+<div class="absolute inset-1.5 rounded-full bg-surface-container/50"></div>
+<!-- TILT UP -->
+<button aria-label="Camera Up" class="pad-btn sfx-thud active:scale-90 active:bg-secondary active:text-on-secondary absolute top-2 w-9 h-9 rounded-lg bg-surface-container-high hover:bg-surface-bright text-secondary flex items-center justify-center shadow-md border border-outline-variant/20 transition-transform" type="button">
+<span class="material-symbols-outlined text-[18px]">arrow_drop_up</span>
+</button>
+<!-- PAN LEFT -->
+<button aria-label="Camera Left" class="pad-btn sfx-thud active:scale-90 active:bg-secondary active:text-on-secondary absolute left-2 w-9 h-9 rounded-lg bg-surface-container-high hover:bg-surface-bright text-secondary flex items-center justify-center shadow-md border border-outline-variant/20 transition-transform" type="button">
+<span class="material-symbols-outlined text-[18px]">arrow_left</span>
+</button>
+<!-- PAN RIGHT -->
+<button aria-label="Camera Right" class="pad-btn sfx-thud active:scale-90 active:bg-secondary active:text-on-secondary absolute right-2 w-9 h-9 rounded-lg bg-surface-container-high hover:bg-surface-bright text-secondary flex items-center justify-center shadow-md border border-outline-variant/20 transition-transform" type="button">
+<span class="material-symbols-outlined text-[18px]">arrow_right</span>
+</button>
+<!-- TILT DOWN -->
+<button aria-label="Camera Down" class="pad-btn sfx-thud active:scale-90 active:bg-secondary active:text-on-secondary absolute bottom-2 w-9 h-9 rounded-lg bg-surface-container-high hover:bg-surface-bright text-secondary flex items-center justify-center shadow-md border border-outline-variant/20 transition-transform" type="button">
+<span class="material-symbols-outlined text-[18px]">arrow_drop_down</span>
+</button>
+<!-- Center Camera Lock / Reset -->
+<button aria-label="Reset Camera Focus" class="relative z-10 w-11 h-11 rounded-full bg-surface-container-highest text-secondary-fixed flex items-center justify-center shadow-md active:scale-90 transition-transform sfx-click" type="button">
+<span class="material-symbols-outlined text-[20px]">center_focus_strong</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Ergonomic Action Strip: Tactile Micro Actions -->
+<div class="flex items-center justify-between gap-space-xs pt-space-xs">
+<!-- Left side macro quick toggles -->
+<div class="flex items-center gap-space-xs">
+<!-- Sprint Toggle Button with glow state -->
+<button class="h-10 px-3.5 rounded-lg bg-surface-container-high hover:bg-surface-bright text-secondary font-label-md text-label-md flex items-center gap-1.5 transition-all shadow-[0_0_12px_rgba(208,188,255,0.25)] border border-secondary/30 active:scale-95" id="sprint-toggle" type="button">
+<span class="material-symbols-outlined text-[17px]">flash_on</span>
+<span class="">SPRINT</span>
+</button>
+<!-- Quick Chat Bubble Button -->
+<button aria-label="Chat Bubble" class="w-10 h-10 rounded-lg bg-surface-container-high hover:bg-surface-bright active:scale-95 text-on-surface-variant flex items-center justify-center transition-all border border-outline-variant/30 sfx-click" type="button">
+<span class="material-symbols-outlined text-[18px]">chat_bubble</span>
+</button>
+</div>
+<!-- Right side tactical character abilities -->
+<div class="flex items-center gap-space-xs">
+<!-- Bait / Hook Call (Laser / Cast Swoosh) -->
+<button aria-label="Cast Fishing Line" class="w-10 h-10 rounded-lg bg-surface-container-high hover:bg-surface-bright active:scale-95 text-primary flex items-center justify-center transition-all border border-primary/30 shadow-[0_0_8px_rgba(76,215,246,0.2)]" id="sfx-cast-btn" type="button">
+<span class="material-symbols-outlined text-[18px]">phishing</span>
+</button>
+<!-- Wave / Greeting Emote -->
+<button aria-label="Emote Wave" class="w-10 h-10 rounded-lg bg-surface-container-high hover:bg-surface-bright active:scale-95 text-tertiary flex items-center justify-center transition-all border border-tertiary/30 sfx-click" type="button">
+<span class="material-symbols-outlined text-[18px]">waving_hand</span>
+</button>
+<!-- Equip Devil Fruit Skill Button -->
+<button aria-label="Devil Fruit Skill" class="w-10 h-10 rounded-xl bg-tertiary-container text-on-tertiary flex items-center justify-center shadow-[0_0_12px_rgba(27,189,133,0.45)] active:scale-95 transition-all border border-tertiary/40" id="sfx-skill-btn" type="button">
+<span class="material-symbols-outlined text-[20px]">nutrition</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Primary Cyber Launch Action Button -->
+<div class="w-full flex flex-col gap-1">
+<button class="w-full h-14 py-3.5 px-space-md rounded-xl bg-primary-container text-on-primary hover:bg-primary font-headline-md text-headline-md uppercase tracking-wider font-bold flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(6,182,212,0.45)] active:scale-[0.98] transition-all cursor-pointer border border-primary/40" id="main-macro-btn" type="button">
+<span class="material-symbols-outlined text-[24px]">play_arrow</span>
+<span id="macro-btn-label">START MACRO</span>
+</button>
+<div class="flex items-center justify-between px-1">
+<span class="font-label-sm text-label-sm text-on-surface-variant" id="macro-profile-text">…</span>
+<span class="font-label-sm text-label-sm text-tertiary" id="macro-status-text">Ready • Safe Loop 99.8%</span>
+</div>
+</div>
+<!-- Secondary Deck Utility Actions Grid -->
+<div class="grid grid-cols-2 gap-space-sm w-full">
+<!-- Quick Recast -->
+<button class="h-11 px-space-md rounded-lg bg-surface-container hover:bg-surface-bright text-on-surface font-label-md text-label-md uppercase font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm border border-outline-variant/30 sfx-click" id="recast-btn" type="button">
+<span class="material-symbols-outlined text-primary text-[18px]">replay</span>
+<span class="">RECAST</span>
+</button>
+<!-- Buy Bait Supply -->
+<button class="h-11 px-space-md rounded-lg bg-surface-container hover:bg-surface-bright text-on-surface font-label-md text-label-md uppercase font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm border border-outline-variant/30 sfx-click" id="buy-bait-btn" type="button">
+<span class="material-symbols-outlined text-secondary text-[18px]">shopping_cart</span>
+<span class="">BUY BAIT</span>
+</button>
+<!-- Stream Audio Toggle -->
+<button class="h-11 px-space-md rounded-lg bg-surface-container hover:bg-surface-bright text-on-surface font-label-md text-label-md uppercase font-semibold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-sm border border-outline-variant/30 sfx-click" id="unmute-btn" type="button">
+<span class="material-symbols-outlined text-tertiary text-[18px]" id="unmute-icon">volume_up</span>
+<span id="unmute-text">UNMUTE</span>
+</button>
+<!-- Hot Update Script -->
+<button class="h-11 px-space-md rounded-lg bg-secondary-container text-on-secondary-container hover:opacity-90 active:scale-95 font-label-md text-label-md uppercase font-semibold flex items-center justify-center gap-2 transition-all shadow-[0_0_12px_rgba(87,27,193,0.3)] border border-secondary/40 sfx-click" id="update-btn" type="button">
+<span class="material-symbols-outlined text-[18px]">rocket_launch</span>
+<span class="">UPDATE</span>
+</button>
+</div>
+<!-- Telemetry Diagnostics Compact Banner -->
+<div class="w-full rounded-lg bg-surface-container-lowest p-space-sm flex items-center justify-between border border-outline-variant/20 shadow-inner">
+<div class="flex items-center gap-2 min-w-0">
+<span class="w-2 h-2 rounded-full bg-tertiary animate-pulse shadow-[0_0_8px_#4edea3]"></span>
+<span class="font-label-sm text-label-sm text-on-surface-variant truncate" id="tele-sys">…</span>
+</div>
+<div class="flex items-center gap-1 shrink-0">
+<span class="font-label-sm text-label-sm text-primary font-bold uppercase tracking-wider" id="tele-gpu">…</span>
+</div>
+</div>
+</div>
+<!-- Sound Toast Notification (Floating pill) -->
+<div class="fixed top-24 left-1/2 -translate-x-1/2 z-50 px-4 py-1.5 rounded-full bg-surface-container-highest/95 backdrop-blur-md border border-primary/40 text-on-surface text-label-sm font-label-sm shadow-[0_4px_16px_rgba(0,0,0,0.5)] transition-all duration-300 opacity-0 pointer-events-none transform -translate-y-2 flex items-center gap-2" id="sound-toast">
+<span class="material-symbols-outlined text-primary text-[16px]">graphic_eq</span>
+<span id="sound-toast-message">Audio Engine Activated</span>
+</div>
+<script>
+/**
+ * Procedural Web Audio Engine for GPO Cyberdeck
+ * Self-contained synthesizer with zero external assets.
+ */
+class CyberAudioEngine {
+  constructor() {
+    this.ctx = null;
+    this.enabled = true;
+    this.masterGain = null;
+  }
+
+  init() {
+    if (!this.ctx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        this.ctx = new AudioCtx();
+        this.masterGain = this.ctx.createGain();
+        this.masterGain.gain.setValueAtTime(0.7, this.ctx.currentTime);
+        this.masterGain.connect(this.ctx.destination);
+      }
+    }
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+  }
+
+  // Low-frequency tactile haptic sub-thud for directional WASD & pad controls
+  playThud() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(140, t);
+    osc.frequency.exponentialRampToValueAtTime(32, t + 0.08);
+
+    gain.gain.setValueAtTime(0.6, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(t);
+    osc.stop(t + 0.09);
+  }
+
+  // Crisp mechanical tactile click for secondary deck utility buttons
+  playClick(pitch = 1800) {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(pitch, t);
+    osc.frequency.exponentialRampToValueAtTime(pitch * 0.4, t + 0.035);
+
+    gain.gain.setValueAtTime(0.4, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(t);
+    osc.stop(t + 0.04);
+  }
+
+  // Futuristic energetic arpeggio / cyber chime on START MACRO
+  playMacroEngage() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const notes = [440, 554.37, 659.25, 880, 1108.73]; // A4, C#5, E5, A5, C#6
+    notes.forEach((freq, idx) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const noteTime = t + idx * 0.045;
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, noteTime);
+
+      gain.gain.setValueAtTime(0, noteTime);
+      gain.gain.linearRampToValueAtTime(0.28, noteTime + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, noteTime + 0.28);
+
+      osc.connect(gain);
+      gain.connect(this.masterGain);
+
+      osc.start(noteTime);
+      osc.stop(noteTime + 0.3);
+    });
+  }
+
+  // Descending power-down / shutdown cybernetic frequency for HALT MACRO
+  playMacroDisengage() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(880, t);
+    osc.frequency.exponentialRampToValueAtTime(90, t + 0.35);
+
+    // Filter to soften the harshness of the saw
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1400, t);
+    filter.frequency.linearRampToValueAtTime(200, t + 0.35);
+
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(t);
+    osc.stop(t + 0.36);
+  }
+
+  // Laser swoosh & casting sound for the rod/cast ability
+  playCastSwoosh() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(180, t);
+    osc.frequency.exponentialRampToValueAtTime(2400, t + 0.12);
+    osc.frequency.exponentialRampToValueAtTime(320, t + 0.28);
+
+    gain.gain.setValueAtTime(0.05, t);
+    gain.gain.linearRampToValueAtTime(0.4, t + 0.08);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(t);
+    osc.stop(t + 0.29);
+  }
+
+  // Skill power release chime
+  playSkillActivate() {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(520, t);
+    osc.frequency.exponentialRampToValueAtTime(1250, t + 0.15);
+
+    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+
+    osc.connect(gain);
+    gain.connect(this.masterGain);
+
+    osc.start(t);
+    osc.stop(t + 0.26);
+  }
+}
+
+const audio = new CyberAudioEngine();
+
+// UI Toast Notification helper
+function showToast(msg) {
+  const toast = document.getElementById('sound-toast');
+  const msgEl = document.getElementById('sound-toast-message');
+  if (!toast || !msgEl) return;
+  msgEl.textContent = msg;
+  toast.classList.remove('opacity-0', '-translate-y-2');
+  toast.classList.add('opacity-100', 'translate-y-0');
+  clearTimeout(window._toastTimeout);
+  window._toastTimeout = setTimeout(() => {
+    toast.classList.remove('opacity-100', 'translate-y-0');
+    toast.classList.add('opacity-0', '-translate-y-2');
+  }, 1800);
+}
+
+// Sound toggle button in header
+const soundToggleBtn = document.getElementById('sound-toggle-btn');
+const soundToggleIcon = document.getElementById('sound-toggle-icon');
+const soundToggleText = document.getElementById('sound-toggle-text');
+
+soundToggleBtn.addEventListener('click', () => {
+  audio.init();
+  audio.enabled = !audio.enabled;
+  if (audio.enabled) {
+    soundToggleIcon.textContent = 'volume_up';
+    soundToggleText.textContent = 'SFX ON';
+    soundToggleBtn.className = 'h-8 px-space-sm min-w-[36px] rounded bg-surface-container hover:bg-surface-bright active:scale-95 text-primary border border-primary/30 flex items-center justify-center gap-1 transition-all shadow-[0_0_8px_rgba(76,215,246,0.2)]';
+    audio.playClick(2400);
+    showToast('SFX Engine Enabled');
+  } else {
+    soundToggleIcon.textContent = 'volume_off';
+    soundToggleText.textContent = 'SFX OFF';
+    soundToggleBtn.className = 'h-8 px-space-sm min-w-[36px] rounded bg-surface-container hover:bg-surface-bright active:scale-95 text-outline border border-outline-variant/30 flex items-center justify-center gap-1 transition-all';
+    showToast('SFX Engine Muted');
+  }
+});
+
+// WASD Directional Thuds
+document.querySelectorAll('.sfx-thud').forEach(btn => {
+  btn.addEventListener('pointerdown', () => audio.playThud());
+});
+
+// Mechanical Clicks
+document.querySelectorAll('.sfx-click').forEach(btn => {
+  btn.addEventListener('pointerdown', () => audio.playClick());
+});
+
+// Cast Rod / Swoosh Button
+const castBtn = document.getElementById('sfx-cast-btn');
+if (castBtn) {
+  castBtn.addEventListener('click', () => {
+    audio.playCastSwoosh();
+  });
+}
+
+// Skill Fruit Action
+const skillBtn = document.getElementById('sfx-skill-btn');
+if (skillBtn) {
+  skillBtn.addEventListener('click', () => {
+    audio.playSkillActivate();
+  });
+}
+
+// Sprint Toggle
+const sprintBtn = document.getElementById('sprint-toggle');
+let sprintActive = true;
+sprintBtn.addEventListener('click', () => {
+  audio.playThud();
+  sprintActive = !sprintActive;
+  if (sprintActive) {
+    sprintBtn.classList.add('shadow-[0_0_12px_rgba(208,188,255,0.25)]', 'text-secondary', 'border-secondary/30');
+    sprintBtn.classList.remove('opacity-60', 'border-outline-variant/30');
+  } else {
+    sprintBtn.classList.remove('shadow-[0_0_12px_rgba(208,188,255,0.25)]', 'text-secondary', 'border-secondary/30');
+    sprintBtn.classList.add('opacity-60', 'border-outline-variant/30');
+  }
+});
+
+// Stream Unmute Button State Toggle
+const unmuteBtn = document.getElementById('unmute-btn');
+const unmuteIcon = document.getElementById('unmute-icon');
+const unmuteText = document.getElementById('unmute-text');
+let streamAudioOn = false;
+unmuteBtn.addEventListener('click', () => {
+  streamAudioOn = !streamAudioOn;
+  if (streamAudioOn) {
+    unmuteIcon.textContent = 'volume_off';
+    unmuteText.textContent = 'MUTE';
+    unmuteBtn.classList.add('border-tertiary/40', 'text-tertiary');
+    showToast('Stream Audio: Unmuted');
+  } else {
+    unmuteIcon.textContent = 'volume_up';
+    unmuteText.textContent = 'UNMUTE';
+    unmuteBtn.classList.remove('border-tertiary/40', 'text-tertiary');
+    showToast('Stream Audio: Muted');
+  }
+});
+
+// Main Macro Start / Stop Toggle
+const macroBtn = document.getElementById('main-macro-btn');
+const macroLabel = document.getElementById('macro-btn-label');
+const macroStatus = document.getElementById('macro-status-text');
+let macroRunning = false;
+
+macroBtn.addEventListener('click', () => {
+  macroRunning = !macroRunning;
+  if (macroRunning) {
+    audio.playMacroEngage();
+    macroBtn.innerHTML = '<span class="material-symbols-outlined text-[24px] animate-spin">sync</span><span>STOP MACRO // KRAKEN HARVESTING</span>';
+    macroBtn.classList.remove('bg-primary-container', 'hover:bg-primary', 'text-on-primary', 'border-primary/40');
+    macroBtn.classList.add('bg-error-container', 'text-on-error-container', 'border-error/40', 'macro-active-pulse');
+    macroStatus.innerHTML = '<span class="text-error font-bold tracking-wider animate-pulse">● HARVESTING ACTIVE • CYCLE 1/40</span>';
+    showToast('Autonomous Macro Engaged');
+  } else {
+    audio.playMacroDisengage();
+    macroBtn.innerHTML = '<span class="material-symbols-outlined text-[24px]">play_arrow</span><span>START MACRO</span>';
+    macroBtn.classList.add('bg-primary-container', 'hover:bg-primary', 'text-on-primary', 'border-primary/40');
+    macroBtn.classList.remove('bg-error-container', 'text-on-error-container', 'border-error/40', 'macro-active-pulse');
+    macroStatus.innerHTML = '<span class="text-tertiary">Ready • Safe Loop 99.8%</span>';
+    showToast('Macro Deactivated');
+  }
+});
+
+// Power Button
+const pwrBtn = document.getElementById('pwr-btn');
+pwrBtn.addEventListener('click', () => {
+  audio.playClick(1200);
+  showToast('Remote Deck Connected');
+});
+
+// Alerts Button
+const alertsBtn = document.getElementById('alerts-btn');
+alertsBtn.addEventListener('click', () => {
+  audio.playClick(2100);
+});
+</script></main><nav class="fixed bottom-0 w-full z-50 pb-safe bg-surface/90 backdrop-blur-xl shadow-[0_-4px_16px_rgba(0,0,0,0.5)] border-t border-outline-variant/20" data-active-classes="text-primary relative after:content-[''] after:absolute after:top-0 after:left-1/4 after:right-1/4 after:h-[2px] after:bg-primary after:shadow-[0_0_8px_#4cd7f6]"><div class="flex items-center justify-around h-16 px-space-xs"><a aria-current="page" class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 transition-colors text-primary relative after:content-[''] after:absolute after:top-0 after:left-1/4 after:right-1/4 after:h-[2px] after:bg-primary after:shadow-[0_0_8px_#4cd7f6]" data-nav="/" href="/"><span class="material-symbols-outlined text-[20px]">sports_esports</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Remote</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface transition-colors sfx-click" data-nav="/stats" href="/stats"><span class="material-symbols-outlined text-[20px]">query_stats</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Stats</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface transition-colors sfx-click" data-nav="/studio" href="/studio"><span class="material-symbols-outlined text-[20px]">fiber_manual_record</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Studio</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface transition-colors sfx-click" data-nav="/craft" href="/craft"><span class="material-symbols-outlined text-[20px]">construction</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Craft</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface transition-colors sfx-click" data-nav="/system" href="/system"><span class="material-symbols-outlined text-[20px]">tune</span><span class="font-label-sm text-label-sm uppercase tracking-wide">System</span></a></div></nav>
+<script src="/assets/gpo-core.js"></script><script src="/assets/gpo-remote.js"></script></body></html>

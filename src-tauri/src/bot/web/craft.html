@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><meta content="mobile_tab" name="shell-type"/><link rel="stylesheet" href="/assets/fonts.css"/>
+<script src="/assets/tailwind.js"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { colors: { "surface-container-high": "#262a35", "on-secondary": "#3c0091", "surface-container-highest": "#313540", "tertiary": "#4edea3", "on-error-container": "#ffdad6", "on-surface-variant": "#bcc9cd", "surface-tint": "#4cd7f6", "inverse-primary": "#00687a", "primary-fixed-dim": "#4cd7f6", "primary": "#4cd7f6", "surface-variant": "#313540", "on-tertiary-fixed": "#002113", "surface-bright": "#353944", "on-surface": "#dfe2f1", "on-background": "#dfe2f1", "secondary-fixed": "#e9ddff", "outline": "#869397", "error-container": "#93000a", "primary-container": "#06b6d4", "on-secondary-fixed": "#23005c", "inverse-surface": "#dfe2f1", "on-primary": "#003640", "on-primary-fixed": "#001f26", "surface-dim": "#0f131d", "secondary-fixed-dim": "#d0bcff", "tertiary-fixed": "#6ffbbe", "on-tertiary-fixed-variant": "#005236", "outline-variant": "#3d494c", "on-tertiary": "#003824", "background": "#0f131d", "surface-container-lowest": "#0a0e18", "secondary-container": "#571bc1", "surface-container": "#1c1f2a", "primary-fixed": "#acedff", "on-primary-container": "#00424f", "on-error": "#690005", "surface-container-low": "#171b26", "inverse-on-surface": "#2c303b", "on-tertiary-container": "#00452e", "on-secondary-fixed-variant": "#5516be", "on-primary-fixed-variant": "#004e5c", "tertiary-container": "#1bbd85", "on-secondary-container": "#c4abff", "error": "#ffb4ab", "secondary": "#d0bcff", "surface": "#0f131d", "tertiary-fixed-dim": "#4edea3" }, borderRadius: { "DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px" }, spacing: { "space-sm": "0.5rem", "space-xs": "0.25rem", "space-xl": "1.75rem", "space-md": "0.75rem", "space-lg": "1.25rem", "margin": "1rem", "gutter": "0.75rem" }, fontFamily: { "headline-lg-mobile": ["Space Grotesk"], "headline-lg": ["Space Grotesk"], "label-lg": ["Space Mono"], "telemetry-num": ["Space Mono"], "body-lg": ["Inter"], "headline-xl-mobile": ["Space Grotesk"], "body-sm": ["Inter"], "body-md": ["Inter"], "headline-md": ["Space Grotesk"], "label-md": ["Space Mono"], "headline-xl": ["Space Grotesk"], "label-sm": ["Space Mono"] }, fontSize: { "headline-lg-mobile": ["20px", {"lineHeight": "26px", "fontWeight": "600"}], "headline-lg": ["28px", {"lineHeight": "34px", "fontWeight": "700"}], "label-lg": ["13px", {"lineHeight": "18px", "fontWeight": "700"}], "telemetry-num": ["24px", {"lineHeight": "28px", "fontWeight": "700"}], "body-lg": ["16px", {"lineHeight": "24px", "fontWeight": "400"}], "headline-xl-mobile": ["26px", {"lineHeight": "32px", "fontWeight": "700"}], "body-sm": ["12px", {"lineHeight": "16px", "fontWeight": "400"}], "body-md": ["14px", {"lineHeight": "20px", "fontWeight": "400"}], "headline-md": ["18px", {"lineHeight": "24px", "fontWeight": "600"}], "label-md": ["11px", {"lineHeight": "16px", "fontWeight": "700"}], "headline-xl": ["36px", {"lineHeight": "44px", "fontWeight": "700"}], "label-sm": ["10px", {"lineHeight": "14px", "fontWeight": "400"}] } } } }</script><style>@layer base{html,body{width:100vw;margin:0;padding:0;background-color:#0f131d;color:#dfe2f1;}body{overscroll-behavior:none;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}
+@keyframes hudPulse { 0%, 100% { opacity: 0.35; transform: scale(1); } 50% { opacity: 0.95; transform: scale(1.03); } }
+@keyframes forgeGlow { 0%, 100% { box-shadow: 0 0 15px rgba(245,158,11,0.4); } 50% { box-shadow: 0 0 32px rgba(245,158,11,0.85), inset 0 0 14px rgba(255,255,255,0.3); } }
+@keyframes springPop { 0% { transform: scale(0.9); } 60% { transform: scale(1.14); } 100% { transform: scale(1); } }
+.pop-active { animation: springPop 0.18s cubic-bezier(0.34, 1.56, 0.64, 1); }
+.crafting-glow { animation: forgeGlow 1.2s ease-in-out infinite; }
+</style></head><body class="bg-surface font-body-md text-body-md text-on-surface flex flex-col min-h-screen select-none"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/85 backdrop-blur-xl shadow-[0_1px_12px_rgba(0,0,0,0.4)]"><div class="h-20 px-space-md flex flex-col justify-center gap-space-xs"><div class="flex items-center justify-between"><div class="flex items-center gap-space-xs"><div class="w-2 h-2 rounded-full bg-tertiary animate-pulse shadow-[0_0_8px_#4edea3]"></div><span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant">data-gpo="hostline">…</span></div><div class="flex items-center gap-space-sm"><div class="px-space-xs py-0.5 rounded-full bg-surface-container-high flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-tertiary animate-ping"></span><span class="font-label-sm text-label-sm text-tertiary uppercase">LIVE 60 FPS • 720p</span></div><button class="w-8 h-8 rounded-full bg-surface-container-high hover:bg-surface-bright flex items-center justify-center transition-all active:scale-90 relative" id="audio-toggle-btn" title="Toggle Synthesizer SFX" type="button"><span class="material-symbols-outlined text-primary text-[18px]" id="audio-icon">volume_up</span><span class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-tertiary shadow-[0_0_6px_#4edea3]" id="audio-status-badge"></span></button><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div><div class="flex items-center justify-between"><div class="flex items-center gap-space-sm"><span class="font-headline-md text-headline-md tracking-tight uppercase text-primary">GPO CYBERDECK</span><span class="font-label-md text-label-md text-on-surface-variant uppercase">/ Craft Station</span></div><div class="flex items-center gap-space-xs"><button id="alerts-btn" class="h-8 px-space-sm min-w-[44px] rounded bg-surface-container hover:bg-surface-bright text-secondary flex items-center justify-center gap-1 transition-all active:scale-95" type="button"><span class="material-symbols-outlined text-[16px]">notifications_active</span><span class="font-label-sm text-label-sm uppercase hidden sm:inline">Alerts</span></button><button class="h-8 px-space-md min-w-[76px] rounded bg-primary-container text-on-primary hover:bg-primary font-label-md text-label-md uppercase tracking-wider font-bold flex items-center justify-center shadow-[0_0_12px_rgba(6,182,212,0.35)] transition-all active:scale-95" id="pwr-btn" type="button">PWR ON</button></div></div></div></header><main class="flex flex-col relative w-full pt-20 pb-24 bg-surface min-h-screen"><div class="flex flex-col w-full px-margin pb-6 gap-space-md">
+<!-- Audio Feedback Toast Notification -->
+<div class="fixed top-24 left-1/2 -translate-x-1/2 z-50 pointer-events-none opacity-0 transition-all duration-300 transform -translate-y-2 px-3 py-1.5 rounded-full bg-surface-container-highest border border-outline/30 flex items-center gap-2 shadow-2xl backdrop-blur-md" id="audio-toast">
+<span class="material-symbols-outlined text-primary text-[16px]" id="toast-icon">volume_up</span>
+<span class="font-label-sm text-[11px] uppercase tracking-wider text-on-surface font-bold" id="toast-msg">CYBER AUDIO ONLINE</span>
+</div>
+<!-- Status & Blacksmith Overview Banner -->
+<div class="relative overflow-hidden rounded-xl bg-surface-container p-space-md flex flex-col gap-space-sm shadow-md">
+<div class="flex items-center justify-between"><div class="flex items-center gap-space-xs min-w-0 pr-space-xs"><span class="material-symbols-outlined text-primary text-[20px] shrink-0">hardware</span><div class="flex flex-col min-w-0"><span class="font-headline-md text-body-md font-bold text-on-surface uppercase tracking-wide truncate">AUTO CRAFT</span><span class="font-label-sm text-[10px] text-on-surface-variant uppercase tracking-wider">Node: Blacksmith Sen</span></div></div><div class="px-2 py-0.5 rounded-full bg-surface-container-high flex items-center gap-1.5 shrink-0" id="craft-status-pill"><span class="w-1.5 h-1.5 rounded-full bg-tertiary" id="status-dot"></span><span class="font-label-sm text-[10px] uppercase font-bold tracking-wider text-tertiary whitespace-nowrap" id="status-text">IDLE / READY</span></div></div>
+<div class="flex items-center gap-space-sm pt-1"><div class="w-9 h-9 rounded-lg bg-surface-container-high flex items-center justify-center shrink-0"><span class="material-symbols-outlined text-secondary text-[20px]">token</span></div><div class="flex flex-col min-w-0 justify-center"><div class="flex items-center gap-space-xs"><span class="font-label-sm text-label-sm text-primary uppercase font-bold tracking-wider">Shell Script v4.5</span><span class="text-on-surface-variant text-[10px]">•</span><span class="font-label-sm text-[10px] text-tertiary uppercase tracking-wide">Fast-Dial Ready</span></div><span class="font-body-sm text-[11px] text-on-surface-variant truncate">Automated NPC interaction interface &amp; craft queue active</span></div></div>
+</div>
+<!-- Recipe Selection Module -->
+<div class="rounded-xl bg-surface-container p-space-md flex flex-col gap-space-md shadow-md">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md uppercase text-on-surface-variant tracking-wider">Target Recipe</span>
+<span class="font-label-sm text-label-sm text-primary uppercase">Tier 3 Synth</span>
+</div>
+<!-- Custom Select Box -->
+<div class="relative">
+<button class="w-full h-12 px-space-md rounded-lg bg-surface-container-high hover:bg-surface-bright flex items-center justify-between text-left transition-all active:scale-[0.99]" id="recipe-trigger" type="button">
+<div class="flex items-center gap-space-sm min-w-0">
+<div class="w-7 h-7 rounded-md bg-secondary-container/40 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-secondary text-[18px]">20mp</span>
+</div>
+<div class="flex flex-col min-w-0">
+<span class="font-label-lg text-label-lg text-on-surface truncate" id="selected-recipe-title">Rare Fish Bait</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-[20px] transition-transform duration-200" id="recipe-arrow">expand_more</span>
+</button>
+<!-- Dropdown Items Popover -->
+<div class="hidden absolute top-full left-0 right-0 mt-1 z-20 rounded-lg bg-surface-container-highest shadow-xl p-space-xs flex-col gap-1 max-h-56 overflow-y-auto" id="recipe-menu"><button class="w-full p-space-sm rounded-md bg-surface-container flex items-center gap-space-sm text-left hover:bg-surface-bright transition-all active:scale-[0.98] " data-tier="common" type="button"><span class="material-symbols-outlined text-[18px] " style="min-width:18px">grain</span><div class="flex flex-col min-w-0"><span class="font-label-md text-label-md text-on-surface">Common Fish Bait</span><span class="font-body-sm text-body-sm text-on-surface-variant truncate">Steady supply • crafts until materials run out</span></div></button><button class="w-full p-space-sm rounded-md bg-surface-container flex items-center gap-space-sm text-left hover:bg-surface-bright transition-all active:scale-[0.98] " data-tier="rare" type="button"><span class="material-symbols-outlined text-[18px] " style="min-width:18px">20mp</span><div class="flex flex-col min-w-0"><span class="font-label-md text-label-md text-on-surface">Rare Fish Bait</span><span class="font-body-sm text-body-sm text-on-surface-variant truncate">High yield • crafts until materials run out</span></div></button><button class="w-full p-space-sm rounded-md bg-surface-container flex items-center gap-space-sm text-left hover:bg-surface-bright transition-all active:scale-[0.98] " data-tier="legendary" type="button"><span class="material-symbols-outlined text-[18px] " style="min-width:18px">military_tech</span><div class="flex flex-col min-w-0"><span class="font-label-md text-label-md text-on-surface">Legendary Fish Bait</span><span class="font-body-sm text-body-sm text-on-surface-variant truncate">Max yield • crafts until materials run out</span></div></button><button class="w-full p-space-sm rounded-md bg-surface-container flex items-center gap-space-sm text-left hover:bg-surface-bright transition-all active:scale-[0.98] " data-tier="all" type="button"><span class="material-symbols-outlined text-[18px] " style="min-width:18px">all_inclusive</span><div class="flex flex-col min-w-0"><span class="font-label-md text-label-md text-on-surface">All Tiers</span><span class="font-body-sm text-body-sm text-on-surface-variant truncate">Legendary first, then rare, until materials run out</span></div></button></div></div>
+<!-- Recipe Details Strip -->
+<div class="p-space-sm rounded-lg bg-surface-container-lowest flex flex-col gap-space-xs">
+<div class="flex items-center justify-between">
+<span class="font-label-sm text-label-sm uppercase text-on-surface-variant">Materials Per Unit:</span>
+<span class="font-label-sm text-label-sm text-tertiary">Inventory Match 100%</span>
+</div>
+<div class="font-label-md text-label-md text-on-surface" id="recipe-materials-text">
+        3x Common Bait, 1x Rare Fish, 500 Peli
+      </div>
+</div>
+</div>
+<!-- Batch & Multiplier Control -->
+<div class="rounded-xl bg-surface-container p-space-md flex flex-col gap-space-md shadow-md">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md uppercase text-on-surface-variant tracking-wider">Batch Quantity</span>
+<span class="font-label-sm text-label-sm uppercase text-secondary" id="estimated-time">Est. Run: 0m 37s</span>
+</div>
+<!-- Stepper & Number Block -->
+<div class="flex items-center justify-between gap-space-sm">
+<button class="h-11 px-space-sm min-w-[44px] rounded-lg bg-surface-container-high hover:bg-surface-bright active:scale-95 text-on-surface font-label-md text-label-md flex items-center justify-center transition-all select-none shadow-sm" id="qty-minus-10" type="button">-10</button>
+<button class="h-11 w-11 rounded-lg bg-surface-container-high hover:bg-surface-bright active:scale-95 text-primary flex items-center justify-center transition-all select-none shadow-sm" id="qty-minus" type="button">
+<span class="material-symbols-outlined text-[20px]">remove</span>
+</button>
+<div class="flex flex-col items-center flex-1 py-1 px-space-xs bg-surface-container-lowest rounded-lg border border-outline-variant/30"><div class="flex items-baseline justify-center gap-1 leading-none"><span class="font-telemetry-num text-[22px] font-bold text-primary tracking-tight transition-transform duration-150 inline-block" id="batch-display">25</span><span class="font-label-sm text-label-sm text-on-surface-variant font-bold">x</span></div><span class="font-label-sm text-[9px] uppercase tracking-wider text-on-surface-variant pt-0.5">CRAFT CYCLES</span></div>
+<button class="h-11 w-11 rounded-lg bg-surface-container-high hover:bg-surface-bright active:scale-95 text-primary flex items-center justify-center transition-all select-none shadow-sm" id="qty-plus" type="button">
+<span class="material-symbols-outlined text-[20px]">add</span>
+</button>
+<button class="h-11 px-space-sm min-w-[44px] rounded-lg bg-surface-container-high hover:bg-surface-bright active:scale-95 text-on-surface font-label-md text-label-md flex items-center justify-center transition-all select-none shadow-sm" id="qty-plus-10" type="button">+10</button>
+</div>
+<!-- Slider Bar for Rapid Selection -->
+<div class="flex flex-col gap-1.5 pt-1">
+<div class="flex justify-between items-center font-label-sm text-label-sm text-on-surface-variant">
+<span class="">Min (1x)</span>
+<span class="">Max Auto (99x)</span>
+</div>
+<div class="relative w-full flex items-center">
+<input class="w-full h-2 bg-surface-container-highest rounded-lg appearance-none cursor-pointer accent-primary focus:outline-none transition-all duration-150" id="batch-slider" max="99" min="1" type="range" value="25"/>
+</div>
+</div>
+<!-- Batch Cost Summaries Grid -->
+<div class="grid grid-cols-2 gap-space-sm pt-space-xs"><div class="p-space-sm rounded-lg bg-surface-container-low flex flex-col justify-between gap-1"><span class="font-label-sm text-[10px] uppercase text-on-surface-variant tracking-wider font-bold">Total Fish Req</span><span class="font-telemetry-num text-body-md font-bold text-on-surface truncate" id="req-fish">—</span></div><div class="p-space-sm rounded-lg bg-surface-container-low flex flex-col justify-between gap-1"><span class="font-label-sm text-[10px] uppercase text-on-surface-variant tracking-wider font-bold">Total Peli Fee</span><span class="font-telemetry-num text-body-md font-bold text-secondary truncate" id="req-peli">—</span></div></div>
+</div>
+<!-- Primary Cyber Action CTA (Matching the bold amber/orange in inspiration) -->
+<div class="flex flex-col gap-space-xs pt-space-xs">
+<button class="relative group overflow-hidden h-14 w-full rounded-xl bg-gradient-to-r from-[#d97706] to-[#f59e0b] hover:from-[#b45309] hover:to-[#d97706] text-[#0f131d] font-headline-md text-headline-md uppercase tracking-wider font-bold flex items-center justify-center gap-space-sm shadow-[0_0_20px_rgba(245,158,11,0.45)] active:scale-[0.98] transition-all" id="start-craft-btn" type="button">
+<span class="material-symbols-outlined text-[24px]" id="cta-icon">construction</span>
+<span class="" id="cta-label">START AUTO CRAFT</span>
+<!-- Subtle tactile sheen highlight -->
+<div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none"></div>
+</button>
+</div>
+<!-- Realtime Telemetry Progress Bar (Hidden during IDLE, shown during craft) -->
+<div class="hidden rounded-xl bg-surface-container-high p-space-md flex flex-col gap-space-sm shadow-md border border-primary/20" id="craft-progress-card">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-primary text-[18px] animate-spin">refresh</span>
+<span class="font-label-sm text-label-sm uppercase text-on-surface tracking-wider">Batch Synthesizing</span>
+</div>
+<span class="font-label-md text-label-md text-primary font-bold" id="progress-counter">0 / 25</span>
+</div>
+<div class="w-full bg-surface-container-lowest h-2.5 rounded-full overflow-hidden p-0.5 border border-primary/30">
+<div class="h-full bg-gradient-to-r from-primary to-tertiary transition-all duration-200 rounded-full shadow-[0_0_10px_#4cd7f6]" id="progress-fill" style="width: 0%"></div>
+</div>
+</div>
+<!-- Instructions & Protocol Card -->
+<div class="rounded-xl bg-surface-container p-space-md flex flex-col gap-space-sm shadow-sm"><div class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-primary text-[16px]">info</span><span class="font-label-sm text-[11px] uppercase tracking-wider text-on-surface font-bold">Blacksmith Automation Protocol</span></div><p class="font-body-sm text-[12px] leading-relaxed text-on-surface-variant">Stand at <span class="text-primary font-semibold">Blacksmith Sen</span> with materials in inventory, then trigger Start. Cyberdeck automatically negotiates dialog, synthesizes batch, and updates your craft ledger.</p><div class="flex items-center gap-space-xs pt-0.5"><span class="material-symbols-outlined text-tertiary text-[15px] shrink-0">verified</span><span class="font-label-sm text-[10px] text-tertiary uppercase tracking-wide">Safe Macro Guard: Auto-pauses if inventory cap is reached.</span></div></div>
+<!-- Queue & Recent Craft History -->
+<div class="rounded-xl bg-surface-container p-space-md flex flex-col gap-space-sm shadow-sm">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[18px]">history</span>
+<span class="font-label-md text-label-md uppercase text-on-surface tracking-wider">Recent Craft Log</span>
+</div>
+<button class="font-label-sm text-label-sm text-on-surface-variant uppercase hover:text-primary transition-all active:scale-95 px-2 py-0.5 rounded hover:bg-surface-container-high" id="clear-logs-btn" type="button">Clear</button>
+</div>
+<div class="flex flex-col gap-space-xs" id="craft-logs"><div class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-bright/40 cursor-pointer active:scale-[0.99] transition-all log-entry"><div class="flex items-center gap-space-sm min-w-0"><div class="w-2 h-2 rounded-full bg-tertiary shrink-0 shadow-[0_0_8px_#4edea3] animate-pulse"></div><div class="flex flex-col min-w-0"><span class="font-label-md text-body-sm font-semibold text-on-surface truncate">25x Rare Fish Bait</span><span class="font-body-sm text-[11px] text-on-surface-variant">100% Success • 0 Failures</span></div></div><span class="font-label-sm text-[10px] text-on-surface-variant shrink-0 font-medium tracking-wider pl-2">11:45 PM</span></div><div class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-bright/40 cursor-pointer active:scale-[0.99] transition-all log-entry"><div class="flex items-center gap-space-sm min-w-0"><div class="w-2 h-2 rounded-full bg-tertiary shrink-0 shadow-[0_0_8px_#4edea3] animate-pulse"></div><div class="flex flex-col min-w-0"><span class="font-label-md text-body-sm font-semibold text-on-surface truncate">50x Common Bait</span><span class="font-body-sm text-[11px] text-on-surface-variant">Batch complete • 1m 14s</span></div></div><span class="font-label-sm text-[10px] text-on-surface-variant shrink-0 font-medium tracking-wider pl-2">10:12 PM</span></div><div class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-bright/40 cursor-pointer active:scale-[0.99] transition-all log-entry"><div class="flex items-center gap-space-sm min-w-0"><div class="w-2 h-2 rounded-full bg-secondary shrink-0"></div><div class="flex flex-col min-w-0"><span class="font-label-md text-body-sm font-semibold text-on-surface truncate">10x Titanium Hook Rig</span><span class="font-body-sm text-[11px] text-on-surface-variant">Handcrafted cycle logged</span></div></div><span class="font-label-sm text-[10px] text-on-surface-variant shrink-0 font-medium tracking-wider pl-2">08:30 PM</span></div></div>
+</div>
+</div>
+<script>
+  (function initCraftStation() {
+    let currentQty = 25;
+    let isCrafting = false;
+    let craftInterval = null;
+    let currentProgress = 0;
+    let audioEnabled = true;
+
+    // Web Audio Synthesizer Engine
+    let audioCtx = null;
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtx = new AudioContextClass();
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // Sound FX: Mechanical Stepper Click
+    function playStepperClick(freqMultiplier = 1) {
+      if (!audioEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(420 * freqMultiplier, now);
+        osc.frequency.exponentialRampToValueAtTime(140 * freqMultiplier, now + 0.04);
+
+        gain.gain.setValueAtTime(0.22, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.045);
+      } catch (e) {}
+    }
+
+    // Sound FX: Digital Forge Thump + Rising Synth Laser
+    function playForgeCharge() {
+      if (!audioEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        // 1. Deep Sub Thump
+        const thumpOsc = ctx.createOscillator();
+        const thumpGain = ctx.createGain();
+        thumpOsc.type = 'sine';
+        thumpOsc.frequency.setValueAtTime(160, now);
+        thumpOsc.frequency.exponentialRampToValueAtTime(32, now + 0.35);
+
+        thumpGain.gain.setValueAtTime(0.65, now);
+        thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+
+        thumpOsc.connect(thumpGain);
+        thumpGain.connect(ctx.destination);
+        thumpOsc.start(now);
+        thumpOsc.stop(now + 0.36);
+
+        // 2. Anvil Metal ping harmonic
+        const metalOsc = ctx.createOscillator();
+        const metalGain = ctx.createGain();
+        metalOsc.type = 'sawtooth';
+        metalOsc.frequency.setValueAtTime(880, now + 0.02);
+        metalOsc.frequency.exponentialRampToValueAtTime(220, now + 0.15);
+
+        metalGain.gain.setValueAtTime(0.18, now + 0.02);
+        metalGain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+        metalOsc.connect(metalGain);
+        metalGain.connect(ctx.destination);
+        metalOsc.start(now + 0.02);
+        metalOsc.stop(now + 0.16);
+
+        // 3. Energetic Rising Synth Charge
+        const riseOsc = ctx.createOscillator();
+        const riseGain = ctx.createGain();
+        riseOsc.type = 'sawtooth';
+        riseOsc.frequency.setValueAtTime(280, now + 0.05);
+        riseOsc.frequency.exponentialRampToValueAtTime(1150, now + 0.42);
+
+        riseGain.gain.setValueAtTime(0.01, now + 0.05);
+        riseGain.gain.linearRampToValueAtTime(0.24, now + 0.25);
+        riseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+        riseOsc.connect(riseGain);
+        riseGain.connect(ctx.destination);
+        riseOsc.start(now + 0.05);
+        riseOsc.stop(now + 0.46);
+      } catch (e) {}
+    }
+
+    // Sound FX: Holographic Chime (Success / Action Confirmation)
+    function playChime(pitch = 1) {
+      if (!audioEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        [587.33 * pitch, 880 * pitch, 1174.66 * pitch].forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          const delay = now + (idx * 0.05);
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, delay);
+
+          gain.gain.setValueAtTime(0.16, delay);
+          gain.gain.exponentialRampToValueAtTime(0.001, delay + 0.22);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+
+          osc.start(delay);
+          osc.stop(delay + 0.23);
+        });
+      } catch (e) {}
+    }
+
+    // Sound FX: Halt / Power-Down low note
+    function playHaltSound() {
+      if (!audioEnabled) return;
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(260, now);
+        osc.frequency.exponentialRampToValueAtTime(65, now + 0.25);
+
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.26);
+      } catch (e) {}
+    }
+
+    // Toast feedback helper
+    const audioToast = document.getElementById('audio-toast');
+    const toastIcon = document.getElementById('toast-icon');
+    const toastMsg = document.getElementById('toast-msg');
+    let toastTimeout = null;
+    function showToast(msg, icon = 'volume_up') {
+      if (toastTimeout) clearTimeout(toastTimeout);
+      toastMsg.textContent = msg;
+      toastIcon.textContent = icon;
+      audioToast.classList.remove('opacity-0', '-translate-y-2');
+      audioToast.classList.add('opacity-100', 'translate-y-0');
+      toastTimeout = setTimeout(() => {
+        audioToast.classList.remove('opacity-100', 'translate-y-0');
+        audioToast.classList.add('opacity-0', '-translate-y-2');
+      }, 1800);
+    }
+
+    // Elements
+    const audioToggleBtn = document.getElementById('audio-toggle-btn');
+    const audioIcon = document.getElementById('audio-icon');
+    const audioBadge = document.getElementById('audio-status-badge');
+
+    const recipeTrigger = document.getElementById('recipe-trigger');
+    const recipeMenu = document.getElementById('recipe-menu');
+    const recipeArrow = document.getElementById('recipe-arrow');
+    const selectedTitle = document.getElementById('selected-recipe-title');
+    const recipeMaterialsText = document.getElementById('recipe-materials-text');
+
+    const qtyMinus = document.getElementById('qty-minus');
+    const qtyPlus = document.getElementById('qty-plus');
+    const qtyMinus10 = document.getElementById('qty-minus-10');
+    const qtyPlus10 = document.getElementById('qty-plus-10');
+    const batchDisplay = document.getElementById('batch-display');
+    const batchSlider = document.getElementById('batch-slider');
+    const reqFish = document.getElementById('req-fish');
+    const reqPeli = document.getElementById('req-peli');
+    const estTime = document.getElementById('estimated-time');
+
+    const startBtn = document.getElementById('start-craft-btn');
+    const ctaLabel = document.getElementById('cta-label');
+    const ctaIcon = document.getElementById('cta-icon');
+    const statusPill = document.getElementById('craft-status-pill');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+
+    const progressCard = document.getElementById('craft-progress-card');
+    const progressFill = document.getElementById('progress-fill');
+    const progressCounter = document.getElementById('progress-counter');
+    const craftLogs = document.getElementById('craft-logs');
+    const clearLogsBtn = document.getElementById('clear-logs-btn');
+
+    // Mute/Unmute audio handler
+    audioToggleBtn.addEventListener('click', () => {
+      getAudioContext();
+      audioEnabled = !audioEnabled;
+      if (audioEnabled) {
+        audioIcon.textContent = 'volume_up';
+        audioIcon.classList.remove('text-on-surface-variant');
+        audioIcon.classList.add('text-primary');
+        audioBadge.classList.remove('hidden');
+        showToast('CYBER AUDIO: ONLINE', 'volume_up');
+        playChime(1.1);
+      } else {
+        audioIcon.textContent = 'volume_off';
+        audioIcon.classList.remove('text-primary');
+        audioIcon.classList.add('text-on-surface-variant');
+        audioBadge.classList.add('hidden');
+        showToast('CYBER AUDIO: MUTED', 'volume_off');
+      }
+    });
+
+    function triggerCounterPop() {
+      batchDisplay.classList.remove('pop-active');
+      void batchDisplay.offsetWidth; // reflow to trigger animation reliably
+      batchDisplay.classList.add('pop-active');
+    }
+
+    function updateBatchCalculations(val, sfxMultiplier = 1) {
+      const prevQty = currentQty;
+      currentQty = Math.max(1, Math.min(99, val));
+      batchDisplay.textContent = currentQty;
+      batchSlider.value = currentQty;
+
+      // Dynamic counter spring animation
+      triggerCounterPop();
+
+      if (prevQty !== currentQty) {
+        playStepperClick(sfxMultiplier);
+      }
+
+      reqFish.textContent = currentQty + 'x Rare Fish';
+      reqPeli.textContent = (currentQty * 500).toLocaleString() + ' Peli';
+
+      const totalSec = Math.round(currentQty * 1.5);
+      const mins = Math.floor(totalSec / 60);
+      const secs = totalSec % 60;
+      estTime.textContent = 'Est. Run: ' + mins + 'm ' + (secs < 10 ? '0' : '') + secs + 's';
+    }
+
+    recipeTrigger.addEventListener('click', () => {
+      getAudioContext();
+      playStepperClick(1.3);
+      const isHidden = recipeMenu.classList.toggle('hidden');
+      recipeArrow.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+    });
+
+    recipeMenu.querySelectorAll('button[data-recipe]').forEach((item) => {
+      item.addEventListener('click', () => {
+        getAudioContext();
+        playChime(1.2);
+        selectedTitle.textContent = item.getAttribute('data-title');
+        recipeMaterialsText.textContent = item.getAttribute('data-req');
+        recipeMenu.classList.add('hidden');
+        recipeArrow.style.transform = 'rotate(0deg)';
+      });
+    });
+
+    qtyMinus.addEventListener('click', () => updateBatchCalculations(currentQty - 1, 0.9));
+    qtyPlus.addEventListener('click', () => updateBatchCalculations(currentQty + 1, 1.15));
+    qtyMinus10.addEventListener('click', () => updateBatchCalculations(currentQty - 10, 0.75));
+    qtyPlus10.addEventListener('click', () => updateBatchCalculations(currentQty + 10, 1.35));
+    batchSlider.addEventListener('input', (e) => {
+      const newVal = parseInt(e.target.value, 10);
+      updateBatchCalculations(newVal, 0.85 + (newVal / 100));
+    });
+
+    // Start Crafting sequence with procedural Web Audio + Cybernetic HUD animation
+    startBtn.addEventListener('click', () => {
+      getAudioContext();
+      if (!isCrafting) {
+        // Start Crafting
+        isCrafting = true;
+        currentProgress = 0;
+        playForgeCharge();
+
+        ctaLabel.textContent = 'HALT CRAFT';
+        ctaIcon.textContent = 'stop_circle';
+        startBtn.classList.remove('from-[#d97706]', 'to-[#f59e0b]', 'shadow-[0_0_20px_rgba(245,158,11,0.45)]');
+        startBtn.classList.add('from-error', 'to-[#dc2626]', 'shadow-[0_0_25px_rgba(220,38,38,0.6)]', 'text-on-error');
+
+        // Cybernetic HUD glowing pulse effect
+        progressCard.classList.remove('hidden');
+        progressCard.classList.add('crafting-glow');
+
+        statusDot.classList.remove('bg-tertiary');
+        statusDot.classList.add('bg-primary', 'animate-ping');
+        statusText.classList.remove('text-tertiary');
+        statusText.classList.add('text-primary');
+        statusText.textContent = 'SYNTHESIZING...';
+
+        progressCounter.textContent = '0 / ' + currentQty;
+        progressFill.style.width = '0%';
+
+        const stepDuration = 220;
+        craftInterval = setInterval(() => {
+          currentProgress++;
+          const pct = Math.min(100, Math.round((currentProgress / currentQty) * 100));
+          progressFill.style.width = pct + '%';
+          progressCounter.textContent = currentProgress + ' / ' + currentQty;
+
+          // Rhythmic micro laser tick during synthesis
+          if (currentProgress % 3 === 0) {
+            playStepperClick(1.4 + (pct / 200));
+          }
+
+          if (currentProgress >= currentQty) {
+            clearInterval(craftInterval);
+            finishCrafting();
+          }
+        }, stepDuration);
+      } else {
+        // Halt Crafting
+        clearInterval(craftInterval);
+        playHaltSound();
+        resetCraftState('HALTED / READY');
+      }
+    });
+
+    function finishCrafting() {
+      playChime(1.5);
+      resetCraftState('COMPLETED');
+      // Append Log with micro interaction & glowing badge
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const newLog = document.createElement('div');
+      newLog.className = 'flex items-center justify-between p-space-sm rounded-lg bg-surface-container-low hover:bg-surface-bright/40 cursor-pointer active:scale-[0.99] transition-all log-entry';
+      newLog.innerHTML = `
+        <div class="flex items-center gap-space-sm min-w-0">
+          <div class="w-2 h-2 rounded-full bg-tertiary shrink-0 shadow-[0_0_8px_#4edea3] animate-pulse"></div>
+          <div class="flex flex-col min-w-0">
+            <span class="font-label-md text-body-sm font-semibold text-on-surface truncate">${currentQty}x ${selectedTitle.textContent}</span>
+            <span class="font-body-sm text-[11px] text-tertiary">Craft finished successfully • 0 Failures</span>
+          </div>
+        </div>
+        <span class="font-label-sm text-[10px] text-on-surface-variant shrink-0 font-medium tracking-wider pl-2">${timeStr}</span>
+      `;
+      newLog.addEventListener('click', () => {
+        getAudioContext();
+        playChime(1.3);
+      });
+      craftLogs.prepend(newLog);
+    }
+
+    function resetCraftState(label) {
+      isCrafting = false;
+      ctaLabel.textContent = 'START AUTO CRAFT';
+      ctaIcon.textContent = 'construction';
+      startBtn.classList.remove('from-error', 'to-[#dc2626]', 'shadow-[0_0_25px_rgba(220,38,38,0.6)]', 'text-on-error');
+      startBtn.classList.add('from-[#d97706]', 'to-[#f59e0b]', 'shadow-[0_0_20px_rgba(245,158,11,0.45)]', 'text-[#0f131d]');
+      progressCard.classList.remove('crafting-glow');
+
+      statusDot.classList.remove('bg-primary', 'animate-ping');
+      statusDot.classList.add('bg-tertiary');
+      statusText.classList.remove('text-primary');
+      statusText.classList.add('text-tertiary');
+      statusText.textContent = label;
+
+      setTimeout(() => {
+        progressCard.classList.add('hidden');
+        statusText.textContent = 'IDLE / READY';
+      }, 2500);
+    }
+
+    // Attach click chime to existing log entries
+    document.querySelectorAll('.log-entry').forEach((entry) => {
+      entry.addEventListener('click', () => {
+        getAudioContext();
+        playChime(1.2);
+      });
+    });
+
+    clearLogsBtn.addEventListener('click', () => {
+      getAudioContext();
+      playChime(0.9);
+      craftLogs.innerHTML = `
+        <div class="p-space-sm text-center font-body-sm text-body-sm text-on-surface-variant">
+          Log cleared. Next batch will record here.
+        </div>
+      `;
+    });
+  })();
+</script></main><nav class="fixed bottom-0 w-full z-50 pb-safe bg-surface/90 backdrop-blur-xl shadow-[0_-4px_16px_rgba(0,0,0,0.5)]" data-active-classes="text-primary relative after:content-[''] after:absolute after:top-0 after:left-1/4 after:right-1/4 after:h-[2px] after:bg-primary after:shadow-[0_0_8px_#4cd7f6]"><div class="flex items-center justify-around h-16 px-space-xs"><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface transition-colors active:scale-95" data-nav="/" href="/"><span class="material-symbols-outlined text-[20px]">sports_esports</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Remote</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface transition-colors active:scale-95" data-nav="/stats" href="/stats"><span class="material-symbols-outlined text-[20px]">query_stats</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Stats</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface transition-colors active:scale-95" data-nav="/studio" href="/studio"><span class="material-symbols-outlined text-[20px]">fiber_manual_record</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Studio</span></a><a aria-current="page" class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 transition-colors text-primary relative after:content-[''] after:absolute after:top-0 after:left-1/4 after:right-1/4 after:h-[2px] after:bg-primary after:shadow-[0_0_8px_#4cd7f6] active:scale-95" data-nav="/craft" href="/craft"><span class="material-symbols-outlined text-[20px]">construction</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Craft</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface transition-colors active:scale-95" data-nav="/system" href="/system"><span class="material-symbols-outlined text-[20px]">tune</span><span class="font-label-sm text-label-sm uppercase tracking-wide">System</span></a></div></nav>
+<script src="/assets/gpo-core.js"></script><script src="/assets/gpo-craft.js"></script></body></html>
