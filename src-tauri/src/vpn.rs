@@ -11,6 +11,31 @@ use serde::{Deserialize, Serialize};
 use std::os::windows::process::CommandExt;
 
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// True when this process runs elevated (Administrator). The sing-box TUN
+/// driver requires elevation; without it `configure tun interface: Access
+/// is denied` kills sing-box on startup — detected here so the user gets an
+/// instant actionable error instead of a 20s verification timeout.
+pub fn is_elevated() -> bool {
+    #[cfg(windows)]
+    {
+        #[link(name = "shell32")]
+        extern "system" {
+            fn IsUserAnAdmin() -> i32;
+        }
+        // SAFETY: IsUserAnAdmin takes no arguments and has no side effects.
+        unsafe { IsUserAnAdmin() != 0 }
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+/// Returns true if any of `names` (lowercase exe names) is in the process list.
+fn any_process_running(procs: &[String], names: &[&str]) -> bool {
+    procs.iter().any(|p| names.iter().any(|n| p == n))
+}
 const DEDICATED_SERVER_IP: [u8; 4] = [92, 5, 127, 89];
 const DEDICATED_SERVER_PORT: u16 = 443;
 const SINGBOX_EXE: &str = r"C:\VPN\sing-box.exe";
@@ -874,7 +899,7 @@ impl VpnManager {
 
         // Spawn only — success here means "command sent", NOT connected.
         let spawn_result = match engine.as_str() {
-            "dedicated" => self.spawn_dedicated(),
+            "dedicated" => Self::spawn_dedicated(),
             "warp" => self.spawn_warp(),
             "psiphon" => self.spawn_psiphon(),
             other => Err(format!(
@@ -886,6 +911,40 @@ impl VpnManager {
             self.set_state(VpnState::Error, Some(e.clone()));
             self.managed.store(false, Ordering::SeqCst);
             return Err(e);
+        }
+
+        // Early-exit probe (spawned daemons only): if the engine process is
+        // absent shortly after spawn it crashed on startup (bad config,
+        // missing driver) — fail in ~3s with a reason instead of burning
+        // the full verification timeout. warp-cli is one-shot, so the
+        // generic loop below covers it.
+        if matches!(engine.as_str(), "dedicated" | "psiphon") {
+            let procs = match engine.as_str() {
+                "dedicated" => &["sing-box.exe"][..],
+                _ => &["psiphon3.exe", "psiphond.exe"][..],
+            };
+            std::thread::sleep(Duration::from_millis(1500));
+            let mut alive =
+                any_process_running(&Self::get_running_process_names(), procs);
+            if !alive {
+                std::thread::sleep(Duration::from_millis(1500));
+                alive = any_process_running(&Self::get_running_process_names(), procs);
+            }
+            if !alive {
+                let reason = format!(
+                    "{0} exited within seconds of starting — check its setup ({1}).",
+                    procs.join("/"),
+                    if engine == "dedicated" {
+                        "Administrator rights for the TUN driver and a valid sing-box-client.json"
+                    } else {
+                        "a working psiphon3.exe in C:\\VPN"
+                    }
+                );
+                *self.last_error.lock() = Some(reason.clone());
+                self.set_state(VpnState::Error, Some(reason.clone()));
+                self.managed.store(false, Ordering::SeqCst);
+                return Err(reason);
+            }
         }
 
         // VERIFYING: poll evidence until verified or timeout.
@@ -917,14 +976,48 @@ impl VpnManager {
         Err(reason)
     }
 
+    /// Validate the sing-box config without starting a tunnel (`sing-box
+    /// check` needs no privileges). Returns Err with sing-box's own message
+    /// on invalid config.
+    fn check_singbox_config() -> Result<(), String> {
+        let mut cmd = Command::new(SINGBOX_EXE);
+        cmd.args(["check", "-c", SINGBOX_CONFIG]);
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        match cmd.output() {
+            Ok(out) if out.status.success() => Ok(()),
+            Ok(out) => {
+                let detail = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                Err(if detail.is_empty() {
+                    "sing-box config check failed with no details".to_string()
+                } else {
+                    // Keep it to the first meaningful line for UI display.
+                    let line = detail.lines().find(|l| !l.trim().is_empty()).unwrap_or(&detail);
+                    format!("sing-box config invalid: {}", line.chars().take(220).collect::<String>())
+                })
+            }
+            Err(e) => Err(format!("Failed to run sing-box config check: {e}")),
+        }
+    }
+
     /// Spawn-only: sends the connect command. Success means the command was
     /// accepted — it says NOTHING about connectivity (verified later).
-    fn spawn_dedicated(&self) -> Result<(), String> {
+    fn spawn_dedicated() -> Result<(), String> {
         if !Path::new(SINGBOX_EXE).exists() {
             return Err(format!("sing-box executable not found at {SINGBOX_EXE}"));
         }
         if !Path::new(SINGBOX_CONFIG).exists() {
             return Err(format!("sing-box config not found at {SINGBOX_CONFIG}"));
+        }
+        if !is_elevated() {
+            return Err(
+                "Administrator rights required: the Dedicated Relay TUN driver cannot start \
+                without elevation (sing-box fails with 'Access is denied'). Restart GPO Autofish \
+                as Administrator, or use Cloudflare WARP instead.".to_string(),
+            );
+        }
+        if let Err(e) = Self::check_singbox_config() {
+            return Err(e);
         }
 
         // Clean up any stale instances first
@@ -965,7 +1058,9 @@ impl VpnManager {
                     Err(String::from_utf8_lossy(&out.stderr).to_string())
                 }
             }
-            Err(e) => Err(format!("warp-cli command failed: {e}")),
+            Err(e) => Err(format!(
+                "warp-cli not found or failed to run ({e}). Install Cloudflare WARP so warp-cli is on PATH."
+            )),
         }
     }
 
@@ -1341,6 +1436,44 @@ mod tests {
     fn state_serializes_snake_case() {
         assert_eq!(serde_json::to_string(&VpnState::Connected).unwrap(), "\"connected\"");
         assert_eq!(serde_json::to_string(&VpnState::Verifying).unwrap(), "\"verifying\"");
+    }
+
+    #[test]
+    fn process_matcher_is_exact_case_insensitive_list() {
+        // get_running_process_names() already lowercases; matching is exact.
+        let procs = vec!["sing-box.exe".to_string(), "warp-svc.exe".to_string()];
+        assert!(any_process_running(&procs, &["sing-box.exe"]));
+        assert!(!any_process_running(&procs, &["box.exe"]));
+        assert!(!any_process_running(&[], &["sing-box.exe"]));
+        assert!(!any_process_running(&procs, &[]));
+    }
+
+    #[test]
+    fn elevation_probe_runs_without_panic() {
+        // Value is environment-dependent (CI runners are usually elevated,
+        // dev shells usually not) — only the call itself is asserted.
+        let _ = is_elevated();
+    }
+
+    #[test]
+    fn dedicated_preflight_fails_fast_with_actionable_error() {
+        // Whatever the machine state (missing exe/config on CI, no admin
+        // rights on a dev box), spawn_dedicated must fail BEFORE spawning —
+        // fast and with a message naming the missing prerequisite.
+        let start = std::time::Instant::now();
+        let err = VpnManager::spawn_dedicated().unwrap_err();
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(5),
+            "pre-flight must not burn the verification timeout"
+        );
+        assert!(!err.is_empty());
+        let lower = err.to_ascii_lowercase();
+        assert!(
+            lower.contains("not found")
+                || lower.contains("administrator")
+                || lower.contains("invalid"),
+            "error must name the prerequisite, got: {err}"
+        );
     }
 
     #[test]

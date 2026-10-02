@@ -99,7 +99,7 @@ pub struct CollectorStats {
 struct Inner {
     tx: Sender<SampleJob>,
     accepting: AtomicBool,
-    active_writes: AtomicUsize,
+    pending: AtomicUsize,
     submitted: AtomicUsize,
     written: AtomicUsize,
     dropped: AtomicUsize,
@@ -125,7 +125,7 @@ impl MlCollector {
         let inner = Arc::new(Inner {
             tx,
             accepting: AtomicBool::new(false),
-            active_writes: AtomicUsize::new(0),
+            pending: AtomicUsize::new(0),
             submitted: AtomicUsize::new(0),
             written: AtomicUsize::new(0),
             dropped: AtomicUsize::new(0),
@@ -160,7 +160,7 @@ impl MlCollector {
             inner: Arc::new(Inner {
                 tx,
                 accepting: AtomicBool::new(false),
-                active_writes: AtomicUsize::new(0),
+                pending: AtomicUsize::new(0),
                 submitted: AtomicUsize::new(0),
                 written: AtomicUsize::new(0),
                 dropped: AtomicUsize::new(0),
@@ -243,9 +243,14 @@ impl MlCollector {
         }
         job.session_id = session;
         self.inner.submitted.fetch_add(1, Ordering::SeqCst);
+        // Claimed BEFORE the send so the writer can never complete (and
+        // decrement) ahead of us — pending only over-counts transiently,
+        // which delays flush but can never early-exit it or underflow.
+        self.inner.pending.fetch_add(1, Ordering::SeqCst);
         match self.inner.tx.try_send(job) {
             Ok(()) => true,
             Err(_) => {
+                self.inner.pending.fetch_sub(1, Ordering::SeqCst);
                 self.inner.dropped.fetch_add(1, Ordering::SeqCst);
                 false
             }
@@ -258,9 +263,11 @@ impl MlCollector {
 
     fn writer_loop(&self, rx: Receiver<SampleJob>) {
         for job in rx.iter() {
-            self.inner.active_writes.fetch_add(1, Ordering::SeqCst);
             self.write_one(&job);
-            self.inner.active_writes.fetch_sub(1, Ordering::SeqCst);
+            // Decremented only after all counters/meta updates landed, so a
+            // flush on pending==0 observes complete results (no TOCTOU gap
+            // between queue-take and completion accounting).
+            self.inner.pending.fetch_sub(1, Ordering::SeqCst);
         }
     }
 
@@ -308,10 +315,14 @@ impl MlCollector {
                 // Mirror counters into the session meta (best-effort).
                 if let Some(meta) = self.inner.session.lock().as_mut() {
                     meta.samples += 1;
+                    #[cfg(test)]
+                    eprintln!("DEBUG meta-incr samples={}", meta.samples);
                     if hard.is_some() {
                         meta.hard_examples += 1;
                     }
                 }
+                #[cfg(test)]
+                eprintln!("DEBUG write_one done written-thread");
             }
             Err(e) => {
                 self.inner.write_errors.fetch_add(1, Ordering::SeqCst);
@@ -322,20 +333,27 @@ impl MlCollector {
 
     /// Stop intake, flush pending writes (bounded wait), finalize metadata,
     /// run subset validation. Returns None when no session was active.
+    /// Ordering matters: the session meta is taken AFTER the flush, so slow
+    /// trailing writes (manifest rewrites) still land in the finalized
+    /// counters. Taking first would freeze a partial snapshot.
     pub fn end_session(&self) -> Option<SessionSummary> {
-        let mut meta = self.inner.session.lock().take()?;
+        self.active_session_id()?;
         self.inner.accepting.store(false, Ordering::SeqCst);
-        meta.stopped_ms = Some(now_ms());
 
-        // Flush: wait for queue drain + in-flight writes, bounded.
+        // Flush: wait until every accepted job is fully accounted
+        // (pending hits 0 only after rows, counters, and meta updates all
+        // landed). Bounded; a stuck writer yields a WARNING, not a hang.
         let deadline = std::time::Instant::now() + FLUSH_TIMEOUT;
         while std::time::Instant::now() < deadline {
-            if self.inner.tx.is_empty() && self.inner.active_writes.load(Ordering::SeqCst) == 0 {
+            if self.inner.pending.load(Ordering::SeqCst) == 0 {
                 break;
             }
             std::thread::sleep(Duration::from_millis(50));
         }
-        let drained = self.inner.tx.is_empty() && self.inner.active_writes.load(Ordering::SeqCst) == 0;
+        let drained = self.inner.pending.load(Ordering::SeqCst) == 0;
+
+        let mut meta = self.inner.session.lock().take()?;
+        meta.stopped_ms = Some(now_ms());
 
         meta.reels = self.inner.reels.load(Ordering::SeqCst) as u64;
         meta.dropped = self.inner.dropped.load(Ordering::SeqCst) as u64;
@@ -649,13 +667,9 @@ mod tests {
                 source: "test".into(),
             }));
         }
-        // Wait for the background writer to make progress (proves the async
-        // path works) before finalizing; bounded so a stuck writer fails.
-        let mut waited = 0;
-        while c.stats_snapshot().written < 3 && waited < 100 {
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            waited += 1;
-        }
+        // end_session's flush (not this test) is responsible for draining;
+        // if the writer is broken this assert times out via FLUSH_TIMEOUT
+        // and the summary reports it instead of hanging.
         let summary = c.end_session().expect("summary");
         assert_eq!(summary.session_id, id);
         assert_eq!(summary.samples, 3, "all queued samples flushed, got {:?}", summary);
