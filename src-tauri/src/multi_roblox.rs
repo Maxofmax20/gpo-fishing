@@ -264,25 +264,29 @@ impl MultiRobloxManager {
     }
 
     pub fn list_instances(&self) -> Vec<RobloxInstanceInfo> {
-        let mut last_scan = self.last_scan.lock();
-        let mut last_instances = self.last_instances.lock();
-
-        // Throttle scans to every 1.5 seconds unless empty
-        if !last_instances.is_empty() && last_scan.elapsed() < Duration::from_millis(1500) {
-            let current_target = *self.target_pid.lock();
-            return last_instances
-                .iter()
-                .map(|inst| {
-                    let mut i = inst.clone();
-                    i.is_target = current_target == Some(i.pid);
-                    i
-                })
-                .collect();
+        // Fast path: fresh cache, locks held only for cloning.
+        {
+            let last_scan = self.last_scan.lock();
+            let last_instances = self.last_instances.lock();
+            // Throttle scans to every 1.5 seconds unless empty
+            if !last_instances.is_empty() && last_scan.elapsed() < Duration::from_millis(1500) {
+                let current_target = *self.target_pid.lock();
+                return last_instances
+                    .iter()
+                    .map(|inst| {
+                        let mut i = inst.clone();
+                        i.is_target = current_target == Some(i.pid);
+                        i
+                    })
+                    .collect();
+            }
         }
 
-        *last_scan = Instant::now();
-        let pids = enumerate_roblox_pids();
+        // Slow path WITHOUT holding cache locks: enumeration, log parsing,
+        // and cache-or-network API resolves must never block other callers
+        // (a stalled resolve previously wedged every UI poll and froze IPC).
         let target = *self.target_pid.lock();
+        let pids = enumerate_roblox_pids();
 
         // If target pid exited, reset it
         if let Some(t) = target {
@@ -327,7 +331,10 @@ impl MultiRobloxManager {
             instances.push(info);
         }
 
-        *last_instances = instances.clone();
+        {
+            *self.last_scan.lock() = Instant::now();
+            *self.last_instances.lock() = instances.clone();
+        }
         instances
     }
 

@@ -1357,9 +1357,12 @@ pub fn macro_delete(st: State<'_, AppState>, name: String) -> Result<serde_json:
     Ok(serde_json::json!({ "ok": true, "message": format!("Deleted macro '{name}'") }))
 }
 
+/// Never block the async runtime on OS/network-bound status probes: a slow
+/// `netsh`/CLI/API call must stall only its own blocking thread, never IPC.
 #[tauri::command]
-pub fn vpn_get_status(st: State<'_, AppState>) -> crate::vpn::VpnStatus {
-    st.vpn.get_status()
+pub async fn vpn_get_status(st: State<'_, AppState>) -> Result<crate::vpn::VpnStatus, String> {
+    let vpn = Arc::clone(&st.vpn);
+    blocking(move || Ok(vpn.get_status())).await
 }
 
 #[tauri::command]
@@ -1387,8 +1390,9 @@ pub async fn vpn_reset_network(st: State<'_, AppState>) -> Result<String, String
 }
 
 #[tauri::command]
-pub fn vpn_get_logs(st: State<'_, AppState>, max_lines: Option<usize>) -> Vec<String> {
-    st.vpn.get_logs(max_lines.unwrap_or(50))
+pub async fn vpn_get_logs(st: State<'_, AppState>, max_lines: Option<usize>) -> Result<Vec<String>, String> {
+    let vpn = Arc::clone(&st.vpn);
+    blocking(move || Ok(vpn.get_logs(max_lines.unwrap_or(50)))).await
 }
 
 #[tauri::command]
@@ -1397,13 +1401,15 @@ pub fn vpn_set_auto_reconnect(st: State<'_, AppState>, enabled: bool) {
 }
 
 #[tauri::command]
-pub fn multi_roblox_get_status(st: State<'_, AppState>) -> crate::multi_roblox::MultiRobloxStatus {
-    st.multi_roblox.get_status()
+pub async fn multi_roblox_get_status(st: State<'_, AppState>) -> Result<crate::multi_roblox::MultiRobloxStatus, String> {
+    let mr = Arc::clone(&st.multi_roblox);
+    blocking(move || Ok(mr.get_status())).await
 }
 
 #[tauri::command]
-pub fn multi_roblox_set_enabled(st: State<'_, AppState>, enabled: bool) -> Result<crate::multi_roblox::MultiRobloxStatus, String> {
-    st.multi_roblox.set_enabled(enabled)
+pub async fn multi_roblox_set_enabled(st: State<'_, AppState>, enabled: bool) -> Result<crate::multi_roblox::MultiRobloxStatus, String> {
+    let mr = Arc::clone(&st.multi_roblox);
+    blocking(move || mr.set_enabled(enabled)).await
 }
 
 #[tauri::command]
@@ -1422,8 +1428,9 @@ pub fn multi_roblox_kill_instance(st: State<'_, AppState>, pid: u32) -> Result<(
 }
 
 #[tauri::command]
-pub fn multi_roblox_kill_all(st: State<'_, AppState>) -> Result<usize, String> {
-    st.multi_roblox.kill_all()
+pub async fn multi_roblox_kill_all(st: State<'_, AppState>) -> Result<usize, String> {
+    let mr = Arc::clone(&st.multi_roblox);
+    blocking(move || mr.kill_all()).await
 }
 
 #[tauri::command]
@@ -1443,8 +1450,9 @@ pub fn multi_roblox_launch(app: AppHandle, place_id: Option<u64>) -> Result<(), 
 }
 
 #[tauri::command]
-pub fn multi_roblox_list_accounts(st: State<'_, AppState>) -> Vec<crate::multi_roblox::SavedRobloxAccount> {
-    st.multi_roblox.list_accounts()
+pub async fn multi_roblox_list_accounts(st: State<'_, AppState>) -> Result<Vec<crate::multi_roblox::SavedRobloxAccount>, String> {
+    let mr = Arc::clone(&st.multi_roblox);
+    blocking(move || Ok(mr.list_accounts())).await
 }
 
 #[tauri::command]

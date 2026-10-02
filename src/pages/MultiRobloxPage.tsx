@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Layers,
   Play,
@@ -44,16 +44,28 @@ export default function MultiRobloxPage() {
 
   const gpoPlaceId = settings?.game.gpo_place_id ?? 1730877806;
 
+  // Throttled slow-backend notice: at most one toast per minute so a
+  // stalled backend degrades to stale data instead of toast spam.
+  const lastSlowWarn = useRef(0);
   const refreshAll = async () => {
+    const withTimeout = <T,>(p: Promise<T>, ms: number) =>
+      Promise.race([
+        p,
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`backend timeout after ${ms}ms`)), ms)),
+      ]);
     try {
       const [statusRes, accountsRes] = await Promise.all([
-        api.multiRobloxGetStatus(),
-        api.multiRobloxListAccounts(),
+        withTimeout(api.multiRobloxGetStatus(), 12000),
+        withTimeout(api.multiRobloxListAccounts(), 12000),
       ]);
       setStatus(statusRes);
       setAccounts(accountsRes);
     } catch (e) {
-      showToast("warn", `Multi-Roblox refresh failed: ${String(e)}`);
+      const now = Date.now();
+      if (now - lastSlowWarn.current > 60_000) {
+        lastSlowWarn.current = now;
+        showToast("warn", `Multi-Roblox backend slow/unresponsive: ${String(e)} — showing last known state.`);
+      }
     }
   };
 
