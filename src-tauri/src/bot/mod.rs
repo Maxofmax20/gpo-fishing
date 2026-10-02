@@ -84,16 +84,28 @@ impl Bot {
         }
         // Arm gameplay data collection for this macro run (normal start is
         // enough — no separate recording mode). Trace-gated downstream.
+        // Ensure the dataset layout exists now so a broken path is loud in
+        // the logs instead of silently yielding zero frames.
+        if let Err(e) = self.ctx.ml.ensure_layout() {
+            self.ctx.log_warn(&format!("ML DATA layout unavailable ({e}) — fishing without recording"));
+        }
         let session_id = self.ctx.ml.begin_session(env!("CARGO_PKG_VERSION"));
         self.emit_ml_session(None);
         self.ctx.emit_stats();
         self.spawn_loop(resume);
         self.spawn_watchdog();
         crate::laptop_fan::on_bot_state_changed(true);
+        let trace_on = self.ctx.settings.read().fishing.trace;
         self.ctx.log_info(&if resume {
-            format!("Resumed (ML session {session_id} collecting)")
+            format!(
+                "Resumed (ML session {session_id} {})",
+                if trace_on { "RECORDING" } else { "collection OFF — trace recording disabled" }
+            )
         } else {
-            format!("Started (ML session {session_id} collecting)")
+            format!(
+                "Started (ML session {session_id} {})",
+                if trace_on { "RECORDING" } else { "collection OFF — trace recording disabled" }
+            )
         });
     }
 
@@ -152,11 +164,15 @@ impl Bot {
 
     fn emit_ml_session(&self, summary: Option<&crate::bot::ml_collect::SessionSummary>) {
         let snap = self.ctx.ml.stats_snapshot();
+        // Honest collecting flag: a session shell alone (trace recording
+        // OFF) must never present as recording — that exact lie let hours
+        // of fishing pass with zero frames while the UI said COLLECTING.
+        let trace_on = self.ctx.settings.read().fishing.trace;
         let st = crate::events::MlSessionState {
             // After finalization the live session is gone; the summary
             // carries the id (without this the UI could never match the
             // session-complete event to its session).
-            collecting: summary.is_none() && snap.collecting,
+            collecting: summary.is_none() && snap.collecting && trace_on,
             session_id: summary
                 .map(|s| s.session_id.clone())
                 .or(snap.session_id),

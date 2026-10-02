@@ -22,7 +22,7 @@ use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -94,6 +94,9 @@ pub struct CollectorStats {
     pub queue_depth: usize,
     pub reels: u64,
     pub hard_examples: u64,
+    /// Wall-clock ms of the last successful frame write (0 = none yet).
+    /// Drives the "last capture … ago" health signal.
+    pub last_write_ms: u64,
 }
 
 struct Inner {
@@ -108,6 +111,7 @@ struct Inner {
     hard: AtomicUsize,
     session: Mutex<Option<SessionMeta>>,
     session_images: Mutex<Vec<String>>,
+    last_write_ms: AtomicU64,
 }
 
 pub struct MlCollector {
@@ -134,6 +138,7 @@ impl MlCollector {
             hard: AtomicUsize::new(0),
             session: Mutex::new(None),
             session_images: Mutex::new(Vec::new()),
+            last_write_ms: AtomicU64::new(0),
         });
         let c = Arc::new(Self { dataset, sessions_dir, inner });
         // Crash recovery BEFORE any new session: quarantine leftovers.
@@ -169,6 +174,7 @@ impl MlCollector {
                 hard: AtomicUsize::new(0),
                 session: Mutex::new(None),
                 session_images: Mutex::new(Vec::new()),
+                last_write_ms: AtomicU64::new(0),
             }),
         }
     }
@@ -287,6 +293,7 @@ impl MlCollector {
         match result {
             Ok(image_id) => {
                 self.inner.written.fetch_add(1, Ordering::SeqCst);
+                self.inner.last_write_ms.store(now_ms(), Ordering::SeqCst);
                 self.inner.session_images.lock().push(image_id.clone());
                 // Dedup may have folded this sample onto identical pixels
                 // from an earlier moment: carry over the reading ( OCR text
@@ -415,7 +422,34 @@ impl MlCollector {
             queue_depth: self.inner.tx.len(),
             reels: self.inner.reels.load(Ordering::SeqCst) as u64,
             hard_examples: self.inner.hard.load(Ordering::SeqCst) as u64,
+            last_write_ms: self.inner.last_write_ms.load(Ordering::SeqCst),
         }
+    }
+
+    /// Wall-clock ms of the last successful frame write (0 = none yet).
+    pub fn last_write_ms(&self) -> u64 {
+        self.inner.last_write_ms.load(Ordering::SeqCst)
+    }
+
+    /// Ensure the versioned dataset layout exists (idempotent). Used by the
+    /// start-up preflight so a missing/unwritable dataset blocks Start with
+    /// a visible error instead of silently recording zero frames.
+    pub fn ensure_layout(&self) -> Result<(), String> {
+        self.dataset.init()
+    }
+
+    /// Dataset samples recorded so far (all sessions).
+    pub fn dataset_samples(&self) -> usize {
+        self.dataset.annotations().len()
+    }
+
+    /// Samples carrying a knowledge-base entity (the readiness "verified").
+    pub fn dataset_verified(&self) -> usize {
+        self.dataset
+            .annotations()
+            .iter()
+            .filter(|a| a.entity_id.is_some())
+            .count()
     }
 
     /// Startup crash recovery: sessions left `complete:false` are marked
@@ -679,6 +713,53 @@ mod tests {
         // Rows + images on disk; dataset listable.
         let ds = crate::core::ml_dataset::MlDatasetStore::new(dir);
         assert_eq!(ds.annotations().len(), 3);
+    }
+
+    #[test]
+    fn finalized_session_validates_and_attributes_run() {
+        // Stop → session finalized, manifest complete, validation sees the
+        // samples under THIS run's session id (per-run attribution: splits
+        // hash the full run id, so one run never leaks across sets).
+        let uniq = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("gpo-mlsess-final-{uniq}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        let c = MlCollector::new(dir.clone());
+        let id = c.begin_session("9.9.9");
+        assert!(c.submit(SampleJob {
+            png: png(),
+            session_id: String::new(),
+            task: crate::core::ml_dataset::MlTask::UiDetection,
+            ui_label: Some(crate::core::ml_dataset::UiLabel::FishingBar),
+            game_state: Some(crate::core::ml_dataset::GameStateLabel::WaitingForBite),
+            ocr_text: String::new(),
+            region: "bar".into(),
+            entity_id: None,
+            hard_reason: None,
+            source: "test".into(),
+        }));
+        let summary = c.end_session().expect("summary");
+        assert_eq!(summary.samples, 1);
+        assert!(c.last_write_ms() > 0, "first-frame health signal must be set");
+        // Manifest complete on disk.
+        let meta: SessionMeta = serde_json::from_str(
+            &std::fs::read_to_string(c.session_path(&id)).expect("session file"),
+        )
+        .unwrap();
+        assert!(meta.complete);
+        assert_eq!(meta.samples, 1);
+        // Validation sees exactly this run's sample; image decodes.
+        let ds = crate::core::ml_dataset::MlDatasetStore::new(dir.clone());
+        let rows = ds.annotations();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].session_id, id, "annotation must carry the run session id");
+        let p = ds.root().join("images").join(format!("{}.png", rows[0].image_id));
+        assert!(crate::core::ml_dataset::png_file_valid(&p), "sample PNG must decode");
+        let rep = ds.validate(crate::core::knowledge::KnowledgeBase::bundled());
+        assert!(rep.ok, "single clean sample must validate: {rep:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

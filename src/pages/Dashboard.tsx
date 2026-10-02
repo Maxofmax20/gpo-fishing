@@ -8,7 +8,8 @@ import { Button, CustomSelect, Pill, Section, cx, fmtRuntime } from "../componen
 import { StateBadge } from "../components/StateIcon";
 import { LogList } from "../components/LogList";
 import { LiveAreas } from "../components/LiveAreas";
-import type { CustomMacro, RecorderStatus } from "../lib/types";
+import ConfirmModal from "../components/ConfirmModal";
+import type { CustomMacro, MlCollectionStatus, MlPreflight, RecorderStatus } from "../lib/types";
 
 export default function Dashboard({
   onNavigate,
@@ -35,6 +36,64 @@ export default function Dashboard({
   const sessionNote = (n: number) => (active || state === "paused" ? `this run ${n}` : undefined);
 
   const hk = settings?.hotkeys.toggle ?? "F1";
+  const updateSettings = useStore((s) => s.update);
+  const [collectGate, setCollectGate] = useState(false);
+  const [preflightFail, setPreflightFail] = useState<MlPreflight | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  const doStart = async () => {
+    try {
+      await api.botToggle();
+    } catch (e) {
+      showToast("error", `Bot toggle failed: ${String(e)}`);
+    }
+  };
+
+  // Start gate: pause/resume is never gated. A fresh start requires either
+  // explicit consent (collection OFF → ask) or a passing collection
+  // preflight (collection ON → verify, never silently record zero frames).
+  const handleStartPress = async () => {
+    if (active || state === "paused") {
+      void doStart();
+      return;
+    }
+    const traceOn = settings?.fishing.trace ?? false;
+    if (!traceOn) {
+      setCollectGate(true);
+      return;
+    }
+    setStarting(true);
+    try {
+      const pf = await api.mlPreflight();
+      if (!pf.ok) {
+        setPreflightFail(pf);
+        return;
+      }
+      await doStart();
+    } catch (e) {
+      showToast("error", `Collection preflight failed: ${String(e)}`);
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const enableAndStart = async () => {
+    setCollectGate(false);
+    setStarting(true);
+    try {
+      await updateSettings((x) => void (x.fishing.trace = true));
+      const pf = await api.mlPreflight();
+      if (!pf.ok) {
+        setPreflightFail(pf);
+        return;
+      }
+      await doStart();
+    } catch (e) {
+      showToast("error", `Enable collection failed: ${String(e)}`);
+    } finally {
+      setStarting(false);
+    }
+  };
 
   return (
     <div className="pb-4">
@@ -49,19 +108,55 @@ export default function Dashboard({
         <div className="flex gap-1.5">
           <Button
             kind={active ? "default" : "primary"}
-            onClick={() => api.botToggle().catch((e) => showToast("error", `Bot toggle failed: ${String(e)}`))}
+            onClick={handleStartPress}
+            disabled={starting}
             icon={active ? <Pause size={14} /> : <Play size={14} />}
           >
-            {active ? "Pause" : state === "paused" ? "Resume" : "Start"}
+            {starting ? "Starting…" : active ? "Pause" : state === "paused" ? "Resume" : "Start"}
           </Button>
           {(active || state === "paused") && (
             <Button kind="danger" onClick={() => api.botStop().catch((e) => showToast("error", `Bot stop failed: ${String(e)}`))} icon={<Square size={13} />} />
           )}
         </div>
       </div>
+      <CollectionStrip />
       <div className="px-4 pb-3 text-[11px] text-fg-mute">
         Press <span className="font-mono text-fg-dim">{hk}</span> anywhere to start or pause.
       </div>
+      {collectGate && (
+        <div className="absolute inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm px-6" onClick={() => setCollectGate(false)}>
+          <div className="w-full max-w-[340px] rounded-2xl border border-line bg-[#0c101a] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="font-semibold text-[14px]">Data collection is OFF</div>
+            <div className="mt-1.5 text-[12px] text-fg-dim leading-relaxed">
+              Trace recording is disabled, so this run would save <b>zero training frames</b>. Enable collection to record WAITING / BITE / RESULT frames automatically (small game-UI crops only).
+            </div>
+            <div className="mt-4 flex flex-col gap-2">
+              <Button kind="primary" onClick={enableAndStart} disabled={starting}>
+                {starting ? "Working…" : "Enable collection + Start"}
+              </Button>
+              <div className="flex justify-end gap-2">
+                <Button size="sm" onClick={() => setCollectGate(false)}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={() => { setCollectGate(false); void doStart(); }}>
+                  Start without recording
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <ConfirmModal
+        open={preflightFail !== null}
+        title="DATA COLLECTION FAILED"
+        body={`The fishing macro will not start because gameplay training data cannot be recorded:\n${(preflightFail?.checks ?? []).filter((c) => !c.ok).map((c) => `• ${c.name}: ${c.detail}`).join("\n")}`}
+        backupNote="To fish without recording, turn trace recording off in Settings › Tracking."
+        confirmLabel="Retry"
+        danger={false}
+        busy={starting}
+        onConfirm={() => { setPreflightFail(null); void handleStartPress(); }}
+        onCancel={() => setPreflightFail(null)}
+      />
 
       <Section
         title="Custom Automation"
@@ -171,12 +266,105 @@ export default function Dashboard({
   );
 }
 
+function CollectionStrip() {
+  const settings = useStore((s) => s.settings);
+  const ml = useStore((s) => s.ml);
+  const state = useStore((s) => s.state);
+  const active = isActive(state);
+  if (!settings) {
+    return (
+      <div className="px-4 pb-2">
+        <Pill tone="mute">DATA COLLECTION: …</Pill>
+      </div>
+    );
+  }
+  const traceOn = settings.fishing.trace;
+  const recording = traceOn && (ml?.collecting ?? false);
+  if (recording) {
+    return (
+      <div className="px-4 pb-2 flex items-center gap-2">
+        <Pill tone="ok">● DATA COLLECTION: RECORDING</Pill>
+        <span className="text-[11px] text-fg-mute font-mono">{ml?.samples ?? 0} frames this run</span>
+      </div>
+    );
+  }
+  if (active) {
+    return (
+      <div className="px-4 pb-2 flex items-center gap-2 flex-wrap">
+        <Pill tone="warn">○ DATA COLLECTION: OFF</Pill>
+        <span className="text-[11px] text-warn">Fishing without recording — no training frames this run.</span>
+      </div>
+    );
+  }
+  if (traceOn) {
+    return (
+      <div className="px-4 pb-2 flex items-center gap-2">
+        <Pill tone="accent">○ DATA COLLECTION: ARMED</Pill>
+        <span className="text-[11px] text-fg-mute">Recording starts with the macro.</span>
+      </div>
+    );
+  }
+  return (
+    <div className="px-4 pb-2 flex items-center gap-2 flex-wrap">
+      <Pill tone="mute">○ DATA COLLECTION: OFF</Pill>
+      <span className="text-[11px] text-fg-mute">Turn on trace recording (Settings › Tracking) to build training data.</span>
+    </div>
+  );
+}
+
+function agoStr(ms: number | null): string {
+  if (ms == null) return "no frames yet";
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 60) return `${s}s ago`;
+  return `${Math.floor(s / 60)}m ${s % 60}s ago`;
+}
+
 function MlDataCard() {
   const ml = useStore((s) => s.ml);
+  const settings = useStore((s) => s.settings);
+  const state = useStore((s) => s.state);
+  const active = isActive(state);
+  const traceOn = settings?.fishing.trace ?? false;
+  const [col, setCol] = useState<MlCollectionStatus | null>(null);
+  useVisiblePoll(async () => {
+    try {
+      setCol(await api.mlCollectionStatus());
+    } catch {
+      // Keep last known state; the session event below stays authoritative.
+    }
+  }, 3000, active || traceOn);
+
+  if (col) {
+    const shortId = col.session_id ? col.session_id.split("_").slice(-1)[0] ?? col.session_id : null;
+    return (
+      <div className="px-4 py-2.5 flex flex-col gap-1.5">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Pill tone={col.recording ? "ok" : col.session_active ? "warn" : "mute"}>
+            {col.recording ? "● RECORDING" : col.session_active ? "○ session open — NOT recording" : traceOn ? "○ ARMED" : "○ OFF"}
+          </Pill>
+          {shortId && <span className="font-mono text-[11px] text-fg-mute">session {shortId}</span>}
+          <span className="font-mono text-[11px] text-fg-mute">{col.dataset}</span>
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[12px] text-fg-dim">
+          <span>Frames: <b className="text-fg">{col.samples_written}</b></span>
+          <span>Reels: <b className="text-fg">{col.reels}</b></span>
+          <span>Verified: <b className="text-fg">{col.verified}</b></span>
+          <span>Hard: <b className="text-warn">{col.hard_examples}</b></span>
+          {col.dropped > 0 && <span>Dropped: <b className="text-bad">{col.dropped}</b></span>}
+          {col.write_errors > 0 && <span>Write errors: <b className="text-bad">{col.write_errors}</b></span>}
+        </div>
+        <div className="text-[11px] text-fg-dim font-mono">
+          Last capture: {agoStr(col.last_capture_ms)} · dataset total: {col.dataset_samples} samples
+        </div>
+      </div>
+    );
+  }
   if (!ml) {
     return (
       <div className="px-4 py-2.5 text-[12px] text-fg-mute">
-        Start the macro to collect training samples automatically.
+        {traceOn
+          ? "Start the macro — collection arms automatically."
+          : "Collection is OFF — enable trace recording (Settings › Tracking) or accept the prompt at Start."}
       </div>
     );
   }

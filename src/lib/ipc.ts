@@ -35,6 +35,8 @@ import type {
   DatasetReport,
   BaselineReport,
   MlModelStatus,
+  MlPreflight,
+  MlCollectionStatus,
   VpnStatus,
   PingResult,
   MultiRobloxStatus,
@@ -113,6 +115,8 @@ export const api = {
   mlAnnotate: (imageId: string, uiLabel?: string, gameState?: string, entityId?: string, hardExample?: boolean, hardReason?: string) =>
     invoke<MlAnnotation>("ml_annotate", { imageId, uiLabel, gameState, entityId, hardExample, hardReason }),
   mlValidate: () => invoke<DatasetReport>("ml_validate"),
+  mlPreflight: () => invoke<MlPreflight>("ml_preflight"),
+  mlCollectionStatus: () => invoke<MlCollectionStatus>("ml_collection_status"),
   mlBaseline: () => invoke<BaselineReport>("ml_baseline"),
   mlModelStatus: () => invoke<MlModelStatus>("ml_model_status"),
   mlReadiness: () => invoke<TrainingReadiness>("ml_readiness"),

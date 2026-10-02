@@ -1294,4 +1294,72 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn bot_start_with_trace_off_reports_not_collecting() {
+        // Regression: hours were fished with trace recording OFF while the
+        // UI showed "ML DATA: COLLECTING". A session shell may still be
+        // created, but the emitted UI state must never claim collecting
+        // without consent — otherwise the macro silently runs as if
+        // collection were active.
+        static C: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = C.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("gpo-bot-ml-off-{n}"));
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let mut settings = Settings::default();
+        settings.fishing.scan_timeout_s = 1.0;
+        settings.fishing.scan_hz = 200;
+        settings.fishing.track_hz = 200;
+        settings.watchdog.enabled = false;
+        assert!(!settings.fishing.trace, "trace defaults off (explicit consent)");
+        let settings = Arc::new(RwLock::new(settings));
+        let cap = Arc::new(ScriptedCapture::default());
+        for _ in 0..5 {
+            cap.push(blank());
+        }
+        let platform = Platform {
+            window: Arc::new(crate::core::platform::mock::MockWindow::default()),
+            capture: cap,
+            input: Arc::new(RecordingInput::default()),
+            ocr: Arc::new(ScriptedOcr::default()),
+        };
+        let roblox = Arc::new(RwLock::new(Some(WindowInfo {
+            client: PxRect { x: 0, y: 0, w: 1920, h: 1080 },
+            is_foreground: true,
+            visible: true,
+            dpi: 96,
+        })));
+        let store = Arc::new(crate::config::Store::new(dir.clone()));
+        let bot = crate::bot::Bot::new(
+            platform,
+            Arc::clone(&settings),
+            roblox,
+            tx,
+            Arc::new(WebhookQueue::disabled()),
+            Arc::clone(&store),
+        );
+
+        bot.start();
+        // Session shell exists (macro-run bookkeeping)…
+        let session_id = bot.ctx().ml.active_session_id().expect("session shell");
+        // …but the UI-facing state must not claim collecting.
+        let states = drain_ml_session(&rx);
+        assert!(!states.is_empty(), "must emit session state on start");
+        assert!(
+            states.iter().all(|s| !s.collecting),
+            "trace off must never report collecting, got: {states:?}"
+        );
+
+        bot.stop();
+        // Finalized shell on disk with zero samples (nothing faked).
+        let meta_path = dir.join("sessions").join(format!("{session_id}.json"));
+        let meta: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&meta_path).expect("session file")).unwrap();
+        assert_eq!(meta.get("complete").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(meta.get("samples").and_then(|v| v.as_u64()), Some(0));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

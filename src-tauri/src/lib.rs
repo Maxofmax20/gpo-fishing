@@ -108,6 +108,8 @@ pub fn run() {
             commands::ml_samples,
             commands::ml_annotate,
             commands::ml_validate,
+            commands::ml_preflight,
+            commands::ml_collection_status,
             commands::ml_baseline,
             commands::ml_model_status,
             commands::ml_readiness,

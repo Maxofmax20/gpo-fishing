@@ -266,7 +266,7 @@ export default function Setup() {
       <Section title="Training dataset (gpo-vision v1)">
         <Row
           title="Versioned training data"
-          sub="Session-split, validated dataset for future model training. Splits are by capture day so near-identical frames never leak across sets."
+          sub="Session-split, validated dataset for future model training. Splits are by capture session (each macro run), so near-identical frames never leak across sets."
           open={open === "mldataset"}
           onToggle={() => toggle("mldataset")}
         >
@@ -373,13 +373,12 @@ function MlDatasetPanel() {
           <div>
             TRAINING STATUS:{" "}
             <span className={readiness.ready ? "text-ok" : "text-warn"}>
-              {readiness.ready ? "READY (data)" : "NOT READY"}
+              {readiness.training}
             </span>
           </div>
           <div>Verified: {readiness.verified}/{readiness.required_verified} · Sessions: {readiness.sessions}/{readiness.required_sessions} · Test sessions: {readiness.test_sessions}</div>
           <div>Coverage: {readiness.class_coverage_ok ? "pass" : "FAIL"} · Leakage: {readiness.leakage_ok ? "pass" : "FAIL"} · Validation: {readiness.validation_ok ? "pass" : "FAIL"}</div>
           {readiness.reasons.slice(0, 4).map((r) => <div key={r} className="text-fg-mute">{r.slice(0, 180)}</div>)}
-          <div className="text-fg-mute">Training: {readiness.training}</div>
         </div>
       )}
       {report && (

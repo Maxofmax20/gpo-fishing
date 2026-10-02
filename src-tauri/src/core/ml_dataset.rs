@@ -257,7 +257,7 @@ impl MlDatasetStore {
                 name: DATASET_NAME.to_string(),
                 version: DATASET_VERSION,
                 created_ms: now_ms(),
-                split_strategy: "session-hash 70/15/15 (train/validation/test); day-granular session ids; overrides in split_overrides".to_string(),
+                split_strategy: "session-hash 70/15/15 (train/validation/test); one session id per macro run (session_YYYY-MM-DD_HHMMSS_hash), so frames from a single run never split across sets; overrides in split_overrides".to_string(),
                 split_overrides: HashMap::new(),
             };
             std::fs::write(
@@ -271,7 +271,7 @@ impl MlDatasetStore {
             std::fs::write(
                 &readme,
                 format!(
-                    "# {name} v{ver}\n\nGPO vision training dataset.\n\n## Split strategy\n\nSessions hash deterministically to train/validation/test (70/15/15). Session ids are day-granular (`sess-YYYY-MM-DD`): near-identical consecutive frames share a session and can never leak across splits. Manual overrides live in `manifest.json` (`split_overrides`).\n\n## Layout\n\n- `images/<image_id>.png` — perceptual-hash image ids (`<ahash-hex>` + counter on collision)\n- `labels.jsonl` — one `MlAnnotation` per line (stable `entity_id`s from the GPO knowledge base, never display names)\n- `manifest.json` — version + strategy + overrides\n\n## Quality\n\nRun the in-app dataset validator before any training. It reports leakage, corrupt files, duplicates, invalid labels/boxes, imbalance, and orphans. Training on a failing dataset is not supported.\n",
+                    "# {name} v{ver}\n\nGPO vision training dataset.\n\n## Split strategy\n\nSessions hash deterministically to train/validation/test (70/15/15). Each macro run creates one unique session id (`session_YYYY-MM-DD_HHMMSS_<hash>`), so near-identical consecutive frames share a session and can never leak across splits. Manual overrides live in `manifest.json` (`split_overrides`).\n\n## Layout\n\n- `images/<image_id>.png` — perceptual-hash image ids (`<ahash-hex>` + counter on collision)\n- `labels.jsonl` — one `MlAnnotation` per line (stable `entity_id`s from the GPO knowledge base, never display names)\n- `manifest.json` — version + strategy + overrides\n\n## Quality\n\nRun the in-app dataset validator before any training. It reports leakage, corrupt files, duplicates, invalid labels/boxes, imbalance, and orphans. Training on a failing dataset is not supported.\n",
                     name = DATASET_NAME,
                     ver = DATASET_VERSION
                 ),

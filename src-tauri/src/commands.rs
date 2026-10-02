@@ -972,9 +972,9 @@ pub fn ml_readiness(st: State<'_, AppState>) -> TrainingReadiness {
     TrainingReadiness {
         ready,
         training: if ready {
-            "READY (data) — model implementation still required before any training runs.".to_string()
+            "READY FOR TRAINING".to_string()
         } else {
-            "NOT READY".to_string()
+            "TRAINING BLOCKED".to_string()
         },
         verified,
         required_verified: READINESS_MIN_VERIFIED,
@@ -997,6 +997,173 @@ pub struct MlModelStatus {
     pub runtime: Option<String>,
     pub classes: Vec<String>,
     pub reason: Option<String>,
+}
+
+/// One named preflight probe for the collection start gate.
+#[derive(Debug, Serialize)]
+pub struct PreflightCheck {
+    pub name: String,
+    pub ok: bool,
+    pub detail: String,
+}
+
+/// Start-up collection preflight. Verifies the versioned dataset layout can
+/// be created, the images directory is writable, the PNG encoder works, and
+/// the on-disk manifest (if any) matches the code's dataset version.
+/// `ok` is true only when collection is consented (trace on) AND every
+/// probe passes — the UI blocks Start otherwise instead of silently
+/// recording zero frames.
+#[derive(Debug, Serialize)]
+pub struct MlPreflight {
+    pub trace_on: bool,
+    pub ok: bool,
+    pub checks: Vec<PreflightCheck>,
+}
+
+#[tauri::command]
+pub fn ml_preflight(st: State<'_, AppState>) -> MlPreflight {
+    let trace_on = st.settings.read().fishing.trace;
+    let mut checks = Vec::new();
+
+    checks.push(PreflightCheck {
+        name: "consent".to_string(),
+        ok: trace_on,
+        detail: if trace_on {
+            "trace recording is ON".to_string()
+        } else {
+            "trace recording is OFF — enable it to record training frames".to_string()
+        },
+    });
+
+    let store = ml_store(&st);
+    match store.init() {
+        Ok(()) => checks.push(PreflightCheck {
+            name: "dataset_layout".to_string(),
+            ok: true,
+            detail: format!("{} ready", store.root().display()),
+        }),
+        Err(e) => checks.push(PreflightCheck {
+            name: "dataset_layout".to_string(),
+            ok: false,
+            detail: format!("cannot create dataset layout: {e}"),
+        }),
+    }
+
+    // Write-permission probe (temp file, removed immediately — never a sample).
+    let probe = store.root().join("images").join(".write_probe");
+    let write_ok = std::fs::write(&probe, b"probe")
+        .and_then(|_| std::fs::remove_file(&probe))
+        .is_ok();
+    checks.push(PreflightCheck {
+        name: "write_permission".to_string(),
+        ok: write_ok,
+        detail: if write_ok {
+            "images/ is writable".to_string()
+        } else {
+            format!("cannot write to {}", probe.display())
+        },
+    });
+
+    // Encoder smoke test (in-memory only — never written to the dataset).
+    let frame = crate::core::types::Frame::new(16, 16, vec![128u8; 16 * 16 * 4]);
+    match frame.to_png_bytes() {
+        Ok(bytes) => checks.push(PreflightCheck {
+            name: "frame_encoder".to_string(),
+            ok: !bytes.is_empty(),
+            detail: format!("PNG encoder produced {} bytes", bytes.len()),
+        }),
+        Err(e) => checks.push(PreflightCheck {
+            name: "frame_encoder".to_string(),
+            ok: false,
+            detail: format!("PNG encoder failed: {e}"),
+        }),
+    }
+
+    // Dataset version match (a stale manifest from a newer/older build
+    // must not silently accept samples). A missing manifest is fine —
+    // init() just created the layout; only a version MISMATCH fails.
+    let (version_ok, version_detail) =
+        match std::fs::read_to_string(store.root().join("manifest.json")) {
+            Err(_) => (true, "no manifest yet (created on first run)".to_string()),
+            Ok(raw) => match serde_json::from_str::<serde_json::Value>(&raw)
+                .ok()
+                .and_then(|v| v.get("version").and_then(|n| n.as_u64()))
+            {
+                Some(v) => {
+                    let ok = v as u32 == crate::core::ml_dataset::DATASET_VERSION;
+                    (
+                        ok,
+                        if ok {
+                            format!("manifest v{v} matches")
+                        } else {
+                            format!(
+                                "manifest v{v} ≠ code v{}",
+                                crate::core::ml_dataset::DATASET_VERSION
+                            )
+                        },
+                    )
+                }
+                None => (false, "manifest has no version".to_string()),
+            },
+        };
+    checks.push(PreflightCheck {
+        name: "dataset_version".to_string(),
+        ok: version_ok,
+        detail: version_detail,
+    });
+
+    let ok = trace_on && checks.iter().all(|c| c.ok);
+    MlPreflight { trace_on, ok, checks }
+}
+
+/// Live collection health for the main-UI indicator and health panel.
+/// `recording` is true ONLY when the user consented (trace on) AND a macro
+/// session is active — a session shell alone (trace off) never reports
+/// recording. All counters are real; zero is reported as zero.
+#[derive(Debug, Serialize)]
+pub struct MlCollectionStatus {
+    pub trace_on: bool,
+    pub session_active: bool,
+    pub recording: bool,
+    pub session_id: Option<String>,
+    pub samples_written: u64,
+    pub reels: u64,
+    pub hard_examples: u64,
+    pub dropped: u64,
+    pub write_errors: u64,
+    pub queue_depth: usize,
+    pub last_capture_ms: Option<u64>,
+    pub dataset: String,
+    pub dataset_samples: usize,
+    pub verified: usize,
+}
+
+#[tauri::command]
+pub fn ml_collection_status(st: State<'_, AppState>) -> MlCollectionStatus {
+    let trace_on = st.settings.read().fishing.trace;
+    let ml = &st.bot.ctx().ml;
+    let snap = ml.stats_snapshot();
+    let session_active = snap.session_id.is_some();
+    MlCollectionStatus {
+        trace_on,
+        session_active,
+        recording: trace_on && session_active,
+        session_id: snap.session_id,
+        samples_written: snap.written,
+        reels: snap.reels,
+        hard_examples: snap.hard_examples,
+        dropped: snap.dropped,
+        write_errors: snap.write_errors,
+        queue_depth: snap.queue_depth,
+        last_capture_ms: if snap.last_write_ms == 0 { None } else { Some(snap.last_write_ms) },
+        dataset: format!(
+            "{}/v{}",
+            crate::core::ml_dataset::DATASET_NAME,
+            crate::core::ml_dataset::DATASET_VERSION
+        ),
+        dataset_samples: ml.dataset_samples(),
+        verified: ml.dataset_verified(),
+    }
 }
 
 #[tauri::command]

@@ -402,6 +402,35 @@ export type MlModelStatus = {
   reason: string | null;
 };
 
+export type PreflightCheck = {
+  name: string;
+  ok: boolean;
+  detail: string;
+};
+
+export type MlPreflight = {
+  trace_on: boolean;
+  ok: boolean;
+  checks: PreflightCheck[];
+};
+
+export type MlCollectionStatus = {
+  trace_on: boolean;
+  session_active: boolean;
+  recording: boolean;
+  session_id: string | null;
+  samples_written: number;
+  reels: number;
+  hard_examples: number;
+  dropped: number;
+  write_errors: number;
+  queue_depth: number;
+  last_capture_ms: number | null;
+  dataset: string;
+  dataset_samples: number;
+  verified: number;
+};
+
 export type WikiSyncResult = {
   category_titles: number;
   fetched_pages: number;
