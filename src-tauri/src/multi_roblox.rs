@@ -13,7 +13,7 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
 use windows::Win32::System::Threading::{
-    CreateEventW, CreateMutexW, OpenProcess, TerminateProcess, PROCESS_TERMINATE,
+    CreateMutexW, OpenProcess, TerminateProcess, PROCESS_TERMINATE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
@@ -83,7 +83,8 @@ struct GameCacheEntry {
 pub struct MultiRobloxManager {
     enabled: AtomicBool,
     mutex_handle: Mutex<Option<usize>>,
-    event_handle: Mutex<Option<usize>>,
+    // Holds a MUTEX named "ROBLOX_singletonEvent" (see acquire_locks step 2).
+    handoff_block_handle: Mutex<Option<usize>>,
     cookie_lock: Mutex<Option<File>>,
     target_pid: Mutex<Option<u32>>,
     user_cache: Mutex<HashMap<String, UserCacheEntry>>,
@@ -133,7 +134,7 @@ impl MultiRobloxManager {
         let mgr = Self {
             enabled: AtomicBool::new(false),
             mutex_handle: Mutex::new(None),
-            event_handle: Mutex::new(None),
+            handoff_block_handle: Mutex::new(None),
             cookie_lock: Mutex::new(None),
             target_pid: Mutex::new(None),
             user_cache: Mutex::new(HashMap::new()),
@@ -186,17 +187,24 @@ impl MultiRobloxManager {
                 }
             }
 
-            // 2. Claim ROBLOX_singletonEvent
-            let mut e_guard = self.event_handle.lock();
+            // 2. Block the singleton HANDOFF channel: hold a MUTEX named
+            // "ROBLOX_singletonEvent". Win32 named mutexes and events share
+            // one namespace, so a second Roblox client can no longer create
+            // or open the signal event it uses to hand its launch to the
+            // already-running client. Without this, every new launch is
+            // delivered to the first window, which drops its game (looks
+            // like the other window was "closed"). With it, each launch
+            // runs as its own standalone client.
+            let mut e_guard = self.handoff_block_handle.lock();
             if e_guard.is_none() {
                 let e_name = wide("ROBLOX_singletonEvent");
-                match CreateEventW(None, true, false, PCWSTR(e_name.as_ptr())) {
+                match CreateMutexW(None, false, PCWSTR(e_name.as_ptr())) {
                     Ok(handle) => {
                         *e_guard = Some(handle.0 as usize);
-                        tracing::info!("Acquired ROBLOX_singletonEvent handle");
+                        tracing::info!("Blocked ROBLOX_singletonEvent handoff with mutex");
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to create ROBLOX_singletonEvent: {e}");
+                        tracing::warn!("Failed to block ROBLOX_singletonEvent: {e}");
                     }
                 }
             }
@@ -236,7 +244,7 @@ impl MultiRobloxManager {
                 let _ = CloseHandle(HANDLE(h as *mut _));
             }
 
-            let mut e_guard = self.event_handle.lock();
+            let mut e_guard = self.handoff_block_handle.lock();
             if let Some(h) = e_guard.take() {
                 let _ = CloseHandle(HANDLE(h as *mut _));
             }
@@ -962,5 +970,81 @@ fn launch_with_cookie(cookie: &str, place_id: u64) -> Result<(), String> {
 
     tracing::info!("Launched Roblox account with placeId {place_id}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows::Win32::Foundation::GetLastError;
+    use windows::Win32::System::Threading::CreateEventW;
+
+    /// While the locks are held, a second Roblox client must be unable to
+    /// use the singleton handoff event (regression: new launches used to be
+    /// delivered to the first window, closing/replacing its game).
+    #[test]
+    fn singleton_handoff_channel_is_blocked_while_enabled() {
+        unsafe {
+            // Precondition probe: if another holder (e.g. a running app
+            // instance) already owns either name, exclusivity cannot be
+            // proven in this process — skip instead of flaking.
+            let probe_name = wide("ROBLOX_singletonEvent");
+            match CreateEventW(None, false, false, PCWSTR(probe_name.as_ptr())) {
+                Ok(h) => {
+                    let pre_existing = GetLastError()
+                        != windows::Win32::Foundation::WIN32_ERROR(0);
+                    let _ = CloseHandle(h);
+                    if pre_existing {
+                        eprintln!("skipping: ROBLOX_singletonEvent already held");
+                        return;
+                    }
+                }
+                Err(_) => {
+                    eprintln!("skipping: ROBLOX_singletonEvent name already taken");
+                    return;
+                }
+            }
+        }
+
+        let dir = std::env::temp_dir()
+            .join(format!("gpo-mr-handoff-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let mgr = MultiRobloxManager::new(dir.clone());
+        mgr.acquire_locks().expect("acquire_locks");
+
+        unsafe {
+            // The handoff event name is now occupied by our mutex: client
+            // event creation must fail.
+            let ev_name = wide("ROBLOX_singletonEvent");
+            let ev = CreateEventW(None, false, false, PCWSTR(ev_name.as_ptr()));
+            assert!(
+                ev.is_err(),
+                "singleton handoff event must be blocked while multi-roblox is enabled"
+            );
+            // The classic singleton mutex is claimed as well.
+            let m_name = wide("ROBLOX_singletonMutex");
+            let m = CreateMutexW(None, false, PCWSTR(m_name.as_ptr()));
+            assert!(m.is_ok());
+            assert_eq!(
+                GetLastError(),
+                windows::Win32::Foundation::ERROR_ALREADY_EXISTS
+            );
+            if let Ok(h) = m {
+                let _ = CloseHandle(h);
+            }
+        }
+
+        mgr.release_locks();
+
+        unsafe {
+            // After release the event name is usable again (no leak).
+            let ev_name = wide("ROBLOX_singletonEvent");
+            let ev = CreateEventW(None, false, false, PCWSTR(ev_name.as_ptr()));
+            assert!(ev.is_ok(), "handoff event name must be free after release");
+            if let Ok(h) = ev {
+                let _ = CloseHandle(h);
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
