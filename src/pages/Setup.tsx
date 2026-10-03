@@ -376,8 +376,31 @@ function MlDatasetPanel() {
               {readiness.training}
             </span>
           </div>
-          <div>Verified: {readiness.verified}/{readiness.required_verified} · Sessions: {readiness.sessions}/{readiness.required_sessions} · Test sessions: {readiness.test_sessions}</div>
-          <div>Coverage: {readiness.class_coverage_ok ? "pass" : "FAIL"} · Leakage: {readiness.leakage_ok ? "pass" : "FAIL"} · Validation: {readiness.validation_ok ? "pass" : "FAIL"}</div>
+          <div>
+            Entity-linked RESULTs: {readiness.entity_linked_result}/{readiness.required_entity_linked}
+            <span className="ml-2 inline-block w-24 h-1.5 rounded-full bg-white/10 overflow-hidden align-middle">
+              <span
+                className="block h-full rounded-full bg-ok"
+                style={{ width: `${Math.min(100, Math.round((readiness.entity_linked_result / Math.max(1, readiness.required_entity_linked)) * 100))}%` }}
+              />
+            </span>
+          </div>
+          <div>
+            State eligible — WAITING {readiness.state_coverage?.waiting_for_bite?.eligible ?? 0}
+            {" "}· BITE {readiness.state_coverage?.bite?.eligible ?? 0}
+            {" "}· RESULT {readiness.state_coverage?.catch_result?.eligible ?? 0}
+            {" "}(transition W/B: {((readiness.state_coverage?.waiting_for_bite?.transition ?? 0) + (readiness.state_coverage?.bite?.transition ?? 0))})
+          </div>
+          <div>Sessions: {readiness.sessions}/{readiness.required_sessions} · Entities: {readiness.entities} · Hard: {readiness.hard_examples}</div>
+          <div>Coverage: {readiness.class_coverage_ok ? "pass" : "FAIL"} · Validation: {readiness.validation_ok ? "pass" : "FAIL"}</div>
+          <div>
+            Leakage: exact-file {readiness.leakage_detail?.exact_duplicate_files?.length ?? 0}
+            {" "}· near-similarity {readiness.leakage_detail?.near_similarity_groups ?? 0}
+            {" "}(<span className={readiness.leakage_ok ? "text-ok" : "text-warn"}>{readiness.leakage_ok ? "pass" : "FAIL"}</span>)
+          </div>
+          {!readiness.ready && (
+            <div className="text-warn">Blocking requirement: {readiness.blocking_requirement}</div>
+          )}
           {readiness.reasons.slice(0, 4).map((r) => <div key={r} className="text-fg-mute">{r.slice(0, 180)}</div>)}
         </div>
       )}
@@ -385,7 +408,7 @@ function MlDatasetPanel() {
         <div className="text-[11px] font-mono text-fg-dim break-words">
           {report.dataset}: {report.images} images, {report.labeled} labeled / {report.unlabeled} unlabeled ·
           train {report.sessions_train} / val {report.sessions_validation} / test {report.sessions_test} sessions ·
-          leakage {report.leakage_sessions.length} · corrupt {report.corrupt_files.length} ·
+          leakage groups {report.leakage_sessions.length} (exact-file {(report.same_file_cross_split ?? []).length} · near-sim {report.near_similarity_groups ?? 0}) · corrupt {report.corrupt_files.length} ·
           invalid {report.invalid_entity_ids.length + report.invalid_bboxes.length} · orphans {report.orphan_annotations.length + report.orphan_images.length} ·
           dup groups {report.duplicate_groups} · near-dups {report.near_duplicate_pairs} ·
           class ratio {report.min_max_class_ratio.toFixed(2)} · <span className={report.ok ? "text-ok" : "text-bad"}>{report.ok ? "OK" : "FAIL"}</span>

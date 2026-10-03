@@ -15,8 +15,32 @@
 //! Split strategy (documented, enforced by the checker): sessions hash
 //! deterministically to train/validation/test (70/15/15). Near-identical
 //! consecutive frames share a session id, so they can NEVER leak across
-//! splits. Session ids are day-granular (`sess-YYYY-MM-DD`) — coarse on
-//! purpose: same-day frames always land in one split.
+//! splits. Each macro run mints one unique session id
+//! (`session_YYYY-MM-DD_HHMMSS_<hash>`) — finer than day-granular, strictly
+//! stronger isolation.
+//!
+//! DATA-FLOW + SEMANTICS NOTE (readiness architecture):
+//! ```text
+//! raw capture (bar/drop crops at state-machine moments)
+//!   → dataset row (MlAnnotation: image/session/timestamp/state/entity?…)
+//!   → state label (capture-time state machine: WaitingForBite/Bite/
+//!       CatchResult — deterministic per pipeline evidence)
+//!   → entity linkage (KB+OCR correlate at capture; RESULT rows ONLY —
+//!       episode WAITING/BITE frames never carry entities by design)
+//!   → hard classification (empty-OCR / unverdictable / rules≠KB /
+//!       perception-∅ — in production 100% of hard flags sit on RESULT
+//!       rows; they concern entity linkage, never the state label)
+//!   → split (per-run session hash 70/15/15 + manifest overrides)
+//!   → training eligibility (state_eligibility(): eligible / transition /
+//!       excluded per class — COMPUTED, never stored, never a relabel)
+//!   → model (external ONNX contract; no trainer in this repo)
+//! ```
+//! Where semantics diverge: `verified` counts entity-linked rows ONLY
+//! (effectively RESULT). It does NOT measure 3-state coverage — WAITING
+//! and BITE rows are training-usable (deterministic capture states, zero
+//! hard flags in production) yet invisible to that counter. Do NOT
+//! redefine `verified` to include them; report state coverage separately
+//! (state_eligibility) and keep the entity gate intact.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -176,6 +200,27 @@ pub struct DatasetManifest {
     pub split_overrides: HashMap<String, Split>,
 }
 
+/// Per-class training eligibility (COMPUTED from rows + files, never
+/// stored, never a relabel). Buckets are disjoint:
+/// `total == eligible + transition + excluded`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StateEligibility {
+    pub total: usize,
+    pub eligible: usize,
+    pub excluded: usize,
+    pub transition: usize,
+    pub sessions: usize,
+}
+
+/// A WAITING/BITE row counts as transition-adjacent when a different-state
+/// row from the same session was captured within this window: the grab
+/// happened at the state boundary, so the frame may straddle two states.
+/// Conservative relative to reel timescales (tens of seconds), generous
+/// relative to bite confirmation (tens of ms). Applies to WAITING/BITE
+/// only — never demotes entity-verified RESULT rows. Heuristic, documented,
+/// reporting-only.
+pub const TRANSITION_WINDOW_MS: u64 = 2000;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetReport {
     pub dataset: String,
@@ -187,6 +232,16 @@ pub struct DatasetReport {
     pub sessions_validation: usize,
     pub sessions_test: usize,
     pub leakage_sessions: Vec<String>,
+    /// Image ids (files) attributed to sessions landing in MORE THAN ONE
+    /// split: the same file — hence the same gameplay event — would be seen
+    /// in training and evaluation. TRUE event leakage (stronger claim than
+    /// near-similarity; empty in a healthy dataset thanks to dedup).
+    pub same_file_cross_split: Vec<String>,
+    /// Leakage clusters NOT explained by a shared file: near-duplicate
+    /// (hamming 1..=6) recurring UI/background crops across sessions.
+    /// Real visual similarity, irreducible for constant game UI — reported,
+    /// never silently dropped, never a reason to weaken the detector.
+    pub near_similarity_groups: usize,
     pub corrupt_files: Vec<String>,
     pub missing_labels: usize,
     pub invalid_entity_ids: Vec<String>,
@@ -590,6 +645,21 @@ impl MlDatasetStore {
         let leakage_sessions =
             find_cross_split_leakage(&hash_sessions, NEAR_DUP_HAMMING, |sess| split_for(sess));
 
+        // TRUE event leakage, distinguished from near-similarity: one file
+        // (hence one gameplay event) attributed to sessions in >1 split.
+        // Dedup normally prevents this (same bytes → same id); a non-empty
+        // list means re-imported rows genuinely straddle the split line.
+        let mut same_file_cross_split: Vec<String> = img_sessions
+            .iter()
+            .filter(|(_, sess)| {
+                sess.iter().map(|s| split_for(s)).collect::<HashSet<Split>>().len() > 1
+            })
+            .map(|(id, _)| id.to_string())
+            .collect();
+        same_file_cross_split.sort();
+        // Clusters without a shared file are recurring static UI, not events.
+        let near_similarity_groups = leakage_sessions.len();
+
         let (mut n_train, mut n_val, mut n_test) = (0usize, 0usize, 0usize);
         for sess in &sessions {
             match split_for(sess) {
@@ -611,6 +681,7 @@ impl MlDatasetStore {
         };
 
         let ok = leakage_sessions.is_empty()
+            && same_file_cross_split.is_empty()
             && corrupt_files.is_empty()
             && invalid_entity_ids.is_empty()
             && invalid_bboxes.is_empty()
@@ -626,6 +697,8 @@ impl MlDatasetStore {
             sessions_validation: n_val,
             sessions_test: n_test,
             leakage_sessions,
+            same_file_cross_split,
+            near_similarity_groups,
             corrupt_files,
             missing_labels,
             invalid_entity_ids,
@@ -637,6 +710,130 @@ impl MlDatasetStore {
             min_max_class_ratio,
             ok,
         }
+    }
+
+    /// Training eligibility per game-state class (COMPUTED, reporting-only).
+    ///
+    /// Rules (see module semantics note). Base validity means image file
+    /// present and session id non-empty. RESULT is eligible iff
+    /// entity-linked (the entity gate is untouched); every other RESULT row
+    /// is excluded (unverified), never promoted. WAITING/BITE is eligible
+    /// iff base-valid, state present and concrete (not missing/Unknown),
+    /// not transition-adjacent, and not hard-flagged for a
+    /// state-contradicting reason (today's hard vocabulary concerns
+    /// entity/OCR linkage only, so hard never excludes a state in practice
+    /// — implemented literally for future vocabularies). Transition
+    /// (WAITING/BITE only) means a different-state row from the same session
+    /// within ±TRANSITION_WINDOW_MS: own bucket, still visible and counted,
+    /// not silently relabeled, not IID ground truth. Decodability is NOT
+    /// rechecked here (validate() owns corrupt-file detection); pair this
+    /// with a clean validation report.
+    pub fn state_eligibility(&self) -> HashMap<String, StateEligibility> {
+        let rows = self.annotations();
+        let mut files: HashSet<String> = HashSet::new();
+        if let Ok(rd) = std::fs::read_dir(self.images_dir()) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.extension().is_some_and(|x| x == "png") {
+                    if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                        files.insert(stem.to_string());
+                    }
+                }
+            }
+        }
+        // Per-session time order for transition adjacency.
+        let mut by_session: HashMap<&str, Vec<usize>> = HashMap::new();
+        for (i, r) in rows.iter().enumerate() {
+            by_session.entry(r.session_id.as_str()).or_default().push(i);
+        }
+        for idxs in by_session.values_mut() {
+            idxs.sort_by_key(|&i| rows[i].timestamp_ms);
+        }
+        // Row -> transition flag (WAITING/BITE only).
+        let mut is_transition = vec![false; rows.len()];
+        for idxs in by_session.values() {
+            for (pos, &i) in idxs.iter().enumerate() {
+                let st = match rows[i].game_state {
+                    Some(GameStateLabel::WaitingForBite) | Some(GameStateLabel::Bite) => {
+                        rows[i].game_state
+                    }
+                    _ => continue,
+                };
+                let t = rows[i].timestamp_ms;
+                let mut boundary = false;
+                if pos > 0 {
+                    let j = idxs[pos - 1];
+                    if rows[j].game_state.is_some() && rows[j].game_state != st
+                        && t.saturating_sub(rows[j].timestamp_ms) <= TRANSITION_WINDOW_MS
+                    {
+                        boundary = true;
+                    }
+                }
+                if !boundary && pos + 1 < idxs.len() {
+                    let j = idxs[pos + 1];
+                    if rows[j].game_state.is_some() && rows[j].game_state != st
+                        && rows[j].timestamp_ms.saturating_sub(t) <= TRANSITION_WINDOW_MS
+                    {
+                        boundary = true;
+                    }
+                }
+                is_transition[i] = boundary;
+            }
+        }
+
+        let mut out: HashMap<String, StateEligibility> = HashMap::new();
+        for (i, r) in rows.iter().enumerate() {
+            let Some(g) = r.game_state else { continue };
+            let key = g.as_str().to_string();
+            let e = out.entry(key).or_default();
+            e.total += 1;
+            // Distinct sessions per class are counted below.
+            let base_valid = files.contains(r.image_id.as_str()) && !r.session_id.is_empty();
+            if !base_valid {
+                e.excluded += 1;
+                continue;
+            }
+            match g {
+                GameStateLabel::CatchResult => {
+                    if r.entity_id.is_some() {
+                        e.eligible += 1;
+                    } else {
+                        e.excluded += 1;
+                    }
+                }
+                GameStateLabel::WaitingForBite | GameStateLabel::Bite => {
+                    let state_invalidating_hard = r.hard_example
+                        && r.hard_reason
+                            .as_deref()
+                            .is_some_and(|s| s.to_lowercase().contains("state"));
+                    if state_invalidating_hard {
+                        e.excluded += 1;
+                    } else if is_transition[i] {
+                        e.transition += 1;
+                    } else {
+                        e.eligible += 1;
+                    }
+                }
+                _ => {
+                    // Other states (idle/loading/…) carry no training contract.
+                    e.excluded += 1;
+                }
+            }
+        }
+        // Distinct sessions per class (over total rows of the class).
+        let mut sess_per_class: HashMap<String, HashSet<&str>> = HashMap::new();
+        for r in &rows {
+            if let Some(g) = r.game_state {
+                sess_per_class
+                    .entry(g.as_str().to_string())
+                    .or_default()
+                    .insert(r.session_id.as_str());
+            }
+        }
+        for (k, s) in sess_per_class {
+            out.entry(k).or_default().sessions = s.len();
+        }
+        out
     }
 
     fn manifest(&self) -> Option<DatasetManifest> {
@@ -1031,5 +1228,171 @@ mod tests {
         let ida = ds.import_png(&a, "sess-1", MlTask::UiDetection, None, "", "drop", "t").unwrap();
         let idb = ds.import_png(&b, "sess-2", MlTask::UiDetection, None, "", "drop", "t").unwrap();
         assert_ne!(ida, idb);
+    }
+
+    fn elig_row(
+        image_id: &str,
+        session: &str,
+        ts: u64,
+        state: Option<GameStateLabel>,
+        entity: Option<&str>,
+        hard: bool,
+        reason: Option<&str>,
+    ) -> MlAnnotation {
+        MlAnnotation {
+            image_id: image_id.into(),
+            dataset_version: DATASET_VERSION,
+            session_id: session.into(),
+            task: MlTask::UiDetection,
+            ocr_text: String::new(),
+            region_name: "bar".into(),
+            ui_label: Some(UiLabel::FishingBar),
+            bbox: None,
+            game_state: state,
+            entity_id: entity.map(|s| s.into()),
+            annotator: "test".into(),
+            timestamp_ms: ts,
+            source: "test".into(),
+            confidence: None,
+            hard_example: hard,
+            hard_reason: reason.map(|s| s.into()),
+            corrections: vec![],
+        }
+    }
+
+    fn sess_with_split(want: Split) -> String {
+        for i in 0..2000 {
+            let cand = format!("sess-elig-{i:04}");
+            if MlDatasetStore::split_of(&cand) == want {
+                return cand;
+            }
+        }
+        panic!("no session hashing to {want:?}");
+    }
+
+    #[test]
+    fn eligibility_buckets_rows_correctly() {
+        // Controlled timestamps: r1 stable-W, r2/r3 transition pair (500ms),
+        // r4 linked-R, r5 unlinked hard-R, r6 ghost-W (missing file).
+        let (ds, _d) = store("elig");
+        let ids: Vec<String> = (0..5u8)
+            .map(|i| {
+                ds.import_png(
+                    &png_of([10 + i * 20, 20, 30], 32, 32),
+                    "sess-elig-A",
+                    MlTask::UiDetection,
+                    None,
+                    "",
+                    "bar",
+                    "t",
+                )
+                .unwrap()
+            })
+            .collect();
+        let rows = vec![
+            elig_row(&ids[0], "sess-elig-A", 100_000, Some(GameStateLabel::WaitingForBite), None, false, None),
+            elig_row(&ids[1], "sess-elig-A", 200_000, Some(GameStateLabel::Bite), None, false, None),
+            elig_row(&ids[2], "sess-elig-A", 200_500, Some(GameStateLabel::WaitingForBite), None, false, None),
+            elig_row(&ids[3], "sess-elig-B", 300_000, Some(GameStateLabel::CatchResult), Some("fruit:suna"), false, None),
+            elig_row(&ids[4], "sess-elig-B", 300_000, Some(GameStateLabel::CatchResult), None, true, Some("unverdictable catch")),
+            elig_row("ghost000000000000", "sess-elig-B", 300_000, Some(GameStateLabel::WaitingForBite), None, false, None),
+        ];
+        let body = rows
+            .iter()
+            .map(|r| serde_json::to_string(r).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(ds.labels_path(), body).unwrap();
+
+        let cov = ds.state_eligibility();
+        let w = &cov["waiting_for_bite"];
+        assert_eq!((w.total, w.eligible, w.transition, w.excluded, w.sessions), (3, 1, 1, 1, 2));
+        let b = &cov["bite"];
+        assert_eq!((b.total, b.eligible, b.transition, b.excluded, b.sessions), (1, 0, 1, 0, 1));
+        let r = &cov["catch_result"];
+        assert_eq!((r.total, r.eligible, r.transition, r.excluded, r.sessions), (2, 1, 0, 1, 1));
+        // Buckets are disjoint and exhaustive.
+        for e in [&w, &b, &r] {
+            assert_eq!(e.total, e.eligible + e.transition + e.excluded);
+        }
+        // WAITING/BITE rows never carry entities here: the entity gate
+        // cannot be satisfied by episode frames, by construction.
+        assert!(ds.annotations().iter().filter(|a| a.entity_id.is_some()).all(|a| {
+            a.game_state == Some(GameStateLabel::CatchResult)
+        }));
+    }
+
+    #[test]
+    fn same_file_cross_split_is_true_event_leak() {
+        // One file attributed to two sessions in different splits: the same
+        // gameplay event would be seen in training and evaluation. (Import
+        // dedup never creates this — same bytes fold without a new row — so
+        // the row is hand-attributed, exactly the hand-edit case the check
+        // guards.)
+        let (ds, _d) = store("eventleak");
+        let sess_a = sess_with_split(Split::Train);
+        let sess_b = sess_with_split(Split::Test);
+        let id = ds
+            .import_png(&png_of([10, 20, 30], 32, 32), &sess_a, MlTask::UiDetection, None, "", "drop", "t")
+            .unwrap();
+        ds.annotate(&id, Some(UiLabel::FishingBar), None, Some(GameStateLabel::WaitingForBite), None, "t", false, None)
+            .unwrap();
+        let row_b = elig_row(&id, &sess_b, 999_000, Some(GameStateLabel::WaitingForBite), None, false, None);
+        {
+            use std::io::Write;
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(ds.labels_path())
+                .unwrap();
+            writeln!(f, "{}", serde_json::to_string(&row_b).unwrap()).unwrap();
+        }
+        let rep = ds.validate(KnowledgeBase::bundled());
+        assert!(rep.same_file_cross_split.contains(&id));
+        assert!(!rep.leakage_sessions.is_empty());
+        assert!(!rep.ok);
+    }
+
+    /// 64x64 cell-controlled frame: all 8x8 cells mid-gray except the
+    /// listed cell indices painted black. Yields exact, predictable ahash
+    /// bits (one flipped bit per black cell vs the all-gray image).
+    fn cell_png(black_cells: &[usize]) -> Vec<u8> {
+        let mut rgba = vec![0u8; 64 * 64 * 4];
+        for (p, px) in rgba.chunks_exact_mut(4).enumerate() {
+            let x = p % 64;
+            let y = p / 64;
+            let cell = (y / 8) * 8 + (x / 8);
+            let v = if black_cells.contains(&cell) { 0 } else { 100 };
+            px[0] = v;
+            px[1] = v;
+            px[2] = v;
+            px[3] = 255;
+        }
+        Frame::new(64, 64, rgba).to_png_bytes().unwrap()
+    }
+
+    #[test]
+    fn near_dupe_without_shared_file_is_not_event_leak() {
+        // Two files exactly 1 hash-bit apart in different splits: visual
+        // near-similarity (recurring UI), NOT the same gameplay event.
+        let (ds, _d) = store("nearsim");
+        let sess_a = sess_with_split(Split::Train);
+        let sess_b = sess_with_split(Split::Test);
+        let a = cell_png(&[0]);
+        let b = cell_png(&[0, 1]);
+        assert_eq!(hamming(png_ahash(&a).unwrap(), png_ahash(&b).unwrap()), 1);
+        let ida = ds
+            .import_png(&a, &sess_a, MlTask::UiDetection, None, "", "bar", "t")
+            .unwrap();
+        let idb = ds
+            .import_png(&b, &sess_b, MlTask::UiDetection, None, "", "bar", "t")
+            .unwrap();
+        assert_ne!(ida, idb, "1-bit-apart frames must not fold");
+        let rep = ds.validate(KnowledgeBase::bundled());
+        assert!(!rep.leakage_sessions.is_empty(), "near-dupes must cluster");
+        assert!(
+            rep.same_file_cross_split.is_empty(),
+            "distinct files are similarity, not event leakage: {:?}",
+            rep.same_file_cross_split
+        );
     }
 }

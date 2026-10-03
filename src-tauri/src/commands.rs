@@ -906,29 +906,79 @@ pub const READINESS_MIN_VERIFIED: usize = 1000;
 pub const READINESS_MIN_SESSIONS: usize = 8;
 
 #[derive(Debug, Serialize)]
+pub struct LeakageDetail {
+    /// Same file attributed to sessions in >1 split: one gameplay event
+    /// visible to both training and evaluation. TRUE event leakage.
+    pub exact_duplicate_files: Vec<String>,
+    /// Leakage clusters without a shared file: recurring static UI /
+    /// background crops (visually similar, distinct events). Reported,
+    /// never silently dropped.
+    pub near_similarity_groups: usize,
+    pub total_groups: usize,
+}
+
+#[derive(Debug, Serialize)]
 pub struct TrainingReadiness {
     pub ready: bool,
     pub training: String,
+    /// Entity-linked row count (kept for backward compatibility). Semantics:
+    /// this specifically means entity-linked rows — in practice RESULT rows,
+    /// since episode WAITING/BITE frames never carry entities by design.
+    /// Prefer `entity_linked_result` for new consumers.
     pub verified: usize,
     pub required_verified: usize,
+    /// Honest name for the entity gate: entity-linked RESULT rows.
+    /// The 1000 requirement is unchanged and applies ONLY here — WAITING
+    /// and BITE coverage is reported separately, never folded in.
+    pub entity_linked_result: usize,
+    pub required_entity_linked: usize,
+    /// Per game-state class: total / eligible / excluded / transition /
+    /// sessions. Computed, reporting-only (see state_eligibility()).
+    pub state_coverage: std::collections::HashMap<String, crate::core::ml_dataset::StateEligibility>,
+    /// Minimum eligible rows across the three model classes
+    /// (waiting_for_bite, bite, catch_result). Informational: the hard
+    /// gates below are unchanged; low per-class eligibility is surfaced,
+    /// never hidden behind the RESULT count.
+    pub min_state_eligible: usize,
     pub sessions: usize,
     pub required_sessions: usize,
     pub test_sessions: usize,
     pub class_coverage_ok: bool,
     pub leakage_ok: bool,
     pub validation_ok: bool,
+    pub leakage_detail: LeakageDetail,
+    pub hard_examples: usize,
+    pub entities: usize,
+    /// The single most actionable unmet need (first failing gate).
+    pub blocking_requirement: String,
     pub reasons: Vec<String>,
 }
 
-#[tauri::command]
-pub fn ml_readiness(st: State<'_, AppState>) -> TrainingReadiness {
-    let store = ml_store(&st);
-    let report = store.validate(&st.store.effective_knowledge());
-    let rows = store.annotations();
+/// Pure readiness assessment over already-loaded rows + report +
+/// eligibility: unit-testable without AppState. Hard gates are UNCHANGED
+/// (1000 entity-linked RESULTs, 8 sessions, held-out test, coverage, zero
+/// leakage, clean validation) — this function only reports more honestly.
+pub fn assess_readiness(
+    rows: &[crate::core::ml_dataset::MlAnnotation],
+    report: &crate::core::ml_dataset::DatasetReport,
+    eligibility: &std::collections::HashMap<String, crate::core::ml_dataset::StateEligibility>,
+) -> TrainingReadiness {
     let verified = rows.iter().filter(|a| a.entity_id.is_some()).count();
+    // Entity-linked RESULT rows: the actual gate currency (episode frames
+    // never carry entities, so verified rows are RESULT by construction —
+    // count them explicitly rather than assuming it).
+    let entity_linked_result = rows
+        .iter()
+        .filter(|a| {
+            a.entity_id.is_some()
+                && a.game_state
+                    == Some(crate::core::ml_dataset::GameStateLabel::CatchResult)
+        })
+        .count();
     let mut sessions: std::collections::HashSet<&str> = std::collections::HashSet::new();
     let mut ui_classes: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut entities: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut hard_examples = 0usize;
     for a in rows.iter().filter(|a| a.entity_id.is_some()) {
         sessions.insert(a.session_id.as_str());
         if let Some(u) = a.ui_label {
@@ -938,16 +988,26 @@ pub fn ml_readiness(st: State<'_, AppState>) -> TrainingReadiness {
             entities.insert(e.as_str());
         }
     }
+    for a in rows.iter() {
+        if a.hard_example {
+            hard_examples += 1;
+        }
+    }
     // Session-split attribution for coverage (same rule the checker uses).
     let split_of = |sess: &str| crate::core::ml_dataset::MlDatasetStore::split_of(sess);
     let test_sessions = sessions.iter().filter(|s| split_of(s) == crate::core::ml_dataset::Split::Test).count();
     let class_coverage_ok = ui_classes.len() >= 4 || entities.len() >= 5;
-    let leakage_ok = report.leakage_sessions.is_empty();
+    let leakage_ok = report.leakage_sessions.is_empty() && report.same_file_cross_split.is_empty();
     let validation_ok = report.ok;
+    let min_state_eligible = ["waiting_for_bite", "bite", "catch_result"]
+        .iter()
+        .map(|k| eligibility.get(*k).map(|e| e.eligible).unwrap_or(0))
+        .min()
+        .unwrap_or(0);
 
     let mut reasons = Vec::new();
-    if verified < READINESS_MIN_VERIFIED {
-        reasons.push(format!("Insufficient verified real gameplay data: {verified} verified, {READINESS_MIN_VERIFIED} required."));
+    if entity_linked_result < READINESS_MIN_VERIFIED {
+        reasons.push(format!("Insufficient entity-linked RESULT data: {entity_linked_result} linked, {READINESS_MIN_VERIFIED} required."));
     }
     if sessions.len() < READINESS_MIN_SESSIONS {
         reasons.push(format!("Session coverage too thin: {} verified sessions, {READINESS_MIN_SESSIONS} required.", sessions.len()));
@@ -963,12 +1023,49 @@ pub fn ml_readiness(st: State<'_, AppState>) -> TrainingReadiness {
         ));
     }
     if !leakage_ok {
-        reasons.push(format!("Dataset leakage detected in {} hash group(s) — fix splits before training.", report.leakage_sessions.len()));
+        if !report.same_file_cross_split.is_empty() {
+            reasons.push(format!(
+                "TRUE event leakage: {} file(s) shared across splits ({}) — quarantine before training.",
+                report.same_file_cross_split.len(),
+                report.same_file_cross_split.iter().take(3).cloned().collect::<Vec<_>>().join(", ")
+            ));
+        }
+        if !report.leakage_sessions.is_empty() {
+            reasons.push(format!("Dataset near-similarity across splits in {} hash group(s) — recurring static UI; splits cannot isolate constant backgrounds.", report.leakage_sessions.len()));
+        }
     }
-    if !validation_ok {
+    // validation_ok is false when ANY check fails, including leakage (which
+    // has its own reason above): only add the generic repair reason when a
+    // non-leakage defect exists, so the report separates causes honestly.
+    let has_row_defects = !report.corrupt_files.is_empty()
+        || !report.invalid_entity_ids.is_empty()
+        || !report.invalid_bboxes.is_empty()
+        || !report.orphan_annotations.is_empty();
+    if !validation_ok && has_row_defects {
         reasons.push("Dataset validation FAILs (corrupt/invalid/orphan rows) — run Validate dataset and repair.".to_string());
     }
     let ready = reasons.is_empty();
+    // First failing gate, phrased as the actionable need.
+    let blocking_requirement = if ready {
+        "none — all gates pass".to_string()
+    } else if entity_linked_result < READINESS_MIN_VERIFIED {
+        format!(
+            "{} more entity-linked RESULTs ({}/{})",
+            READINESS_MIN_VERIFIED - entity_linked_result,
+            entity_linked_result,
+            READINESS_MIN_VERIFIED
+        )
+    } else if sessions.len() < READINESS_MIN_SESSIONS {
+        format!("{} more verified sessions ({}/{})", READINESS_MIN_SESSIONS - sessions.len(), sessions.len(), READINESS_MIN_SESSIONS)
+    } else if test_sessions == 0 {
+        "held-out test sessions with verified rows".to_string()
+    } else if !class_coverage_ok {
+        "broader class/entity coverage (4 ui classes or 5 entities)".to_string()
+    } else if !leakage_ok {
+        "quarantined leakage groups (exact files and near-similar UI)".to_string()
+    } else {
+        "clean dataset validation (corrupt/invalid/orphan rows)".to_string()
+    };
     TrainingReadiness {
         ready,
         training: if ready {
@@ -978,14 +1075,35 @@ pub fn ml_readiness(st: State<'_, AppState>) -> TrainingReadiness {
         },
         verified,
         required_verified: READINESS_MIN_VERIFIED,
+        entity_linked_result,
+        required_entity_linked: READINESS_MIN_VERIFIED,
+        state_coverage: eligibility.clone(),
+        min_state_eligible,
         sessions: sessions.len(),
         required_sessions: READINESS_MIN_SESSIONS,
         test_sessions,
         class_coverage_ok,
         leakage_ok,
         validation_ok,
+        leakage_detail: LeakageDetail {
+            exact_duplicate_files: report.same_file_cross_split.clone(),
+            near_similarity_groups: report.leakage_sessions.len(),
+            total_groups: report.leakage_sessions.len(),
+        },
+        hard_examples,
+        entities: entities.len(),
+        blocking_requirement,
         reasons,
     }
+}
+
+#[tauri::command]
+pub fn ml_readiness(st: State<'_, AppState>) -> TrainingReadiness {
+    let store = ml_store(&st);
+    let report = store.validate(&st.store.effective_knowledge());
+    let rows = store.annotations();
+    let eligibility = store.state_eligibility();
+    assess_readiness(&rows, &report, &eligibility)
 }
 
 #[derive(Debug, Serialize)]
@@ -1682,4 +1800,207 @@ pub async fn laptop_fan_set(mode: String) -> Result<crate::laptop_fan::FanStatus
 #[tauri::command]
 pub async fn laptop_fan_set_auto_turbo(enabled: bool) -> Result<crate::laptop_fan::FanStatus, String> {
     blocking(move || Ok(crate::laptop_fan::set_auto_turbo(enabled))).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::ml_dataset::{
+        GameStateLabel, MlAnnotation, MlDatasetStore, MlTask, Split, UiLabel, DATASET_VERSION,
+    };
+
+    fn tmp_store(tag: &str) -> (MlDatasetStore, std::path::PathBuf) {
+        static C: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = C.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("gpo-ready-{tag}-{n}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        (MlDatasetStore::new(dir.clone()), dir)
+    }
+
+    fn row(
+        image_id: &str,
+        session: &str,
+        ts: u64,
+        state: Option<GameStateLabel>,
+        entity: Option<&str>,
+    ) -> MlAnnotation {
+        MlAnnotation {
+            image_id: image_id.into(),
+            dataset_version: DATASET_VERSION,
+            session_id: session.into(),
+            task: MlTask::UiDetection,
+            ocr_text: String::new(),
+            region_name: "bar".into(),
+            ui_label: Some(UiLabel::FishingBar),
+            bbox: None,
+            game_state: state,
+            entity_id: entity.map(|s| s.into()),
+            annotator: "test".into(),
+            timestamp_ms: ts,
+            source: "test".into(),
+            confidence: None,
+            hard_example: false,
+            hard_reason: None,
+            corrections: vec![],
+        }
+    }
+
+    fn write_rows(ds: &MlDatasetStore, rows: &[MlAnnotation]) {
+        ds.init().unwrap();
+        let body = rows
+            .iter()
+            .map(|r| serde_json::to_string(r).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(ds.root().join("labels.jsonl"), body).unwrap();
+    }
+
+    fn assess(ds: &MlDatasetStore) -> TrainingReadiness {
+        let kb = crate::core::knowledge::KnowledgeBase::bundled();
+        let report = ds.validate(kb);
+        let rows = ds.annotations();
+        let elig = ds.state_eligibility();
+        assess_readiness(&rows, &report, &elig)
+    }
+
+    #[test]
+    fn episode_frames_never_count_as_entity_linked() {
+        // WAITING/BITE carry no entities by design: the entity gate must
+        // measure RESULT linkage only, never episode volume.
+        let (ds, _d) = tmp_store("sem");
+        write_rows(
+            &ds,
+            &[
+                row("aabbccddeeff0011", "s1", 1000, Some(GameStateLabel::WaitingForBite), None),
+                row("aabbccddeeff0022", "s1", 2000, Some(GameStateLabel::Bite), None),
+                row(
+                    "aabbccddeeff0033",
+                    "s2",
+                    3000,
+                    Some(GameStateLabel::CatchResult),
+                    Some("fruit:suna"),
+                ),
+            ],
+        );
+        let r = assess(&ds);
+        assert_eq!(r.entity_linked_result, 1);
+        assert_eq!(r.verified, 1);
+        assert_eq!(r.state_coverage["waiting_for_bite"].total, 1);
+        assert_eq!(r.state_coverage["bite"].total, 1);
+        assert_eq!(r.state_coverage["catch_result"].total, 1);
+        assert!(!r.ready, "3 rows must stay BLOCKED");
+        assert!(r.blocking_requirement.contains("entity-linked RESULT"));
+        // Honest terminology is part of the wire contract.
+        let v = serde_json::to_value(&r).unwrap();
+        for key in ["entity_linked_result", "state_coverage", "blocking_requirement", "leakage_detail"] {
+            assert!(v.get(key).is_some(), "readiness must expose {key}");
+        }
+    }
+
+    #[test]
+    fn thousand_orphans_stay_blocked() {
+        // 1000 entity-linked rows with NO images: the count gate passes but
+        // validation (orphans) must still block. Count never bypasses gates.
+        let (ds, _d) = tmp_store("orphan");
+        let mut sess: Vec<String> = Vec::new();
+        for i in 0..60 {
+            let c = format!("sess-bulk-{i:03}");
+            match MlDatasetStore::split_of(&c) {
+                Split::Test if !sess.iter().any(|s| MlDatasetStore::split_of(s) == Split::Test) => {
+                    sess.push(c)
+                }
+                Split::Train if sess.len() < 11 => sess.push(c),
+                _ => {}
+            }
+            if sess.len() >= 12 {
+                break;
+            }
+        }
+        assert!(sess.len() >= 10, "need session spread, got {}", sess.len());
+        let ents = ["fruit:suna", "fish:shark", "fish:squid", "fish:gold", "fruit:yami", "fish:snap"];
+        let rows: Vec<MlAnnotation> = (0..1000)
+            .map(|i| {
+                let mut r = row(
+                    &format!("ghost{i:016x}"),
+                    &sess[i % sess.len()],
+                    1000 + i as u64,
+                    Some(GameStateLabel::CatchResult),
+                    Some(ents[i % ents.len()]),
+                );
+                r.image_id = format!("ghost{i:016x}");
+                r
+            })
+            .collect();
+        write_rows(&ds, &rows);
+        let r = assess(&ds);
+        assert_eq!(r.entity_linked_result, 1000);
+        assert!(!r.ready, "orphan rows must block despite the count");
+        assert!(
+            r.reasons.iter().any(|s| s.contains("FAIL") || s.contains("orphan") || s.contains("validation")),
+            "validation must be the blocker, got: {:?}",
+            r.reasons
+        );
+        assert!(r.blocking_requirement.contains("validation"));
+    }
+
+    #[test]
+    fn full_gate_passes_with_clean_volume() {
+        // 1000 real PNGs across 10 sessions with 6 entities and all splits:
+        // proves READY is reachable (guards against gate-rot making READY
+        // impossible). Deterministic pseudo-random pixels.
+        let (ds, _d) = tmp_store("ready");
+        let mut train = Vec::new();
+        let mut rest = Vec::new();
+        for i in 0..60 {
+            let c = format!("sess-full-{i:03}");
+            match MlDatasetStore::split_of(&c) {
+                Split::Train => train.push(c),
+                _ => rest.push(c),
+            }
+            if train.len() >= 8 && rest.iter().any(|s| MlDatasetStore::split_of(s) == Split::Test) && rest.len() >= 2 {
+                break;
+            }
+        }
+        assert!(train.len() >= 8 && rest.len() >= 2);
+        let mut sess = train;
+        sess.extend(rest.into_iter().take(2));
+        assert_eq!(sess.len(), 10);
+        let kb = crate::core::knowledge::KnowledgeBase::bundled();
+        let kb_ids: Vec<String> = kb.entities().iter().take(6).map(|e| e.id.clone()).collect();
+        assert!(kb_ids.len() >= 6, "bundled KB must offer 6 entities");
+        for i in 0..1000 {
+            let mut rgba = vec![0u8; 16 * 16 * 4];
+            let mut x = (i as u32).wrapping_mul(2654435761).wrapping_add(0x9E3779B9);
+            for px in rgba.chunks_exact_mut(4) {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                px[0] = (x & 0xFF) as u8;
+                px[1] = ((x >> 8) & 0xFF) as u8;
+                px[2] = ((x >> 16) & 0xFF) as u8;
+                px[3] = 255;
+            }
+            let f = crate::core::types::Frame::new(16, 16, rgba);
+            let png = f.to_png_bytes().unwrap();
+            let id = ds
+                .import_png(&png, &sess[i % sess.len()], MlTask::UiDetection, None, "", "bar", "t")
+                .unwrap();
+            ds.annotate(
+                &id,
+                Some(UiLabel::FishingBar),
+                None,
+                Some(GameStateLabel::CatchResult),
+                Some(kb_ids[i % kb_ids.len()].clone()),
+                "test",
+                false,
+                None,
+            )
+            .unwrap();
+        }
+        let r = assess(&ds);
+        assert_eq!(r.entity_linked_result, 1000);
+        assert!(r.ready, "clean volume must pass, got: {:?}", r.reasons);
+        assert_eq!(r.training, "READY FOR TRAINING");
+        assert_eq!(r.blocking_requirement, "none — all gates pass");
+    }
 }

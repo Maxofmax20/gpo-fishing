@@ -334,6 +334,8 @@ export type DatasetReport = {
   sessions_validation: number;
   sessions_test: number;
   leakage_sessions: string[];
+  same_file_cross_split: string[];
+  near_similarity_groups: number;
   corrupt_files: string[];
   missing_labels: number;
   invalid_entity_ids: string[];
@@ -378,17 +380,39 @@ export type MlSessionState = {
   total_samples: number;
 };
 
+export type StateEligibility = {
+  total: number;
+  eligible: number;
+  excluded: number;
+  transition: number;
+  sessions: number;
+};
+
+export type LeakageDetail = {
+  exact_duplicate_files: string[];
+  near_similarity_groups: number;
+  total_groups: number;
+};
+
 export type TrainingReadiness = {
   ready: boolean;
   training: string;
   verified: number;
   required_verified: number;
+  entity_linked_result: number;
+  required_entity_linked: number;
+  state_coverage: Record<string, StateEligibility>;
+  min_state_eligible: number;
   sessions: number;
   required_sessions: number;
   test_sessions: number;
   class_coverage_ok: boolean;
   leakage_ok: boolean;
   validation_ok: boolean;
+  leakage_detail: LeakageDetail;
+  hard_examples: number;
+  entities: number;
+  blocking_requirement: string;
   reasons: string[];
 };
 
