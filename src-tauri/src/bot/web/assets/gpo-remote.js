@@ -123,32 +123,72 @@
     img.addEventListener('pointercancel', () => { dragStart = null; });
   }
 
+  function closeMenus() {
+    [['fps-toggle', 'fps-menu'], ['quality-toggle', 'quality-menu']].forEach(([t, m]) => {
+      const menu = document.getElementById(m);
+      if (menu) { menu.classList.add('hidden'); menu.classList.remove('flex'); }
+    });
+  }
+
+  function paintStreamLabels() {
+    gpoSetText('fps-label', streamFps);
+    gpoSetText('stream-fps-label', streamFps + ' FPS');
+    gpoSetText('quality-label', streamScale + 'p');
+    const pill = document.getElementById('header-live-pill');
+    if (pill) pill.textContent = 'LIVE ' + streamFps + ' FPS • ' + streamScale + 'p';
+    document.querySelectorAll('#fps-menu [data-fps]').forEach((b) => {
+      const on = parseInt(b.getAttribute('data-fps'), 10) === streamFps;
+      b.classList.toggle('bg-primary-container', on);
+      b.classList.toggle('text-on-primary', on);
+      b.classList.toggle('text-on-surface-variant', !on);
+    });
+    document.querySelectorAll('#quality-menu [data-scale]').forEach((b) => {
+      const on = parseInt(b.getAttribute('data-scale'), 10) === streamScale;
+      b.classList.toggle('bg-primary-container', on);
+      b.classList.toggle('text-on-primary', on);
+      b.classList.toggle('text-on-surface-variant', !on);
+    });
+  }
+
   function bindStreamControls() {
-    // FPS cycle 5 -> 8 -> 10 (backend DoD cap).
-    const anchor = document.getElementById('stream-fps-anchor');
-    const fpsBtn = anchor ? anchor.closest('button') : null;
-    const fpsSteps = [5, 8, 10];
-    if (fpsBtn) {
-      fpsBtn.addEventListener('click', () => {
-        streamFps = fpsSteps[(fpsSteps.indexOf(streamFps) + 1) % fpsSteps.length];
-        const spans = fpsBtn.querySelectorAll('span');
-        spans.forEach((s) => { if (/^\d+$/.test(s.textContent.trim())) s.textContent = streamFps; });
-        reloadStream();
+    // Explicit dropdowns: pick FPS (backend DoD cap 10) and scale directly.
+    const fpsToggle = document.getElementById('fps-toggle');
+    const fpsMenu = document.getElementById('fps-menu');
+    if (fpsToggle && fpsMenu) {
+      fpsToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = fpsMenu.classList.contains('hidden');
+        closeMenus();
+        if (open) { fpsMenu.classList.remove('hidden'); fpsMenu.classList.add('flex'); }
       });
-    }
-    // Quality cycle 480 -> 720 -> 1080.
-    const qSteps = [480, 720, 1080];
-    document.querySelectorAll('button').forEach((b) => {
-      const t = b.textContent || '';
-      if (/720p/.test(t) && !b.dataset.gpoBound) {
-        b.dataset.gpoBound = '1';
+      fpsMenu.querySelectorAll('[data-fps]').forEach((b) => {
         b.addEventListener('click', () => {
-          streamScale = qSteps[(qSteps.indexOf(streamScale) + 1) % qSteps.length];
-          b.innerHTML = b.innerHTML.replace(/\d{3}p/, streamScale + 'p');
+          streamFps = parseInt(b.getAttribute('data-fps'), 10) || 8;
+          paintStreamLabels();
+          closeMenus();
           reloadStream();
         });
-      }
-    });
+      });
+    }
+    const qToggle = document.getElementById('quality-toggle');
+    const qMenu = document.getElementById('quality-menu');
+    if (qToggle && qMenu) {
+      qToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = qMenu.classList.contains('hidden');
+        closeMenus();
+        if (open) { qMenu.classList.remove('hidden'); qMenu.classList.add('flex'); }
+      });
+      qMenu.querySelectorAll('[data-scale]').forEach((b) => {
+        b.addEventListener('click', () => {
+          streamScale = parseInt(b.getAttribute('data-scale'), 10) || 720;
+          paintStreamLabels();
+          closeMenus();
+          reloadStream();
+        });
+      });
+    }
+    document.addEventListener('click', closeMenus);
     const tapBadge = document.getElementById('tap-mode-label');
     if (tapBadge && tapBadge.parentElement) {
       tapBadge.parentElement.style.cursor = 'pointer';
@@ -254,6 +294,7 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     reloadStream();
+    paintStreamLabels();
     bindPads();
     bindStreamTouch();
     bindStreamControls();

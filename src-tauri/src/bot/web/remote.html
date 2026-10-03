@@ -42,7 +42,7 @@
     animation: none !important;
   }
 }
-</style></head><body class="bg-surface font-body-md text-body-md text-on-surface flex flex-col min-h-screen"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/85 backdrop-blur-xl shadow-[0_1px_12px_rgba(0,0,0,0.4)] border-b border-outline-variant/20"><div class="h-20 px-space-md flex flex-col justify-center gap-space-xs"><div class="flex items-center justify-between"><div class="flex items-center gap-space-xs"><div class="w-2 h-2 rounded-full bg-tertiary animate-pulse shadow-[0_0_8px_#4edea3]"></div><span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant truncate" data-gpo="hostline">…</span></div><div class="flex items-center gap-space-sm"><div class="px-space-xs py-0.5 rounded-full bg-surface-container-high flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span><span class="font-label-sm text-label-sm text-tertiary uppercase">LIVE 60 FPS • 720p</span></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div><div class="flex items-center justify-between"><div class="flex items-center gap-space-sm"><span class="font-headline-md text-headline-md tracking-tight uppercase text-primary">GPO CYBERDECK</span><span class="font-label-md text-label-md text-on-surface-variant uppercase">/ Remote Deck</span></div><div class="flex items-center gap-space-xs">
+</style></head><body class="bg-surface font-body-md text-body-md text-on-surface flex flex-col min-h-screen"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/85 backdrop-blur-xl shadow-[0_1px_12px_rgba(0,0,0,0.4)] border-b border-outline-variant/20"><div class="h-20 px-space-md flex flex-col justify-center gap-space-xs"><div class="flex items-center justify-between"><div class="flex items-center gap-space-xs"><div class="w-2 h-2 rounded-full bg-tertiary animate-pulse shadow-[0_0_8px_#4edea3]"></div><span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant truncate" data-gpo="hostline">…</span></div><div class="flex items-center gap-space-sm"><div class="px-space-xs py-0.5 rounded-full bg-surface-container-high flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span><span class="font-label-sm text-label-sm text-tertiary uppercase" id="header-live-pill">LIVE 60 FPS • 720p</span></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div><div class="flex items-center justify-between"><div class="flex items-center gap-space-sm"><span class="font-headline-md text-headline-md tracking-tight uppercase text-primary">GPO CYBERDECK</span><span class="font-label-md text-label-md text-on-surface-variant uppercase">/ Remote Deck</span></div><div class="flex items-center gap-space-xs">
 <!-- Audio Synthesizer Toggle Button -->
 <button aria-label="Toggle Sound Effects" class="h-8 px-space-sm min-w-[36px] rounded bg-surface-container hover:bg-surface-bright active:scale-95 text-primary border border-primary/30 flex items-center justify-center gap-1 transition-all shadow-[0_0_8px_rgba(76,215,246,0.2)]" id="sound-toggle-btn" title="SFX Engine Toggle" type="button">
 <span class="material-symbols-outlined text-[16px]" id="sound-toggle-icon">volume_up</span>
@@ -55,19 +55,15 @@
 <div class="relative w-full aspect-video bg-surface-container-lowest flex items-center justify-center overflow-hidden">
 <!-- Simulated High-End Game Stream Feed Placeholder -->
 <img id="gpo-stream" class="absolute inset-0 w-full h-full object-cover opacity-85" alt="Roblox live stream" src=""/>
-<!-- Scanline & HUD Grid Layer Overlay -->
-<div class="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-surface-dim/40 to-surface-dim/90"></div>
-<div class="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(76,215,246,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(76,215,246,0.03)_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-<!-- Dynamic Animated Radar / Scanline Sweep Beam -->
-<div class="absolute inset-x-0 h-10 -top-10 bg-gradient-to-b from-transparent via-primary/15 to-transparent pointer-events-none animate-scanline"></div>
+<!-- Clean viewport: raw game pixels only, no overlay edits -->
 <!-- Top Overlay Telemetry Chips & Stream Quality Switcher -->
 <div class="absolute top-2 left-2 right-2 flex items-center justify-between pointer-events-auto"><!-- Left: Telemetry Indicators -->
 <div class="flex items-center gap-1.5 flex-nowrap overflow-x-auto">
 <!-- Live Status Badge -->
 <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface-container-lowest/80 backdrop-blur-md shadow-sm border border-outline-variant/30 shrink-0">
-<span class="w-2 h-2 rounded-full bg-tertiary animate-pulse shadow-[0_0_8px_#4edea3]"></span>
+<span class="w-2 h-2 rounded-full bg-tertiary shadow-[0_0_8px_#4edea3]"></span>
 <span class="font-label-sm text-label-sm font-bold text-tertiary uppercase tracking-wider">LIVE</span>
-<span class="font-label-sm text-label-sm text-on-surface-variant font-medium">60 FPS</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-medium" id="stream-fps-label">8 FPS</span>
 </div>
 <!-- Latency Badge -->
 <div class="flex items-center px-2 py-1 rounded-full bg-surface-container-lowest/80 backdrop-blur-md shadow-sm border border-outline-variant/30 shrink-0">
@@ -76,18 +72,32 @@
 </div>
 <!-- Right: Stream Quality & Quick Action Controls -->
 <div class="flex items-center gap-1 shrink-0">
-<!-- FPS Selector Dropdown -->
-<button class="h-6 px-2 rounded-full bg-surface-container-high/90 hover:bg-surface-bright active:scale-95 text-on-surface flex items-center gap-0.5 border border-outline-variant/30 transition-all sfx-click" type="button">
-<span class="material-symbols-outlined text-primary text-[12px]">bolt</span><span id="stream-fps-anchor" style="display:none"></span>
-<span class="font-label-sm text-label-sm font-medium">60</span>
+<!-- FPS Selector Dropdown (backend cap: 10fps) -->
+<div class="relative shrink-0">
+<button id="fps-toggle" class="h-6 px-2 rounded-full bg-surface-container-high/90 hover:bg-surface-bright active:scale-95 text-on-surface flex items-center gap-0.5 border border-outline-variant/30 transition-all sfx-click" type="button">
+<span class="material-symbols-outlined text-primary text-[12px]">bolt</span>
+<span class="font-label-sm text-label-sm font-medium" id="fps-label">8</span>
 <span class="material-symbols-outlined text-[12px] text-on-surface-variant">arrow_drop_down</span>
 </button>
+<div id="fps-menu" class="hidden absolute right-0 top-7 z-30 rounded-lg bg-surface-container-highest border border-outline-variant/30 shadow-xl p-1 flex-col gap-0.5 min-w-[56px]">
+<button data-fps="5" class="w-full px-2 py-1.5 rounded text-center font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" type="button">5</button>
+<button data-fps="8" class="w-full px-2 py-1.5 rounded text-center font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" type="button">8</button>
+<button data-fps="10" class="w-full px-2 py-1.5 rounded text-center font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" type="button">10</button>
+</div>
+</div>
 <!-- Quality Selector Dropdown -->
-<button class="h-6 px-2 rounded-full bg-surface-container-high/90 hover:bg-surface-bright active:scale-95 text-on-surface flex items-center gap-0.5 border border-outline-variant/30 transition-all sfx-click" type="button">
+<div class="relative shrink-0">
+<button id="quality-toggle" class="h-6 px-2 rounded-full bg-surface-container-high/90 hover:bg-surface-bright active:scale-95 text-on-surface flex items-center gap-0.5 border border-outline-variant/30 transition-all sfx-click" type="button">
 <span class="material-symbols-outlined text-secondary text-[12px]">tv</span>
-<span class="font-label-sm text-label-sm font-medium">720p</span>
+<span class="font-label-sm text-label-sm font-medium" id="quality-label">720p</span>
 <span class="material-symbols-outlined text-[12px] text-on-surface-variant">arrow_drop_down</span>
 </button>
+<div id="quality-menu" class="hidden absolute right-0 top-7 z-30 rounded-lg bg-surface-container-highest border border-outline-variant/30 shadow-xl p-1 flex-col gap-0.5 min-w-[72px]">
+<button data-scale="480" class="w-full px-2 py-1.5 rounded text-center font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" type="button">480p</button>
+<button data-scale="720" class="w-full px-2 py-1.5 rounded text-center font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" type="button">720p</button>
+<button data-scale="1080" class="w-full px-2 py-1.5 rounded text-center font-label-sm text-label-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-all" type="button">1080p</button>
+</div>
+</div>
 <!-- Touch Input Mode Badge -->
 <div class="h-6 px-2 rounded-full bg-primary-container/20 text-primary flex items-center gap-1 border border-primary/30 shadow-[0_0_8px_rgba(6,182,212,0.25)]">
 <span class="material-symbols-outlined text-[13px]">touch_app</span>
@@ -102,14 +112,9 @@
 <span class="material-symbols-outlined text-[14px]">fullscreen</span>
 </button>
 </div></div>
-<!-- Center Touch Crosshair Aim Marker -->
-<div class="relative w-8 h-8 rounded-full pointer-events-none flex items-center justify-center opacity-60">
-<div class="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_8px_#4cd7f6]"></div>
-<div class="absolute w-6 h-6 rounded-full bg-primary/10"></div>
-</div>
 <!-- In-Stream Floating Event Toast -->
 <div class="absolute bottom-2 left-2 flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-dim/90 backdrop-blur-md border border-outline-variant/30 shadow-md max-w-[80%]">
-<span class="material-symbols-outlined text-tertiary text-[14px] shrink-0 animate-pulse">radio_button_checked</span>
+<span class="material-symbols-outlined text-tertiary text-[14px] shrink-0">radio_button_checked</span>
 <span class="font-label-sm text-label-sm text-on-surface truncate tracking-tight" id="stream-event-text">…</span>
 </div>
 </div>
