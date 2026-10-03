@@ -1542,9 +1542,20 @@ mod tests {
 
     #[test]
     fn vendored_fonts_cover_css_without_remote_refs() {
-        for css in [ASSET_FONTS_CSS] {
-            assert!(!css.contains("https://"), "fonts.css must not fetch remote URLs");
-        }
+        assert!(
+            !ASSET_FONTS_CSS.contains("https://"),
+            "fonts.css must not fetch remote URLs"
+        );
+        // Icon ligatures: without the symbol class + `liga`, icon names
+        // render as literal text instead of glyphs (regression: blank icons).
+        assert!(
+            ASSET_FONTS_CSS.contains(".material-symbols-outlined"),
+            "fonts.css must define the Material Symbols class"
+        );
+        assert!(
+            ASSET_FONTS_CSS.contains("'liga'"),
+            "fonts.css must enable the liga feature for icon ligatures"
+        );
         let mut missing = Vec::new();
         let mut count = 0;
         for cap in ASSET_FONTS_CSS.split("url(").skip(1) {
@@ -1603,7 +1614,6 @@ mod tests {
 
     #[test]
     fn asset_and_page_routes_serve() {
-        use std::io::Write;
         use std::net::TcpListener;
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
