@@ -12,7 +12,27 @@
   }
 
   function streamUrl() {
-    return withToken('/api/stream?fps=' + streamFps + '&scale=' + streamScale + '&q=70') + '&t=' + Date.now();
+    return withToken('/api/stream?fps=' + streamFps + '&scale=' + streamScale + '&q=80') + '&t=' + Date.now();
+  }
+
+  // "No game" overlay: the MJPEG endpoint replays the last frame when
+  // Roblox is gone, so stale pixels must never impersonate a live stream.
+  function paintStreamOverlay(live) {
+    const img = document.getElementById('gpo-stream');
+    if (!img || !img.parentElement) return;
+    let ov = document.getElementById('gpo-stream-overlay');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'gpo-stream-overlay';
+      ov.className = 'absolute inset-0 z-10 flex-col items-center justify-center gap-2 bg-surface-dim/85 backdrop-blur-sm';
+      ov.style.display = 'none';
+      ov.innerHTML =
+        '<span class="material-symbols-outlined text-warn text-[28px]">videocam_off</span>' +
+        '<span class="font-label-md text-label-md text-on-surface uppercase font-bold tracking-wider">Roblox not detected</span>' +
+        '<span class="font-body-sm text-body-sm text-on-surface-variant px-6 text-center">Start Roblox on the PC — showing last captured frame.</span>';
+      img.parentElement.appendChild(ov);
+    }
+    ov.style.display = live ? 'none' : 'flex';
   }
 
   function reloadStream() {
@@ -207,8 +227,10 @@
     });
   }
 
-  function paint(d) {
+  function paint(d, ms) {
     lastStatus = d;
+    paintStreamOverlay(!!d.stream_live);
+    if (ms != null) gpoSetText('stream-rtt', ms + 'ms');
     const running = d.is_running && !d.paused;
     paintMacroBtn(running);
     gpoPaintPwr(document.getElementById('pwr-btn'), running);
@@ -225,8 +247,8 @@
 
   async function refresh() {
     try {
-      const { data } = await gpoGet('/api/status');
-      paint(data);
+      const { data, ms } = await gpoGet('/api/status');
+      paint(data, ms);
     } catch (e) { /* offline: keep last frame */ }
   }
 

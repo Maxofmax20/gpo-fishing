@@ -568,6 +568,10 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "legendary_only": s.webhook.legendary_only,
         "send_drop_screenshot": s.webhook.send_drop_screenshot,
         "recent_catches": recent_catches(&bot.ctx().store),
+        // True only while a Roblox window rect is resolvable. The MJPEG
+        // endpoint replays the last frame when the game is gone, so the UI
+        // must be able to tell live pixels from a stale replay.
+        "stream_live": bot.ctx().roblox_rect().is_some(),
     });
 
     let body = payload.to_string();
@@ -1352,6 +1356,10 @@ fn send_bytes(stream: &mut TcpStream, content_type: &str, bytes: &[u8]) {
 }
 
 fn send_html_page(stream: &mut TcpStream, html: &str) {
+    // Cache-bust compiled-in assets per release: browsers cache /assets/*
+    // for a day, so the version query makes every update apply instantly
+    // without a hard refresh (stale CSS/JS after auto-update otherwise).
+    let html = html.replace("%%V%%", env!("CARGO_PKG_VERSION"));
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         html.len(),
@@ -1656,5 +1664,22 @@ mod tests {
         assert!(page.starts_with("HTTP/1.1 200 OK"));
         assert!(page.contains("text/html"));
         assert!(page.contains("loot-telemetry-list"), "stats page must carry the loot feed");
+
+        // Cache-busting: %%V%% markers must resolve to the release version
+        // so browsers never run stale CSS/JS after an auto-update.
+        let listener2 = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port2 = listener2.local_addr().unwrap().port();
+        let server_thread = std::thread::spawn(move || {
+            let (mut server, _) = listener2.accept().unwrap();
+            send_html_page(&mut server, "x%%V%%x");
+        });
+        let mut client2 = std::net::TcpStream::connect(("127.0.0.1", port2)).unwrap();
+        let resp2 = read_response(&mut client2);
+        server_thread.join().unwrap();
+        assert!(!resp2.contains("%%V%%"), "version marker must be replaced");
+        assert!(
+            resp2.contains(concat!("x", env!("CARGO_PKG_VERSION"), "x")),
+            "page must carry the release version"
+        );
     }
 }
