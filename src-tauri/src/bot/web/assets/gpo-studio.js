@@ -237,6 +237,14 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     bind();
+    // Prime the inspector neutral: static mock rows must never present,
+    // even before the first macro-list fetch lands.
+    const inspBody = document.getElementById('inspector-body');
+    if (inspBody) inspBody.innerHTML = '';
+    gpoSetText('step-count-badge', '0 STEPS');
+    const inspToggle = document.getElementById('inspector-toggle');
+    const inspTotal = inspToggle ? inspToggle.querySelector('.font-mono') : null;
+    if (inspTotal) inspTotal.textContent = 'TOTAL: —';
     gpoPaintHostline();
     refreshMacros();
     refreshMeta();

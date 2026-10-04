@@ -189,6 +189,23 @@
   }
 
   function bind() {
+    // Strip every legacy mock handler on real controls FIRST: the mock
+    // toggles local-only state (fake PWR/turbo/pills) and toasts fake
+    // confirmations ("COMMITTED") that would fight the backend truth.
+    // Page-local SFX engine + toast helper are untouched (different nodes).
+    ['pwr-btn', 'turbo-toggle', 'sound-btn', 'push-btn', 'save-code-btn',
+     'save-url-btn', 'alerts-header-btn'].forEach((id) => gpoRebind(document.getElementById(id)));
+    document.querySelectorAll('.toggle-card[data-filter], [data-fanmode], [data-rgb], .timer-item').forEach((el) => {
+      gpoRebind(el);
+    });
+    // Timer tap: report the LIVE remaining time (no fake "tracking started").
+    document.querySelectorAll('.timer-item').forEach((item) => {
+      item.addEventListener('click', () => {
+        const badge = item.querySelector('.timer-badge');
+        const name = item.getAttribute('data-target') || 'World boss';
+        toast(name + ': ' + (badge ? badge.textContent : 'syncing…'));
+      });
+    });
     document.querySelectorAll('[data-fanmode]').forEach((b) => {
       b.addEventListener('click', async () => {
         try {

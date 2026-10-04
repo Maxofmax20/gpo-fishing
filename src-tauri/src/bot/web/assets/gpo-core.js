@@ -1,7 +1,13 @@
 'use strict';
 /* GPO Cyberdeck shared core: auth plumbing, API helpers, nav, status polling.
-   No external requests. Token travels only in ?token= (needed for <img>). */
-const GPO_TOKEN = new URLSearchParams(location.search).get('token') || '';
+   No external requests. Token travels only in ?token= (needed for <img>).
+   Pure gesture helpers below are shared with node:test (guarded browser-only
+   top-level code at the bottom). */
+const GPO_TOKEN = (typeof location !== 'undefined')
+  ? new URLSearchParams(location.search).get('token') || ''
+  : '';
+// Touch-gesture decisions live in gpo-gesture.js (loaded before this file);
+// remote.js calls those globals with inline fallbacks if absent.
 
 function withToken(url) {
   return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(GPO_TOKEN);
@@ -73,14 +79,32 @@ function gpoNoteOnline(ok) {
   if (!_gpoOnlineEl) {
     const d = document.createElement('div');
     d.id = 'gpo-offline-banner';
-    d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:76px;z-index:9998;padding:6px 14px;border-radius:9999px;background:rgba(147,0,10,.92);border:1px solid #ffb4ab;color:#ffdad6;font:700 11px "Space Mono",monospace;letter-spacing:.08em;display:none;max-width:88vw;text-align:center;';
+    d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:76px;z-index:9998;padding:6px 14px;border-radius:9999px;background:rgba(147,0,10,.92);border:1px solid #ffb4ab;color:#ffdad6;font:700 11px "Space Mono",monospace;letter-spacing:.08em;display:none;max-width:88vw;text-align:center;pointer-events:none;';
     d.textContent = 'OFFLINE — BACKEND UNREACHABLE, RETRYING…';
     document.body.appendChild(d);
     _gpoOnlineEl = d;
   }
   _gpoOnlineEl.style.display = _gpoOnline ? 'none' : 'block';
+  try {
+    if (typeof gpoPaintLivePills === 'function') gpoPaintLivePills(_gpoOnline);
+  } catch (e) { /* decorative only */ }
 }
 function gpoIsOnline() { return _gpoOnline; }
+
+// Header LIVE pills (stats/studio/craft/system): static markup claims
+// "LIVE 60 FPS" unconditionally. Repaint from real poll health instead —
+// never 60 FPS (backend caps at 10), never LIVE when unreachable.
+function gpoPaintLivePills(ok) {
+  document.querySelectorAll('[data-live-pill]').forEach((pill) => {
+    const spans = pill.querySelectorAll('span');
+    for (const s of spans) {
+      if (/LIVE|OFFLINE/.test(s.textContent)) {
+        s.textContent = ok ? '● LIVE' : '○ OFFLINE';
+      }
+    }
+    pill.classList.toggle('opacity-50', !ok);
+  });
+}
 
 // Fallback toast when a page has no toast element of its own.
 let _gpoToastEl = null;
@@ -154,4 +178,6 @@ async function gpoPaintHostline() {
   } catch (e) { return null; }
 }
 
-document.addEventListener('DOMContentLoaded', gpoWireNav);
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', gpoWireNav);
+}

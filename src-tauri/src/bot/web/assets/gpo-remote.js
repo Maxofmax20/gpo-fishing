@@ -86,6 +86,9 @@
     };
     const tapShiftLock = async (el) => {
       try {
+        // Page-local click sound (the mock sprint handler this replaces
+        // also thudded; keep the tactile feedback, never its fake state).
+        try { if (typeof audio !== 'undefined' && audio) audio.playThud(); } catch (e) {}
         await gpoPost('/api/key', { key: 'shift', tap: true });
         shiftLock = !shiftLock;
         paintShift();
@@ -93,7 +96,9 @@
       } catch (e) { toast('Shift Lock failed: ' + e.message); }
     };
     ['center-run-btn', 'sprint-toggle'].forEach((id) => {
-      const el = document.getElementById(id);
+      // Rebind (clone-replace) to strip the legacy mock sprint handler that
+      // toggles its own local state on the same buttons.
+      let el = gpoRebind(document.getElementById(id));
       if (el) {
         el.setAttribute('data-shiftlock', '1');
         el.setAttribute('aria-label', 'Toggle Shift Lock');
@@ -121,49 +126,116 @@
     });
   }
 
+  // Live View pointer state machine (per-pointer, multitouch-safe).
+  // TAP mode: DOWN → (no move past threshold) → UP = left click.
+  //           DOWN → move past threshold → UP = right-drag camera flick.
+  // PAD mode: every touch is an explicit camera drag (right down/move/up).
+  // Desktop right button: classic RMB camera hold (down/move/up).
+  // Cancel/leave NEVER taps. Nothing but the Shift Lock buttons touches Shift.
+  // Gesture decisions (threshold, tap-vs-drag, cancel) live in gpo-core.js
+  // and are covered by node:test — this handler only feeds them positions.
   function bindStreamTouch() {
     const img = document.getElementById('gpo-stream');
     if (!img) return;
     img.style.touchAction = 'none';
-    let dragStart = null;
+    img.style.userSelect = 'none';
+    img.addEventListener('contextmenu', (e) => e.preventDefault());
+    const tracks = new Map(); // pointerId -> {sx,sy,x,y,moved,button,captured}
     const rel = (e) => {
       const r = img.getBoundingClientRect();
       return {
-        x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)),
-        y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)),
+        x: Math.min(1, Math.max(0, (e.clientX - r.left) / (r.width || 1))),
+        y: Math.min(1, Math.max(0, (e.clientY - r.top) / (r.height || 1))),
       };
+    };
+    const pxDelta = (a, b) => {
+      const r = img.getBoundingClientRect();
+      return [(a.x - b.x) * (r.width || 1), (a.y - b.y) * (r.height || 1)];
     };
     img.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       const p = rel(e);
-      if (tapMode) {
-        gpoPost('/api/click', { rx: p.x, ry: p.y }).catch(() => {});
-      } else {
-        dragStart = p;
+      let captured = false;
+      try { img.setPointerCapture(e.pointerId); captured = true; } catch (err) {}
+      const track = (typeof gpoNewTrack === 'function') ? gpoNewTrack() : { moved: false };
+      track.sx = p.x; track.sy = p.y; track.x = p.x; track.y = p.y;
+      track.button = e.button || 0; track.captured = captured;
+      tracks.set(e.pointerId, track);
+      // PAD mode: explicit camera drag starts immediately (right button).
+      // Desktop RMB hold: classic camera hold starts immediately.
+      if (!tapMode || (e.button || 0) === 2) {
+        gpoPost('/api/mouse', { action: 'down', button: 'right', rx: p.x, ry: p.y }).catch(() => {});
       }
     });
     img.addEventListener('pointermove', (e) => {
-      if (!tapMode && dragStart && e.buttons) {
-        const p = rel(e);
-        gpoPost('/api/mouse', { rx: p.x, ry: p.y }).catch(() => {});
+      const t = tracks.get(e.pointerId);
+      if (!t) return;
+      const p = rel(e);
+      t.x = p.x;
+      t.y = p.y;
+      const [dx, dy] = pxDelta({ x: t.sx, y: t.sy }, p);
+      if (typeof gpoNoteMove === 'function') gpoNoteMove(t, dx, dy);
+      // Live camera motion only for explicit drags (PAD mode / RMB hold).
+      if ((!tapMode || t.button === 2) && (e.buttons || e.pointerType !== 'mouse')) {
+        gpoPost('/api/mouse', { action: 'move', button: 'right', rx: p.x, ry: p.y }).catch(() => {});
       }
     });
-    const endDrag = (e) => {
-      if (!tapMode && dragStart) {
-        const p = rel(e);
-        gpoPost('/api/drag', { x1: dragStart.x, y1: dragStart.y, x2: p.x, y2: p.y, ms: 250 }).catch(() => {});
-        dragStart = null;
+    const finish = (e, cancelled) => {
+      const t = tracks.get(e.pointerId);
+      tracks.delete(e.pointerId);
+      if (!t) return;
+      const p = rel(e);
+      if (!tapMode || t.button === 2) {
+        // Explicit drag ends: release the held right button.
+        gpoPost('/api/mouse', { action: 'up', button: 'right', rx: p.x, ry: p.y }).catch(() => {});
+        return;
       }
+      const decision = (typeof gpoTapUpAction === 'function')
+        ? gpoTapUpAction(t, cancelled)
+        : (cancelled ? 'none' : (t.moved ? 'drag' : 'tap'));
+      if (decision === 'tap') {
+        // Clean, unmoved release only. Cancel/leave never taps.
+        gpoPost('/api/click', { rx: p.x, ry: p.y }).catch(() => {});
+        return;
+      }
+      if (decision !== 'drag') return;
+      // TAP-mode flick past the threshold: camera nudge, never a click.
+      gpoPost('/api/drag', { x1: t.sx, y1: t.sy, x2: p.x, y2: p.y, ms: 220, button: 'right' }).catch(() => {});
     };
-    img.addEventListener('pointerup', endDrag);
-    img.addEventListener('pointercancel', () => { dragStart = null; });
+    img.addEventListener('pointerup', (e) => finish(e, false));
+    img.addEventListener('pointercancel', (e) => finish(e, true));
+    img.addEventListener('pointerleave', (e) => {
+      const t = tracks.get(e.pointerId);
+      if (t && !t.captured) finish(e, true);
+    });
   }
 
+  // The overlay bar scrolls horizontally on narrow screens; an open menu
+  // must escape that clipping while open, then restore scrolling on close.
+  function barOf(menu) {
+    let el = menu;
+    while (el && el !== document.body) {
+      el = el.parentElement;
+      if (el && el.classList && el.classList.contains('absolute')) return el;
+    }
+    return null;
+  }
   function closeMenus() {
     [['fps-toggle', 'fps-menu'], ['quality-toggle', 'quality-menu']].forEach(([t, m]) => {
       const menu = document.getElementById(m);
-      if (menu) { menu.classList.add('hidden'); menu.classList.remove('flex'); }
+      if (menu) {
+        menu.classList.add('hidden');
+        menu.classList.remove('flex');
+        const bar = barOf(menu);
+        if (bar) bar.style.overflow = '';
+      }
     });
+  }
+  function openMenu(menu) {
+    menu.classList.remove('hidden');
+    menu.classList.add('flex');
+    const bar = barOf(menu);
+    if (bar) bar.style.overflow = 'visible';
   }
 
   function paintStreamLabels() {
@@ -195,7 +267,7 @@
         e.stopPropagation();
         const open = fpsMenu.classList.contains('hidden');
         closeMenus();
-        if (open) { fpsMenu.classList.remove('hidden'); fpsMenu.classList.add('flex'); }
+        if (open) openMenu(fpsMenu);
       });
       fpsMenu.querySelectorAll('[data-fps]').forEach((b) => {
         b.addEventListener('click', () => {
@@ -213,7 +285,7 @@
         e.stopPropagation();
         const open = qMenu.classList.contains('hidden');
         closeMenus();
-        if (open) { qMenu.classList.remove('hidden'); qMenu.classList.add('flex'); }
+        if (open) openMenu(qMenu);
       });
       qMenu.querySelectorAll('[data-scale]').forEach((b) => {
         b.addEventListener('click', () => {
@@ -231,7 +303,7 @@
       tapBadge.parentElement.addEventListener('click', () => {
         tapMode = !tapMode;
         tapBadge.textContent = tapMode ? 'TAP' : 'PAD';
-        toast(tapMode ? 'Tap-to-click mode' : 'Drag-camera mode');
+        toast(tapMode ? 'TAP: tap clicks, flick moves camera' : 'PAD: every touch drags camera');
       });
     }
     const refresh = document.querySelector('[aria-label="Refresh stream"]');
@@ -270,8 +342,13 @@
   function bindActions() {
     const macroBtn = gpoRebind(document.getElementById('main-macro-btn'));
     if (macroBtn) macroBtn.addEventListener('click', toggleMacro);
+    // The legacy mock toasted "Remote Deck Connected" on every PWR press
+    // without doing anything: strip it, keep the real toggle (+ click sound).
     const pwr = gpoRebind(document.getElementById('pwr-btn'));
-    if (pwr) pwr.addEventListener('click', toggleMacro);
+    if (pwr) pwr.addEventListener('click', () => {
+      try { if (typeof audio !== 'undefined' && audio) audio.playClick(1200); } catch (e) {}
+      toggleMacro();
+    });
     const alerts = gpoRebind(document.getElementById('alerts-btn'));
     if (alerts) alerts.addEventListener('click', async () => {
       try { const j = await gpoAction('toggle_spawn'); toast(j.message); await refresh(); }
@@ -393,11 +470,20 @@
     gpoPaintHostline().then((d) => { if (d) paint(d); });
     refresh();
     setInterval(() => { if (!document.hidden) refresh(); }, 2500);
-    const release = () => { gpoPost('/api/key', { key: 'release_all' }).catch(() => {}); };
+    const release = () => {
+      gpoPost('/api/key', { key: 'release_all' }).catch(() => {});
+      gpoPost('/api/mouse', { action: 'release_all' }).catch(() => {});
+    };
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) release();
       else reloadStream();
     });
     window.addEventListener('pagehide', release);
+    // Orientation change reshuffles layout mid-touch: drop any holds so a
+    // rotated-away finger can never strand an input. Never touches Shift.
+    window.addEventListener('orientationchange', () => {
+      release();
+      setTimeout(reloadStream, 300);
+    });
   });
 })();

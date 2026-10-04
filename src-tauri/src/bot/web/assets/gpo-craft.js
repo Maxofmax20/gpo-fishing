@@ -157,6 +157,13 @@
   }
 
   function bind() {
+    // Strip the legacy mock station (it simulated progress/intervals and
+    // fake log entries locally). Real wiring below repaints everything
+    // from backend state; the menu open/close UX is preserved.
+    gpoRebind(document.getElementById('recipe-trigger'));
+    document.querySelectorAll('#recipe-menu [data-tier]').forEach((b) => gpoRebind(b));
+    ['qty-minus-10', 'qty-minus', 'qty-plus', 'qty-plus-10', 'batch-slider',
+     'clear-logs-btn'].forEach((id) => gpoRebind(document.getElementById(id)));
     const trig = document.getElementById('recipe-trigger');
     const menu = document.getElementById('recipe-menu');
     if (trig && menu) trig.addEventListener('click', () => {

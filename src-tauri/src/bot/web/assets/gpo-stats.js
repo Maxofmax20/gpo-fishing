@@ -71,6 +71,11 @@
   }
 
   function bind() {
+    // Strip legacy mock handlers that mutate displayed numbers locally
+    // (fake +1 fish, fake pity steps, fake PWR classes). Page SFX engine
+    // stays (different nodes); a chime plays on real refreshes below.
+    ['pwr-btn', 'reset-stats-btn', 'fish-caught-card', 'devil-fruits-card',
+     'pity-gauge-card'].forEach((id) => gpoRebind(document.getElementById(id)));
     const pwr = document.getElementById('pwr-btn');
     if (pwr) pwr.addEventListener('click', async () => {
       try {
@@ -86,8 +91,12 @@
       try { const j = await gpoAction('toggle_spawn'); toast(j.message); await refresh(); }
       catch (e) { toast('Failed: ' + e.message); }
     });
+    const chime = () => {
+      try { if (typeof soundEngine !== 'undefined' && soundEngine) soundEngine.playSyncChime(); } catch (e) {}
+    };
     const sync = document.getElementById('reset-stats-btn');
     if (sync) sync.addEventListener('click', async () => {
+      chime();
       const icon = document.getElementById('sync-icon');
       if (icon) icon.style.transform = 'rotate(360deg)';
       setTimeout(() => { if (icon) icon.style.transform = ''; }, 400);
@@ -95,9 +104,15 @@
       toast('Telemetry synced');
     });
     const loop = document.getElementById('loop-stat-chip');
-    if (loop) loop.addEventListener('click', refresh);
+    if (loop) loop.addEventListener('click', () => { chime(); refresh(); });
     const profile = document.getElementById('profile-btn');
     if (profile) profile.addEventListener('click', () => { location.href = '/system?token=' + encodeURIComponent(GPO_TOKEN); });
+    // Data cards: tap re-syncs from the backend (real numbers replace the
+    // mock +1/+2 increments the rebound handlers used to fake).
+    ['fish-caught-card', 'devil-fruits-card', 'pity-gauge-card'].forEach((id) => {
+      const card = document.getElementById(id);
+      if (card) card.addEventListener('click', async () => { chime(); await refresh(); });
+    });
   }
 
   // Prime every live-bound value to neutral BEFORE the first poll so no
