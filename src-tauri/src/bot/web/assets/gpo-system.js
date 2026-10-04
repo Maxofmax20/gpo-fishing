@@ -152,6 +152,8 @@
   async function refresh() {
     try {
       const { data } = await gpoGet('/api/status');
+      gpoNoteOnline(true);
+      gpoSetText('bridge-sync-text', 'BRIDGE SYNCED');
       if (data.fan) paintFan(data.fan);
       if (data.keyboard_light) paintLight(data.keyboard_light);
       paintSlider('volume-fill', 'volume-badge', sliderContainer(1), data.volume != null ? data.volume : 0);
@@ -180,7 +182,10 @@
         ms.value = cur;
       }
       gpoPaintPwr(document.getElementById('pwr-btn'), data.is_running && !data.paused);
-    } catch (e) { /* offline */ }
+    } catch (e) {
+      gpoNoteOnline(false);
+      gpoSetText('bridge-sync-text', 'BRIDGE OFFLINE');
+    }
   }
 
   function bind() {
@@ -295,10 +300,54 @@
     });
   }
 
+  // MODEL & DATASET module: fetched on load + manual refresh only — the
+  // full validation pass is expensive on large datasets, never polled.
+  async function refreshMl() {
+    const box = document.getElementById('ml-body');
+    if (!box) return;
+    box.innerHTML = '<div class="font-body-sm text-body-sm text-on-surface-variant">Reading dataset state…</div>';
+    try {
+      const { data } = await gpoGet('/api/ml/status');
+      const d = data.dataset || {};
+      const r = data.readiness || {};
+      const m = data.model || {};
+      const cov = d.state_coverage || {};
+      const w = cov.waiting_for_bite || {};
+      const b = cov.bite || {};
+      const cr = cov.catch_result || {};
+      const pct = Math.min(100, Math.round(((r.entity_linked_result || 0) / Math.max(1, 1000)) * 100));
+      const modelLine = m.trained
+        ? 'Model ' + gpoEsc(m.name || '?') + ' v' + gpoEsc(m.version || '?') + ' loaded (' + gpoEsc(m.runtime || '?') + ').'
+        : 'MODEL: NOT TRAINED' + (m.reason ? ' — ' + gpoEsc(m.reason) : '') + '. OCR + heuristics active.';
+      box.innerHTML =
+        '<div class="flex items-center justify-between">' +
+          '<span class="font-label-md text-label-md uppercase text-on-surface">Vision Model</span>' +
+          '<span class="font-label-sm text-label-sm uppercase font-bold ' + (m.trained ? 'text-tertiary' : 'text-[#f59e0b]') + '">' + (m.trained ? 'LOADED' : 'NOT TRAINED') + '</span></div>' +
+        '<div class="font-body-sm text-body-sm text-on-surface-variant">' + modelLine + '</div>' +
+        '<div class="flex items-center justify-between mt-1">' +
+          '<span class="font-label-md text-label-md uppercase text-on-surface">Dataset gpo-vision/v1</span>' +
+          '<span class="font-label-sm text-label-sm uppercase font-bold ' + (r.ready ? 'text-tertiary' : 'text-[#f59e0b]') + '">' + gpoEsc(r.status || (r.ready ? 'READY' : 'BLOCKED')) + '</span></div>' +
+        '<div class="w-full h-2 rounded-full bg-surface-container-highest overflow-hidden">' +
+          '<div class="h-full bg-gradient-to-r from-primary-container to-primary rounded-full" style="width:' + pct + '%"></div></div>' +
+        '<div class="font-mono text-[11px] text-on-surface-variant">Entity-linked RESULTs: ' + (r.entity_linked_result || 0) + ' / 1000' +
+          ' · WAITING eligible ' + (w.eligible || 0) + ' · BITE eligible ' + (b.eligible || 0) + ' · RESULT eligible ' + (cr.eligible || 0) + '</div>' +
+        '<div class="font-mono text-[11px] text-on-surface-variant">Sessions ' + (d.sessions || 0) + ' · Entities ' + (d.entities || 0) + ' · Hard ' + (d.hard || 0) +
+          ' · exact-dup ' + ((d.leakage && d.leakage.exact_duplicate_files ? d.leakage.exact_duplicate_files.length : 0)) +
+          ' · near-sim ' + ((d.leakage && d.leakage.near_similarity_groups != null) ? d.leakage.near_similarity_groups : '—') + '</div>' +
+        '<div class="font-mono text-[11px] text-[#f59e0b]">' + gpoEsc(r.ready ? 'All gates pass.' : ('Blocking: ' + (r.blocking_requirement || 'unknown'))) + '</div>';
+    } catch (e) {
+      box.innerHTML = '<div class="font-body-sm text-body-sm text-error">Model state unavailable: ' + gpoEsc(e.message) + '</div>';
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     bind();
+    document.querySelectorAll('.timer-badge').forEach((el) => { el.textContent = '—'; });
     gpoPaintHostline();
     refresh();
+    refreshMl();
+    const mrb = document.getElementById('ml-refresh-btn');
+    if (mrb) mrb.addEventListener('click', refreshMl);
     setInterval(() => { if (!document.hidden) refresh(); }, 3000);
     setInterval(tickTimers, 1000);
   });

@@ -27,7 +27,7 @@
       ov.className = 'absolute inset-0 z-10 flex-col items-center justify-center gap-2 bg-surface-dim/85 backdrop-blur-sm';
       ov.style.display = 'none';
       ov.innerHTML =
-        '<span class="material-symbols-outlined text-warn text-[28px]">videocam_off</span>' +
+        '<span class="material-symbols-outlined text-[#f59e0b] text-[28px]">videocam_off</span>' +
         '<span class="font-label-md text-label-md text-on-surface uppercase font-bold tracking-wider">Roblox not detected</span>' +
         '<span class="font-body-sm text-body-sm text-on-surface-variant px-6 text-center">Start Roblox on the PC — showing last captured frame.</span>';
       img.parentElement.appendChild(ov);
@@ -37,7 +37,18 @@
 
   function reloadStream() {
     const img = document.getElementById('gpo-stream');
-    if (img) img.src = streamUrl();
+    if (!img) return;
+    img.style.display = '';
+    img.src = streamUrl();
+  }
+
+  function hideBrokenStream() {
+    const img = document.getElementById('gpo-stream');
+    if (!img) return;
+    // Empty or failed source: hide the broken-image glyph (the
+    // not-detected overlay covers the area with a real explanation).
+    if (!img.getAttribute('src')) img.style.display = 'none';
+    img.addEventListener('error', () => { img.style.display = 'none'; });
   }
 
   async function sendKey(key, down, tap) {
@@ -62,20 +73,45 @@
     holdButton(byLabel('Walk Left'), 'a');
     holdButton(byLabel('Walk Right'), 'd');
     holdButton(byLabel('Walk Down'), 's');
-    const sprint = document.getElementById('center-run-btn') || document.getElementById('sprint-toggle');
-    holdButton(sprint, 'shift');
-    // Camera pad: short look-drags from the stream center.
+    // Shift Lock is a TOGGLE in Roblox (tap Shift), not a hold-to-sprint:
+    // both deck buttons flip it and show the resulting state.
+    let shiftLock = false;
+    const paintShift = () => {
+      document.querySelectorAll('[data-shiftlock]').forEach((b) => {
+        b.classList.toggle('border-tertiary', shiftLock);
+        b.classList.toggle('text-tertiary', shiftLock);
+      });
+      const t = document.getElementById('shift-toggle-label');
+      if (t) t.textContent = shiftLock ? 'LOCKED' : 'SHIFT LOCK';
+    };
+    const tapShiftLock = async (el) => {
+      try {
+        await gpoPost('/api/key', { key: 'shift', tap: true });
+        shiftLock = !shiftLock;
+        paintShift();
+        toast(shiftLock ? 'Shift Lock ON' : 'Shift Lock OFF');
+      } catch (e) { toast('Shift Lock failed: ' + e.message); }
+    };
+    ['center-run-btn', 'sprint-toggle'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.setAttribute('data-shiftlock', '1');
+        el.setAttribute('aria-label', 'Toggle Shift Lock');
+        el.addEventListener('click', () => tapShiftLock(el));
+      }
+    });
+    // Camera pad: short RIGHT-button look-drags from the stream center.
+    // Roblox rotates the camera on right-drag; left-drag does nothing here,
+    // which is why the old left-drag binding appeared dead.
     const cam = { 'Camera Up': [0, -1], 'Camera Left': [-1, 0], 'Camera Right': [1, 0], 'Camera Down': [0, 1] };
     Object.keys(cam).forEach((label) => {
       const el = byLabel(label);
       if (!el) return;
       let timer = 0;
       const step = () => {
-        const img = document.getElementById('gpo-stream');
-        const r = img ? img.getBoundingClientRect() : { width: 640, height: 360 };
         const cx = 0.5, cy = 0.5;
         const dx = cam[label][0] * 0.18, dy = cam[label][1] * 0.18;
-        gpoPost('/api/drag', { x1: cx - dx, y1: cy - dy, x2: cx + dx, y2: cy + dy, ms: 220 }).catch(() => {});
+        gpoPost('/api/drag', { x1: cx - dx, y1: cy - dy, x2: cx + dx, y2: cy + dy, ms: 220, button: 'right' }).catch(() => {});
       };
       el.addEventListener('pointerdown', (e) => { e.preventDefault(); step(); timer = setInterval(step, 450); });
       const stop = () => { clearInterval(timer); };
@@ -256,6 +292,59 @@
     if (cast) cast.addEventListener('click', async () => {
       try { await gpoAction('recast'); } catch (e) { toast('Recast failed: ' + e.message); }
     });
+    // Fruit slot: taps hotbar key 2 (matches the deck's [2] FRUIT mapping).
+    const skill = document.getElementById('sfx-skill-btn');
+    if (skill) skill.addEventListener('click', async () => {
+      try {
+        await gpoPost('/api/key', { key: '2', tap: true });
+        toast('Sent key 2 (fruit slot)');
+      } catch (e) { toast('Slot key failed: ' + e.message); }
+    });
+    // Emote button: the game exposes no emote API to drive — say so instead
+    // of pretending the tap did something.
+    const emote = document.querySelector('[aria-label="Emote Wave"]');
+    if (emote) emote.addEventListener('click', () => {
+      toast('Emotes have no game API — nothing sent');
+    });
+    // Type-on-PC + clipboard dialog (chat bubble button).
+    const typeDlg = document.getElementById('type-dialog');
+    const typeBox = document.getElementById('type-text');
+    const openType = document.getElementById('type-open-btn');
+    if (openType && typeDlg) openType.addEventListener('click', () => {
+      typeDlg.style.display = 'grid';
+      if (typeBox) typeBox.focus();
+    });
+    const closeType = document.getElementById('type-close-btn');
+    if (closeType && typeDlg) closeType.addEventListener('click', () => { typeDlg.style.display = 'none'; });
+    if (typeDlg) typeDlg.addEventListener('click', (e) => { if (e.target === typeDlg) typeDlg.style.display = 'none'; });
+    const typeSend = document.getElementById('type-send-btn');
+    if (typeSend && typeBox) typeSend.addEventListener('click', async () => {
+      const text = typeBox.value || '';
+      if (!text.trim()) { toast('Type something first'); return; }
+      try {
+        const j = await gpoPost('/api/type', { text });
+        toast('Typed ' + j.typed + ' chars on PC');
+        typeBox.value = '';
+      } catch (e) { toast('Typing failed: ' + e.message); }
+    });
+    const clipGet = document.getElementById('clip-get-btn');
+    if (clipGet && typeBox) clipGet.addEventListener('click', async () => {
+      try {
+        const j = await gpoGet('/api/clipboard/get');
+        // gpoGet returns {data, ms}; endpoint body is {ok, text}.
+        const body = j.data || {};
+        if (body.ok === false) throw new Error(body.message || 'unavailable');
+        typeBox.value = body.text || '';
+        toast(body.text ? 'PC clipboard pulled' : 'PC clipboard has no text');
+      } catch (e) { toast('Clipboard read failed: ' + e.message); }
+    });
+    const clipSet = document.getElementById('clip-set-btn');
+    if (clipSet && typeBox) clipSet.addEventListener('click', async () => {
+      try {
+        const j = await gpoPost('/api/clipboard/set', { text: typeBox.value || '' });
+        toast('PC clipboard set (' + j.chars + ' chars)');
+      } catch (e) { toast('Clipboard write failed: ' + e.message); }
+    });
     const unmute = gpoRebind(document.getElementById('unmute-btn'));
     if (unmute) unmute.addEventListener('click', async () => {
       try {
@@ -293,8 +382,10 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    hideBrokenStream();
     reloadStream();
     paintStreamLabels();
+    gpoSetText('stream-event-text', 'Awaiting spawn data…');
     bindPads();
     bindStreamTouch();
     bindStreamControls();

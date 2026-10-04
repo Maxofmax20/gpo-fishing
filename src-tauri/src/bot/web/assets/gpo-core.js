@@ -9,21 +9,44 @@ function withToken(url) {
 
 async function gpoGet(path) {
   const t0 = performance.now();
-  const r = await fetch(withToken(path), { cache: 'no-store' });
-  if (!r.ok) throw new Error('HTTP ' + r.status);
-  const data = await r.json();
+  let r;
+  try {
+    r = await fetch(withToken(path), { cache: 'no-store' });
+  } catch (e) {
+    if (typeof gpoNoteOnline === 'function') gpoNoteOnline(false);
+    throw new Error('backend unreachable');
+  }
+  if (!r.ok) {
+    if (typeof gpoNoteOnline === 'function') gpoNoteOnline(false);
+    throw new Error('HTTP ' + r.status);
+  }
+  let data;
+  try {
+    data = await r.json();
+  } catch (e) {
+    if (typeof gpoNoteOnline === 'function') gpoNoteOnline(false);
+    throw new Error('bad backend response');
+  }
+  if (typeof gpoNoteOnline === 'function') gpoNoteOnline(true);
   return { data, ms: Math.max(1, Math.round(performance.now() - t0)) };
 }
 
 async function gpoPost(path, body) {
-  const r = await fetch(withToken(path), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body || {}),
-  });
+  let r;
+  try {
+    r = await fetch(withToken(path), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+  } catch (e) {
+    if (typeof gpoNoteOnline === 'function') gpoNoteOnline(false);
+    throw new Error('backend unreachable');
+  }
   let j = {};
   try { j = await r.json(); } catch (e) { /* non-JSON */ }
   if (!r.ok || j.ok === false) throw new Error((j && j.message) || ('HTTP ' + r.status));
+  if (typeof gpoNoteOnline === 'function') gpoNoteOnline(true);
   return j;
 }
 
@@ -39,6 +62,25 @@ function gpoWireNav() {
     a.href = a.getAttribute('data-nav') + '?token=' + encodeURIComponent(GPO_TOKEN);
   });
 }
+
+// Global backend-liveness banner. Polls only ever report success while the
+// backend answers; on failure the last-known UI would otherwise freeze on
+// stale "RECORDING/ACTIVE" states. This banner makes disconnects obvious.
+let _gpoOnlineEl = null;
+let _gpoOnline = true;
+function gpoNoteOnline(ok) {
+  _gpoOnline = !!ok;
+  if (!_gpoOnlineEl) {
+    const d = document.createElement('div');
+    d.id = 'gpo-offline-banner';
+    d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:76px;z-index:9998;padding:6px 14px;border-radius:9999px;background:rgba(147,0,10,.92);border:1px solid #ffb4ab;color:#ffdad6;font:700 11px "Space Mono",monospace;letter-spacing:.08em;display:none;max-width:88vw;text-align:center;';
+    d.textContent = 'OFFLINE — BACKEND UNREACHABLE, RETRYING…';
+    document.body.appendChild(d);
+    _gpoOnlineEl = d;
+  }
+  _gpoOnlineEl.style.display = _gpoOnline ? 'none' : 'block';
+}
+function gpoIsOnline() { return _gpoOnline; }
 
 // Fallback toast when a page has no toast element of its own.
 let _gpoToastEl = null;

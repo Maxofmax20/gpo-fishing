@@ -1,5 +1,6 @@
 pub mod bait;
 pub mod boss_tracker;
+pub mod clipboard;
 pub mod controller;
 pub mod digit_model;
 pub mod fruit;

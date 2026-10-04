@@ -9,6 +9,15 @@
 
   function toast(m) { gpoToast(m); }
 
+  // "Calibrate Timers" has no backend calibrator: report the live loop
+  // round-trip honestly instead of faking a calibration run.
+  async function calibrateReport() {
+    try {
+      const { ms } = await gpoGet('/api/status');
+      toast('Timers auto-tracked • API ' + ms + 'ms • no manual calibration needed');
+    } catch (e) { toast('Backend unreachable: ' + e.message); }
+  }
+
   // ---- globals required by the page's inline onclick handlers ----
   window.selectLoop = function (el, label) {
     document.querySelectorAll('.loop-btn').forEach((b) => {
@@ -198,6 +207,8 @@
         await refreshMacros();
       } catch (e) { toast('Delete failed: ' + e.message); }
     });
+    const cal = document.getElementById('calibrate-btn');
+    if (cal) cal.addEventListener('click', calibrateReport);
     const pwr = document.getElementById('pwr-btn');
     if (pwr) pwr.addEventListener('click', async () => {
       try {

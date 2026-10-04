@@ -13,6 +13,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 static LAST_FRAME: parking_lot::RwLock<Option<Vec<u8>>> = parking_lot::RwLock::new(None);
 static HELD_KEYS: parking_lot::RwLock<Vec<crate::core::types::Key>> = parking_lot::RwLock::new(Vec::new());
 static LAST_KEY_ACTIVITY: parking_lot::RwLock<Option<std::time::Instant>> = parking_lot::RwLock::new(None);
+/// Mouse buttons held via /api/mouse (camera/right-drag flows). A vanished
+/// browser between down/up would otherwise strand a held button in the game.
+static HELD_MOUSE: parking_lot::RwLock<Vec<crate::core::types::MouseButton>> =
+    parking_lot::RwLock::new(Vec::new());
+static LAST_MOUSE_ACTIVITY: parking_lot::RwLock<Option<std::time::Instant>> =
+    parking_lot::RwLock::new(None);
 static KEY_WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
 
 fn ensure_key_watchdog(bot: &Arc<Bot>) {
@@ -24,24 +30,28 @@ fn ensure_key_watchdog(bot: &Arc<Bot>) {
         .name("key-watchdog".into())
         .spawn(move || loop {
             thread::sleep(Duration::from_millis(500));
-            let should_release = {
-                let keys = HELD_KEYS.read();
-                if keys.is_empty() {
-                    false
-                } else if let Some(last) = *LAST_KEY_ACTIVITY.read() {
-                    last.elapsed() >= Duration::from_secs(30)
-                } else {
-                    false
-                }
+            let quiet_30s = |last: &parking_lot::RwLock<Option<std::time::Instant>>| {
+                last.read()
+                    .map(|t| t.elapsed() >= Duration::from_secs(30))
+                    .unwrap_or(false)
             };
-
-            if should_release {
+            // Stuck keys: browser vanished while held.
+            if !HELD_KEYS.read().is_empty() && quiet_30s(&LAST_KEY_ACTIVITY) {
                 let mut keys = HELD_KEYS.write();
                 for &k in keys.iter() {
                     bot_clone.ctx().platform.input.key(k, false);
                 }
                 keys.clear();
                 tracing::info!("Auto-released held keys after 30s inactivity");
+            }
+            // Stuck mouse buttons: browser vanished between down/up.
+            if !HELD_MOUSE.read().is_empty() && quiet_30s(&LAST_MOUSE_ACTIVITY) {
+                let mut btns = HELD_MOUSE.write();
+                for &b in btns.iter() {
+                    bot_clone.ctx().platform.input.button(b, false);
+                }
+                btns.clear();
+                tracing::info!("Auto-released held mouse buttons after 30s inactivity");
             }
         })
         .expect("spawn key-watchdog thread");
@@ -348,6 +358,16 @@ fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Se
     } else if raw_path == "/api/key" && method == "POST" {
         let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_key(&mut stream, bot, body);
+    } else if raw_path == "/api/type" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_type(&mut stream, bot, body);
+    } else if raw_path == "/api/clipboard/get" {
+        handle_clipboard_get(&mut stream);
+    } else if raw_path == "/api/clipboard/set" && method == "POST" {
+        let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
+        handle_clipboard_set(&mut stream, body);
+    } else if raw_path == "/api/ml/status" {
+        handle_ml_status(&mut stream, bot);
     } else if raw_path == "/api/action" && method == "POST" {
         let body = if let Some(idx) = req_str.find("\r\n\r\n") { &req_str[idx + 4..] } else { "" };
         handle_action(&mut stream, bot, settings, body);
@@ -834,10 +854,13 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     if act == "release_all" || act == "reset" {
         bot.ctx().platform.input.button(crate::core::types::MouseButton::Left, false);
         bot.ctx().platform.input.button(crate::core::types::MouseButton::Right, false);
+        HELD_MOUSE.write().clear();
         let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
         let _ = stream.write_all(resp.as_bytes());
         return;
     }
+
+    *LAST_MOUSE_ACTIVITY.write() = Some(std::time::Instant::now());
 
     let _ = bot.ctx().platform.window.focus();
 
@@ -851,6 +874,10 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
                 bot.ctx().platform.input.move_to(pt);
                 std::thread::sleep(Duration::from_millis(10));
                 bot.ctx().platform.input.button(btn, true);
+                let mut held = HELD_MOUSE.write();
+                if !held.contains(&btn) {
+                    held.push(btn);
+                }
             }
             "move" => {
                 bot.ctx().platform.input.move_to(pt);
@@ -859,6 +886,7 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
                 bot.ctx().platform.input.move_to(pt);
                 std::thread::sleep(Duration::from_millis(10));
                 bot.ctx().platform.input.button(btn, false);
+                HELD_MOUSE.write().retain(|&x| x != btn);
             }
             _ => {}
         }
@@ -957,6 +985,114 @@ fn handle_key(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     }
 
     let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"ok\":true}";
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+/// Type text into the game (VIP codes, chat, search). Full Unicode via the
+/// input layer (KEYEVENTF_UNICODE fallback, incl. Arabic). Not recorded
+/// into macros: typing is live-manual input, and stuffing macro files with
+/// per-char steps would be surprising. Capped to prevent runaway pastes.
+fn handle_type(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let text = parsed.get("text").and_then(|v| v.as_str()).unwrap_or("");
+    // Cap: 500 chars per call (UI enforces the same limit).
+    let clipped: String = text.chars().take(500).collect();
+    let typed = clipped.chars().count();
+    if typed > 0 {
+        let _ = bot.ctx().platform.window.focus();
+        std::thread::sleep(Duration::from_millis(20));
+        bot.ctx().platform.input.type_text(&clipped);
+    }
+    let reply = json!({ "ok": true, "typed": typed }).to_string();
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        reply.len(),
+        reply
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_clipboard_get(stream: &mut TcpStream) {
+    let reply = match crate::core::clipboard::get_text() {
+        Ok(opt) => json!({ "ok": true, "text": opt.unwrap_or_default() }),
+        Err(e) => json!({ "ok": false, "message": e }),
+    }
+    .to_string();
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        reply.len(),
+        reply
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+fn handle_clipboard_set(stream: &mut TcpStream, body: &str) {
+    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
+    let text = parsed.get("text").and_then(|v| v.as_str()).unwrap_or("");
+    let clipped: String = text.chars().take(4000).collect();
+    let reply = match crate::core::clipboard::set_text(&clipped) {
+        Ok(n) => json!({ "ok": true, "chars": n }),
+        Err(e) => json!({ "ok": false, "message": e }),
+    }
+    .to_string();
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        reply.len(),
+        reply
+    );
+    let _ = stream.write_all(resp.as_bytes());
+}
+
+/// Honest model/dataset state for the webapp (read-only; never trains).
+/// Reuses the exact readiness machinery as the desktop panel: same gates,
+/// same numbers. `model.trained` is true only when a verified ONNX manifest
+/// loads — "no weights" reports NOT TRAINED, never a fake version.
+fn handle_ml_status(stream: &mut TcpStream, bot: &Arc<Bot>) {
+    let store = crate::core::ml_dataset::MlDatasetStore::new(bot.ctx().store.dir().to_path_buf());
+    let kb = bot.ctx().store.effective_knowledge();
+    let report = store.validate(&kb);
+    let rows = store.annotations();
+    let elig = store.state_eligibility();
+    let readiness = crate::commands::assess_readiness(&rows, &report, &elig);
+    let models_dir = bot.ctx().store.dir().join("models");
+    let provider = crate::core::ml_model::GpoMlProvider::load(models_dir);
+    let reply = json!({
+        "ok": true,
+        "collecting": readiness.sessions > 0,
+        "dataset": {
+            "name": "gpo-vision/v1",
+            "rows": rows.len(),
+            "verified": readiness.verified,
+            "required": readiness.required_verified,
+            "sessions": readiness.sessions,
+            "entities": readiness.entities,
+            "hard": readiness.hard_examples,
+            "state_coverage": readiness.state_coverage,
+            "validation_ok": readiness.validation_ok,
+            "leakage": readiness.leakage_detail,
+        },
+        "readiness": {
+            "ready": readiness.ready,
+            "status": readiness.training,
+            "entity_linked_result": readiness.entity_linked_result,
+            "blocking_requirement": readiness.blocking_requirement,
+            "test_sessions": readiness.test_sessions,
+            "min_state_eligible": readiness.min_state_eligible,
+        },
+        "model": {
+            "trained": provider.available(),
+            "name": provider.model_info().as_ref().map(|m| m.name.clone()),
+            "version": provider.model_info().as_ref().map(|m| m.version.clone()),
+            "runtime": provider.model_info().as_ref().map(|m| m.runtime.clone()),
+            "reason": provider.unavailable_reason().map(|s| s.to_string()),
+        },
+    })
+    .to_string();
+    let resp = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        reply.len(),
+        reply
+    );
     let _ = stream.write_all(resp.as_bytes());
 }
 
@@ -1492,6 +1628,215 @@ mod tests {
         assert!(cors_origin_for(lan, true).is_some());
         assert!(cors_origin_for(evil, true).is_none());
         assert!(cors_origin_for("GET / HTTP/1.1\r\n\r\n", true).is_none());
+    }
+
+    // ---- Browser → API → Windows input path (proves real input events) ----
+    use crate::core::platform::mock::{MockWindow, NoOcr, RecordingInput, ScriptedCapture};
+    use crate::core::platform::Platform;
+    use crate::core::types::{Key, MouseButton, PxRect, WindowInfo};
+    use crate::webhook::WebhookQueue;
+
+    fn input_test_bot() -> (Arc<Bot>, Arc<RecordingInput>, std::path::PathBuf) {
+        static C: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = C.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let dir = std::env::temp_dir().join(format!("gpo-webinput-{n}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        let input = Arc::new(RecordingInput::default());
+        let platform = Platform {
+            window: Arc::new(MockWindow::default()),
+            capture: Arc::new(ScriptedCapture::default()),
+            input: Arc::clone(&input) as Arc<dyn crate::core::platform::Input>,
+            ocr: Arc::new(NoOcr),
+        };
+        let roblox = Arc::new(RwLock::new(Some(WindowInfo {
+            client: PxRect { x: 0, y: 0, w: 1920, h: 1080 },
+            is_foreground: true,
+            visible: true,
+            dpi: 96,
+        })));
+        let (tx, _rx) = crossbeam_channel::unbounded();
+        let store = Arc::new(crate::config::Store::new(dir.clone()));
+        let bot = crate::bot::Bot::new(
+            platform,
+            Arc::new(RwLock::new(Settings::default())),
+            roblox,
+            tx,
+            Arc::new(WebhookQueue::disabled()),
+            store,
+        );
+        (bot, input, dir)
+    }
+
+    /// Drive a response-writing handler over loopback and return the raw
+    /// response. Handlers only write (never read the request), so no
+    /// threads are needed: connect, accept, serve inline, drop, slurp.
+    fn drive(bot: &Arc<Bot>, route: &str, body: &str) -> String {
+        use std::io::Read;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let (mut server, _) = listener.accept().unwrap();
+        match route {
+            "key" => handle_key(&mut server, bot, body),
+            "click" => handle_click(&mut server, bot, body),
+            "drag" => handle_drag(&mut server, bot, body),
+            "mouse" => handle_mouse(&mut server, bot, body),
+            "type" => handle_type(&mut server, bot, body),
+            "clipboard_set" => handle_clipboard_set(&mut server, body),
+            "clipboard_get" => handle_clipboard_get(&mut server),
+            "ml" => handle_ml_status(&mut server, bot),
+            other => panic!("unknown test route {other}"),
+        }
+        drop(server);
+        client
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            match client.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => buf.extend_from_slice(&chunk[..n]),
+                Err(_) => break,
+            }
+        }
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    #[test]
+    fn key_down_up_reaches_windows_input() {
+        use crate::core::platform::mock::InputEvent;
+        let (bot, input, _dir) = input_test_bot();
+        let r = drive(&bot, "key", r#"{"key":"w","down":true}"#);
+        assert!(r.contains("\"ok\":true"), "got: {r}");
+        assert!(input.events.lock().contains(&InputEvent::Key(Key::Char('w'), true)));
+        let r = drive(&bot, "key", r#"{"key":"w","down":false}"#);
+        assert!(r.contains("\"ok\":true"));
+        assert!(input.events.lock().contains(&InputEvent::Key(Key::Char('w'), false)));
+    }
+
+    #[test]
+    fn key_tap_and_release_all() {
+        use crate::core::platform::mock::InputEvent;
+        let (bot, input, _dir) = input_test_bot();
+        drive(&bot, "key", r#"{"key":"shift","tap":true}"#);
+        let evs = input.events.lock().clone();
+        assert!(evs.contains(&InputEvent::Key(Key::Shift, true)), "down missing: {evs:?}");
+        assert!(evs.contains(&InputEvent::Key(Key::Shift, false)), "up missing: {evs:?}");
+        let r = drive(&bot, "key", r#"{"key":"release_all"}"#);
+        assert!(r.contains("\"ok\":true"));
+    }
+
+    #[test]
+    fn click_posts_move_and_left_buttons() {
+        use crate::core::platform::mock::InputEvent;
+        let (bot, input, _dir) = input_test_bot();
+        let r = drive(&bot, "click", r#"{"rx":0.25,"ry":0.75}"#);
+        assert!(r.contains("\"ok\":true"), "got: {r}");
+        let evs = input.events.lock().clone();
+        assert!(evs.iter().any(|e| matches!(e, InputEvent::Move(_))), "no move: {evs:?}");
+        let downs = evs.iter().filter(|e| **e == InputEvent::Button(MouseButton::Left, true)).count();
+        let ups = evs.iter().filter(|e| **e == InputEvent::Button(MouseButton::Left, false)).count();
+        assert_eq!((downs, ups), (1, 1), "left down/up pair required: {evs:?}");
+    }
+
+    #[test]
+    fn drag_right_button_drives_camera_path() {
+        // The camera pad relies on RIGHT-button drags (Roblox rotates on
+        // right-drag; left-drag does nothing). The backend must honor the
+        // requested button end to end.
+        use crate::core::platform::mock::InputEvent;
+        let (bot, input, _dir) = input_test_bot();
+        let r = drive(
+            &bot,
+            "drag",
+            r#"{"x1":0.4,"y1":0.5,"x2":0.6,"y2":0.5,"ms":60,"button":"right"}"#,
+        );
+        assert!(r.contains("\"ok\":true"), "got: {r}");
+        let evs = input.events.lock().clone();
+        assert!(
+            evs.contains(&InputEvent::Button(MouseButton::Right, true)),
+            "right down missing: {evs:?}"
+        );
+        assert!(
+            evs.contains(&InputEvent::Button(MouseButton::Right, false)),
+            "right up missing: {evs:?}"
+        );
+        assert!(
+            !evs.iter().any(|e| matches!(e, InputEvent::Button(MouseButton::Left, _))),
+            "no left button may fire on a right drag: {evs:?}"
+        );
+        assert!(evs.iter().any(|e| matches!(e, InputEvent::Move(_))), "drag needs moves");
+    }
+
+    #[test]
+    fn mouse_down_up_and_release_all() {
+        use crate::core::platform::mock::InputEvent;
+        let (bot, input, _dir) = input_test_bot();
+        drive(&bot, "mouse", r#"{"action":"down","button":"right","rx":0.5,"ry":0.5}"#);
+        assert!(input.events.lock().contains(&InputEvent::Button(MouseButton::Right, true)));
+        drive(&bot, "mouse", r#"{"action":"up","button":"right","rx":0.5,"ry":0.5}"#);
+        assert!(input.events.lock().contains(&InputEvent::Button(MouseButton::Right, false)));
+        let r = drive(&bot, "mouse", r#"{"action":"release_all"}"#);
+        assert!(r.contains("\"ok\":true"));
+    }
+
+    #[test]
+    fn type_text_reaches_input_layer() {
+        use crate::core::platform::mock::InputEvent;
+        let (bot, input, _dir) = input_test_bot();
+        let r = drive(&bot, "type", r#"{"text":"Hi! VIP_123"}"#);
+        assert!(r.contains("\"ok\":true"), "got: {r}");
+        assert!(r.contains("\"typed\":11"), "typed count must be honest, got: {r}");
+        assert!(
+            input.events.lock().iter().any(|e| *e == InputEvent::Text("Hi! VIP_123".into())),
+            "text must reach the input layer"
+        );
+        // Empty text types nothing but still answers honestly.
+        let r = drive(&bot, "type", r#"{"text":""}"#);
+        assert!(r.contains("\"typed\":0"), "got: {r}");
+    }
+
+    #[test]
+    fn clipboard_endpoints_roundtrip() {
+        let saved = crate::core::clipboard::get_text().ok().flatten();
+        let (bot, _input, _dir) = input_test_bot();
+        let token = format!("GPO-WEB-CLIP-{}", std::process::id());
+        let body = format!(r#"{{"text":"{token}"}}"#);
+        let r = drive(&bot, "clipboard_set", &body);
+        assert!(r.contains("\"ok\":true"), "set must succeed, got: {r}");
+        let r = drive(&bot, "clipboard_get", "");
+        assert!(r.contains("\"ok\":true"), "get must succeed, got: {r}");
+        assert!(r.contains(&token), "roundtrip must preserve text, got: {r}");
+        if let Some(prev) = saved {
+            let _ = crate::core::clipboard::set_text(&prev);
+        }
+    }
+
+    #[test]
+    fn ml_status_reports_honest_state() {
+        // Empty temp dataset: model must report NOT TRAINED (never a fake
+        // version) and readiness must report BLOCKED with real numbers.
+        let (bot, _input, _dir) = input_test_bot();
+        let r = drive(&bot, "ml", "");
+        let v: serde_json::Value = serde_json::from_str(
+            r.split("\r\n\r\n").nth(1).expect("http body"),
+        )
+        .expect("json body");
+        assert_eq!(v.get("ok").and_then(|x| x.as_bool()), Some(true));
+        assert_eq!(
+            v.pointer("/model/trained").and_then(|x| x.as_bool()),
+            Some(false),
+            "no weights must mean NOT TRAINED, got: {v}"
+        );
+        assert_eq!(v.pointer("/readiness/ready").and_then(|x| x.as_bool()), Some(false));
+        assert_eq!(
+            v.pointer("/dataset/rows").and_then(|x| x.as_u64()),
+            Some(0),
+            "fresh temp store has no rows, got: {v}"
+        );
+        assert!(v.pointer("/readiness/blocking_requirement").is_some());
+        assert!(v.pointer("/dataset/state_coverage").is_some());
     }
 
     #[test]

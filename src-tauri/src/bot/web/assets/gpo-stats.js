@@ -100,8 +100,22 @@
     if (profile) profile.addEventListener('click', () => { location.href = '/system?token=' + encodeURIComponent(GPO_TOKEN); });
   }
 
+  // Prime every live-bound value to neutral BEFORE the first poll so no
+  // mock number is ever presented, even for a single frame.
+  function primePlaceholders() {
+    ['fish-counter', 'fruit-counter', 'pity-val', 'session-stopwatch',
+     'auto-orders-count', 'restock-done', 'active-tier-val', 'vault-units',
+     'last-buy-text', 'catch-rate-text', 'fruit-pity-text',
+     'session-chip-text', 'session-state-pill', 'loop-rtt-text',
+     'pity-remaining-text'].forEach((id) => gpoSetText(id, '—'));
+    gpoSetText('restock-total', '/ —');
+    const loot = document.getElementById('loot-telemetry-list');
+    if (loot) loot.innerHTML = '';
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
     bind();
+    primePlaceholders();
     gpoPaintHostline();
     refresh();
     setInterval(() => { if (!document.hidden) refresh(); }, 2500);
