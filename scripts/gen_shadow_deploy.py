@@ -73,16 +73,39 @@ def main() -> int:
     fish_cal = json.load(open(os.path.join(FISH_RUN, "calibration.json")))
     assert state_cfg["input_size"] == INPUT_SIZE and fish_cfg["input_size"] == INPUT_SIZE
 
+    def eval_of(run, extra_keys=()):
+        ev = json.load(open(os.path.join(run, "evaluation_test.json")))
+        # Fish evals are flat; state evals nest per-head sections.
+        core = ev if "accuracy" in ev else ev.get("state", ev)
+        per = core.get("per_entity", core.get("per_class", {}))
+        return {
+            "test_accuracy": core["accuracy"],
+            "macro_f1": core.get("macro_f1", core.get("macroF1")),
+            "test_n": core.get("n", ev.get("n")),
+            "per_class_f1": {k: v["f1"] for k, v in per.items()},
+        }
+
+    def ece_of(run):
+        try:
+            return json.load(open(os.path.join(run, "calibration.json"))).get("ece")
+        except FileNotFoundError:
+            return None
+
+    def sessions_of(run):
+        return json.load(open(os.path.join(run, "dataset_snapshot.json"))).get("test_sessions")
+
     models = [
         {"key": "state", "run": STATE_RUN, "onnx": "gpo_vision_v1.onnx",
          "name": "state_v1", "version": "1",
          "classes": ["waiting_for_bite", "bite", "catch_result"],
          "output": "state_logits", "temperature": state_cal["temperature"],
-         "head": "state", "test_acc": 1.0},
+         "head": "state", **eval_of(STATE_RUN),
+         "ece": ece_of(STATE_RUN), "test_sessions": sessions_of(STATE_RUN)},
         {"key": "fish", "run": FISH_RUN, "onnx": "fish_vision_v1.onnx",
          "name": "fish_v1", "version": "1", "classes": FISH_VOCAB,
          "output": "fish_logits", "temperature": fish_cal["temperature"],
-         "head": "fish", "test_acc": 0.5824},
+         "head": "fish", **eval_of(FISH_RUN),
+         "ece": ece_of(FISH_RUN), "test_sessions": sessions_of(FISH_RUN)},
     ]
     for m in models:
         src = os.path.join(m["run"], m["onnx"])
@@ -98,7 +121,12 @@ def main() -> int:
             "input_width": INPUT_SIZE, "input_height": INPUT_SIZE,
             "classes": m["classes"], "sha256": sha256(dst),
             "temperature": m["temperature"],
-            "test_accuracy": m["test_acc"],
+            "test_accuracy": m["test_accuracy"],
+            "macro_f1": m["macro_f1"],
+            "ece": m["ece"],
+            "test_sessions": m["test_sessions"],
+            "test_n": m["test_n"],
+            "per_class_f1": m["per_class_f1"],
             "preprocess": {
                 "pad": "square-black", "resize": "bilinear", "size": INPUT_SIZE,
                 "mean": list(cfg["normalization"]["mean"]),
