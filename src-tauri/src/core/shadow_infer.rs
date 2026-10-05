@@ -320,7 +320,10 @@ mod tests {
     #[test]
     fn deployed_models_predict_fixture_argmax() {
         let models_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
-        let engine = ShadowEngine::load(&models_dir).expect("repo models must load");
+        let engine = match ShadowEngine::load(&models_dir) {
+            Ok(e) => e,
+            Err(e) => panic!("repo models must load: {e}"),
+        };
         let png = std::fs::read(fixture_dir().join("fixture.png")).unwrap();
         let img = image::load_from_memory(&png).unwrap().to_rgba8();
         let (w, h) = (img.width() as usize, img.height() as usize);
@@ -367,7 +370,10 @@ mod tests {
         let seeded = seed_shadow_models(&[repo_models], &dir.join("models"));
         assert_eq!(seeded.len(), 2, "both bundled models must seed, got {seeded:?}");
         // Seeded copies load and stay byte-identical (no silent rewrite).
-        let engine = ShadowEngine::load(&dir.join("models")).expect("seeded models must load");
+        let engine = match ShadowEngine::load(&dir.join("models")) {
+            Ok(e) => e,
+            Err(e) => panic!("seeded models must load: {e}"),
+        };
         assert_eq!(engine.models.len(), 2);
         // Second seed is a no-op rewrite-wise but still verifies.
         let seeded2 = seed_shadow_models(
