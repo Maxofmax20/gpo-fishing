@@ -228,7 +228,7 @@ pub fn list_jobs(data_dir: &Path) -> Vec<TrainingJob> {
             }
         }
     }
-    out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    out.sort_by_key(|j| std::cmp::Reverse(j.created_at));
     out
 }
 

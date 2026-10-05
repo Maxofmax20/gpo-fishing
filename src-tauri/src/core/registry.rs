@@ -433,10 +433,7 @@ pub fn promote_to_shadow(
     std::fs::write(&live_json, serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
     // Re-verify the deployed bytes through the real loader path.
-    let load_err = match super::shadow_infer::ShadowEngine::load(models_dir) {
-        Ok(_) => None,
-        Err(e) => Some(e),
-    };
+    let load_err = super::shadow_infer::ShadowEngine::load(models_dir).err();
     if let Some(e) = load_err {
         rollback_family(data_dir, models_dir, &records[idx].model_family)?;
         return Err(format!("deployed model rejected by loader; restored archive: {e}"));
@@ -552,7 +549,7 @@ mod tests {
             ece: Some(0.1),
             test_sessions: sessions,
             test_n: 100,
-            per_class_f1: per.into_iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+            per_class_f1: per.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
             kept_accuracy: None,
         }
     }

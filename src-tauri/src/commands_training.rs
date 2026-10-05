@@ -101,7 +101,7 @@ fn deployed_models(store: &Store) -> Vec<DeployedModelInfo> {
 }
 
 fn last_training_ms(store: &Store) -> Option<u64> {
-    training::list_jobs(&store.dir())
+    training::list_jobs(store.dir())
         .iter()
         .filter_map(|j| j.finished_at)
         .max()
@@ -185,12 +185,12 @@ pub fn training_overview(st: State<'_, AppState>) -> TrainingOverview {
     let sessions = rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
     let last_collection_ms = rows.iter().map(|r| r.timestamp_ms).max().unwrap_or(0);
     let backend = training::check_backend(&settings.training.python_path, &settings.training.trainer_dir);
-    let running = training::list_jobs(&store.dir())
+    let running = training::list_jobs(store.dir())
         .iter()
         .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
         .count();
     let last_ms = last_training_ms(store);
-    let last_rows = training::list_jobs(&store.dir())
+    let last_rows = training::list_jobs(store.dir())
         .into_iter()
         .filter_map(|j| if j.finished_at == last_ms { Some(j.frozen_rows) } else { None })
         .max()
@@ -245,7 +245,7 @@ pub fn training_start(
         return Err(format!("training backend unavailable: {}", backend.detail));
     }
     let rows = rows_of(&st.store);
-    let running = training::list_jobs(&st.store.dir())
+    let running = training::list_jobs(st.store.dir())
         .iter()
         .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
         .count();
@@ -266,9 +266,9 @@ pub fn training_start(
         warning = Some("macro is running; training competes for CPU (recorded; explicit manual request proceeds)".to_string());
     }
     let snap_dir = st.store.dir().join("training").join("snapshots").join(format!("snap-{}", crate::events::now_ms()));
-    let snap = training::snapshot_dataset(&st.store.dir(), &snap_dir, &rows, DATASET_VERSION)?;
+    let snap = training::snapshot_dataset(st.store.dir(), &snap_dir, &rows, DATASET_VERSION)?;
     let mut job = training::create_job(
-        &st.store.dir(),
+        st.store.dir(),
         &family,
         "manual",
         &snap,
@@ -280,10 +280,10 @@ pub fn training_start(
         macro_running,
     )?;
     job.trainer_dir = settings.trainer_dir.clone();
-    training::save_job(&st.store.dir(), &job)?;
-    st.training.lock().launch(&st.store.dir(), &mut job, &settings.python_path, &settings.trainer_dir, settings.max_concurrent_jobs)?;
+    training::save_job(st.store.dir(), &job)?;
+    st.training.lock().launch(st.store.dir(), &mut job, &settings.python_path, &settings.trainer_dir, settings.max_concurrent_jobs)?;
     training::append_history(
-        &st.store.dir(),
+        st.store.dir(),
         "job_started",
         serde_json::json!({"job_id": job.job_id, "family": family, "requested_by": "manual", "warning": warning}),
     );
@@ -292,21 +292,21 @@ pub fn training_start(
 
 #[tauri::command]
 pub fn training_cancel(st: State<'_, AppState>, job_id: String) -> Result<training::TrainingJob, String> {
-    let mut job = training::load_job(&st.store.dir(), &job_id)?;
-    st.training.lock().cancel(&st.store.dir(), &mut job)?;
-    training::append_history(&st.store.dir(), "job_cancelled", serde_json::json!({"job_id": job_id}));
+    let mut job = training::load_job(st.store.dir(), &job_id)?;
+    st.training.lock().cancel(st.store.dir(), &mut job)?;
+    training::append_history(st.store.dir(), "job_cancelled", serde_json::json!({"job_id": job_id}));
     Ok(job)
 }
 
 #[tauri::command]
 pub fn training_jobs(st: State<'_, AppState>) -> Vec<training::TrainingJob> {
     let mut sup = st.training.lock();
-    let mut jobs = training::list_jobs(&st.store.dir());
+    let mut jobs = training::list_jobs(st.store.dir());
     for j in jobs.iter_mut().filter(|j| !j.status.finished()) {
         let before = j.status;
-        sup.poll(&st.store.dir(), j, &st.settings.read().training.trainer_dir);
+        sup.poll(st.store.dir(), j, &st.settings.read().training.trainer_dir);
         if j.status != before && j.status == training::JobStatus::Passed {
-            training::append_history(&st.store.dir(), "job_passed", serde_json::json!({"job_id": j.job_id}));
+            training::append_history(st.store.dir(), "job_passed", serde_json::json!({"job_id": j.job_id}));
         }
     }
     jobs
@@ -314,8 +314,8 @@ pub fn training_jobs(st: State<'_, AppState>) -> Vec<training::TrainingJob> {
 
 #[tauri::command]
 pub fn training_job(st: State<'_, AppState>, job_id: String) -> Result<training::TrainingJob, String> {
-    let mut job = training::load_job(&st.store.dir(), &job_id)?;
-    st.training.lock().poll(&st.store.dir(), &mut job, &st.settings.read().training.trainer_dir);
+    let mut job = training::load_job(st.store.dir(), &job_id)?;
+    st.training.lock().poll(st.store.dir(), &mut job, &st.settings.read().training.trainer_dir);
     Ok(job)
 }
 
@@ -323,16 +323,16 @@ pub fn training_job(st: State<'_, AppState>, job_id: String) -> Result<training:
 pub fn training_restart(st: State<'_, AppState>, job_id: String) -> Result<training::TrainingJob, String> {
     // Honest restart: a NEW job with a FRESH snapshot (data may have grown).
     // Resume is not offered: torch training is not reproducibly resumable.
-    let old = training::load_job(&st.store.dir(), &job_id)?;
+    let old = training::load_job(st.store.dir(), &job_id)?;
     if !old.status.finished() {
         return Err("only finished jobs restart (cancel it first)".to_string());
     }
     let settings = st.settings.read().training.clone();
     let rows = rows_of(&st.store);
     let snap_dir = st.store.dir().join("training").join("snapshots").join(format!("snap-{}", crate::events::now_ms()));
-    let snap = training::snapshot_dataset(&st.store.dir(), &snap_dir, &rows, DATASET_VERSION)?;
+    let snap = training::snapshot_dataset(st.store.dir(), &snap_dir, &rows, DATASET_VERSION)?;
     let mut job = training::create_job(
-        &st.store.dir(),
+        st.store.dir(),
         &old.model_family,
         &format!("{}(restart)", old.requested_by),
         &snap,
@@ -344,21 +344,21 @@ pub fn training_restart(st: State<'_, AppState>, job_id: String) -> Result<train
         st.bot.is_running(),
     )?;
     job.trainer_dir = settings.trainer_dir.clone();
-    training::save_job(&st.store.dir(), &job)?;
-    st.training.lock().launch(&st.store.dir(), &mut job, &settings.python_path, &settings.trainer_dir, settings.max_concurrent_jobs)?;
-    training::append_history(&st.store.dir(), "job_restarted", serde_json::json!({"from": job_id, "to": job.job_id}));
+    training::save_job(st.store.dir(), &job)?;
+    st.training.lock().launch(st.store.dir(), &mut job, &settings.python_path, &settings.trainer_dir, settings.max_concurrent_jobs)?;
+    training::append_history(st.store.dir(), "job_restarted", serde_json::json!({"from": job_id, "to": job.job_id}));
     Ok(job)
 }
 
 #[tauri::command]
 pub fn training_discard(st: State<'_, AppState>, job_id: String) -> Result<training::TrainingJob, String> {
-    let mut job = training::load_job(&st.store.dir(), &job_id)?;
+    let mut job = training::load_job(st.store.dir(), &job_id)?;
     if !matches!(job.status, training::JobStatus::Interrupted | training::JobStatus::Queued) {
         return Err("only INTERRUPTED or QUEUED jobs can be discarded".to_string());
     }
     job.status = training::JobStatus::Cancelled;
     job.finished_at = Some(crate::events::now_ms());
-    training::save_job(&st.store.dir(), &job)?;
+    training::save_job(st.store.dir(), &job)?;
     Ok(job)
 }
 
@@ -479,7 +479,7 @@ fn decide_for_job(
         Err(e) => {
             job.status = training::JobStatus::Failed;
             job.error = Some(e.clone());
-            let _ = training::save_job(&store.dir(), job);
+            let _ = training::save_job(store.dir(), job);
             return format!("FAILED: {e}");
         }
     };
@@ -490,7 +490,7 @@ fn decide_for_job(
         s
     };
     let rec = match registry::register_candidate(
-        &store.dir(),
+        store.dir(),
         &job.job_id,
         &job.model_family,
         &job.dataset_fingerprint,
@@ -503,7 +503,7 @@ fn decide_for_job(
         Err(e) => {
             job.status = training::JobStatus::Failed;
             job.error = Some(e.clone());
-            let _ = training::save_job(&store.dir(), job);
+            let _ = training::save_job(store.dir(), job);
             return format!("FAILED: {e}");
         }
     };
@@ -511,7 +511,7 @@ fn decide_for_job(
     let (cur_metrics, cur_classes) = match current_metrics_for(store, &job.model_family) {
         Ok(v) => v,
         Err(e) => {
-            let _ = training::save_job(&store.dir(), job);
+            let _ = training::save_job(store.dir(), job);
             return format!("candidate {} registered; current metrics unavailable: {e}", rec.candidate_id);
         }
     };
@@ -519,32 +519,32 @@ fn decide_for_job(
     if cmp.verdict != registry::ComparisonVerdict::Pass {
         job.status = training::JobStatus::Rejected;
         job.error = Some(format!("candidate {} rejected: {}", rec.candidate_id, cmp.reasons.join("; ")));
-        let mut records = registry::load_registry(&store.dir());
+        let mut records = registry::load_registry(store.dir());
         if let Some(r) = records.iter_mut().find(|r| r.candidate_id == rec.candidate_id) {
             r.status = registry::Lifecycle::Rejected;
             r.decision_reason = Some(cmp.reasons.join("; "));
         }
-        let _ = registry::save_registry(&store.dir(), &records);
-        let _ = training::save_job(&store.dir(), job);
+        let _ = registry::save_registry(store.dir(), &records);
+        let _ = training::save_job(store.dir(), job);
         training::append_history(
-            &store.dir(),
+            store.dir(),
             "candidate_rejected",
             serde_json::json!({"candidate": rec.candidate_id, "reasons": cmp.reasons}),
         );
         return format!("REJECTED: {}", cmp.reasons.join("; "));
     }
     if auto && !auto_promote {
-        let _ = training::save_job(&store.dir(), job);
+        let _ = training::save_job(store.dir(), job);
         return format!(
             "candidate {} PASSED evaluation ({}); auto-promotion disabled, awaiting manual review",
             rec.candidate_id,
             cmp.reasons.join("; ")
         );
     }
-    match registry::promote_to_shadow(&store.dir(), &store.dir().join("models"), &rec.candidate_id, &cmp) {
+    match registry::promote_to_shadow(store.dir(), &store.dir().join("models"), &rec.candidate_id, &cmp) {
         Ok(manifest) => {
             training::append_history(
-                &store.dir(),
+                store.dir(),
                 "candidate_promoted",
                 serde_json::json!({"candidate": rec.candidate_id, "manifest": manifest.to_string_lossy(), "auto": auto}),
             );
@@ -553,7 +553,7 @@ fn decide_for_job(
         Err(e) => {
             job.status = training::JobStatus::Failed;
             job.error = Some(e.clone());
-            let _ = training::save_job(&store.dir(), job);
+            let _ = training::save_job(store.dir(), job);
             format!("promotion FAILED (rollback attempted): {e}")
         }
     }
@@ -561,7 +561,7 @@ fn decide_for_job(
 
 #[tauri::command]
 pub fn training_candidates(st: State<'_, AppState>) -> Vec<registry::CandidateRecord> {
-    registry::load_registry(&st.store.dir())
+    registry::load_registry(st.store.dir())
 }
 
 #[derive(Debug, Serialize)]
@@ -573,7 +573,7 @@ pub struct CompareView {
 
 #[tauri::command]
 pub fn training_compare(st: State<'_, AppState>, candidate_id: String) -> Result<CompareView, String> {
-    let records = registry::load_registry(&st.store.dir());
+    let records = registry::load_registry(st.store.dir());
     let rec = records.iter().find(|r| r.candidate_id == candidate_id).ok_or("candidate not found")?.clone();
     let (cur_metrics, cur_classes) = current_metrics_for(&st.store, &rec.model_family)?;
     let cmp = registry::compare(
@@ -588,7 +588,7 @@ pub fn training_compare(st: State<'_, AppState>, candidate_id: String) -> Result
 
 #[tauri::command]
 pub fn training_promote(st: State<'_, AppState>, candidate_id: String) -> Result<String, String> {
-    let records = registry::load_registry(&st.store.dir());
+    let records = registry::load_registry(st.store.dir());
     let rec = records.iter().find(|r| r.candidate_id == candidate_id).ok_or("candidate not found")?.clone();
     if rec.status != registry::Lifecycle::Evaluated {
         return Err(format!("candidate is {:?}, only EVALUATED promotes", rec.status));
@@ -609,12 +609,12 @@ pub fn training_promote(st: State<'_, AppState>, candidate_id: String) -> Result
             r.status = registry::Lifecycle::Rejected;
             r.decision_reason = Some(cmp.reasons.join("; "));
         }
-        let _ = registry::save_registry(&st.store.dir(), &records);
+        let _ = registry::save_registry(st.store.dir(), &records);
         return Err(format!("promotion refused: {}", cmp.reasons.join("; ")));
     }
-    let manifest = registry::promote_to_shadow(&st.store.dir(), &st.store.dir().join("models"), &candidate_id, &cmp)?;
+    let manifest = registry::promote_to_shadow(st.store.dir(), &st.store.dir().join("models"), &candidate_id, &cmp)?;
     training::append_history(
-        &st.store.dir(),
+        st.store.dir(),
         "candidate_promoted",
         serde_json::json!({"candidate": candidate_id, "manifest": manifest.to_string_lossy(), "auto": false}),
     );
@@ -623,9 +623,9 @@ pub fn training_promote(st: State<'_, AppState>, candidate_id: String) -> Result
 
 #[tauri::command]
 pub fn training_rollback(st: State<'_, AppState>, family: String) -> Result<String, String> {
-    let manifest = registry::rollback_family(&st.store.dir(), &st.store.dir().join("models"), &family)?;
+    let manifest = registry::rollback_family(st.store.dir(), &st.store.dir().join("models"), &family)?;
     training::append_history(
-        &st.store.dir(),
+        st.store.dir(),
         "rollback",
         serde_json::json!({"family": family, "manifest": manifest.to_string_lossy()}),
     );
@@ -634,7 +634,7 @@ pub fn training_rollback(st: State<'_, AppState>, family: String) -> Result<Stri
 
 #[tauri::command]
 pub fn training_history(st: State<'_, AppState>, tail: Option<usize>) -> Vec<serde_json::Value> {
-    training::read_history(&st.store.dir(), tail.unwrap_or(100).clamp(1, 1000))
+    training::read_history(st.store.dir(), tail.unwrap_or(100).clamp(1, 1000))
 }
 
 // ---- explorer + review queue ----
@@ -767,7 +767,7 @@ pub fn review_queue(st: State<'_, AppState>) -> Vec<ReviewItem> {
     // entity-less RESULTs. Newest first, capped. Review actions reuse the
     // existing ml_annotate command (annotations, never silent rewrites).
     let mut rows = rows_of(&st.store);
-    rows.sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms));
+    rows.sort_by_key(|r| std::cmp::Reverse(r.timestamp_ms));
     let mut out = Vec::new();
     for r in rows {
         if out.len() >= 100 {
@@ -853,7 +853,7 @@ pub(crate) fn training_auto_tick(
     let rows = rows_of(store);
     let gates = assess_capabilities(&rows);
     let gate_ready = |id: &str| gates.iter().find(|g| g.id == id).map(|g| g.ready).unwrap_or(false);
-    let prev = training::load_trigger_state(&store.dir());
+    let prev = training::load_trigger_state(store.dir());
     let now = crate::events::now_ms();
     let triggers = training::evaluate_triggers(
         &rows,
@@ -868,7 +868,7 @@ pub(crate) fn training_auto_tick(
     );
     // Always advance the baseline so deltas measure since the last check.
     training::save_trigger_state(
-        &store.dir(),
+        store.dir(),
         &training::TriggerState {
             last_fingerprint: Some(training::dataset_fingerprint(&rows, DATASET_VERSION)),
             last_rows: rows.len(),
@@ -885,7 +885,7 @@ pub(crate) fn training_auto_tick(
     );
     for t in &triggers {
         training::append_history(
-            &store.dir(),
+            store.dir(),
             "trigger",
             serde_json::json!({"type": t.trigger_type, "reason": t.reason, "evidence": t.evidence}),
         );
@@ -895,7 +895,7 @@ pub(crate) fn training_auto_tick(
     }
     if s.defer_while_fishing && bot.is_running() {
         training::append_history(
-            &store.dir(),
+            store.dir(),
             "auto_deferred",
             serde_json::json!({"reason": "macro running; training deferred until idle"}),
         );
@@ -903,7 +903,7 @@ pub(crate) fn training_auto_tick(
     }
     // One auto job per tick at most; fish first (fruit gate blocks anyway).
     let family = "fish";
-    let running = training::list_jobs(&store.dir())
+    let running = training::list_jobs(store.dir())
         .iter()
         .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
         .count();
@@ -913,7 +913,7 @@ pub(crate) fn training_auto_tick(
     let elig = family_eligibility(family, &rows, &s, true, "", running);
     if !elig.eligible {
         training::append_history(
-            &store.dir(),
+            store.dir(),
             "auto_skipped",
             serde_json::json!({"family": family, "reasons": elig.checks.iter().filter(|c| !c.ok).map(|c| &c.text).collect::<Vec<_>>()}),
         );
@@ -925,7 +925,7 @@ pub(crate) fn training_auto_tick(
     }
     let snap_dir =
         store.dir().join("training").join("snapshots").join(format!("snap-{now}"));
-    let Ok(snap) = training::snapshot_dataset(&store.dir(), &snap_dir, &rows, DATASET_VERSION) else {
+    let Ok(snap) = training::snapshot_dataset(store.dir(), &snap_dir, &rows, DATASET_VERSION) else {
         return;
     };
     let module = match trainer_module_for(family) {
@@ -933,28 +933,28 @@ pub(crate) fn training_auto_tick(
         None => return,
     };
     let Ok(mut job) = training::create_job(
-        &store.dir(), family, "auto:new_data", &snap, DATASET_VERSION, module, 40, 7,
+        store.dir(), family, "auto:new_data", &snap, DATASET_VERSION, module, 40, 7,
         env!("CARGO_PKG_VERSION"), true,
     ) else {
         return;
     };
     job.trainer_dir = s.trainer_dir.clone();
-    let _ = training::save_job(&store.dir(), &job);
-    if training.lock().launch(&store.dir(), &mut job, &s.python_path, &s.trainer_dir, s.max_concurrent_jobs).is_ok() {
+    let _ = training::save_job(store.dir(), &job);
+    if training.lock().launch(store.dir(), &mut job, &s.python_path, &s.trainer_dir, s.max_concurrent_jobs).is_ok() {
         training::append_history(
-            &store.dir(),
+            store.dir(),
             "job_started",
             serde_json::json!({"job_id": job.job_id, "requested_by": "auto:new_data"}),
         );
     }
     // Passed auto jobs are decided (promote-or-reject) on subsequent ticks
     // once finalize() marks them PASSED.
-    for mut j in training::list_jobs(&store.dir())
+    for mut j in training::list_jobs(store.dir())
         .into_iter()
         .filter(|j| j.status == training::JobStatus::Passed && j.candidate_id.is_none())
     {
         let outcome = decide_for_job(store, &mut j, true, s.auto_promote_to_shadow);
-        training::append_history(&store.dir(), "auto_decision", serde_json::json!({"job_id": j.job_id, "outcome": outcome}));
+        training::append_history(store.dir(), "auto_decision", serde_json::json!({"job_id": j.job_id, "outcome": outcome}));
     }
 }
 
@@ -963,7 +963,7 @@ pub(crate) fn training_auto_tick(
 /// approval) or record REJECTED. Never touches production control.
 #[tauri::command]
 pub fn training_decide(st: State<'_, AppState>, job_id: String) -> Result<String, String> {
-    let mut job = training::load_job(&st.store.dir(), &job_id)?;
+    let mut job = training::load_job(st.store.dir(), &job_id)?;
     if job.status != training::JobStatus::Passed {
         return Err(format!("job is {:?}, only PASSED jobs are decided", job.status));
     }
