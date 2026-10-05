@@ -1,0 +1,33 @@
+{
+  "name": "state_v1",
+  "version": "1",
+  "dataset": "gpo-vision/v1",
+  "dataset_version": 1,
+  "trained_at": "s7",
+  "runtime": "tract",
+  "input_width": 96,
+  "input_height": 96,
+  "classes": [
+    "waiting_for_bite",
+    "bite",
+    "catch_result"
+  ],
+  "sha256": "a8fe9f667adfc8e085682938745a4365129255432a99af4429e28ebfb7c04c32",
+  "temperature": 0.15,
+  "test_accuracy": 1.0,
+  "preprocess": {
+    "pad": "square-black",
+    "resize": "bilinear",
+    "size": 96,
+    "mean": [
+      0.0778506987167258,
+      0.16769446515429806,
+      0.31173408588318396
+    ],
+    "std": [
+      0.13878537185737336,
+      0.18794830486445546,
+      0.33881394506329887
+    ]
+  }
+}

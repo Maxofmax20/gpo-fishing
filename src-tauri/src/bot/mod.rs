@@ -9,6 +9,7 @@ pub mod watchdog;
 pub mod telegram_remote;
 pub mod web_server;
 pub mod recorder;
+pub mod shadow;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Weak};
@@ -90,6 +91,17 @@ impl Bot {
             self.ctx.log_warn(&format!("ML DATA layout unavailable ({e}) — fishing without recording"));
         }
         let session_id = self.ctx.ml.begin_session(env!("CARGO_PKG_VERSION"));
+        // Warm up shadow inference off the hot loop (observation-only
+        // models load once into a process-global engine; first use after
+        // this thread finishes pays nothing).
+        if self.ctx.settings.read().features.ml_shadow {
+            let models_dir = self.ctx.store.dir().join("models");
+            std::thread::spawn(move || {
+                if crate::core::shadow_infer::engine(&models_dir).is_some() {
+                    tracing::info!("shadow inference warmed up (observation only, macro control OFF)");
+                }
+            });
+        }
         self.emit_ml_session(None);
         self.ctx.emit_stats();
         self.spawn_loop(resume);

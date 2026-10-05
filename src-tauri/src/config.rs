@@ -146,6 +146,14 @@ pub struct Features {
     pub private_server_code: String,
     pub rejoin_macro_name: String,
     pub sound_alerts: bool,
+    /// Shadow vision inference (tract, observation + telemetry ONLY).
+    /// Never influences macro control; see core::shadow_infer.
+    #[serde(default = "default_true")]
+    pub ml_shadow: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for Features {
@@ -167,6 +175,7 @@ impl Default for Features {
             private_server_code: String::new(),
             rejoin_macro_name: String::new(),
             sound_alerts: true,
+            ml_shadow: true,
         }
     }
 }

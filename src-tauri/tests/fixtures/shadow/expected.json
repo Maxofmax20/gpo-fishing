@@ -1,0 +1,13 @@
+{
+  "png": "fixture.png",
+  "png_sha256": "26a5178d2ae7a9e6189cfe63ba93153486dc559cbae956fa85abb242affa9596",
+  "tensor_format": "raw-little-endian-f32",
+  "layout": "CHW",
+  "size": 96,
+  "tolerance_max_abs_diff": 0.05,
+  "tolerance_note": "PIL BILINEAR vs Rust manual bilinear: measured worst 0.028 (edge-kernel arithmetic), tolerance 0.05 with margin; binding equivalence is argmax-exact on the fixture + live agreement logging",
+  "argmax": {
+    "state_v1": 0,
+    "fish_v1": 2
+  }
+}

@@ -1,21 +1,21 @@
 {
   "manifest_version": 1,
-  "generator_version": 1,
+  "generator_version": 2,
   "kb_source": {
     "knowledge_version": 1,
-    "git_rev": "532a8e9",
+    "git_rev": "602b8c8",
     "files": [
       "src-tauri/src/core/fruit.rs",
       "src-tauri/src/core/knowledge.rs"
     ]
   },
   "dataset": {
-    "rows": 6980,
+    "rows": 7216,
     "version": 1,
     "splits": {
-      "train": 6157,
-      "validation": 383,
-      "test": 391
+      "train": 6167,
+      "validation": 420,
+      "test": 569
     }
   },
   "kb_counts": {
@@ -25,16 +25,17 @@
     "ui_term": 20
   },
   "coverage_summary": {
-    "kb_entities_with_any_visual": 26,
+    "kb_entities_with_any_visual": 27,
     "kb_entities_with_verified_visual": 1,
-    "kb_entities_with_test_visual": 15,
-    "devil_fruit_with_any_visual": 10,
+    "kb_entities_with_test_visual": 16,
+    "devil_fruit_with_any_visual": 11,
     "fish_with_any_visual": 9,
     "other_drop_visual": 0,
     "other_drop_note": "No OTHER_DROP category exists in the KB and no dataset entity is unmapped; all 26 observed visual entities resolve to KB ids.",
     "dataset_entities_without_kb_entry": []
   },
   "verified_definition": "entity-linked AND ocr_text non-empty AND hard_example=false",
+  "visual_conditions_note": "camera/background/lighting/scale per frame are NOT in the v1 schema and are not reported; session count + day span are the supported diversity proxies",
   "entities": [
     {
       "entity_id": "bait:common",
@@ -58,6 +59,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -89,6 +97,13 @@
         "test": 0
       },
       "ocr_linked_examples": 15,
+      "unique_sessions": 8,
+      "temporal_day_span": 1.73,
+      "ocr_agreement": 15,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 10,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 5 more real examples (>=20)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -120,6 +135,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -137,10 +159,10 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 199,
+        "total": 206,
         "train": 165,
         "validation": 13,
-        "test": 21
+        "test": 28
       },
       "verified_visual_examples": {
         "total": 0,
@@ -148,7 +170,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 199,
+      "ocr_linked_examples": 206,
+      "unique_sessions": 33,
+      "temporal_day_span": 2.7,
+      "ocr_agreement": 63,
+      "ocr_disagreement": 143,
+      "near_duplicate_pairs_hamming_le6": 650,
+      "qualification_status": "READY",
+      "reason_not_ready": null,
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -178,6 +207,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -207,6 +243,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -236,6 +279,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -265,6 +315,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -294,6 +351,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -323,6 +387,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -352,6 +423,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -381,6 +459,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -410,6 +495,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -439,6 +531,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -468,6 +567,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -485,10 +591,10 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 131,
-        "train": 108,
-        "validation": 3,
-        "test": 20
+        "total": 139,
+        "train": 112,
+        "validation": 4,
+        "test": 23
       },
       "verified_visual_examples": {
         "total": 0,
@@ -496,7 +602,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 131,
+      "ocr_linked_examples": 139,
+      "unique_sessions": 29,
+      "temporal_day_span": 2.72,
+      "ocr_agreement": 103,
+      "ocr_disagreement": 36,
+      "near_duplicate_pairs_hamming_le6": 431,
+      "qualification_status": "READY",
+      "reason_not_ready": null,
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -526,6 +639,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -555,6 +675,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -572,10 +699,10 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 198,
+        "total": 204,
         "train": 180,
         "validation": 13,
-        "test": 5
+        "test": 11
       },
       "verified_visual_examples": {
         "total": 0,
@@ -583,7 +710,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 198,
+      "ocr_linked_examples": 204,
+      "unique_sessions": 31,
+      "temporal_day_span": 2.68,
+      "ocr_agreement": 119,
+      "ocr_disagreement": 85,
+      "near_duplicate_pairs_hamming_le6": 570,
+      "qualification_status": "READY",
+      "reason_not_ready": null,
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -613,6 +747,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -642,6 +783,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -671,6 +819,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -700,6 +855,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -729,6 +891,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -758,6 +927,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -787,6 +963,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -816,6 +999,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -845,6 +1035,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -862,10 +1059,10 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 69,
-        "train": 62,
-        "validation": 3,
-        "test": 4
+        "total": 73,
+        "train": 63,
+        "validation": 5,
+        "test": 5
       },
       "verified_visual_examples": {
         "total": 0,
@@ -873,7 +1070,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 69,
+      "ocr_linked_examples": 73,
+      "unique_sessions": 20,
+      "temporal_day_span": 2.72,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 73,
+      "near_duplicate_pairs_hamming_le6": 171,
+      "qualification_status": "READY",
+      "reason_not_ready": null,
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -903,6 +1107,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -932,6 +1143,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -961,6 +1179,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -990,6 +1215,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1007,10 +1239,10 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 159,
+        "total": 164,
         "train": 140,
-        "validation": 7,
-        "test": 12
+        "validation": 8,
+        "test": 16
       },
       "verified_visual_examples": {
         "total": 0,
@@ -1018,7 +1250,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 159,
+      "ocr_linked_examples": 164,
+      "unique_sessions": 28,
+      "temporal_day_span": 2.71,
+      "ocr_agreement": 122,
+      "ocr_disagreement": 42,
+      "near_duplicate_pairs_hamming_le6": 548,
+      "qualification_status": "READY",
+      "reason_not_ready": null,
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1048,6 +1287,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1065,10 +1311,10 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 160,
+        "total": 169,
         "train": 133,
-        "validation": 11,
-        "test": 16
+        "validation": 12,
+        "test": 24
       },
       "verified_visual_examples": {
         "total": 0,
@@ -1076,7 +1322,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 160,
+      "ocr_linked_examples": 169,
+      "unique_sessions": 29,
+      "temporal_day_span": 2.72,
+      "ocr_agreement": 116,
+      "ocr_disagreement": 53,
+      "near_duplicate_pairs_hamming_le6": 523,
+      "qualification_status": "READY",
+      "reason_not_ready": null,
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1094,10 +1347,10 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 178,
-        "train": 157,
-        "validation": 10,
-        "test": 11
+        "total": 187,
+        "train": 160,
+        "validation": 11,
+        "test": 16
       },
       "verified_visual_examples": {
         "total": 0,
@@ -1105,7 +1358,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 178,
+      "ocr_linked_examples": 187,
+      "unique_sessions": 36,
+      "temporal_day_span": 2.73,
+      "ocr_agreement": 134,
+      "ocr_disagreement": 53,
+      "near_duplicate_pairs_hamming_le6": 526,
+      "qualification_status": "READY",
+      "reason_not_ready": null,
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1135,6 +1395,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1152,10 +1419,10 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 67,
-        "train": 64,
+        "total": 66,
+        "train": 62,
         "validation": 1,
-        "test": 2
+        "test": 3
       },
       "verified_visual_examples": {
         "total": 0,
@@ -1163,7 +1430,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 67,
+      "ocr_linked_examples": 66,
+      "unique_sessions": 25,
+      "temporal_day_span": 2.68,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 66,
+      "near_duplicate_pairs_hamming_le6": 47,
+      "qualification_status": "READY",
+      "reason_not_ready": null,
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1193,6 +1467,13 @@
         "test": 0
       },
       "ocr_linked_examples": 2,
+      "unique_sessions": 2,
+      "temporal_day_span": 0.1,
+      "ocr_agreement": 1,
+      "ocr_disagreement": 1,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 18 more real examples (>=20); need session diversity (>=3 sessions, have 2); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1222,6 +1503,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1251,6 +1539,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1280,6 +1575,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1309,6 +1611,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1338,6 +1647,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1369,6 +1685,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1398,6 +1721,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1427,6 +1757,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1458,6 +1795,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1489,6 +1833,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1518,6 +1869,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1549,6 +1907,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1578,6 +1943,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1607,6 +1979,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1636,6 +2015,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1665,6 +2051,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1694,6 +2087,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1723,6 +2123,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1752,6 +2159,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1783,6 +2197,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1812,6 +2233,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1841,6 +2269,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1872,6 +2307,13 @@
         "test": 0
       },
       "ocr_linked_examples": 1,
+      "unique_sessions": 1,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 1,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 19 more real examples (>=20); need session diversity (>=3 sessions, have 1); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1903,6 +2345,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1934,6 +2383,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1963,6 +2419,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -1995,6 +2458,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2024,6 +2494,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2055,6 +2532,13 @@
         "test": 0
       },
       "ocr_linked_examples": 3,
+      "unique_sessions": 3,
+      "temporal_day_span": 1.11,
+      "ocr_agreement": 3,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 17 more real examples (>=20)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2086,6 +2570,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2115,6 +2606,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2146,6 +2644,13 @@
         "test": 0
       },
       "ocr_linked_examples": 2,
+      "unique_sessions": 2,
+      "temporal_day_span": 0.31,
+      "ocr_agreement": 2,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 18 more real examples (>=20); need session diversity (>=3 sessions, have 2); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2175,6 +2680,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2206,6 +2718,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2237,6 +2756,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2266,6 +2792,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2297,6 +2830,13 @@
         "test": 0
       },
       "ocr_linked_examples": 2,
+      "unique_sessions": 2,
+      "temporal_day_span": 1.1,
+      "ocr_agreement": 1,
+      "ocr_disagreement": 1,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 18 more real examples (>=20); need session diversity (>=3 sessions, have 2); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2328,6 +2868,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2357,6 +2904,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2386,6 +2940,13 @@
         "test": 0
       },
       "ocr_linked_examples": 2,
+      "unique_sessions": 1,
+      "temporal_day_span": 0.02,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 2,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 18 more real examples (>=20); need session diversity (>=3 sessions, have 1); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2415,6 +2976,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2444,6 +3012,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2473,6 +3048,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2504,6 +3086,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2533,6 +3122,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2565,6 +3161,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2584,9 +3187,9 @@
       ],
       "wiki_known": true,
       "visual_examples": {
-        "total": 0,
+        "total": 1,
         "train": 0,
-        "validation": 0,
+        "validation": 1,
         "test": 0
       },
       "verified_visual_examples": {
@@ -2595,7 +3198,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 0,
+      "ocr_linked_examples": 1,
+      "unique_sessions": 1,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 1,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 19 more real examples (>=20); need session diversity (>=3 sessions, have 1); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2625,6 +3235,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2656,6 +3273,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2685,6 +3309,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2714,6 +3345,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2743,6 +3381,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2774,6 +3419,13 @@
         "test": 0
       },
       "ocr_linked_examples": 1,
+      "unique_sessions": 1,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 1,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 19 more real examples (>=20); need session diversity (>=3 sessions, have 1); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2803,6 +3455,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2834,6 +3493,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2863,6 +3529,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2894,6 +3567,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2923,6 +3603,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2952,6 +3639,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -2981,6 +3675,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3010,6 +3711,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3039,6 +3747,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3068,6 +3783,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3097,6 +3819,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3128,6 +3857,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3157,6 +3893,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3186,6 +3929,13 @@
         "test": 0
       },
       "ocr_linked_examples": 1,
+      "unique_sessions": 1,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 1,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 19 more real examples (>=20); need session diversity (>=3 sessions, have 1); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3215,6 +3965,13 @@
         "test": 0
       },
       "ocr_linked_examples": 1,
+      "unique_sessions": 1,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 1,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 19 more real examples (>=20); need session diversity (>=3 sessions, have 1); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3244,6 +4001,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3275,6 +4039,13 @@
         "test": 0
       },
       "ocr_linked_examples": 1,
+      "unique_sessions": 1,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 1,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 19 more real examples (>=20); need session diversity (>=3 sessions, have 1); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3306,6 +4077,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3337,6 +4115,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3368,6 +4153,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3397,6 +4189,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3426,6 +4225,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3455,6 +4261,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3486,6 +4299,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3506,10 +4326,10 @@
       ],
       "wiki_known": true,
       "visual_examples": {
-        "total": 71,
+        "total": 69,
         "train": 58,
-        "validation": 9,
-        "test": 4
+        "validation": 8,
+        "test": 3
       },
       "verified_visual_examples": {
         "total": 0,
@@ -3517,7 +4337,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 71,
+      "ocr_linked_examples": 69,
+      "unique_sessions": 24,
+      "temporal_day_span": 2.03,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 69,
+      "near_duplicate_pairs_hamming_le6": 59,
+      "qualification_status": "READY",
+      "reason_not_ready": null,
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3549,6 +4376,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3580,6 +4414,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3611,6 +4452,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3640,6 +4488,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3669,6 +4524,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3686,10 +4548,10 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 154,
-        "train": 130,
+        "total": 157,
+        "train": 131,
         "validation": 19,
-        "test": 5
+        "test": 7
       },
       "verified_visual_examples": {
         "total": 0,
@@ -3697,7 +4559,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 154,
+      "ocr_linked_examples": 157,
+      "unique_sessions": 22,
+      "temporal_day_span": 2.34,
+      "ocr_agreement": 148,
+      "ocr_disagreement": 9,
+      "near_duplicate_pairs_hamming_le6": 352,
+      "qualification_status": "READY",
+      "reason_not_ready": null,
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3727,6 +4596,13 @@
         "test": 0
       },
       "ocr_linked_examples": 3,
+      "unique_sessions": 3,
+      "temporal_day_span": 1.23,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 3,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 17 more real examples (>=20)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3756,6 +4632,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3785,6 +4668,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3814,6 +4704,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3843,6 +4740,13 @@
         "test": 0
       },
       "ocr_linked_examples": 7,
+      "unique_sessions": 4,
+      "temporal_day_span": 0.8,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 7,
+      "near_duplicate_pairs_hamming_le6": 3,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 13 more real examples (>=20)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3872,6 +4776,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3901,6 +4812,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3930,6 +4848,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3959,6 +4884,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -3976,8 +4908,8 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 19,
-        "train": 18,
+        "total": 18,
+        "train": 17,
         "validation": 1,
         "test": 0
       },
@@ -3987,7 +4919,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 19,
+      "ocr_linked_examples": 18,
+      "unique_sessions": 11,
+      "temporal_day_span": 2.02,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 18,
+      "near_duplicate_pairs_hamming_le6": 14,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 2 more real examples (>=20); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -4017,6 +4956,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -4034,10 +4980,10 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 4,
+        "total": 5,
         "train": 4,
         "validation": 0,
-        "test": 0
+        "test": 1
       },
       "verified_visual_examples": {
         "total": 0,
@@ -4045,7 +4991,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 4,
+      "ocr_linked_examples": 5,
+      "unique_sessions": 5,
+      "temporal_day_span": 2.6,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 5,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 15 more real examples (>=20)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -4075,6 +5028,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -4104,6 +5064,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -4133,6 +5100,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -4162,6 +5136,13 @@
         "test": 0
       },
       "ocr_linked_examples": 0,
+      "unique_sessions": 0,
+      "temporal_day_span": 0.0,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 0,
+      "near_duplicate_pairs_hamming_le6": 0,
+      "qualification_status": "NOT READY",
+      "reason_not_ready": "need 20 more real examples (>=20); need session diversity (>=3 sessions, have 0); need TEST coverage (>=1 held-out row)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
@@ -4179,8 +5160,8 @@
       "aliases": [],
       "wiki_known": true,
       "visual_examples": {
-        "total": 8,
-        "train": 6,
+        "total": 7,
+        "train": 5,
         "validation": 1,
         "test": 1
       },
@@ -4190,7 +5171,14 @@
         "validation": 0,
         "test": 0
       },
-      "ocr_linked_examples": 8,
+      "ocr_linked_examples": 7,
+      "unique_sessions": 5,
+      "temporal_day_span": 1.38,
+      "ocr_agreement": 0,
+      "ocr_disagreement": 7,
+      "near_duplicate_pairs_hamming_le6": 2,
+      "qualification_status": "COLLECTING",
+      "reason_not_ready": "need 13 more real examples (>=20)",
       "runtime_supported": {
         "ocr_kb": true,
         "mechanism": "correlate_text over KB index (perception.rs) + region OCR"

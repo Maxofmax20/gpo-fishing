@@ -1057,7 +1057,34 @@ fn handle_ml_status(stream: &mut TcpStream, bot: &Arc<Bot>) {
     let models_dir = bot.ctx().store.dir().join("models");
     let provider = crate::core::ml_model::GpoMlProvider::load(models_dir);
     let capabilities = crate::core::ml_capability::assess_capabilities(&rows);
-    let shadow = crate::core::ml_capability::shadow_status(bot.ctx().store.dir());
+    // Live shadow state: operator flag + actually-loaded tract models.
+    // Engine loads once process-wide; status polls after the first are free.
+    let models_dir = bot.ctx().store.dir().join("models");
+    let shadow_flag = bot.ctx().settings().features.ml_shadow;
+    let shadow_models: Vec<(String, Option<f32>)> =
+        if shadow_flag {
+            crate::core::shadow_infer::engine(&models_dir)
+                .map(|eng| {
+                    let mut v: Vec<(String, Option<f32>)> = eng
+                        .model_names()
+                        .into_iter()
+                        .map(|n| {
+                            let acc = eng.models.get(&n).and_then(|m| m.test_accuracy);
+                            (n, acc)
+                        })
+                        .collect();
+                    v.sort_by(|a, b| a.0.cmp(&b.0));
+                    v
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+    let shadow = crate::core::ml_capability::shadow_status(
+        bot.ctx().store.dir(),
+        shadow_flag,
+        &shadow_models,
+    );
     let action_summary = crate::core::workflow::summarize_action_log(bot.ctx().store.dir());
     let fs = bot.ctx().settings();
     let policy_rules = serde_json::json!({

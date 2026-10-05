@@ -212,7 +212,7 @@ Auto-update checks GitHub Releases on launch and can be turned off in Settings.
 - **GPO Wiki sync (opt-in)**: Setup › Devil fruits › GPO knowledge base can import devil-fruit pages from the public Grand Piece Online Wiki API. Imports are validated, keep provenance, and never overwrite curated entries. No automatic syncing happens.
 - **Learning dataset**: with trace recording on, uncertain observations are saved to `%AppData%\gpo-autofish\dataset` for later labeling (Setup › Learning dataset). Nothing trains a model automatically.
 - **VPN honesty**: the VPN page shows the evidence-based state (`disconnected/connecting/verifying/connected/disconnecting/error/unknown`) with process/tunnel evidence. `Connected` appears only after a verified tunnel. Macros never touch VPN unless you append an explicit VPN step (Macros › VPN Steps); verification timeouts stop the macro unless the step is marked optional.
-- **Vision models**: the architecture supports pluggable vision providers, but no trained GPO detection model ships yet — bar/fish/marker heuristics back the live provider. Status: architecture ready, model training pending.
+- **Vision models (shadow only)**: two tract-powered ONNX models ship and run observation-only — `state_v1` (WAITING/BITE/RESULT, held-out 1.0000) and `fish_v1` (8 well-supported fish, held-out 0.58; everything else resolves UNKNOWN). Predictions are logged with OCR+KB agreement telemetry and can never drive the macro (`vision_to_macro = FORBIDDEN`, production control OFF). Capability gates, manifests, and the dashboard report per-entity evidence honestly; fruit/action/confirmation coverage is still collecting.
 
 ## 📁 Project Structure
 

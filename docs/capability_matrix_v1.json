@@ -1,0 +1,81 @@
+{
+  "code_version": "5.3.0",
+  "dataset_rows": 7209,
+  "gates": [
+    {
+      "blocking_requirement": null,
+      "detail": "per-class rows/sessions: waiting_for_bite:1977/54sess bite:2000/45sess catch_result:3227/45sess",
+      "evidence_rows": 7204,
+      "evidence_sessions": 56,
+      "id": "state",
+      "name": "STATE (WAITING/BITE/RESULT)",
+      "ready": true
+    },
+    {
+      "blocking_requirement": "need >= 10 fish with >= 20 examples over >= 3 sessions and >= 5 with TEST coverage; collect gameplay, never synthesize",
+      "detail": "qualified fish 8/10 (test-covered 8/5): fish:angelfish(n=206 sess=33 ocr±=63/143 T), fish:golden(n=204 sess=31 ocr±=119/85 T), fish:squid(n=186 sess=36 ocr±=134/52 T), fish:snapper(n=170 sess=29 ocr±=116/54 T), fish:shark(n=164 sess=28 ocr±=122/42 T), fish:crimson(n=139 sess=29 ocr±=103/36 T), fish:pufferfish(n=73 sess=20 ocr±=0/73 T), fish:swordfish(n=66 sess=25 ocr±=0/66 T)",
+      "evidence_rows": 1208,
+      "evidence_sessions": 42,
+      "id": "fish_entity",
+      "name": "FISH ENTITY (per-fish >=20 examples, >=3 sessions, TEST covered)",
+      "ready": false
+    },
+    {
+      "blocking_requirement": "need >= 10 fruits with >= 20 examples over >= 3 sessions and >= 5 with TEST coverage; only real catches count",
+      "detail": "qualified fruit 1/10 (test-covered 1/5): fruit:yami(n=69 sess=24 ocr±=0/69 T)",
+      "evidence_rows": 69,
+      "evidence_sessions": 26,
+      "id": "fruit_entity",
+      "name": "DEVIL FRUIT ENTITY (per-fruit >=20 examples, >=3 sessions, TEST covered)",
+      "ready": false
+    },
+    {
+      "blocking_requirement": "define the category from real game drops first, then collect tagged examples; Wiki entries do not count",
+      "detail": "no OTHER_DROP category exists in the KB and no dataset entity is unmapped to the KB",
+      "evidence_rows": 0,
+      "evidence_sessions": 0,
+      "id": "other_drop",
+      "name": "OTHER DROP (non-fish, non-fruit results)",
+      "ready": false
+    },
+    {
+      "blocking_requirement": null,
+      "detail": "catch_result rows: 3227",
+      "evidence_rows": 3227,
+      "evidence_sessions": 45,
+      "id": "result_ui",
+      "name": "RESULT UI (result-screen recognition data)",
+      "ready": true
+    },
+    {
+      "blocking_requirement": "extend collection to tag STORE/DROP/CONFIRM screens during real gameplay (observation mode; no blind destructive actions)",
+      "detail": "collector does not tag store/drop/confirm screens; no action-UI examples exist",
+      "evidence_rows": 0,
+      "evidence_sessions": 0,
+      "id": "action_ui",
+      "name": "ACTION UI (DROP/STORE screens)",
+      "ready": false
+    },
+    {
+      "blocking_requirement": "log COMMAND SENT + GAME CONFIRMED pairs from real store/drop flows before claiming verification",
+      "detail": "no command-sent/game-confirmed pairs are logged anywhere",
+      "evidence_rows": 0,
+      "evidence_sessions": 0,
+      "id": "confirmation",
+      "name": "CONFIRMATION (action verification pairs)",
+      "ready": false
+    },
+    {
+      "blocking_requirement": null,
+      "detail": "complete sessions train/val/test: 31/4/8",
+      "evidence_rows": 43,
+      "evidence_sessions": 43,
+      "id": "workflow",
+      "name": "COMPLETE WORKFLOW (WAITING->BITE->RESULT sessions, TEST held-out)",
+      "ready": true
+    }
+  ],
+  "generated_by": "src-tauri/tests/zz_tmp_gates.rs (temporary probe, deleted after run)",
+  "matrix_version": 1,
+  "note": "Every verdict computed by core::ml_capability::assess_capabilities on the live dataset; no hand edits."
+}

@@ -1,6 +1,7 @@
 """Multitask vision model: shared CNN backbone, game-state head + entity head.
 
-IMAGE (3x128x128, dataset-normalized)
+IMAGE (3x96x96, dataset-normalized; authoritative size lives in
+dataset.INPUT_SIZE and each run's config.json — not here)
   -> Conv(3,32) -> BN -> ReLU -> MaxPool
   -> Conv(32,64) -> BN -> ReLU -> MaxPool
   -> Conv(64,128) -> BN -> ReLU -> MaxPool
@@ -20,9 +21,10 @@ import torch
 from torch import nn
 
 STATE_LABELS = ["waiting_for_bite", "bite", "catch_result"]
-INPUT_SIZE = 128
-INPUT_MEAN = (0.5, 0.5, 0.5)
-INPUT_STD = (0.5, 0.5, 0.5)
+# Canonical input geometry. Normalization mean/std are per-run values in
+# <run>/config.json (computed from train rows), NOT 0.5. The Rust shadow
+# path must read them from the deployed model manifest.
+INPUT_SIZE = 96
 
 
 class GpoVisionNet(nn.Module):

@@ -1,0 +1,8 @@
+{
+  "onnx_path": "D:\\AI Projects\\04_Apps_and_Code\\apps\\desktop\\gpo-fishing-macro\\ml\\output\\fish-vision-v1-s7\\fish_vision_v1.onnx",
+  "max_abs_diff": 1.33514404296875e-05,
+  "tolerance": 0.0001,
+  "pass": true,
+  "single_file": true,
+  "exporter": "legacy-dynamoFalse-opset18"
+}

@@ -23,6 +23,9 @@ pub const STATE_MIN_ROWS_PER_STATE: usize = 300;
 pub const STATE_MIN_SESSIONS: usize = 4;
 /// Per-entity example counts for the entity capabilities.
 pub const ENTITY_MIN_EXAMPLES: usize = 20;
+/// Per-entity session diversity: examples concentrated in fewer sessions
+/// may share one background/camera setup and overstate coverage.
+pub const ENTITY_MIN_SESSIONS: usize = 3;
 /// How many entities must clear ENTITY_MIN_EXAMPLES for the capability gate.
 pub const FISH_MIN_ENTITIES: usize = 10;
 pub const FRUIT_MIN_ENTITIES: usize = 10;
@@ -127,6 +130,12 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
         .collect::<Vec<_>>()
         .join(" ");
 
+    // ACTION UI: frames tagged by the v5.3.0+ collector hooks (unreviewed).
+    let action_region_rows: Vec<&MlAnnotation> = rows
+        .iter()
+        .filter(|r| matches!(r.region_name.as_str(), "store_banner" | "drop_banner" | "confirm_banner"))
+        .collect();
+
     // ENTITY: per-prefix coverage.
     let mut ent_counts: HashMap<&str, Vec<&MlAnnotation>> = HashMap::new();
     for r in rows {
@@ -134,25 +143,65 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
             ent_counts.entry(e).or_default().push(r);
         }
     }
-    let qualified = |prefix: &str| -> Vec<(&str, usize, bool)> {
-        let mut v: Vec<(&str, usize, bool)> = ent_counts
+    // Heuristic port of fruit::normalize for OCR/entity agreement: lowercase,
+    // non-alphanumeric to space, collapse whitespace. Agreement = normalized
+    // OCR contains the entity key (e.g. "golden", "you got").
+    fn normalize_ocr(s: &str) -> String {
+        s.to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+    fn entity_key(entity_id: &str) -> String {
+        normalize_ocr(&entity_id.split(':').nth(1).unwrap_or(entity_id).replace('-', " "))
+    }
+    struct Qualified<'a> {
+        entity: &'a str,
+        examples: usize,
+        sessions: usize,
+        test_covered: bool,
+        ocr_agree: usize,
+        ocr_disagree: usize,
+    }
+    let qualified = |prefix: &str| -> Vec<Qualified<'_>> {
+        let mut v: Vec<Qualified> = ent_counts
             .iter()
             .filter(|(e, _)| e.starts_with(prefix))
             .map(|(e, rows)| {
                 let test = rows.iter().any(|r| MlDatasetStore::split_of(&r.session_id).as_str() == "test");
-                (*e, rows.len(), test)
+                let sessions = rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
+                let key = entity_key(e);
+                let mut agree = 0;
+                let mut disagree = 0;
+                for r in rows.iter() {
+                    if normalize_ocr(&r.ocr_text).contains(&key as &str) {
+                        agree += 1;
+                    } else {
+                        disagree += 1;
+                    }
+                }
+                Qualified { entity: *e, examples: rows.len(), sessions, test_covered: test, ocr_agree: agree, ocr_disagree: disagree }
             })
-            .filter(|(_, n, _)| *n >= ENTITY_MIN_EXAMPLES)
+            .filter(|q| q.examples >= ENTITY_MIN_EXAMPLES && q.sessions >= ENTITY_MIN_SESSIONS)
             .collect();
-        v.sort_by_key(|x| std::cmp::Reverse(x.1));
+        v.sort_by_key(|x| std::cmp::Reverse(x.examples));
         v
     };
     let fish_q = qualified("fish:");
     let fruit_q = qualified("fruit:");
-    let fish_test = fish_q.iter().filter(|(_, _, t)| *t).count();
-    let fruit_test = fruit_q.iter().filter(|(_, _, t)| *t).count();
+    let fish_test = fish_q.iter().filter(|q| q.test_covered).count();
+    let fruit_test = fruit_q.iter().filter(|q| q.test_covered).count();
     let fish_ready = fish_q.len() >= FISH_MIN_ENTITIES && fish_test >= ENTITY_MIN_TEST_COVERED;
     let fruit_ready = fruit_q.len() >= FRUIT_MIN_ENTITIES && fruit_test >= ENTITY_MIN_TEST_COVERED;
+    let qual_detail = |q: &[Qualified]| {
+        q.iter()
+            .map(|x| format!("{}(n={} sess={} ocr±={}/{}{})", x.entity, x.examples, x.sessions, x.ocr_agree, x.ocr_disagree, if x.test_covered { " T" } else { "" }))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
 
     // RESULT UI: screen-level rows exist.
     let result_rows: Vec<&MlAnnotation> = rows
@@ -181,28 +230,28 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
         ),
         gate(
             "fish_entity",
-            "FISH ENTITY (per-fish, >=20 examples)",
+            "FISH ENTITY (per-fish >=20 examples, >=3 sessions, TEST covered)",
             fish_ready,
-            fish_q.iter().map(|(_, n, _)| n).sum(),
-            0,
+            fish_q.iter().map(|q| q.examples).sum(),
+            fish_q.iter().map(|q| q.sessions).sum(),
             format!("qualified fish {}/{} (test-covered {}/{}): {}",
                 fish_q.len(), FISH_MIN_ENTITIES, fish_test, ENTITY_MIN_TEST_COVERED,
-                fish_q.iter().map(|(e, n, _)| format!("{e}({n})")).collect::<Vec<_>>().join(", ")),
+                qual_detail(&fish_q)),
             (!fish_ready).then(|| {
-                format!("need >= {FISH_MIN_ENTITIES} fish with >= {ENTITY_MIN_EXAMPLES} examples and >= {ENTITY_MIN_TEST_COVERED} with TEST coverage; collect gameplay, never synthesize")
+                format!("need >= {FISH_MIN_ENTITIES} fish with >= {ENTITY_MIN_EXAMPLES} examples over >= {ENTITY_MIN_SESSIONS} sessions and >= {ENTITY_MIN_TEST_COVERED} with TEST coverage; collect gameplay, never synthesize")
             }),
         ),
         gate(
             "fruit_entity",
-            "DEVIL FRUIT ENTITY (per-fruit, >=20 examples)",
+            "DEVIL FRUIT ENTITY (per-fruit >=20 examples, >=3 sessions, TEST covered)",
             fruit_ready,
-            fruit_q.iter().map(|(_, n, _)| n).sum(),
-            0,
+            fruit_q.iter().map(|q| q.examples).sum(),
+            fruit_q.iter().map(|q| q.sessions).sum(),
             format!("qualified fruit {}/{} (test-covered {}/{}): {}",
                 fruit_q.len(), FRUIT_MIN_ENTITIES, fruit_test, ENTITY_MIN_TEST_COVERED,
-                fruit_q.iter().map(|(e, n, _)| format!("{e}({n})")).collect::<Vec<_>>().join(", ")),
+                qual_detail(&fruit_q)),
             (!fruit_ready).then(|| {
-                format!("need >= {FRUIT_MIN_ENTITIES} fruits with >= {ENTITY_MIN_EXAMPLES} examples and >= {ENTITY_MIN_TEST_COVERED} with TEST coverage; only real catches count")
+                format!("need >= {FRUIT_MIN_ENTITIES} fruits with >= {ENTITY_MIN_EXAMPLES} examples over >= {ENTITY_MIN_SESSIONS} sessions and >= {ENTITY_MIN_TEST_COVERED} with TEST coverage; only real catches count")
             }),
         ),
         gate(
@@ -227,10 +276,11 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
             "action_ui",
             "ACTION UI (DROP/STORE screens)",
             false,
-            0,
-            0,
-            "collector does not tag store/drop/confirm screens; no action-UI examples exist".to_string(),
-            Some("extend collection to tag STORE/DROP/CONFIRM screens during real gameplay (observation mode; no blind destructive actions)".to_string()),
+            action_region_rows.len(),
+            action_region_rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len(),
+            format!("{} action-region frames (store_banner/drop_banner/confirm_banner), all unreviewed; zero reviewed confirmation pairs",
+                action_region_rows.len()),
+            Some("review action-region frames + log CONFIRMED pairs from real store/drop flows before claiming verification".to_string()),
         ),
         gate(
             "confirmation",
@@ -267,7 +317,8 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
     gates
 }
 
-// ---- shadow mode: schema + log writer + OFF status (no inference here) ----
+// ---- shadow mode: event schema + log writer + live status ----
+// (inference itself lives in shadow_infer.rs; status reflects it).
 
 /// One shadow-mode comparison event (§20). Every field but the ids is
 /// optional: UNKNOWN is a valid result, never a guessed one.
@@ -289,6 +340,12 @@ pub struct ShadowEvent {
     pub confirmation: Option<String>,
     pub latency_ms: Option<u64>,
     pub agreement: Option<bool>,
+    /// Vision classifier confidence for non-state predictions (e.g. fish
+    /// top-1 probability). Informational: no fish rejection threshold was
+    /// established, so policy ignores it. Additive (default None) so old
+    /// log lines keep parsing.
+    #[serde(default)]
+    pub vision_confidence: Option<f32>,
 }
 
 pub fn shadow_log_path(data_dir: &Path) -> PathBuf {
@@ -309,16 +366,30 @@ pub fn append_shadow_event(data_dir: &Path, event: &ShadowEvent) -> Result<(), S
         .map_err(|e| e.to_string())
 }
 
-/// Shadow status: OFF until a vision model is deployed AND explicitly
-/// approved for shadow inference. The schema and log path are ready now.
-pub fn shadow_status(data_dir: &Path) -> serde_json::Value {
+/// Shadow status: ON only when the operator flag is set AND at least one
+/// verified shadow model is loaded. Observation + telemetry either way;
+/// macro control is unconditionally OFF (no path exists).
+pub fn shadow_status(
+    data_dir: &Path,
+    flag_enabled: bool,
+    models: &[(String, Option<f32>)],
+) -> serde_json::Value {
     let logged = std::fs::read_to_string(shadow_log_path(data_dir))
         .map(|c| c.lines().filter(|l| !l.trim().is_empty()).count())
         .unwrap_or(0);
+    let enabled = flag_enabled && !models.is_empty();
+    let reason = if enabled {
+        "observation + telemetry only; macro control OFF".to_string()
+    } else if models.is_empty() {
+        "no verified shadow model in models/ (seeded from bundled copies at startup)".to_string()
+    } else {
+        "operator flag features.ml_shadow is off".to_string()
+    };
     serde_json::json!({
-        "enabled": false,
-        "mode": "OFF",
-        "reason": "no vision model deployed to models/ and no shadow-inference approval; schema + log writer ready",
+        "enabled": enabled,
+        "mode": if enabled { "ON" } else { "OFF" },
+        "reason": reason,
+        "models": models.iter().map(|(n, a)| serde_json::json!({"name": n, "test_accuracy": a})).collect::<Vec<_>>(),
         "vision_to_macro": "FORBIDDEN (no path exists)",
         "production_control": "OFF",
         "events_logged": logged,
@@ -469,12 +540,21 @@ mod tests {
             confirmation: Some("UNKNOWN".into()),
             latency_ms: None,
             agreement: None,
+            vision_confidence: None,
         };
         append_shadow_event(&dir, &ev).unwrap();
-        let st = shadow_status(&dir);
+        let st = shadow_status(&dir, false, &[]);
         assert_eq!(st["enabled"], false);
         assert_eq!(st["events_logged"], 1);
         assert_eq!(st["production_control"], "OFF");
+        // Flag on but no models: still OFF (nothing to observe with).
+        let st2 = shadow_status(&dir, true, &[]);
+        assert_eq!(st2["enabled"], false);
+        // Flag on + a model: ON, control still OFF.
+        let st3 = shadow_status(&dir, true, &[("fish_v1".to_string(), Some(0.58))]);
+        assert_eq!(st3["enabled"], true);
+        assert_eq!(st3["mode"], "ON");
+        assert_eq!(st3["production_control"], "OFF");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -33,7 +33,7 @@ from gpo_train.dataset import build_splits, load_snapshot  # noqa: E402
 FRUIT_RS = os.path.join(REPO, "src-tauri", "src", "core", "fruit.rs")
 KNOWLEDGE_RS = os.path.join(REPO, "src-tauri", "src", "core", "knowledge.rs")
 OUT = os.path.join(REPO, "docs", "knowledge_manifest_v1.json")
-GENERATOR_VERSION = 1
+GENERATOR_VERSION = 2
 
 
 def read(path: str) -> str:
@@ -163,17 +163,41 @@ def main() -> int:
     for i in splits.test:
         split_of[i] = "test"
 
+    import re as _re
+
+    def norm(s: str) -> str:
+        # Heuristic port of fruit::normalize: lowercase, non-alnum to space.
+        return " ".join(_re.sub(r"[^0-9a-z]+", " ", s.lower()).split())
+
+    def entity_key(eid: str) -> str:
+        return norm(eid.split(":", 1)[1].replace("-", " ") if ":" in eid else eid)
+
     per_ent: dict[str, Counter] = {}
     verified: dict[str, Counter] = {}
     ocr_linked: dict[str, int] = Counter()
+    ocr_agree: dict[str, int] = Counter()
+    ocr_disagree: dict[str, int] = Counter()
+    ent_sessions: dict[str, set] = {}
+    ent_times: dict[str, list] = {}
+    ent_hashes: dict[str, list] = {}
     for idx, r in enumerate(snap.rows):
         if not r.entity_id:
             continue
         c = per_ent.setdefault(r.entity_id, Counter())
         c["total"] += 1
         c[split_of.get(idx, "excluded")] += 1
+        ent_sessions.setdefault(r.entity_id, set()).add(r.session_id)
+        ent_times.setdefault(r.entity_id, []).append(r.timestamp_ms)
+        try:
+            ent_hashes.setdefault(r.entity_id, []).append(int(r.image_id.split("-")[0], 16))
+        except ValueError:
+            pass
         if ocr_texts[idx].strip():
             ocr_linked[r.entity_id] += 1
+            if entity_key(r.entity_id) and entity_key(r.entity_id) in norm(ocr_texts[idx]):
+                ocr_agree[r.entity_id] += 1
+            else:
+                ocr_disagree[r.entity_id] += 1
         if ocr_texts[idx].strip() and not hard_flags[idx]:
             v = verified.setdefault(r.entity_id, Counter())
             v["total"] += 1
@@ -183,11 +207,29 @@ def main() -> int:
     kb_ids = set(entities)
     orphan_visual = sorted(dataset_entity_ids - kb_ids)
 
+    def hamming(a: int, b: int) -> int:
+        return bin(a ^ b).count("1")
+
     out_entities = []
     for eid in sorted(kb_ids):
         base = entities[eid]
         c = per_ent.get(eid, Counter())
         v = verified.get(eid, Counter())
+        sess = ent_sessions.get(eid, set())
+        times = ent_times.get(eid, [])
+        day_span = round((max(times) - min(times)) / 86_400_000, 2) if len(times) > 1 else 0.0
+        hashes = ent_hashes.get(eid, [])
+        near_pairs = sum(1 for i in range(len(hashes)) for j in range(i + 1, len(hashes))
+                         if hamming(hashes[i], hashes[j]) <= 6)
+        # Qualification mirrors the Rust gates (>=20 examples, >=3 sessions,
+        # TEST coverage); the reason names the exact gap.
+        reasons = []
+        if c.get("total", 0) < 20:
+            reasons.append(f"need {20 - c.get('total', 0)} more real examples (>=20)")
+        if len(sess) < 3:
+            reasons.append(f"need session diversity (>=3 sessions, have {len(sess)})")
+        if c.get("test", 0) < 1:
+            reasons.append("need TEST coverage (>=1 held-out row)")
         out_entities.append({
             **base,
             "wiki_known": True,
@@ -200,6 +242,13 @@ def main() -> int:
                 "validation": v.get("validation", 0), "test": v.get("test", 0),
             },
             "ocr_linked_examples": ocr_linked.get(eid, 0),
+            "unique_sessions": len(sess),
+            "temporal_day_span": day_span,
+            "ocr_agreement": ocr_agree.get(eid, 0),
+            "ocr_disagreement": ocr_disagree.get(eid, 0),
+            "near_duplicate_pairs_hamming_le6": near_pairs,
+            "qualification_status": "READY" if not reasons else ("COLLECTING" if c.get("total", 0) > 0 else "NOT READY"),
+            "reason_not_ready": "; ".join(reasons) if reasons else None,
             # (C) runtime: the OCR+KB correlate_text path is generic over the KB
             "runtime_supported": {
                 "ocr_kb": True,
@@ -240,6 +289,7 @@ def main() -> int:
             "dataset_entities_without_kb_entry": orphan_visual,
         },
         "verified_definition": "entity-linked AND ocr_text non-empty AND hard_example=false",
+        "visual_conditions_note": "camera/background/lighting/scale per frame are NOT in the v1 schema and are not reported; session count + day span are the supported diversity proxies",
         "entities": out_entities,
     }
     with open(OUT, "w", encoding="utf-8") as f:

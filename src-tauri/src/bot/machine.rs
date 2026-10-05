@@ -434,6 +434,8 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_check
     let mut tracking_since: Option<Instant> = None;
     let mut confirm = 0u32;
     let mut misses = 0u32;
+    // Shadow sampling counter (observation only; see bot::shadow).
+    let mut shadow_n: u64 = 0;
     let mut edge_warned = false;
     let mut bar_lock: Option<vision::Bbox> = None;
     let mut hold_watch: Option<HoldWatch> = None;
@@ -511,6 +513,11 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_check
         let now = Instant::now();
         let reading = vision::read_locked(&frame, &palette, bar_lock);
         let read_took = now.elapsed();
+        // Shadow STATE observation (sampled; never influences control).
+        shadow_n += 1;
+        if shadow_n % crate::bot::shadow::STATE_SAMPLE_EVERY == 0 {
+            crate::bot::shadow::observe_state(ctx, &frame, reading.is_some());
+        }
         match reading {
             Some(r) => {
                 misses = 0;
@@ -528,6 +535,9 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_check
                     hold_watch = None;
                     ctx.set_state(BotState::Tracking, None);
                     ctx.log_debug("Bite confirmed; tracking");
+                    // Shadow: always observe the confirming frame (rare,
+                    // high-value moment for agreement telemetry).
+                    crate::bot::shadow::observe_state(ctx, &frame, true);
                     // Episode capture: BITE moment with the confirming frame
                     // (trace-gated, async — encode is a few ms, once per reel).
                     if ctx.settings.read().fishing.trace {
@@ -763,9 +773,12 @@ fn maybe_collect_ml_sample(ctx: &Ctx, verdict: &fruit::CatchVerdict, text: &str)
         Some(crate::core::ml_dataset::GameStateLabel::CatchResult),
         text,
         "drop",
-        entity,
+        entity.clone(),
         hard,
     );
+    // Shadow FISH observation on the same RESULT frame (once per reel;
+    // agreement vs the OCR+KB entity above; vision never decides).
+    crate::bot::shadow::observe_fish(ctx, &frame, entity.as_deref(), text);
 }
 
 fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String) {

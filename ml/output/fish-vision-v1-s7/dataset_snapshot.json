@@ -1,0 +1,19 @@
+{
+  "dataset_version": 1,
+  "train": 1011,
+  "validation": 61,
+  "test": 91,
+  "train_support": {
+    "fish:squid": 158,
+    "fish:swordfish": 64,
+    "fish:golden": 180,
+    "fish:crimson": 109,
+    "fish:shark": 139,
+    "fish:snapper": 133,
+    "fish:angelfish": 166,
+    "fish:pufferfish": 62
+  },
+  "train_sessions": 30,
+  "val_sessions": 4,
+  "test_sessions": 5
+}

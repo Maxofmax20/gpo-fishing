@@ -10,6 +10,7 @@ Thumbs.db
 docs/*
 !docs/knowledge_manifest_v1.json
 !docs/workflow_coverage_v1.json
+!docs/capability_matrix_v1.json
 ml/output/*/checkpoints/
 __pycache__/
 legacy/

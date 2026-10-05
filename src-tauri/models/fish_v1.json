@@ -1,0 +1,38 @@
+{
+  "name": "fish_v1",
+  "version": "1",
+  "dataset": "gpo-vision/v1",
+  "dataset_version": 1,
+  "trained_at": "s7",
+  "runtime": "tract",
+  "input_width": 96,
+  "input_height": 96,
+  "classes": [
+    "fish:angelfish",
+    "fish:crimson",
+    "fish:golden",
+    "fish:pufferfish",
+    "fish:shark",
+    "fish:snapper",
+    "fish:squid",
+    "fish:swordfish"
+  ],
+  "sha256": "6a155906ed9b7bcc4b9830148c8b214bf7d566192fa8bd876f6da7eb9b0656e9",
+  "temperature": 0.75,
+  "test_accuracy": 0.5824,
+  "preprocess": {
+    "pad": "square-black",
+    "resize": "bilinear",
+    "size": 96,
+    "mean": [
+      0.05271091430067188,
+      0.11570198624633397,
+      0.1936517829171868
+    ],
+    "std": [
+      0.12389305103404322,
+      0.19019146653331148,
+      0.2934129469778255
+    ]
+  }
+}

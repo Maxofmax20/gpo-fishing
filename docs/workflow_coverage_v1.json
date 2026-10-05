@@ -1,7 +1,7 @@
 {
   "coverage_version": 1,
-  "rows": 6996,
-  "sessions": 54,
+  "rows": 7216,
+  "sessions": 56,
   "complete_workflow_sessions": {
     "train": {
       "n": 31,
@@ -40,15 +40,16 @@
       ]
     },
     "validation": {
-      "n": 3,
+      "n": 4,
       "sessions": [
         "session_2026-10-02_213549_50e36db2",
         "session_2026-10-03_110949_15b78581",
-        "session_2026-10-04_202745_08b4b13a"
+        "session_2026-10-04_202745_08b4b13a",
+        "session_2026-10-05_145058_e7760590"
       ]
     },
     "test": {
-      "n": 7,
+      "n": 8,
       "sessions": [
         "session_2026-10-02_215405_f5d40eba",
         "session_2026-10-03_050857_436d1ee0",
@@ -56,15 +57,16 @@
         "session_2026-10-03_164415_39a04dc5",
         "session_2026-10-03_212521_a4b5946a",
         "session_2026-10-03_220117_1e7efb16",
-        "session_2026-10-04_114943_737169f9"
+        "session_2026-10-04_114943_737169f9",
+        "session_2026-10-05_132601_bb362a56"
       ]
     }
   },
   "partial_result_without_bite_chain": 2,
   "result_rows": {
-    "total": 3126,
-    "with_entity": 1460,
-    "with_ocr": 2177
+    "total": 3227,
+    "with_entity": 1506,
+    "with_ocr": 2242
   },
   "sessions_with_action_or_confirmation_fields": 0,
   "gaps": [

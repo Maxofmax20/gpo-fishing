@@ -73,6 +73,18 @@ pub fn build_state() -> AppState {
 }
 
 pub fn setup(app: &AppHandle, st: &AppState) -> Result<(), Box<dyn std::error::Error>> {
+    // Seed shadow vision models (%APPDATA%/models) from bundled copies.
+    // Missing-or-divergent files are refreshed, then re-verified; unknown
+    // files are never trusted. Observation-only weights, no control path.
+    {
+        let mut candidates = Vec::new();
+        if let Ok(res) = app.path().resource_dir() {
+            candidates.push(res.join("models"));
+        }
+        candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models"));
+        let seeded = crate::core::shadow_infer::seed_shadow_models(&candidates, &st.store.dir().join("models"));
+        tracing::info!("shadow models seeded: {seeded:?}");
+    }
     if let Some(rx) = st.events_rx.lock().take() {
         spawn_event_forwarder(app.clone(), rx);
     }

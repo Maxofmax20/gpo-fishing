@@ -361,9 +361,9 @@
   // v5.2.0 capability block: one independent line per perception
   // capability plus shadow/production state. Never a generic "AI ACTIVE":
   // every line names its evidence or its blocker. Gate verdicts come from
-  // /api/ml/status (capabilities[], shadow). The two artifact-metric notes
-  // describe gpo-vision-v1-s7 (ml/output/evaluation_test.json) and must be
-  // updated with any model release; deployment state stays dynamic.
+  // /api/ml/status (capabilities[], shadow incl. deployed models).
+  // Gate verdicts and model presence are dynamic; metric notes quote the
+  // deployed manifests' recorded test_accuracy (audited, not live).
   function capabilityBlock(data) {
     const caps = data.capabilities || [];
     const sh = data.shadow || {};
@@ -378,10 +378,16 @@
       return line(label, g.ready, g.ready ? (g.evidence_rows + ' rows') : (g.blocking_requirement || 'no evidence'));
     };
     let html = '<div class="mt-1 pt-1 border-t border-outline-variant/20">';
+    const shModels = sh.models || [];
+    const findModel = (n) => shModels.find((m) => m && m.name === n);
+    const stateM = findModel('state_v1'), fishM = findModel('fish_v1');
     html += line('STATE MODEL', !!(byId.state && byId.state.ready),
-      'artifact 1.0000 held-out; ' + (data.model && data.model.trained ? 'LOADED' : 'NOT DEPLOYED to models/'));
-    html += line('SHADOW', sh.enabled === true, sh.enabled === true ? 'telemetry active' : (sh.reason || 'OFF'));
-    html += line('ENTITY MODEL', false, 'NOT PRODUCTION (test acc 0.31, macro-F1 0.15)');
+      (stateM ? 'DEPLOYED shadow (held-out 1.0000)' : 'artifact 1.0000 held-out; NOT DEPLOYED') +
+      ' — ' + (sh.enabled === true ? 'observed live' : 'not observed') + '; never controls macro');
+    html += line('SHADOW', sh.enabled === true, sh.enabled === true ? gpoEsc(sh.reason || 'telemetry active') : gpoEsc(sh.reason || 'OFF'));
+    html += line('ENTITY MODEL', false, fishM
+      ? 'SHADOW ONLY (8-fish ' + fishM.test_accuracy + ' test, rest UNKNOWN; NOT PRODUCTION)'
+      : 'NOT PRODUCTION (fish scope: 8/41; fruit scope blocked)');
     html += gateLine('FISH RECOGNITION', 'fish_entity');
     html += gateLine('FRUIT RECOGNITION', 'fruit_entity');
     html += gateLine('OTHER-DROP RECOGNITION', 'other_drop');
