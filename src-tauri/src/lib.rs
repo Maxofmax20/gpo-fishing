@@ -1,6 +1,7 @@
 pub mod app;
 pub mod bot;
 pub mod commands;
+pub mod commands_training;
 pub mod config;
 pub mod core;
 pub mod events;
@@ -113,6 +114,24 @@ pub fn run() {
             commands::ml_baseline,
             commands::ml_model_status,
             commands::ml_readiness,
+            commands_training::training_overview,
+            commands_training::training_backend,
+            commands_training::training_start,
+            commands_training::training_cancel,
+            commands_training::training_jobs,
+            commands_training::training_job,
+            commands_training::training_restart,
+            commands_training::training_discard,
+            commands_training::training_decide,
+            commands_training::training_candidates,
+            commands_training::training_compare,
+            commands_training::training_promote,
+            commands_training::training_rollback,
+            commands_training::training_history,
+            commands_training::dataset_explorer,
+            commands_training::review_queue,
+            commands_training::training_settings_get,
+            commands_training::training_settings_set,
             commands::vpn_get_status,
             commands::vpn_connect,
             commands::vpn_disconnect,

@@ -15,9 +15,10 @@ import SettingsPage from "../pages/Settings";
 import Macros from "../pages/Macros";
 import VpnPage from "../pages/VpnPage";
 import MultiRobloxPage from "../pages/MultiRobloxPage";
-import { BookOpen, Download, Film, Gauge, Globe, Layers, ListChecks, Minus, Settings2, Shield, SlidersHorizontal, X } from "lucide-react";
+import TrainingCenter from "../pages/TrainingCenter";
+import { BookOpen, Download, Film, Gauge, Globe, GraduationCap, Layers, ListChecks, Minus, Settings2, Shield, SlidersHorizontal, X } from "lucide-react";
 
-type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "vpn" | "multi" | "settings";
+type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "vpn" | "multi" | "training" | "settings";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "Dashboard", icon: <Gauge size={17} /> },
@@ -27,6 +28,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "macros", label: "Macros", icon: <Film size={17} /> },
   { id: "vpn", label: "VPN & Relay", icon: <Shield size={17} /> },
   { id: "multi", label: "Multi Roblox", icon: <Layers size={17} /> },
+  { id: "training", label: "Training", icon: <GraduationCap size={17} /> },
   { id: "settings", label: "Settings", icon: <Settings2 size={17} /> },
 ];
 
@@ -214,6 +216,7 @@ export default function Panel() {
                 {tab === "macros" && <Macros />}
                 {tab === "vpn" && <VpnPage />}
                 {tab === "multi" && <MultiRobloxPage />}
+                {tab === "training" && <TrainingCenter />}
                 {tab === "settings" && <SettingsPage />}
               </>
             )}

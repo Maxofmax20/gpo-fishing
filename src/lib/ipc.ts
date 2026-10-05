@@ -41,6 +41,15 @@ import type {
   PingResult,
   MultiRobloxStatus,
   SavedRobloxAccount,
+  TrainingOverview,
+  BackendStatus,
+  TrainingJob,
+  CandidateRecord,
+  CompareView,
+  DatasetExplorer,
+  ReviewItem,
+  TrainingSettings,
+  HistoryEntry,
 } from "./types";
 
 export const api = {
@@ -142,6 +151,26 @@ export const api = {
   multiRobloxRemoveAccount: (id: string) => invoke<void>("multi_roblox_remove_account", { id }),
   multiRobloxLaunchAccount: (id: string, placeId?: number) =>
     invoke<void>("multi_roblox_launch_account", { id, placeId }),
+  trainingOverview: () => invoke<TrainingOverview>("training_overview"),
+  trainingBackend: () => invoke<BackendStatus>("training_backend"),
+  trainingStart: (family: string, epochs?: number, seed?: number) =>
+    invoke<TrainingJob>("training_start", { family, epochs, seed }),
+  trainingCancel: (jobId: string) => invoke<TrainingJob>("training_cancel", { jobId }),
+  trainingJobs: () => invoke<TrainingJob[]>("training_jobs"),
+  trainingJob: (jobId: string) => invoke<TrainingJob>("training_job", { jobId }),
+  trainingRestart: (jobId: string) => invoke<TrainingJob>("training_restart", { jobId }),
+  trainingDiscard: (jobId: string) => invoke<TrainingJob>("training_discard", { jobId }),
+  trainingDecide: (jobId: string) => invoke<string>("training_decide", { jobId }),
+  trainingCandidates: () => invoke<CandidateRecord[]>("training_candidates"),
+  trainingCompare: (candidateId: string) => invoke<CompareView>("training_compare", { candidateId }),
+  trainingPromote: (candidateId: string) => invoke<string>("training_promote", { candidateId }),
+  trainingRollback: (family: string) => invoke<string>("training_rollback", { family }),
+  trainingHistory: (tail?: number) => invoke<HistoryEntry[]>("training_history", { tail }),
+  datasetExplorer: () => invoke<DatasetExplorer>("dataset_explorer"),
+  reviewQueue: () => invoke<ReviewItem[]>("review_queue"),
+  trainingSettingsGet: () => invoke<TrainingSettings>("training_settings_get"),
+  trainingSettingsSet: (settings: TrainingSettings) =>
+    invoke<TrainingSettings>("training_settings_set", { settings }),
 };
 
 type Events = {

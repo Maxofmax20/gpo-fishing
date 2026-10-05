@@ -616,3 +616,198 @@ export type SavedRobloxAccount = {
 };
 
 
+
+
+export type JobStatus =
+  | "QUEUED" | "RUNNING" | "EVALUATING" | "PASSED"
+  | "REJECTED" | "FAILED" | "CANCELLED" | "INTERRUPTED";
+
+export type JobProgress = {
+  stage: string;
+  epoch: number;
+  total_epochs: number;
+  train_loss: number | null;
+  val_metric: number | null;
+  learning_rate: number | null;
+  sec_per_epoch: number | null;
+  eta_s: number | null;
+  elapsed_s: number;
+  log_tail: string[];
+};
+
+export type TrainingJob = {
+  job_id: string;
+  model_family: string;
+  dataset_version: number;
+  dataset_fingerprint: string;
+  frozen_rows: number;
+  frozen_sessions: number;
+  frozen_test_sessions: string[];
+  snapshot_dir: string;
+  created_at: number;
+  started_at: number | null;
+  finished_at: number | null;
+  status: JobStatus;
+  requested_by: string;
+  trainer_module: string;
+  run_id: string;
+  epochs: number;
+  seed: number;
+  code_version: string;
+  trainer_dir: string;
+  work_dir: string;
+  candidate_id: string | null;
+  evaluation: Record<string, unknown> | null;
+  error: string | null;
+  progress: JobProgress;
+  deferred_reason: string | null;
+  macro_running_at_start: boolean;
+};
+
+export type GateCheck = { ok: boolean; text: string };
+
+export type FamilyEligibility = { family: string; eligible: boolean; checks: GateCheck[] };
+
+export type DeployedModelInfo = {
+  family: string;
+  name: string;
+  version: string;
+  test_accuracy: number | null;
+  macro_f1: number | null;
+};
+
+export type TrainingOverview = {
+  dataset_version: number;
+  rows: number;
+  sessions: number;
+  last_collection_ms: number;
+  last_training_ms: number | null;
+  new_since_training: number;
+  models: DeployedModelInfo[];
+  shadow_enabled: boolean;
+  shadow_events: number;
+  eligibility: FamilyEligibility[];
+  auto_enabled: boolean;
+  backend_available: boolean;
+  backend_detail: string;
+  production_control: string;
+};
+
+export type BackendStatus = {
+  available: boolean;
+  python_path: string;
+  python_ok: boolean;
+  torch_ok: boolean;
+  torch_version: string | null;
+  trainer_dir_ok: boolean;
+  detail: string;
+};
+
+export type Lifecycle =
+  | "TRAINED" | "EVALUATED" | "SHADOW" | "SHADOW_VALIDATED"
+  | "ACCEPTED" | "REJECTED" | "ROLLED_BACK";
+
+export type ModelMetrics = {
+  accuracy: number;
+  macro_f1: number;
+  ece: number | null;
+  test_sessions: number;
+  test_n: number;
+  per_class_f1: Record<string, number>;
+  kept_accuracy: number | null;
+};
+
+export type CandidateRecord = {
+  candidate_id: string;
+  model_family: string;
+  model_version: number;
+  parent_name: string;
+  parent_sha: string | null;
+  dataset_fingerprint: string;
+  dataset_version: number;
+  training_config_hash: string;
+  code_version: string;
+  job_id: string;
+  created_at: number;
+  artifact_sha: string;
+  manifest_sha: string | null;
+  eval_sha: string;
+  metrics: ModelMetrics;
+  classes: string[];
+  temperature: number;
+  mean: [number, number, number];
+  std: [number, number, number];
+  status: Lifecycle;
+  decision_reason: string | null;
+};
+
+export type ComparisonVerdict = "Pass" | "Reject" | "Inconclusive";
+
+export type Comparison = {
+  acc_delta: number;
+  f1_delta: number;
+  ece_delta: number | null;
+  regressions: [string, number, number][];
+  improvements: [string, number, number][];
+  verdict: ComparisonVerdict;
+  reasons: string[];
+};
+
+export type CompareView = {
+  candidate: CandidateRecord;
+  current_metrics: ModelMetrics;
+  comparison: Comparison;
+};
+
+export type ExplorerEntity = {
+  entity: string;
+  examples: number;
+  sessions: number;
+  train: number;
+  validation: number;
+  test: number;
+  ocr_agree: number;
+  ocr_disagree: number;
+  qualified: boolean;
+  reason: string;
+};
+
+export type DatasetExplorer = {
+  rows: number;
+  sessions: number;
+  states: Record<string, number>;
+  entities: number;
+  hard_examples: number;
+  ocr_bearing: number;
+  ocr_empty_result: number;
+  null_entity_result: number;
+  fish: ExplorerEntity[];
+  fruits: ExplorerEntity[];
+};
+
+export type ReviewItem = {
+  image_id: string;
+  session_id: string;
+  timestamp_ms: number;
+  ocr_text: string;
+  entity_id: string | null;
+  reasons: string[];
+};
+
+export type TrainingSettings = {
+  auto_enabled: boolean;
+  min_new_samples: number;
+  min_new_sessions: number;
+  require_held_out_test: boolean;
+  auto_promote_to_shadow: boolean;
+  auto_rollback: boolean;
+  max_concurrent_jobs: number;
+  allow_fish: boolean;
+  allow_fruit: boolean;
+  python_path: string;
+  trainer_dir: string;
+  trigger_cooldown_hours: number;
+  defer_while_fishing: boolean;
+};
+
+export type HistoryEntry = { ts: number; kind: string; detail: unknown };
