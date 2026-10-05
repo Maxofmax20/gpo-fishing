@@ -69,6 +69,21 @@ pub struct SnapshotMeta {
     pub created_at: u64,
     /// Directory holding the frozen labels.jsonl + manifest.json copies.
     pub snap_dir: PathBuf,
+    /// Fingerprint of reviews.jsonl at freeze time ("none" when unreviewed).
+    /// A model is always traceable to exactly what humans had reviewed.
+    #[serde(default = "default_review_none")]
+    pub review_fingerprint: String,
+    /// Entity registry (KB) version the snapshot was taken against.
+    #[serde(default = "default_kb_one")]
+    pub entity_registry_version: u32,
+}
+
+fn default_review_none() -> String {
+    "none".to_string()
+}
+
+fn default_kb_one() -> u32 {
+    1
 }
 
 /// Freeze the current label set for one job. Copies are small (labels +
@@ -86,6 +101,15 @@ pub fn snapshot_dataset(
             std::fs::read(src.join(name)).map_err(|e| format!("snapshot read {name}: {e}"))?;
         std::fs::write(snap_dir.join(name), &bytes).map_err(|e| format!("snapshot write {name}: {e}"))?;
     }
+    // Freeze the review state alongside the labels (may not exist yet).
+    let mut review_fingerprint = default_review_none();
+    if let Ok(bytes) = std::fs::read(data_dir.join("reviews.jsonl")) {
+        if !bytes.is_empty() {
+            std::fs::write(snap_dir.join("reviews.jsonl"), &bytes)
+                .map_err(|e| format!("snapshot write reviews.jsonl: {e}"))?;
+            review_fingerprint = format!("rv-{}", &super::ml_model::sha256_hex(&bytes)[..16]);
+        }
+    }
     let mut test_sessions: Vec<String> = rows
         .iter()
         .filter(|r| MlDatasetStore::split_of(&r.session_id).as_str() == "test")
@@ -102,6 +126,8 @@ pub fn snapshot_dataset(
         test_sessions,
         created_at: now_ms(),
         snap_dir: snap_dir.to_path_buf(),
+        review_fingerprint,
+        entity_registry_version: super::knowledge::KNOWLEDGE_VERSION,
     })
 }
 
@@ -171,6 +197,9 @@ pub struct TrainingJob {
     pub frozen_rows: usize,
     pub frozen_sessions: usize,
     pub frozen_test_sessions: Vec<String>,
+    /// Review fingerprint frozen with the snapshot ("none" when unreviewed).
+    #[serde(default = "default_review_none")]
+    pub review_fingerprint: String,
     pub snapshot_dir: PathBuf,
     pub created_at: u64,
     pub started_at: Option<u64>,
@@ -282,6 +311,7 @@ pub fn create_job(
         frozen_rows: snapshot.rows,
         frozen_sessions: snapshot.sessions,
         frozen_test_sessions: snapshot.test_sessions.clone(),
+        review_fingerprint: snapshot.review_fingerprint.clone(),
         snapshot_dir: snapshot.snap_dir.clone(),
         created_at: now_ms(),
         started_at: None,
@@ -527,6 +557,7 @@ fn finalize_job(data_dir: &Path, job: &mut TrainingJob, trainer_dir: &str, exit_
         job.error = Some(format!("trainer exited with code {exit_code}; see work dir log"));
         job.progress.stage = "FAILED".to_string();
         let _ = save_job(data_dir, job);
+        append_history(data_dir, "job_failed", serde_json::json!({"job_id": job.job_id, "reason": job.error}));
         return;
     }
     let out = trainer_out_dir(Path::new(trainer_dir), &job.run_id);
@@ -539,8 +570,23 @@ fn finalize_job(data_dir: &Path, job: &mut TrainingJob, trainer_dir: &str, exit_
     match (onnx_ok, eval) {
         (true, Some(e)) => {
             job.status = JobStatus::Passed;
-            job.evaluation = Some(e);
+            job.evaluation = Some(e.clone());
             job.progress.stage = "PASSED".to_string();
+            // Factual lesson record (metrics only, no chain-of-thought):
+            // what was trained, on what frozen data, with what outcome.
+            append_history(
+                data_dir,
+                "lesson",
+                serde_json::json!({
+                    "job_id": job.job_id,
+                    "family": job.model_family,
+                    "dataset_fingerprint": job.dataset_fingerprint,
+                    "review_fingerprint": job.review_fingerprint,
+                    "accuracy": e.get("accuracy"),
+                    "macro_f1": e.get("macro_f1").or_else(|| e.get("macroF1")),
+                    "test_n": e.get("n"),
+                }),
+            );
         }
         (false, _) => {
             job.status = JobStatus::Failed;
@@ -822,6 +868,7 @@ mod tests {
         let snap = SnapshotMeta {
             fingerprint: "fp-x".into(), rows: 1, sessions: 1, test_sessions: vec![],
             created_at: 1, snap_dir: dir.clone(),
+            review_fingerprint: "none".into(), entity_registry_version: 1,
         };
         let mut j = create_job(&dir, "fish", "manual", &snap, 1, "gpo_train.fish_train", 40, 7, "test", false).unwrap();
         j.status = JobStatus::Running;
@@ -841,6 +888,7 @@ mod tests {
         let snap = SnapshotMeta {
             fingerprint: "fp-x".into(), rows: 1, sessions: 1, test_sessions: vec![],
             created_at: 1, snap_dir: dir.clone(),
+            review_fingerprint: "none".into(), entity_registry_version: 1,
         };
         assert!(create_job(&dir, "dragons", "manual", &snap, 1, "m", 1, 1, "t", false).is_err());
         let _ = std::fs::remove_dir_all(&dir);

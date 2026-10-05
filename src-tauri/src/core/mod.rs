@@ -1,5 +1,6 @@
 pub mod bait;
 pub mod boss_tracker;
+pub mod canon;
 pub mod clipboard;
 pub mod controller;
 pub mod digit_model;
@@ -22,7 +23,9 @@ pub mod ml_dataset;
 pub mod ml_eval;
 pub mod ml_model;
 pub mod policy;
+pub mod readiness;
 pub mod registry;
+pub mod review;
 pub mod shadow_infer;
 pub mod training;
 pub mod workflow;

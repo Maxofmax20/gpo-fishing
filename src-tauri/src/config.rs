@@ -516,6 +516,12 @@ pub struct TrainingSettings {
     pub trainer_dir: String,
     pub trigger_cooldown_hours: u64,
     pub defer_while_fishing: bool,
+    /// Model-readiness bars (v5.6). Documented, user-visible, fail-closed:
+    /// a model below any bar reports NOT READY with the exact gap.
+    pub readiness_min_macro_f1: f32,
+    pub readiness_min_worst_f1: f32,
+    pub readiness_min_shadow_events: usize,
+    pub readiness_min_review_coverage: f32,
 }
 
 impl Default for TrainingSettings {
@@ -534,6 +540,10 @@ impl Default for TrainingSettings {
             trainer_dir: String::new(),
             trigger_cooldown_hours: 24,
             defer_while_fishing: true,
+            readiness_min_macro_f1: 0.70,
+            readiness_min_worst_f1: 0.50,
+            readiness_min_shadow_events: 100,
+            readiness_min_review_coverage: 0.50,
         }
     }
 }
