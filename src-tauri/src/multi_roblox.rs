@@ -555,13 +555,7 @@ impl MultiRobloxManager {
                 .send()
                 .ok()
                 .and_then(|r| r.json::<serde_json::Value>().ok())
-                .and_then(|json| {
-                    json.get("data")?
-                        .get(0)?
-                        .get("imageUrl")?
-                        .as_str()
-                        .map(|s| s.to_string())
-                })
+                .and_then(|json| parse_avatar_url(&json))
         };
 
         let entry = UserCacheEntry {
@@ -751,6 +745,18 @@ fn chrono_like_now() -> String {
     format!("{}.{}", d.as_secs(), d.subsec_millis())
 }
 
+/// Extract a usable avatar URL from a thumbnails.roblox.com response.
+/// Only `Completed` renders are accepted: Pending/InReview/Blocked entries
+/// carry no (or a placeholder) imageUrl, so they must fall back to the icon
+/// instead of rendering a broken image.
+fn parse_avatar_url(json: &serde_json::Value) -> Option<String> {
+    let item = json.get("data")?.get(0)?;
+    if item.get("state")?.as_str()? != "Completed" {
+        return None;
+    }
+    item.get("imageUrl")?.as_str().map(|s| s.to_string())
+}
+
 struct RobloxAccountSummary {
     user_id: u64,
     username: String,
@@ -805,13 +811,7 @@ fn validate_cookie(cookie: &str) -> Result<RobloxAccountSummary, String> {
             .send()
             .ok()
             .and_then(|r| r.json::<serde_json::Value>().ok())
-            .and_then(|j| {
-                j.get("data")?
-                    .get(0)?
-                    .get("imageUrl")?
-                    .as_str()
-                    .map(|s| s.to_string())
-            })
+            .and_then(|j| parse_avatar_url(&j))
     };
 
     Ok(RobloxAccountSummary {
@@ -1045,6 +1045,30 @@ mod tests {
             }
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Avatar parsing follows the live thumbnails API shape
+    /// (data[0] = {state, imageUrl}); only Completed renders are used.
+    #[test]
+    fn avatar_url_accepts_only_completed_renders() {
+        let completed: serde_json::Value = serde_json::from_str(
+            r#"{"data":[{"targetId":156,"state":"Completed","imageUrl":"https://tr.rbxcdn.com/abc-Png/150/150/AvatarHeadshot/Png/noFilter"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_avatar_url(&completed).as_deref(),
+            Some("https://tr.rbxcdn.com/abc-Png/150/150/AvatarHeadshot/Png/noFilter")
+        );
+        let pending: serde_json::Value =
+            serde_json::from_str(r#"{"data":[{"targetId":156,"state":"Pending"}]}"#).unwrap();
+        assert_eq!(parse_avatar_url(&pending), None);
+        let blocked: serde_json::Value = serde_json::from_str(
+            r#"{"data":[{"targetId":156,"state":"Blocked","imageUrl":"https://tr.rbxcdn.com/abc"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(parse_avatar_url(&blocked), None, "blocked renders must not be used");
+        let empty: serde_json::Value = serde_json::from_str(r#"{"data":[]}"#).unwrap();
+        assert_eq!(parse_avatar_url(&empty), None);
     }
 }
 
