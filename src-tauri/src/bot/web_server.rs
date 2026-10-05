@@ -1056,6 +1056,19 @@ fn handle_ml_status(stream: &mut TcpStream, bot: &Arc<Bot>) {
     let readiness = crate::commands::assess_readiness(&rows, &report, &elig);
     let models_dir = bot.ctx().store.dir().join("models");
     let provider = crate::core::ml_model::GpoMlProvider::load(models_dir);
+    let capabilities = crate::core::ml_capability::assess_capabilities(&rows);
+    let shadow = crate::core::ml_capability::shadow_status(bot.ctx().store.dir());
+    let action_summary = crate::core::workflow::summarize_action_log(bot.ctx().store.dir());
+    let fs = bot.ctx().settings();
+    let policy_rules = serde_json::json!({
+        "unknown_auto_drop": false,
+        "missing_confirmation_is_success": false,
+        "vision_controls_macro": false,
+        "fruit_storage_enabled": fs.features.fruit_storage,
+        "never_drop_legendary_or_mythical": fs.fruit_storage.never_drop_legendary_or_mythical,
+        "keep_pity_zero_fruit": fs.fruit_storage.keep_pity_zero_fruit,
+        "pause_on_protected_fruit": fs.fruit_storage.pause_on_protected_fruit,
+    });
     let reply = json!({
         "ok": true,
         "collecting": readiness.sessions > 0,
@@ -1086,6 +1099,10 @@ fn handle_ml_status(stream: &mut TcpStream, bot: &Arc<Bot>) {
             "runtime": provider.model_info().as_ref().map(|m| m.runtime.clone()),
             "reason": provider.unavailable_reason().map(|s| s.to_string()),
         },
+        "capabilities": capabilities,
+        "shadow": shadow,
+        "policy": policy_rules,
+        "actions": action_summary,
     })
     .to_string();
     let resp = format!(

@@ -319,8 +319,13 @@ impl MlCollector {
                 if hard.is_some() {
                     self.inner.hard.fetch_add(1, Ordering::SeqCst);
                 }
-                // Mirror counters into the session meta (best-effort).
+                // Mirror counters into the session meta (best-effort) and
+                // attach temporal provenance: the pre-increment sample count
+                // is the zero-based per-session capture sequence.
                 if let Some(meta) = self.inner.session.lock().as_mut() {
+                    let frame_index = meta.samples as u64;
+                    let event_id = format!("{}#f{frame_index:06}", meta.session_id);
+                    let _ = self.dataset.set_event(&image_id, &event_id, frame_index);
                     meta.samples += 1;
                     #[cfg(test)]
                     eprintln!("DEBUG meta-incr samples={}", meta.samples);

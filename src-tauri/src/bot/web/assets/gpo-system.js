@@ -351,10 +351,57 @@
         '<div class="font-mono text-[11px] text-on-surface-variant">Sessions ' + (d.sessions || 0) + ' · Entities ' + (d.entities || 0) + ' · Hard ' + (d.hard || 0) +
           ' · exact-dup ' + ((d.leakage && d.leakage.exact_duplicate_files ? d.leakage.exact_duplicate_files.length : 0)) +
           ' · near-sim ' + ((d.leakage && d.leakage.near_similarity_groups != null) ? d.leakage.near_similarity_groups : '—') + '</div>' +
-        '<div class="font-mono text-[11px] text-[#f59e0b]">' + gpoEsc(r.ready ? 'All gates pass.' : ('Blocking: ' + (r.blocking_requirement || 'unknown'))) + '</div>';
+        '<div class="font-mono text-[11px] text-[#f59e0b]">' + gpoEsc(r.ready ? 'All gates pass.' : ('Blocking: ' + (r.blocking_requirement || 'unknown'))) + '</div>' +
+        capabilityBlock(data);
     } catch (e) {
       box.innerHTML = '<div class="font-body-sm text-body-sm text-error">Model state unavailable: ' + gpoEsc(e.message) + '</div>';
     }
+  }
+
+  // v5.2.0 capability block: one independent line per perception
+  // capability plus shadow/production state. Never a generic "AI ACTIVE":
+  // every line names its evidence or its blocker. Gate verdicts come from
+  // /api/ml/status (capabilities[], shadow). The two artifact-metric notes
+  // describe gpo-vision-v1-s7 (ml/output/evaluation_test.json) and must be
+  // updated with any model release; deployment state stays dynamic.
+  function capabilityBlock(data) {
+    const caps = data.capabilities || [];
+    const sh = data.shadow || {};
+    const byId = {};
+    caps.forEach((c) => { byId[c.id] = c; });
+    const line = (label, ready, note) =>
+      '<div class="font-mono text-[11px] ' + (ready ? 'text-tertiary' : 'text-on-surface-variant') + '">' +
+      gpoEsc(label + ': ' + (ready ? 'READY' : 'NOT READY') + (note ? ' — ' + note : '')) + '</div>';
+    const gateLine = (label, id) => {
+      const g = byId[id];
+      if (!g) return '';
+      return line(label, g.ready, g.ready ? (g.evidence_rows + ' rows') : (g.blocking_requirement || 'no evidence'));
+    };
+    let html = '<div class="mt-1 pt-1 border-t border-outline-variant/20">';
+    html += line('STATE MODEL', !!(byId.state && byId.state.ready),
+      'artifact 1.0000 held-out; ' + (data.model && data.model.trained ? 'LOADED' : 'NOT DEPLOYED to models/'));
+    html += line('SHADOW', sh.enabled === true, sh.enabled === true ? 'telemetry active' : (sh.reason || 'OFF'));
+    html += line('ENTITY MODEL', false, 'NOT PRODUCTION (test acc 0.31, macro-F1 0.15)');
+    html += gateLine('FISH RECOGNITION', 'fish_entity');
+    html += gateLine('FRUIT RECOGNITION', 'fruit_entity');
+    html += gateLine('OTHER-DROP RECOGNITION', 'other_drop');
+    html += gateLine('RESULT UI', 'result_ui');
+    html += gateLine('DROP/STORE RECOGNITION', 'action_ui');
+    html += gateLine('ACTION VERIFICATION', 'confirmation');
+    html += gateLine('FULL WORKFLOW', 'workflow');
+    const p = data.policy || {};
+    html += line('OCR + KB', true, 'ACTIVE (name-reading path; KB v1)');
+    html += line('POLICY', true, 'UNKNOWN→review, unconfirmed→halt, vision→never' +
+      (p.fruit_storage_enabled === false ? ' (fruit storage OFF)' : ''));
+    const acts = data.actions || {};
+    const conf = acts.confirmations || {};
+    const confirmed = conf.CONFIRMED || 0, failed = (conf.FAILED || 0) + (conf.TIMEOUT || 0), unk = conf.UNKNOWN || 0;
+    html += line('DROP', confirmed > 0 && unk === 0,
+      'banner-required; ' + confirmed + ' confirmed / ' + unk + ' unconfirmed / ' + failed + ' failed (' + (acts.events || 0) + ' action events)');
+    html += line('STORE', true, 'clicks + failure-banner contract; outcomes logged, see DROP line for counts');
+    html += line('CONFIRMATION', false, 'no verified confirmation dataset; per-action outcomes in log (' + (acts.events || 0) + ' events)');
+    html += line('PRODUCTION CONTROL', false, gpoEsc(sh.production_control || 'OFF') + ' — vision never drives the macro');
+    return html + '</div>';
   }
 
   document.addEventListener('DOMContentLoaded', () => {

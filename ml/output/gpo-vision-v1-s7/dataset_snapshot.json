@@ -1,0 +1,42 @@
+{
+  "dataset_version": 1,
+  "train": 5721,
+  "validation": 382,
+  "test": 391,
+  "transition_eval": {
+    "train": 47,
+    "validation": 2,
+    "test": 0
+  },
+  "excluded": 0,
+  "entity_vocab": [
+    "bait:legendary",
+    "fish:angelfish",
+    "fish:crimson",
+    "fish:golden",
+    "fish:pufferfish",
+    "fish:shark",
+    "fish:snapper",
+    "fish:squid",
+    "fish:swordfish",
+    "fish:tiger",
+    "fruit:gomu",
+    "fruit:heal",
+    "fruit:horo",
+    "fruit:kilo",
+    "fruit:light",
+    "fruit:paw",
+    "fruit:spring",
+    "fruit:suke",
+    "fruit:yami",
+    "ui:devil-fruit",
+    "ui:devil-fruit-drop",
+    "ui:got-a-devil-fruit",
+    "ui:new-item",
+    "ui:spawned",
+    "ui:you-got"
+  ],
+  "train_sessions": 34,
+  "val_sessions": 4,
+  "test_sessions": 11
+}

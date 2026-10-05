@@ -1842,6 +1842,8 @@ mod tests {
             hard_example: false,
             hard_reason: None,
             corrections: vec![],
+            event_id: None,
+            frame_index: None,
         }
     }
 

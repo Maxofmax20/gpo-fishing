@@ -1,0 +1,32 @@
+{
+  "run_id": "gpo-vision-v1-s7",
+  "seed": 7,
+  "epochs": 40,
+  "batch": 128,
+  "lr": 0.0003,
+  "optimizer": "AdamW",
+  "weight_decay": 0.0001,
+  "scheduler": "ReduceLROnPlateau(max, factor=0.5, patience=3)",
+  "patience": 10,
+  "architecture": "GpoVisionNet custom CNN (3/32/64/128/256 + GAP + 2 heads)",
+  "input_size": 96,
+  "normalization": {
+    "mean": [
+      0.0778506987167258,
+      0.16769446515429806,
+      0.31173408588318396
+    ],
+    "std": [
+      0.13878537185737336,
+      0.18794830486445546,
+      0.33881394506329887
+    ]
+  },
+  "loss": "class-weighted CE(state) + class-weighted CE(entity, masked)",
+  "selection": "best validation STATE macro-F1; ENTITY macro-F1 breaks ties (harder head keeps improving after state plateau)",
+  "augmentation": "brightness/contrast +-10%, translate +-4px, scale 0.95-1.05; no flip/rotation; val/test clean",
+  "dataset_version": 1,
+  "framework": "torch 2.14.1+cpu",
+  "python": "3.14.7",
+  "device": "cpu"
+}

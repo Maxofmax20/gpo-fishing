@@ -704,7 +704,24 @@ pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_t
         .and_then(|f| f.to_png_bytes().ok())
 }
 
-pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier: bool) -> bool {
+/// Store a caught fruit, confirming the outcome from game UI — never from
+/// the fact that a command was sent.
+///
+/// Evidence contract (v5.3.0):
+/// - STORE clicks with no duplicate/error banner = stored. The game's UI
+///   contract only banners on failure; absence of a failure banner after
+///   the store clicks is the success signal (documented, unchanged).
+/// - BACKSPACE drop REQUIRES a positive banner ("dropped … will despawn"
+///   family). No banner after send + one input-free re-observation =
+///   UNKNOWN: the macro halts (returns false) instead of claiming success.
+///   Backspace is never re-pressed blindly: a second press could drop
+///   whatever is in the slot now, so re-OBSERVE, never re-press.
+///
+/// Returns true = macro may continue; false = stop safely (input failure
+/// or unconfirmed destructive outcome).
+pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier: bool, workflow_id: &str) -> bool {
+    use crate::core::workflow::{ActionEvent, ConfirmationState};
+
     let s = ctx.settings();
     if !s.features.fruit_storage {
         return true;
@@ -714,6 +731,31 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
         return true;
     };
     ctx.set_state(BotState::StoringFruit, None);
+    let session_id = ctx.ml.active_session_id().unwrap_or_else(|| "no-session".to_string());
+    let now = crate::events::now_ms();
+    let mut attempt = ActionEvent {
+        workflow_id: workflow_id.to_string(),
+        event_id: format!("{workflow_id}#store"),
+        frame_index: None,
+        session_id: session_id.clone(),
+        result_event_id: None,
+        entity_id: None,
+        entity_type: Some("fruit".to_string()),
+        policy_decision: Some(if protect_drop { "protect_no_drop" } else { "allow_duplicate_drop" }.to_string()),
+        action_requested: Some("store_attempt".to_string()),
+        action_sent_at: Some(now),
+        confirmation_state: ConfirmationState::Pending,
+        confirmation_evidence: None,
+        confirmation_at: None,
+        retry_count: 0,
+        final_outcome: None,
+    };
+    let _ = crate::core::workflow::append_action_event(ctx.store.dir(), &attempt);
+    // Set on every fall-through path below (banner arms + stored branch);
+    // the unconfirmed-drop branch returns early with its own event.
+    let outcome_state: ConfirmationState;
+    let mut outcome_evidence: Option<String> = None;
+    let outcome_name: &str;
 
     // 1. Instantly snap character orientation with camera using Shift Lock
     align_camera_shift_lock(ctx);
@@ -729,6 +771,7 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
     let mut gemini_telegram_msg: Option<String> = None;
     let mut captured_drop_photo: Option<Vec<u8>> = None;
     let mut backspace_pressed = false;
+    let mut last_banner_text = String::new();
 
     let banner_rect = RelRect { x: 0.18, y: 0.02, w: 0.64, h: 0.28 };
 
@@ -769,6 +812,7 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
                     if let Ok(text) = ctx.platform.ocr.read(&frame) {
                         if !text.trim().is_empty() {
                             ctx.log_debug(&format!("Storage check OCR: {}", text.trim()));
+                            last_banner_text = text.trim().to_string();
                             if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
                                 ctx.log_info(&format!("Storage banner detected: {res:?}"));
                                 detected_banner = Some(res);
@@ -801,6 +845,8 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
             if fresh_shot.is_some() {
                 captured_drop_photo = fresh_shot;
             }
+            // File the post-Backspace view for drop-confirmation training.
+            submit_action_frame(ctx, "drop_banner", &last_banner_text);
 
             if !ctx.sleep_ms(after_drop.saturating_sub(120).max(100)) {
                 return false;
@@ -827,6 +873,7 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
                         if let Ok(text) = ctx.platform.ocr.read(&frame) {
                             if !text.trim().is_empty() {
                                 ctx.log_debug(&format!("Post-drop OCR: {}", text.trim()));
+                            last_banner_text = text.trim().to_string();
                                 if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
                                     ctx.log_info(&format!("Drop banner detected: {res:?}"));
                                     detected_banner = Some(res);
@@ -837,10 +884,42 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
                 }
             }
 
-            // If drop banner or storage banner was detected, break out immediately
+            // SAFE re-observation (zero inputs): one extra banner read before
+            // any verdict. Covers slow banner rendering without risking a
+            // second Backspace press (which could drop whatever is in the
+            // slot now). OCR only — no extra API calls on the retry path.
+            let mut reobserved = false;
+            if detected_banner.is_none() && ctx.platform.ocr.available() {
+                if !ctx.sleep_ms(150) {
+                    return false;
+                }
+                if let Some(r) = ctx.roblox_rect() {
+                    let px_box = banner_rect.to_px(&r);
+                    if let Ok(frame) = ctx.platform.capture.grab(px_box) {
+                        if let Ok(text) = ctx.platform.ocr.read(&frame) {
+                            if !text.trim().is_empty() {
+                                if let Some(res) = crate::core::fruit::parse_storage_banner(&s.lexicon, &text) {
+                                    ctx.log_info(&format!("Drop banner detected on re-observation: {res:?}"));
+                                    detected_banner = Some(res);
+                                }
+                            }
+                        }
+                    }
+                }
+                reobserved = true;
+            }
+            if reobserved {
+                outcome_evidence = Some("banner re-observed once after Backspace (no inputs sent)".to_string());
+            }
+
+            // Capture the CONFIRMED banner view for future confirmation
+            // training (trace-gated, unreviewed), then break immediately.
             if detected_banner.is_some() {
+                submit_action_frame(ctx, "confirm_banner", &last_banner_text);
                 break;
             }
+            // No banner yet: file the store-attempt view (unreviewed).
+            submit_action_frame(ctx, "store_banner", &last_banner_text);
         } else {
             ctx.log_info("🛡️ Protected fruit kept in slot (drop prevented)");
             if detected_banner.is_some() {
@@ -854,7 +933,9 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
     let custom_tg = gemini_telegram_msg.or_else(|| {
         if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
             let rarity = crate::core::fruit::fruit_rarity(fruit_name);
-            let status = if detected_banner.is_some() || (backspace_pressed && !protect_drop) {
+            // Banner evidence ONLY: a sent-but-unseen Backspace is not a
+            // drop (v5.3.0 assumed-success fix).
+            let status = if detected_banner.is_some() {
                 if protect_drop {
                     "Storage full / duplicate - protected fruit kept in slot"
                 } else {
@@ -879,6 +960,9 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
     if let Some(banner) = detected_banner {
         match banner {
             crate::core::fruit::StorageBannerResult::DuplicateDropped { fruit_name: detected_name } => {
+                outcome_state = ConfirmationState::Confirmed;
+                outcome_name = "duplicate_dropped_confirmed";
+                outcome_evidence = Some(format!("banner DuplicateDropped({detected_name})"));
                 let name = if detected_name != "Devil Fruit" {
                     detected_name
                 } else if fruit_name != "Devil Fruit" {
@@ -913,6 +997,9 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
                 }
             }
             crate::core::fruit::StorageBannerResult::Dropped { fruit_name: detected_name } => {
+                outcome_state = ConfirmationState::Confirmed;
+                outcome_name = "dropped_confirmed";
+                outcome_evidence = Some(format!("banner Dropped({detected_name})"));
                 let name = if detected_name != "Devil Fruit" {
                     detected_name
                 } else if fruit_name != "Devil Fruit" {
@@ -947,6 +1034,9 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
                 }
             }
             crate::core::fruit::StorageBannerResult::Failed { reason } => {
+                outcome_state = ConfirmationState::Failed;
+                outcome_name = "store_failed";
+                outcome_evidence = Some(format!("banner Failed({reason})"));
                 ctx.log_warn(&format!("⚠️ Fruit storage failed: {reason}"));
                 if !s.webhook.legendary_only || is_high_tier {
                     ctx.webhook.fruit_storage_failed(
@@ -959,21 +1049,51 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
             }
         }
     } else if backspace_pressed && !protect_drop {
-        // Backspace was executed to drop fruit, even if OCR missed the banner text
-        ctx.log_warn(&format!("⚠️ Fruit dropped on ground (drop action completed): {fruit_name}"));
+        // v5.3.0 FIX: Backspace was SENT but no banner was observed, even
+        // after one input-free re-observation. Command sent != success.
+        // The old code claimed "dropped on the ground" here with zero
+        // evidence. Report UNKNOWN and HALT for a manual inventory check —
+        // silently continuing could lose track of a valuable fruit.
+        // (outcome_state/outcome_name below belong to the fall-through
+        // paths; this branch logs its own event and halts.)
+        outcome_name = "unknown_halted";
+        ctx.log_warn(&format!("⚠️ Drop UNCONFIRMED for {fruit_name}: Backspace sent, no banner observed (re-observed once). Outcome UNKNOWN — halting macro for manual check."));
         if !s.webhook.legendary_only || is_high_tier {
             ctx.webhook.fruit_storage_failed(
                 fruit_name,
-                "Fruit was dropped on the ground.",
+                "Drop command sent but NO confirmation banner observed — outcome UNKNOWN, manual inventory check advised.",
                 photo,
                 custom_tg,
             );
         }
+        attempt.confirmation_state = ConfirmationState::Unknown;
+        attempt.confirmation_evidence = outcome_evidence.clone()
+            .or_else(|| Some("no banner after Backspace + re-observation".to_string()));
+        attempt.confirmation_at = Some(crate::events::now_ms());
+        attempt.final_outcome = Some(outcome_name.to_string());
+        let _ = crate::core::workflow::append_action_event(ctx.store.dir(), &attempt);
+        return false;
     } else {
+        // Store clicks sent with no duplicate/error banner: stored per the
+        // game UI contract (banners appear only on failure). This is the
+        // designed success path, not an assumption about a destructive act.
+        outcome_state = ConfirmationState::Confirmed;
+        outcome_name = "stored";
+        if outcome_evidence.is_none() {
+            outcome_evidence = Some("store clicks sent, no failure banner (game UI contract)".to_string());
+        }
         if !s.webhook.legendary_only || is_high_tier {
             ctx.webhook.fruit_stored(fruit_name, None, custom_tg);
         }
     }
+
+    // Correlate the outcome into the workflow event stream (observation
+    // only — logging never influences the macro).
+    attempt.confirmation_state = outcome_state;
+    attempt.confirmation_evidence = outcome_evidence;
+    attempt.confirmation_at = Some(crate::events::now_ms());
+    attempt.final_outcome = Some(outcome_name.to_string());
+    let _ = crate::core::workflow::append_action_event(ctx.store.dir(), &attempt);
 
     // Always re-equip rod (key 1) after fruit drop/store
     let rod_key = s.keys.rod;
@@ -987,6 +1107,44 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
         ctx.platform.input.move_to(fp);
     }
     ctx.sleep_ms(150)
+}
+
+/// Submit one action-UI frame (store/drop/confirmation screens) for future
+/// ACTION_UI / CONFIRMATION training (§11, §18 of v5.3.0).
+///
+/// Trace-gated (explicit collection consent) and observation-only: re-grabs
+/// the banner region, tags it (`store_banner` / `drop_banner` /
+/// `confirm_banner`), and files it as an unreviewed hard example. NEVER
+/// auto-labeled — a human promotes these; the game loop never reads them.
+fn submit_action_frame(ctx: &Ctx, region_tag: &str, ocr_text: &str) {
+    if !ctx.settings.read().fishing.trace {
+        return;
+    }
+    if ctx.ml.active_session_id().is_none() {
+        return;
+    }
+    let Some(r) = ctx.roblox_rect() else { return };
+    let banner_rect = RelRect { x: 0.18, y: 0.02, w: 0.64, h: 0.28 };
+    let frame = match ctx.platform.capture.grab(banner_rect.to_px(&r)) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    let png = match frame.to_png_bytes() {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    ctx.ml.submit(crate::bot::ml_collect::SampleJob {
+        png,
+        session_id: String::new(),
+        task: crate::core::ml_dataset::MlTask::UiDetection,
+        ui_label: None,
+        game_state: None,
+        ocr_text: ocr_text.to_string(),
+        region: region_tag.to_string(),
+        entity_id: None,
+        hard_reason: Some("action-ui: unreviewed, needs human labels".to_string()),
+        source: "gameplay".to_string(),
+    });
 }
 
 fn clean_ocr_digits(s: &str) -> String {

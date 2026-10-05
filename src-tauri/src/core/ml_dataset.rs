@@ -189,6 +189,17 @@ pub struct MlAnnotation {
     pub hard_example: bool,
     pub hard_reason: Option<String>,
     pub corrections: Vec<Correction>,
+    /// Temporal provenance: `{session_id}#f{frame_index:06}` capture order
+    /// within one collection session. First capture wins on exact-dedupe
+    /// folds (the pixels ARE that first moment). Absent on rows collected
+    /// before v5.2.0.
+    #[serde(default)]
+    pub event_id: Option<String>,
+    /// Zero-based per-session capture sequence (same counter as the
+    /// session `samples` tally). Gaps are possible when identical frames
+    /// fold onto an earlier row via exact dedup.
+    #[serde(default)]
+    pub frame_index: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -382,6 +393,8 @@ impl MlDatasetStore {
             hard_example: false,
             hard_reason: None,
             corrections: Vec::new(),
+            event_id: None,
+            frame_index: None,
         };
         self.append_annotation(&ann)?;
         Ok(image_id)
@@ -435,6 +448,40 @@ impl MlDatasetStore {
         std::fs::write(&tmp, out).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, self.labels_path()).map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    /// Attach temporal provenance to an imported row. First capture wins:
+    /// never overwrites an existing `event_id` (exact-dedupe folds reuse the
+    /// first moment's pixels, so the first moment's id stays honest).
+    pub fn set_event(&self, image_id: &str, event_id: &str, frame_index: u64) -> Result<bool, String> {
+        let mut rows = self.annotations();
+        let changed = {
+            let ann = rows
+                .iter_mut()
+                .find(|a| a.image_id == image_id)
+                .ok_or_else(|| format!("no annotation for image '{image_id}'"))?;
+            if ann.event_id.is_some() {
+                return Ok(false);
+            }
+            ann.event_id = Some(event_id.to_string());
+            ann.frame_index = Some(frame_index);
+            true
+        };
+        if !changed {
+            return Ok(false);
+        }
+        let out: String = rows
+            .iter()
+            .filter_map(|a| serde_json::to_string(a).ok())
+            .map(|mut l| {
+                l.push('\n');
+                l
+            })
+            .collect();
+        let tmp = self.root.join("labels.jsonl.tmp");
+        std::fs::write(&tmp, out).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, self.labels_path()).map_err(|e| e.to_string())?;
+        Ok(true)
     }
 
     /// Fill empty `ocr_text`/`entity_id` on an existing row (used when a new
@@ -1070,6 +1117,8 @@ mod tests {
                 hard_example: false,
                 hard_reason: None,
                 corrections: vec![],
+                event_id: None,
+                frame_index: None,
             };
             let mut f = std::fs::OpenOptions::new()
                 .append(true)
@@ -1161,6 +1210,8 @@ mod tests {
             hard_example: false,
             hard_reason: None,
             corrections: vec![],
+            event_id: None,
+            frame_index: None,
         };
         let rows = vec![mk("aa", "sess-X"), mk("bb", "sess-X")];
         // Write matching (empty-content but decodable) PNGs so they count.
@@ -1257,6 +1308,8 @@ mod tests {
             hard_example: hard,
             hard_reason: reason.map(|s| s.into()),
             corrections: vec![],
+            event_id: None,
+            frame_index: None,
         }
     }
 

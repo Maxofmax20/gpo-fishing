@@ -875,8 +875,41 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
             || rarity == fruit::FruitRarity::Mythical;
 
         let is_high_tier = is_known_legendary_or_mythical || is_pity_zero;
-        let is_protected = (s.fruit_storage.never_drop_legendary_or_mythical && is_known_legendary_or_mythical)
-            || (s.fruit_storage.keep_pity_zero_fruit && is_pity_zero);
+        // v5.3.0: single source of truth for the protection rule (proven
+        // equivalent to the legacy inline computation by policy tests).
+        let policy = crate::core::policy::decide_fruit_policy(
+            rarity,
+            is_pity_zero,
+            s.fruit_storage.never_drop_legendary_or_mythical,
+            s.fruit_storage.keep_pity_zero_fruit,
+        );
+        let is_protected = policy.protects_valuable;
+
+        // Correlate this RESULT into the workflow event stream
+        // (observation + logging only — never influences control flow).
+        let session_id = ctx.ml.active_session_id().unwrap_or_else(|| "no-session".to_string());
+        let workflow_id = format!("wf-{session_id}-{}", crate::events::now_ms());
+        {
+            use crate::core::workflow::{ActionEvent, ConfirmationState};
+            let policy_event = ActionEvent {
+                workflow_id: workflow_id.clone(),
+                event_id: format!("{workflow_id}#result"),
+                frame_index: None,
+                session_id: session_id.clone(),
+                result_event_id: None,
+                entity_id: Some(format!("fruit:{}", fruit_name.to_ascii_lowercase())),
+                entity_type: Some("fruit".to_string()),
+                policy_decision: Some(policy.action.as_str().to_string()),
+                action_requested: None,
+                action_sent_at: None,
+                confirmation_state: ConfirmationState::Pending,
+                confirmation_evidence: Some(policy.reason.clone()),
+                confirmation_at: None,
+                retry_count: 0,
+                final_outcome: None,
+            };
+            let _ = crate::core::workflow::append_action_event(ctx.store.dir(), &policy_event);
+        }
 
         let label = if rarity == fruit::FruitRarity::Mythical {
             format!("Mythical devil fruit ({fruit_name})")
@@ -925,7 +958,7 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
                 ctx.log_info(&format!("🛡️ Protected {label} - preventing drop"));
             }
         }
-        if !actions::store_fruit(ctx, &fruit_name, is_protected, is_high_tier) {
+        if !actions::store_fruit(ctx, &fruit_name, is_protected, is_high_tier, &workflow_id) {
             return false;
         }
         *rod_equipped = true;

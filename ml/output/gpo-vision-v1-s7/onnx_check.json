@@ -1,0 +1,7 @@
+{
+  "onnx_path": "ml/output/gpo-vision-v1-s7/gpo_vision_v1.onnx",
+  "max_abs_diff": 4.76837158203125e-06,
+  "tolerance": 0.0001,
+  "pass": true,
+  "single_file": true
+}

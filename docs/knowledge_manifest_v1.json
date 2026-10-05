@@ -1,0 +1,4204 @@
+{
+  "manifest_version": 1,
+  "generator_version": 1,
+  "kb_source": {
+    "knowledge_version": 1,
+    "git_rev": "532a8e9",
+    "files": [
+      "src-tauri/src/core/fruit.rs",
+      "src-tauri/src/core/knowledge.rs"
+    ]
+  },
+  "dataset": {
+    "rows": 6980,
+    "version": 1,
+    "splits": {
+      "train": 6157,
+      "validation": 383,
+      "test": 391
+    }
+  },
+  "kb_counts": {
+    "devil_fruit": 77,
+    "fish": 41,
+    "bait": 3,
+    "ui_term": 20
+  },
+  "coverage_summary": {
+    "kb_entities_with_any_visual": 26,
+    "kb_entities_with_verified_visual": 1,
+    "kb_entities_with_test_visual": 15,
+    "devil_fruit_with_any_visual": 10,
+    "fish_with_any_visual": 9,
+    "other_drop_visual": 0,
+    "other_drop_note": "No OTHER_DROP category exists in the KB and no dataset entity is unmapped; all 26 observed visual entities resolve to KB ids.",
+    "dataset_entities_without_kb_entry": []
+  },
+  "verified_definition": "entity-linked AND ocr_text non-empty AND hard_example=false",
+  "entities": [
+    {
+      "entity_id": "bait:common",
+      "display_name": "Common Bait",
+      "category": "BAIT",
+      "rarity": "Common",
+      "aliases": [
+        "common"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "bait:legendary",
+      "display_name": "Legendary Bait",
+      "category": "BAIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "legendary"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 15,
+        "train": 11,
+        "validation": 0,
+        "test": 4
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 15,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "bait:rare",
+      "display_name": "Rare Bait",
+      "category": "BAIT",
+      "rarity": "Rare",
+      "aliases": [
+        "rare"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:angelfish",
+      "display_name": "Angelfish",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 199,
+        "train": 165,
+        "validation": 13,
+        "test": 21
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 199,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:barracuda",
+      "display_name": "Barracuda",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:bass",
+      "display_name": "Bass",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:beast",
+      "display_name": "Beast",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:bluefin",
+      "display_name": "Bluefin",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:boot",
+      "display_name": "Boot",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:carp",
+      "display_name": "Carp",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:catfish",
+      "display_name": "Catfish",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:clownfish",
+      "display_name": "Clownfish",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:cod",
+      "display_name": "Cod",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:colossal",
+      "display_name": "Colossal",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:crab",
+      "display_name": "Crab",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:crimson",
+      "display_name": "Crimson",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 131,
+        "train": 108,
+        "validation": 3,
+        "test": 20
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 131,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:eel",
+      "display_name": "Eel",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:flying",
+      "display_name": "Flying",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:golden",
+      "display_name": "Golden",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 198,
+        "train": 180,
+        "validation": 13,
+        "test": 5
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 198,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:halibut",
+      "display_name": "Halibut",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:jellyfish",
+      "display_name": "Jellyfish",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:kraken",
+      "display_name": "Kraken",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:lobster",
+      "display_name": "Lobster",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:manta",
+      "display_name": "Manta",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:marlin",
+      "display_name": "Marlin",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:megalodon",
+      "display_name": "Megalodon",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:octopus",
+      "display_name": "Octopus",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:piranha",
+      "display_name": "Piranha",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:pufferfish",
+      "display_name": "Pufferfish",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 69,
+        "train": 62,
+        "validation": 3,
+        "test": 4
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 69,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:ray",
+      "display_name": "Ray",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:sailfish",
+      "display_name": "Sailfish",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:salmon",
+      "display_name": "Salmon",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:seaweed",
+      "display_name": "Seaweed",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:shark",
+      "display_name": "Shark",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 159,
+        "train": 140,
+        "validation": 7,
+        "test": 12
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 159,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:shrimp",
+      "display_name": "Shrimp",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:snapper",
+      "display_name": "Snapper",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 160,
+        "train": 133,
+        "validation": 11,
+        "test": 16
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 160,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:squid",
+      "display_name": "Squid",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 178,
+        "train": 157,
+        "validation": 10,
+        "test": 11
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 178,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:sunfish",
+      "display_name": "Sunfish",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:swordfish",
+      "display_name": "Swordfish",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 67,
+        "train": 64,
+        "validation": 1,
+        "test": 2
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 67,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:tiger",
+      "display_name": "Tiger",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 2,
+        "train": 2,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 2,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:trash",
+      "display_name": "Trash",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:trout",
+      "display_name": "Trout",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:tuna",
+      "display_name": "Tuna",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fish:turtle",
+      "display_name": "Turtle",
+      "category": "FISH",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:bane",
+      "display_name": "Bane",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Epic",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:bari",
+      "display_name": "Bari",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Rare",
+      "aliases": [
+        "Barrier"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:barrier",
+      "display_name": "Barrier",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Rare",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:biscuit",
+      "display_name": "Biscuit",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:bisu",
+      "display_name": "Bisu",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Biscuit"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:bomb",
+      "display_name": "Bomb",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Rare",
+      "aliases": [
+        "Bomu"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:bomu",
+      "display_name": "Bomu",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Rare",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:buddha",
+      "display_name": "Buddha",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [
+        "Daibutsu"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:chiyu",
+      "display_name": "Chiyu",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Common",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:clear",
+      "display_name": "Clear",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Unknown",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:daibutsu",
+      "display_name": "Daibutsu",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:dark",
+      "display_name": "Dark",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:doku",
+      "display_name": "Doku",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:dragon",
+      "display_name": "Dragon",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:flame",
+      "display_name": "Flame",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:gas",
+      "display_name": "Gas",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Gasu"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:gasu",
+      "display_name": "Gasu",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:glint",
+      "display_name": "Glint",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:gomu",
+      "display_name": "Gomu",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Rare",
+      "aliases": [
+        "Rubber"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 1,
+        "train": 1,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 1,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:goro",
+      "display_name": "Goro",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Rumble"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:goru",
+      "display_name": "Goru",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Gold"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:gravity",
+      "display_name": "Gravity",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:gura",
+      "display_name": "Gura",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Tremor",
+        "Quake"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:guru",
+      "display_name": "Guru",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Unknown",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:heal",
+      "display_name": "Heal",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Unknown",
+      "aliases": [
+        "Chiyu"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 3,
+        "train": 2,
+        "validation": 0,
+        "test": 1
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 3,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:hie",
+      "display_name": "Hie",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Ice"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:hito",
+      "display_name": "Hito",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:horo",
+      "display_name": "Horo",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Rare",
+      "aliases": [
+        "Hollow"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 2,
+        "train": 2,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 2,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:ice",
+      "display_name": "Ice",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:ito",
+      "display_name": "Ito",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "String"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:kage",
+      "display_name": "Kage",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Shadow"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:kaido",
+      "display_name": "Kaido",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:kilo",
+      "display_name": "Kilo",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Common",
+      "aliases": [
+        "Weight"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 2,
+        "train": 2,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 2,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:kira",
+      "display_name": "Kira",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Epic",
+      "aliases": [
+        "Diamond"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:leopard",
+      "display_name": "Leopard",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:light",
+      "display_name": "Light",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Unknown",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 2,
+        "train": 2,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 2,
+        "train": 2,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 2,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:love",
+      "display_name": "Love",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Rare",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:lucci",
+      "display_name": "Lucci",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:magma",
+      "display_name": "Magma",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:magu",
+      "display_name": "Magu",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Magma"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:mammoth",
+      "display_name": "Mammoth",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:mera",
+      "display_name": "Mera",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Flame",
+        "Fire"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:mero",
+      "display_name": "Mero",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Rare",
+      "aliases": [
+        "Love"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:mochi",
+      "display_name": "Mochi",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:moku",
+      "display_name": "Moku",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Smoke"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:neko",
+      "display_name": "Neko",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:nikyu",
+      "display_name": "Nikyu",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:ope",
+      "display_name": "Ope",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:paw",
+      "display_name": "Paw",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Nikyu"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 1,
+        "train": 1,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 1,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:phoenix",
+      "display_name": "Phoenix",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:pika",
+      "display_name": "Pika",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Glint"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:plume",
+      "display_name": "Plume",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:pteranodon",
+      "display_name": "Pteranodon",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [
+        "Ptera"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:revive",
+      "display_name": "Revive",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Epic",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:rubber",
+      "display_name": "Rubber",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Rare",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:rumble",
+      "display_name": "Rumble",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:sand",
+      "display_name": "Sand",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:seiryu",
+      "display_name": "Seiryu",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:shadow",
+      "display_name": "Shadow",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:smoke",
+      "display_name": "Smoke",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:soru",
+      "display_name": "Soru",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [
+        "Soul"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:soul",
+      "display_name": "Soul",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:spin",
+      "display_name": "Spin",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Common",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 1,
+        "train": 1,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 1,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:spring",
+      "display_name": "Spring",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Epic",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 1,
+        "train": 1,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 1,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:string",
+      "display_name": "String",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:suke",
+      "display_name": "Suke",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Common",
+      "aliases": [
+        "Clear"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 1,
+        "train": 1,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 1,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:suna",
+      "display_name": "Suna",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Sand"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:t-rex",
+      "display_name": "T-Rex",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [
+        "Trex"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:tori",
+      "display_name": "Tori",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [
+        "Phoenix"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:tremor",
+      "display_name": "Tremor",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:trex",
+      "display_name": "Trex",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:uo",
+      "display_name": "Uo",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:venom",
+      "display_name": "Venom",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Mythical",
+      "aliases": [
+        "Doku"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:yami",
+      "display_name": "Yami",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Dark",
+        "Darkness"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 71,
+        "train": 58,
+        "validation": 9,
+        "test": 4
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 71,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:yomi",
+      "display_name": "Yomi",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Epic",
+      "aliases": [
+        "Revive"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:yuki",
+      "display_name": "Yuki",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Snow"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "fruit:zushi",
+      "display_name": "Zushi",
+      "category": "DEVIL_FRUIT",
+      "rarity": "Legendary",
+      "aliases": [
+        "Gravity"
+      ],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:caught-a",
+      "display_name": "caught a",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:check-your-backpack",
+      "display_name": "check your backpack",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:devil-fruit",
+      "display_name": "devil fruit",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 154,
+        "train": 130,
+        "validation": 19,
+        "test": 5
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 154,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:devil-fruit-drop",
+      "display_name": "devil fruit drop",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 3,
+        "train": 2,
+        "validation": 0,
+        "test": 1
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 3,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:escaped",
+      "display_name": "escaped",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:fished-up",
+      "display_name": "fished up",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:fished-up-a-devil",
+      "display_name": "fished up a devil",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:got-a-devil-fruit",
+      "display_name": "got a devil fruit",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 7,
+        "train": 6,
+        "validation": 0,
+        "test": 1
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 7,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:got-away",
+      "display_name": "got away",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:line-broke",
+      "display_name": "line broke",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:line-snapped",
+      "display_name": "line snapped",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:lost-the",
+      "display_name": "lost the",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:new-item",
+      "display_name": "new item",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 19,
+        "train": 18,
+        "validation": 1,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 19,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:spawn",
+      "display_name": "spawn",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:spawned",
+      "display_name": "spawned",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 4,
+        "train": 4,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 4,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:too-slow",
+      "display_name": "too slow",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:you-caught",
+      "display_name": "you caught",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:you-fished",
+      "display_name": "you fished",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:you-found",
+      "display_name": "you found",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 0,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    },
+    {
+      "entity_id": "ui:you-got",
+      "display_name": "you got",
+      "category": "UI_TERM",
+      "rarity": null,
+      "aliases": [],
+      "wiki_known": true,
+      "visual_examples": {
+        "total": 8,
+        "train": 6,
+        "validation": 1,
+        "test": 1
+      },
+      "verified_visual_examples": {
+        "total": 0,
+        "train": 0,
+        "validation": 0,
+        "test": 0
+      },
+      "ocr_linked_examples": 8,
+      "runtime_supported": {
+        "ocr_kb": true,
+        "mechanism": "correlate_text over KB index (perception.rs) + region OCR"
+      },
+      "production_supported": {
+        "ocr_kb_wired": true,
+        "vision_model": false
+      }
+    }
+  ]
+}

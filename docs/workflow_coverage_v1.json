@@ -1,0 +1,74 @@
+{
+  "coverage_version": 1,
+  "rows": 6996,
+  "sessions": 54,
+  "complete_workflow_sessions": {
+    "train": {
+      "n": 31,
+      "sessions": [
+        "session_2026-10-02_212817_fb8ada76",
+        "session_2026-10-02_212945_18b7353b",
+        "session_2026-10-02_221654_5ef6f5f9",
+        "session_2026-10-02_230043_e51ff1a7",
+        "session_2026-10-02_232819_2c7e6408",
+        "session_2026-10-03_051036_cf6004f2",
+        "session_2026-10-03_052246_57c522fe",
+        "session_2026-10-03_084835_be6e8c8b",
+        "session_2026-10-03_091319_6fbb96f4",
+        "session_2026-10-03_095208_9aa2f3b7",
+        "session_2026-10-03_104057_39d5add1",
+        "session_2026-10-03_115211_8fa9d196",
+        "session_2026-10-03_131603_72bb9ad3",
+        "session_2026-10-03_132921_cfb209d0",
+        "session_2026-10-03_161348_7971a3e2",
+        "session_2026-10-03_161417_bb4b5817",
+        "session_2026-10-03_171113_094bcfa0",
+        "session_2026-10-03_211416_8d611afe",
+        "session_2026-10-03_223708_0ca663cf",
+        "session_2026-10-04_070602_b6f12619",
+        "session_2026-10-04_073807_04bff67c",
+        "session_2026-10-04_112359_6e9b9aa5",
+        "session_2026-10-04_120009_b970ca36",
+        "session_2026-10-04_141428_4c6bc299",
+        "session_2026-10-04_145954_42e87519",
+        "session_2026-10-04_160014_94aaa3c9",
+        "session_2026-10-04_201848_52e11685",
+        "session_2026-10-04_220833_0f8210ed",
+        "session_2026-10-04_224415_a549c60d",
+        "session_2026-10-04_225639_0180cb9d",
+        "session_2026-10-05_002118_cc89a70a"
+      ]
+    },
+    "validation": {
+      "n": 3,
+      "sessions": [
+        "session_2026-10-02_213549_50e36db2",
+        "session_2026-10-03_110949_15b78581",
+        "session_2026-10-04_202745_08b4b13a"
+      ]
+    },
+    "test": {
+      "n": 7,
+      "sessions": [
+        "session_2026-10-02_215405_f5d40eba",
+        "session_2026-10-03_050857_436d1ee0",
+        "session_2026-10-03_112824_f2f53a0e",
+        "session_2026-10-03_164415_39a04dc5",
+        "session_2026-10-03_212521_a4b5946a",
+        "session_2026-10-03_220117_1e7efb16",
+        "session_2026-10-04_114943_737169f9"
+      ]
+    }
+  },
+  "partial_result_without_bite_chain": 2,
+  "result_rows": {
+    "total": 3126,
+    "with_entity": 1460,
+    "with_ocr": 2177
+  },
+  "sessions_with_action_or_confirmation_fields": 0,
+  "gaps": [
+    "no ACTION/CONFIRMATION fields exist in the v1 schema (action_ui + confirmation gates stay red)",
+    "RESULT without a WAITING->BITE prefix cannot be scored as a complete workflow"
+  ]
+}
