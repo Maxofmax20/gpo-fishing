@@ -29,6 +29,9 @@ pub struct AppState {
     pub panel_requested: AtomicBool,
     events_tx: Sender<BotEvent>,
     events_rx: Mutex<Option<Receiver<BotEvent>>>,
+    /// In-memory training-job supervisor (child handles). Jobs themselves
+    /// persist on disk; handles are reaped here. Never drives the macro.
+    pub training: Arc<Mutex<crate::core::training::Supervisor>>,
 }
 
 pub fn data_dir() -> PathBuf {
@@ -55,6 +58,18 @@ pub fn build_state() -> AppState {
     crate::bot::recorder::init_roblox_ref(Arc::clone(&roblox), Arc::clone(&store));
     crate::bot::recorder::set_vpn_provider(Arc::clone(&vpn) as Arc<dyn crate::vpn::VpnControl>);
 
+    // Startup recovery for training jobs: handles are gone with any prior
+    // process, so RUNNING jobs are honestly marked INTERRUPTED (never
+    // claimed complete). Recorded in the learning history.
+    let interrupted = crate::core::training::mark_interrupted(&dir);
+    if !interrupted.is_empty() {
+        tracing::warn!("training jobs interrupted by restart: {interrupted:?}");
+        crate::core::training::append_history(
+            &dir,
+            "jobs_interrupted",
+            serde_json::json!({"job_ids": interrupted}),
+        );
+    }
     AppState {
         platform,
         settings,
@@ -69,6 +84,7 @@ pub fn build_state() -> AppState {
         panel_requested: AtomicBool::new(false),
         events_tx: tx,
         events_rx: Mutex::new(Some(rx)),
+        training: Arc::new(Mutex::new(crate::core::training::Supervisor::new())),
     }
 }
 
@@ -95,6 +111,20 @@ pub fn setup(app: &AppHandle, st: &AppState) -> Result<(), Box<dyn std::error::E
     crate::discord_rpc::spawn(Arc::clone(&st.bot), Arc::clone(&st.settings));
 
     spawn_fruit_spawn_watcher(Arc::clone(&st.bot));
+    // Auto-training watchdog: evaluates triggers every 15 min. Spawns
+    // NOTHING unless settings.training.auto_enabled AND a trigger fires
+    // AND all gates pass; promotion to shadow additionally requires
+    // auto_promote_to_shadow. Production control has no path here.
+    {
+        let bot = Arc::clone(&st.bot);
+        let settings = Arc::clone(&st.settings);
+        let store = Arc::clone(&st.store);
+        let training = Arc::clone(&st.training);
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_secs(15 * 60));
+            crate::commands_training::training_auto_tick(&bot, &settings, &store, &training);
+        });
+    }
 
     // Check if macro was running prior to update/restart
     if st.store.take_resume_state() {

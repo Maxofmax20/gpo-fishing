@@ -494,6 +494,50 @@ impl Default for GameConfig {
     }
 }
 
+/// ML Training Center settings (v5.5). All automation defaults are
+/// conservative: auto-training OFF, no auto-promotion, deferred while
+/// fishing. Production macro control is not governed here at all (it has
+/// no switch anywhere in this codebase).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TrainingSettings {
+    pub auto_enabled: bool,
+    pub min_new_samples: usize,
+    pub min_new_sessions: usize,
+    pub require_held_out_test: bool,
+    pub auto_promote_to_shadow: bool,
+    pub auto_rollback: bool,
+    pub max_concurrent_jobs: usize,
+    pub allow_fish: bool,
+    pub allow_fruit: bool,
+    /// Absolute path to the Python interpreter with torch+onnx ("" = unset).
+    pub python_path: String,
+    /// Absolute path to the trainer checkout dir containing ml/gpo_train.
+    pub trainer_dir: String,
+    pub trigger_cooldown_hours: u64,
+    pub defer_while_fishing: bool,
+}
+
+impl Default for TrainingSettings {
+    fn default() -> Self {
+        Self {
+            auto_enabled: false,
+            min_new_samples: 300,
+            min_new_sessions: 3,
+            require_held_out_test: true,
+            auto_promote_to_shadow: false,
+            auto_rollback: true,
+            max_concurrent_jobs: 1,
+            allow_fish: true,
+            allow_fruit: true,
+            python_path: String::new(),
+            trainer_dir: String::new(),
+            trigger_cooldown_hours: 24,
+            defer_while_fishing: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -517,6 +561,7 @@ pub struct Settings {
     pub gemini: GeminiSettings,
     pub web: WebDashboard,
     pub game: GameConfig,
+    pub training: TrainingSettings,
 }
 
 impl Settings {
@@ -589,6 +634,7 @@ impl Default for Settings {
             gemini: GeminiSettings::default(),
             web: WebDashboard::default(),
             game: GameConfig::default(),
+            training: TrainingSettings::default(),
         };
         s.ensure_web_token();
         s

@@ -22,5 +22,7 @@ pub mod ml_dataset;
 pub mod ml_eval;
 pub mod ml_model;
 pub mod policy;
+pub mod registry;
 pub mod shadow_infer;
+pub mod training;
 pub mod workflow;

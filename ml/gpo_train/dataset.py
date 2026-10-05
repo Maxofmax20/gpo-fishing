@@ -66,10 +66,23 @@ class DatasetSnapshot:
 
 
 def dataset_root() -> str:
+    # Frozen-snapshot override (used by training jobs and hermetic tests):
+    # when set, labels.jsonl + manifest.json are read from here while
+    # images may live under GPO_IMAGES_DIR (content-addressed, immutable).
+    frozen = os.environ.get("GPO_DATASET_DIR")
+    if frozen:
+        return frozen
     appdata = os.environ.get("APPDATA")
     if not appdata:
         raise RuntimeError("APPDATA is not set; production dataset location unknown")
     return os.path.join(appdata, "gpo-autofish", "datasets", "gpo-vision", "v1")
+
+
+def images_dir_for(root: str) -> str:
+    override = os.environ.get("GPO_IMAGES_DIR")
+    if override:
+        return override
+    return os.path.join(root, "images")
 
 
 def load_snapshot(root: str | None = None) -> DatasetSnapshot:
@@ -78,7 +91,7 @@ def load_snapshot(root: str | None = None) -> DatasetSnapshot:
         manifest = json.load(f)
     version = int(manifest.get("version", 0))
     overrides = dict(manifest.get("split_overrides", {}) or {})
-    images_dir = os.path.join(root, "images")
+    images_dir = images_dir_for(root)
     rows: list[Row] = []
     with open(os.path.join(root, "labels.jsonl"), encoding="utf-8") as f:
         for line in f:

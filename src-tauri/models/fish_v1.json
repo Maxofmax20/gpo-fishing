@@ -19,7 +19,21 @@
   ],
   "sha256": "6a155906ed9b7bcc4b9830148c8b214bf7d566192fa8bd876f6da7eb9b0656e9",
   "temperature": 0.75,
-  "test_accuracy": 0.5824,
+  "test_accuracy": 0.5824175824175825,
+  "macro_f1": 0.5405698755573588,
+  "ece": 0.20725460603190227,
+  "test_sessions": 5,
+  "test_n": 91,
+  "per_class_f1": {
+    "fish:angelfish": 0.5581395348837208,
+    "fish:crimson": 0.5142857142857143,
+    "fish:golden": 0.4615384615384615,
+    "fish:pufferfish": 0.22222222222222224,
+    "fish:shark": 0.75,
+    "fish:snapper": 0.7096774193548386,
+    "fish:squid": 0.6086956521739131,
+    "fish:swordfish": 0.5
+  },
   "preprocess": {
     "pad": "square-black",
     "resize": "bilinear",

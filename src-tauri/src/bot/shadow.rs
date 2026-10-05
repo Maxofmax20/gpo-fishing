@@ -58,6 +58,7 @@ pub fn observe_state(ctx: &super::ctx::Ctx, frame: &crate::core::types::Frame, p
         latency_ms: Some(t0.elapsed().as_millis() as u64),
         agreement: Some(vision_is_live == production_bar_present),
         vision_confidence: None,
+        model_version: Some(m.name.clone()),
     };
     let _ = append_shadow_event(ctx.store.dir(), &ev);
 }
@@ -113,6 +114,7 @@ pub fn observe_fish(
         // threshold was established on validation (model report), so the
         // confidence travels with the event and policy ignores it.
         vision_confidence: Some(conf),
+        model_version: Some(m.name.clone()),
     };
     let _ = append_shadow_event(ctx.store.dir(), &ev);
 }

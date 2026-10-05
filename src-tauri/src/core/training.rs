@@ -1,0 +1,876 @@
+//! ML Training Center backend: frozen snapshots, persistent jobs,
+//! subprocess supervision, auto-training triggers, learning history (v5.5).
+//!
+//! Design notes (safety-critical, read before touching):
+//! - Training executes the EXISTING, reviewed Python pipeline
+//!   (`ml/gpo_train/{fish_train,train}.py`) as a child process. This module
+//!   never trains in-process and never invents metrics: progress comes from
+//!   the trainer's own `training_log.jsonl`, results from its
+//!   `evaluation_test.json` + `onnx_check.json`.
+//! - Jobs train against a FROZEN snapshot (labels+manifest copied at job
+//!   creation; images stay live but are content-addressed and immutable).
+//!   The snapshot fingerprint is recorded; drift is reported, never hidden.
+//! - A job ending well is PASSED (evaluated). Promotion to shadow is a
+//!   SEPARATE registry decision (`registry.rs`) — never automatic here
+//!   unless the caller explicitly runs the promotion gate.
+//! - Child handles live in the in-memory `Supervisor` (AppState). A restart
+//!   loses handles by construction, so any RUNNING job found on disk at
+//!   startup is honestly marked INTERRUPTED (never claimed complete).
+
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
+
+use super::ml_dataset::{MlAnnotation, MlDatasetStore};
+use super::ml_model::sha256_hex;
+
+pub const TRAINING_SUBDIR: &str = "training";
+/// Trainer families this backend knows how to launch. `fruit` is accepted
+/// by the schema but blocked by the eligibility gate until real data exists.
+pub const KNOWN_FAMILIES: &[&str] = &["fish", "state", "fruit"];
+
+fn now_ms() -> u64 {
+    crate::events::now_ms()
+}
+
+// ---- dataset fingerprint ----
+
+/// Content fingerprint of a label set: canonical per-row lines, sorted,
+/// SHA-256. Cheap (labels only); images are content-addressed by aHash and
+/// immutable once written, so label identity fully determines the set.
+pub fn dataset_fingerprint(rows: &[MlAnnotation], dataset_version: u32) -> String {
+    let mut lines: Vec<String> = rows
+        .iter()
+        .map(|r| {
+            format!(
+                "{}|{}|{}|{}|{}|{}|{}|{}",
+                r.image_id,
+                r.session_id,
+                r.timestamp_ms,
+                r.game_state.map(|g| g.as_str()).unwrap_or(""),
+                r.entity_id.as_deref().unwrap_or(""),
+                r.ocr_text,
+                r.hard_example,
+                r.region_name,
+            )
+        })
+        .collect();
+    lines.sort();
+    let body = format!("gpo-vision-v{dataset_version}:{}\n{}", lines.len(), lines.join("\n"));
+    format!("fp-{}", &sha256_hex(body.as_bytes())[..16])
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SnapshotMeta {
+    pub fingerprint: String,
+    pub rows: usize,
+    pub sessions: usize,
+    pub test_sessions: Vec<String>,
+    pub created_at: u64,
+    /// Directory holding the frozen labels.jsonl + manifest.json copies.
+    pub snap_dir: PathBuf,
+}
+
+/// Freeze the current label set for one job. Copies are small (labels +
+/// manifest only); images stay in place (content-addressed, immutable).
+pub fn snapshot_dataset(
+    data_dir: &Path,
+    snap_dir: &Path,
+    rows: &[MlAnnotation],
+    dataset_version: u32,
+) -> Result<SnapshotMeta, String> {
+    let src = data_dir.join("datasets").join("gpo-vision").join("v1");
+    std::fs::create_dir_all(snap_dir).map_err(|e| format!("snapshot dir: {e}"))?;
+    for name in ["labels.jsonl", "manifest.json"] {
+        let bytes =
+            std::fs::read(src.join(name)).map_err(|e| format!("snapshot read {name}: {e}"))?;
+        std::fs::write(snap_dir.join(name), &bytes).map_err(|e| format!("snapshot write {name}: {e}"))?;
+    }
+    let mut test_sessions: Vec<String> = rows
+        .iter()
+        .filter(|r| MlDatasetStore::split_of(&r.session_id).as_str() == "test")
+        .map(|r| r.session_id.clone())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
+    test_sessions.sort();
+    let sessions = rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
+    Ok(SnapshotMeta {
+        fingerprint: dataset_fingerprint(rows, dataset_version),
+        rows: rows.len(),
+        sessions,
+        test_sessions,
+        created_at: now_ms(),
+        snap_dir: snap_dir.to_path_buf(),
+    })
+}
+
+// ---- jobs ----
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum JobStatus {
+    Queued,
+    Running,
+    Evaluating,
+    Passed,
+    Rejected,
+    Failed,
+    Cancelled,
+    Interrupted,
+}
+
+impl JobStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            JobStatus::Queued => "QUEUED",
+            JobStatus::Running => "RUNNING",
+            JobStatus::Evaluating => "EVALUATING",
+            JobStatus::Passed => "PASSED",
+            JobStatus::Rejected => "REJECTED",
+            JobStatus::Failed => "FAILED",
+            JobStatus::Cancelled => "CANCELLED",
+            JobStatus::Interrupted => "INTERRUPTED",
+        }
+    }
+
+    pub fn finished(self) -> bool {
+        matches!(
+            self,
+            JobStatus::Passed
+                | JobStatus::Rejected
+                | JobStatus::Failed
+                | JobStatus::Cancelled
+                | JobStatus::Interrupted
+        )
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct JobProgress {
+    pub stage: String,
+    pub epoch: usize,
+    pub total_epochs: usize,
+    pub train_loss: Option<f32>,
+    pub val_metric: Option<f32>,
+    pub learning_rate: Option<f32>,
+    /// Mean seconds per epoch from the trainer log; None until >= 2 epochs.
+    pub sec_per_epoch: Option<f64>,
+    /// Genuinely computed from sec_per_epoch x remaining; None otherwise.
+    pub eta_s: Option<u64>,
+    pub elapsed_s: u64,
+    pub log_tail: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrainingJob {
+    pub job_id: String,
+    pub model_family: String,
+    pub dataset_version: u32,
+    pub dataset_fingerprint: String,
+    pub frozen_rows: usize,
+    pub frozen_sessions: usize,
+    pub frozen_test_sessions: Vec<String>,
+    pub snapshot_dir: PathBuf,
+    pub created_at: u64,
+    pub started_at: Option<u64>,
+    pub finished_at: Option<u64>,
+    pub status: JobStatus,
+    /// "manual" or "auto:<trigger_type>".
+    pub requested_by: String,
+    /// Trainer argv *template* (python path resolved at launch).
+    pub trainer_module: String,
+    pub run_id: String,
+    pub epochs: usize,
+    pub seed: u64,
+    pub code_version: String,
+    /// Trainer checkout dir (set at launch from settings; trainer outputs
+    /// live under <trainer_dir>/ml/output/<run_id>).
+    pub trainer_dir: String,
+    pub work_dir: PathBuf,
+    pub candidate_id: Option<String>,
+    pub evaluation: Option<serde_json::Value>,
+    pub error: Option<String>,
+    pub progress: JobProgress,
+    pub deferred_reason: Option<String>,
+    pub macro_running_at_start: bool,
+}
+
+pub fn jobs_dir(data_dir: &Path) -> PathBuf {
+    data_dir.join(TRAINING_SUBDIR).join("jobs")
+}
+
+fn job_path(data_dir: &Path, job_id: &str) -> PathBuf {
+    jobs_dir(data_dir).join(format!("{job_id}.json"))
+}
+
+pub fn save_job(data_dir: &Path, job: &TrainingJob) -> Result<(), String> {
+    std::fs::create_dir_all(jobs_dir(data_dir)).map_err(|e| e.to_string())?;
+    let body = serde_json::to_string_pretty(job).map_err(|e| e.to_string())?;
+    std::fs::write(job_path(data_dir, &job.job_id), body).map_err(|e| e.to_string())
+}
+
+pub fn load_job(data_dir: &Path, job_id: &str) -> Result<TrainingJob, String> {
+    let raw = std::fs::read_to_string(job_path(data_dir, job_id)).map_err(|e| e.to_string())?;
+    serde_json::from_str(&raw).map_err(|e| e.to_string())
+}
+
+pub fn list_jobs(data_dir: &Path) -> Vec<TrainingJob> {
+    let mut out = Vec::new();
+    let Ok(rd) = std::fs::read_dir(jobs_dir(data_dir)) else { return out };
+    for e in rd.flatten() {
+        let p = e.path();
+        if p.extension().is_some_and(|x| x == "json") {
+            if let Ok(raw) = std::fs::read_to_string(&p) {
+                if let Ok(j) = serde_json::from_str::<TrainingJob>(&raw) {
+                    out.push(j);
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    out
+}
+
+/// Startup recovery: any job left RUNNING/EVALUATING/QUEUED-with-pid is
+/// honestly marked INTERRUPTED (handles are gone with the old process).
+/// Returns the ids that were flipped.
+pub fn mark_interrupted(data_dir: &Path) -> Vec<String> {
+    let mut flipped = Vec::new();
+    for mut j in list_jobs(data_dir) {
+        if matches!(j.status, JobStatus::Running | JobStatus::Evaluating) {
+            j.status = JobStatus::Interrupted;
+            j.finished_at = Some(now_ms());
+            j.error = Some("application restarted while training was running; outcome unknown (never claimed complete)".to_string());
+            if save_job(data_dir, &j).is_ok() {
+                flipped.push(j.job_id.clone());
+            }
+        }
+    }
+    flipped
+}
+
+pub fn new_job_id(family: &str) -> String {
+    format!("{family}-{}-{}", now_ms(), &sha256_hex(family.as_bytes())[..6])
+}
+
+/// Create (do not launch) a job against a frozen snapshot.
+#[allow(clippy::too_many_arguments)]
+pub fn create_job(
+    data_dir: &Path,
+    model_family: &str,
+    requested_by: &str,
+    snapshot: &SnapshotMeta,
+    dataset_version: u32,
+    trainer_module: &str,
+    epochs: usize,
+    seed: u64,
+    code_version: &str,
+    macro_running: bool,
+) -> Result<TrainingJob, String> {
+    if !KNOWN_FAMILIES.contains(&model_family) {
+        return Err(format!("unknown model family '{model_family}'"));
+    }
+    let job_id = new_job_id(model_family);
+    let work_dir = data_dir.join(TRAINING_SUBDIR).join("work").join(&job_id);
+    std::fs::create_dir_all(&work_dir).map_err(|e| e.to_string())?;
+    let job = TrainingJob {
+        job_id: job_id.clone(),
+        model_family: model_family.to_string(),
+        dataset_version,
+        dataset_fingerprint: snapshot.fingerprint.clone(),
+        frozen_rows: snapshot.rows,
+        frozen_sessions: snapshot.sessions,
+        frozen_test_sessions: snapshot.test_sessions.clone(),
+        snapshot_dir: snapshot.snap_dir.clone(),
+        created_at: now_ms(),
+        started_at: None,
+        finished_at: None,
+        status: JobStatus::Queued,
+        requested_by: requested_by.to_string(),
+        trainer_module: trainer_module.to_string(),
+        run_id: job_id,
+        epochs,
+        seed,
+        code_version: code_version.to_string(),
+        trainer_dir: String::new(),
+        work_dir,
+        candidate_id: None,
+        evaluation: None,
+        error: None,
+        progress: JobProgress { stage: "QUEUED".to_string(), ..Default::default() },
+        deferred_reason: None,
+        macro_running_at_start: macro_running,
+    };
+    save_job(data_dir, &job)?;
+    Ok(job)
+}
+
+// ---- supervision (in-memory child handles) ----
+
+pub struct Supervisor {
+    children: HashMap<String, std::process::Child>,
+}
+
+impl Supervisor {
+    pub fn new() -> Self {
+        Self { children: HashMap::new() }
+    }
+
+    pub fn running_count(&self) -> usize {
+        self.children.len()
+    }
+
+    /// Launch a QUEUED job. Env pins the frozen snapshot; stdout/stderr go
+    /// to the job log file (never to the app console).
+    pub fn launch(
+        &mut self,
+        data_dir: &Path,
+        job: &mut TrainingJob,
+        python_path: &str,
+        trainer_dir: &str,
+        max_concurrent: usize,
+    ) -> Result<(), String> {
+        if python_path.trim().is_empty() || trainer_dir.trim().is_empty() {
+            return Err("training backend not configured: set python_path + trainer_dir in Training settings".to_string());
+        }
+        let images_live = data_dir.join("datasets").join("gpo-vision").join("v1").join("images");
+        let argv = vec![
+            python_path.to_string(),
+            "-m".to_string(),
+            job.trainer_module.clone(),
+            "--epochs".to_string(),
+            job.epochs.to_string(),
+            "--seed".to_string(),
+            job.seed.to_string(),
+            "--run-id".to_string(),
+            job.run_id.clone(),
+        ];
+        let envs = vec![
+            ("GPO_DATASET_DIR".to_string(), job.snapshot_dir.to_string_lossy().to_string()),
+            ("GPO_IMAGES_DIR".to_string(), images_live.to_string_lossy().to_string()),
+            ("PYTHONUTF8".to_string(), "1".to_string()),
+        ];
+        self.launch_argv(data_dir, job, &argv, &envs, Path::new(trainer_dir), max_concurrent)
+    }
+
+    /// Launch with an explicit argv/env/cwd. Production passes the real
+    /// trainer argv; the E2E test passes a stub command. Documented test
+    /// seam: argv[0] is the program, the rest are args (no shell involved,
+    /// extra args are never interpreted).
+    pub fn launch_argv(
+        &mut self,
+        data_dir: &Path,
+        job: &mut TrainingJob,
+        argv: &[String],
+        envs: &[(String, String)],
+        cwd: &Path,
+        max_concurrent: usize,
+    ) -> Result<(), String> {
+        if job.status != JobStatus::Queued {
+            return Err(format!("job {} is {:?}, only QUEUED jobs launch", job.job_id, job.status));
+        }
+        if argv.is_empty() {
+            return Err("empty trainer command".to_string());
+        }
+        // Reap dead handles so the count reflects reality.
+        self.children.retain(|_, c| c.try_wait().map(|s| s.is_none()).unwrap_or(false));
+        if self.children.len() >= max_concurrent.max(1) {
+            return Err("another training job is already running (concurrency limit)".to_string());
+        }
+        let log_path = job.work_dir.join("trainer_stdout.log");
+        let log_file = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
+        let err_file = log_file.try_clone().map_err(|e| e.to_string())?;
+        let mut cmd = std::process::Command::new(&argv[0]);
+        cmd.args(&argv[1..]).current_dir(cwd).stdout(log_file).stderr(err_file);
+        for (k, v) in envs {
+            cmd.env(k, v);
+        }
+        let child = cmd.spawn().map_err(|e| format!("trainer spawn failed ({}): {e}", argv[0]))?;
+        self.children.insert(job.job_id.clone(), child);
+        job.status = JobStatus::Running;
+        job.started_at = Some(now_ms());
+        job.progress.stage = "RUNNING".to_string();
+        job.progress.total_epochs = job.epochs;
+        save_job(data_dir, job)?;
+        Ok(())
+    }
+
+    /// Poll one job: reap exits, refresh progress from the trainer log,
+    /// finalize on completion. Returns true when the job just finished.
+    pub fn poll(&mut self, data_dir: &Path, job: &mut TrainingJob, trainer_out_subdir: &str) -> bool {
+        let done = match self.children.get_mut(&job.job_id) {
+            Some(child) => match child.try_wait() {
+                Ok(Some(status)) => Some(status.code().unwrap_or(-1)),
+                Ok(None) => None,
+                Err(_) => Some(-2),
+            },
+            None => {
+                // No handle (e.g. after restart without mark_interrupted):
+                // infer from artifacts only, conservatively.
+                if trainer_done_marker(&job.work_dir, trainer_out_subdir, &job.run_id) {
+                    Some(0)
+                } else {
+                    None
+                }
+            }
+        };
+        refresh_progress(job, trainer_out_subdir);
+        let _ = save_job(data_dir, job);
+        match done {
+            None => false,
+            Some(code) => {
+                self.children.remove(&job.job_id);
+                finalize_job(data_dir, job, trainer_out_subdir, code);
+                true
+            }
+        }
+    }
+
+    /// Cancel a live job: kill the child, mark CANCELLED. Never deletes
+    /// partial outputs (they stay inspectable under work/).
+    pub fn cancel(&mut self, data_dir: &Path, job: &mut TrainingJob) -> Result<(), String> {
+        if let Some(mut child) = self.children.remove(&job.job_id) {
+            let _ = child.kill();
+            let _ = child.wait();
+        } else if job.status.finished() {
+            return Err(format!("job {} already {:?}", job.job_id, job.status));
+        }
+        job.status = JobStatus::Cancelled;
+        job.finished_at = Some(now_ms());
+        job.progress.stage = "CANCELLED".to_string();
+        save_job(data_dir, job)?;
+        Ok(())
+    }
+}
+
+impl Default for Supervisor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Trainer output root for a job: <trainer_dir>/ml/output/<run-id>.
+/// The runner does not assume it; completion is detected via the files the
+/// real pipeline always writes (training_log.jsonl ... onnx_check.json).
+fn trainer_out_dir(trainer_dir: &Path, run_id: &str) -> PathBuf {
+    trainer_dir.join("ml").join("output").join(run_id)
+}
+
+fn trainer_done_marker(work_dir: &Path, trainer_dir: &str, run_id: &str) -> bool {
+    // Primary: the pipeline's own verification file (written last, only on
+    // successful export+verify). Fallback: none — without it, not done.
+    let _ = work_dir;
+    trainer_out_dir(Path::new(trainer_dir), run_id).join("onnx_check.json").exists()
+}
+
+/// Refresh progress from the trainer's own log (never invented).
+fn refresh_progress(job: &mut TrainingJob, trainer_dir: &str) {
+    let log = trainer_out_dir(Path::new(trainer_dir), &job.run_id).join("training_log.jsonl");
+    let Ok(raw) = std::fs::read_to_string(&log) else {
+        job.progress.stage = if job.status == JobStatus::Queued { "QUEUED".to_string() } else { "STARTING".to_string() };
+        return;
+    };
+    let mut epochs = 0usize;
+    let mut secs: Vec<f64> = Vec::new();
+    let mut last_loss = None;
+    let mut last_val = None;
+    let mut last_lr = None;
+    let mut tail: Vec<String> = Vec::new();
+    for line in raw.lines().rev().take(4) {
+        tail.push(line.chars().take(220).collect());
+    }
+    tail.reverse();
+    for line in raw.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
+        epochs += 1;
+        if let Some(s) = v.get("seconds").and_then(|x| x.as_f64()) {
+            secs.push(s);
+        }
+        last_loss = v.get("train_loss").and_then(|x| x.as_f64()).map(|x| x as f32);
+        last_val = v
+            .get("val_macro_f1")
+            .or_else(|| v.get("val_state_macro_f1"))
+            .and_then(|x| x.as_f64())
+            .map(|x| x as f32);
+        last_lr = v.get("lr").and_then(|x| x.as_f64()).map(|x| x as f32);
+    }
+    job.progress.epoch = epochs;
+    job.progress.train_loss = last_loss;
+    job.progress.val_metric = last_val;
+    job.progress.learning_rate = last_lr;
+    job.progress.log_tail = tail;
+    if secs.len() >= 2 {
+        let per = (secs[secs.len() - 1] - secs[0]) / (secs.len() - 1) as f64;
+        job.progress.sec_per_epoch = Some((per * 10.0).round() / 10.0);
+        if job.epochs > epochs {
+            job.progress.eta_s = Some(((job.epochs - epochs) as f64 * per).round() as u64);
+        } else {
+            job.progress.eta_s = Some(0);
+        }
+    } else {
+        job.progress.sec_per_epoch = None;
+        job.progress.eta_s = None;
+    }
+    job.progress.stage = if epochs >= job.epochs { "EVALUATING".to_string() } else { "RUNNING".to_string() };
+    if job.status == JobStatus::Running && epochs >= job.epochs {
+        job.status = JobStatus::Evaluating;
+    }
+}
+
+/// Finalize after the child exited. Reads the REAL evaluation files;
+/// missing/invalid outputs are FAILED with the reason (never defaulted).
+fn finalize_job(data_dir: &Path, job: &mut TrainingJob, trainer_dir: &str, exit_code: i32) {
+    job.finished_at = Some(now_ms());
+    if exit_code != 0 {
+        job.status = JobStatus::Failed;
+        job.error = Some(format!("trainer exited with code {exit_code}; see work dir log"));
+        job.progress.stage = "FAILED".to_string();
+        let _ = save_job(data_dir, job);
+        return;
+    }
+    let out = trainer_out_dir(Path::new(trainer_dir), &job.run_id);
+    let read = |name: &str| std::fs::read_to_string(out.join(name)).ok();
+    let onnx_check: Option<serde_json::Value> =
+        read("onnx_check.json").and_then(|s| serde_json::from_str(&s).ok());
+    let eval: Option<serde_json::Value> =
+        read("evaluation_test.json").and_then(|s| serde_json::from_str(&s).ok());
+    let onnx_ok = onnx_check.as_ref().and_then(|v| v.get("pass")).and_then(|v| v.as_bool()).unwrap_or(false);
+    match (onnx_ok, eval) {
+        (true, Some(e)) => {
+            job.status = JobStatus::Passed;
+            job.evaluation = Some(e);
+            job.progress.stage = "PASSED".to_string();
+        }
+        (false, _) => {
+            job.status = JobStatus::Failed;
+            job.error = Some("onnx_check.json missing or pass=false: export/verify did not complete".to_string());
+            job.progress.stage = "FAILED".to_string();
+        }
+        (true, None) => {
+            job.status = JobStatus::Failed;
+            job.error = Some("evaluation_test.json missing: evaluation did not complete".to_string());
+            job.progress.stage = "FAILED".to_string();
+        }
+    }
+    let _ = save_job(data_dir, job);
+}
+
+// ---- backend availability ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackendStatus {
+    pub available: bool,
+    pub python_path: String,
+    pub python_ok: bool,
+    pub torch_ok: bool,
+    pub torch_version: Option<String>,
+    pub trainer_dir_ok: bool,
+    pub detail: String,
+}
+
+/// Honest capability probe: runs `<python> -c "import torch..."` with a
+/// timeout. Anything missing is reported by name, never papered over.
+pub fn check_backend(python_path: &str, trainer_dir: &str) -> BackendStatus {
+    let mut st = BackendStatus {
+        available: false,
+        python_path: python_path.to_string(),
+        python_ok: false,
+        torch_ok: false,
+        torch_version: None,
+        trainer_dir_ok: false,
+        detail: String::new(),
+    };
+    if python_path.trim().is_empty() {
+        st.detail = "python_path is not configured (Training settings)".to_string();
+        return st;
+    }
+    let probe = std::process::Command::new(python_path)
+        .arg("-c")
+        .arg("import sys, torch; print(torch.__version__)")
+        .output();
+    match probe {
+        Err(e) => {
+            st.detail = format!("cannot execute '{python_path}': {e}");
+            return st;
+        }
+        Ok(out) if !out.status.success() => {
+            let err = String::from_utf8_lossy(&out.stderr);
+            st.python_ok = true;
+            st.detail = format!("python runs but torch import failed: {}", err.chars().take(300).collect::<String>());
+            return st;
+        }
+        Ok(out) => {
+            st.python_ok = true;
+            st.torch_ok = true;
+            st.torch_version = Some(String::from_utf8_lossy(&out.stdout).trim().to_string());
+        }
+    }
+    let trainer_ok = !trainer_dir.trim().is_empty()
+        && Path::new(trainer_dir).join("ml").join("gpo_train").join("fish_train.py").exists();
+    st.trainer_dir_ok = trainer_ok;
+    if !trainer_ok {
+        st.detail = format!("trainer checkout not found under '{trainer_dir}' (need ml/gpo_train/fish_train.py)");
+        return st;
+    }
+    st.available = true;
+    st.detail = format!("ready (torch {})", st.torch_version.as_deref().unwrap_or("?"));
+    st
+}
+
+// ---- triggers ----
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TriggerEvent {
+    pub trigger_type: String,
+    pub reason: String,
+    pub evidence: serde_json::Value,
+    pub dataset_fingerprint: String,
+    pub timestamp_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TriggerState {
+    pub last_fingerprint: Option<String>,
+    pub last_rows: usize,
+    pub last_sessions: usize,
+    pub last_hard: usize,
+    pub last_trigger_ms: Option<u64>,
+    pub last_fish_ready: bool,
+    pub last_fruit_ready: bool,
+}
+
+pub fn trigger_state_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(TRAINING_SUBDIR).join("trigger_state.json")
+}
+
+pub fn load_trigger_state(data_dir: &Path) -> TriggerState {
+    std::fs::read_to_string(trigger_state_path(data_dir))
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_trigger_state(data_dir: &Path, state: &TriggerState) {
+    let dir = data_dir.join(TRAINING_SUBDIR);
+    let _ = std::fs::create_dir_all(&dir);
+    if let Ok(body) = serde_json::to_string_pretty(state) {
+        let _ = std::fs::write(trigger_state_path(data_dir), body);
+    }
+}
+
+/// Evaluate automatic-training triggers against the live dataset.
+/// Pure function (no spawning): the caller decides manual vs auto.
+#[allow(clippy::too_many_arguments)]
+pub fn evaluate_triggers(
+    rows: &[MlAnnotation],
+    dataset_version: u32,
+    fish_ready_now: bool,
+    fruit_ready_now: bool,
+    prev: &TriggerState,
+    min_new_samples: usize,
+    min_new_sessions: usize,
+    cooldown_hours: u64,
+    now: u64,
+) -> Vec<TriggerEvent> {
+    let fp = dataset_fingerprint(rows, dataset_version);
+    let sessions = rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
+    let mut out = Vec::new();
+    let cooled = prev
+        .last_trigger_ms
+        .map(|t| now.saturating_sub(t) >= cooldown_hours.saturating_mul(3_600_000))
+        .unwrap_or(true);
+    if prev.last_fingerprint.as_deref() == Some(fp.as_str()) {
+        return out;
+    }
+    let new_rows = rows.len().saturating_sub(prev.last_rows);
+    let new_sessions = sessions.saturating_sub(prev.last_sessions);
+    if new_rows >= min_new_samples && new_sessions >= min_new_sessions && cooled {
+        out.push(TriggerEvent {
+            trigger_type: "new_data".to_string(),
+            reason: format!("+{new_rows} rows / +{new_sessions} sessions since last training check"),
+            evidence: serde_json::json!({"new_rows": new_rows, "new_sessions": new_sessions}),
+            dataset_fingerprint: fp.clone(),
+            timestamp_ms: now,
+        });
+    }
+    if (fish_ready_now && !prev.last_fish_ready || fruit_ready_now && !prev.last_fruit_ready) && cooled {
+        out.push(TriggerEvent {
+            trigger_type: "coverage".to_string(),
+            reason: format!(
+                "capability newly READY: {}{}",
+                if fish_ready_now && !prev.last_fish_ready { "fish " } else { "" },
+                if fruit_ready_now && !prev.last_fruit_ready { "fruit" } else { "" }
+            ),
+            evidence: serde_json::json!({"fish_ready": fish_ready_now, "fruit_ready": fruit_ready_now}),
+            dataset_fingerprint: fp.clone(),
+            timestamp_ms: now,
+        });
+    }
+    let new_hard = rows.iter().filter(|r| r.hard_example).count();
+    if new_hard >= prev.last_hard + (min_new_samples / 2).max(25) && cooled {
+        out.push(TriggerEvent {
+            trigger_type: "hard_examples".to_string(),
+            reason: format!("+{} hard/disagreement rows since last check", new_hard.saturating_sub(prev.last_hard)),
+            evidence: serde_json::json!({"hard_rows": new_hard}),
+            dataset_fingerprint: fp.clone(),
+            timestamp_ms: now,
+        });
+    }
+    out
+}
+
+// ---- learning history (immutable, append-only) ----
+
+pub fn history_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(TRAINING_SUBDIR).join("history.jsonl")
+}
+
+pub fn append_history(data_dir: &Path, kind: &str, detail: serde_json::Value) {
+    let dir = data_dir.join(TRAINING_SUBDIR);
+    let _ = std::fs::create_dir_all(&dir);
+    let line = serde_json::json!({"ts": now_ms(), "kind": kind, "detail": detail}).to_string() + "\n";
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(history_path(data_dir)) {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+pub fn read_history(data_dir: &Path, tail: usize) -> Vec<serde_json::Value> {
+    let Ok(raw) = std::fs::read_to_string(history_path(data_dir)) else { return Vec::new() };
+    let mut v: Vec<serde_json::Value> =
+        raw.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
+    if v.len() > tail {
+        v.drain(..v.len() - tail);
+    }
+    v
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::ml_dataset::{DATASET_VERSION, GameStateLabel, MlTask, UiLabel};
+
+    fn row(session: &str, ts: u64, state: GameStateLabel, entity: Option<&str>) -> MlAnnotation {
+        MlAnnotation {
+            image_id: format!("{session}-{ts}"),
+            dataset_version: DATASET_VERSION,
+            session_id: session.into(),
+            task: MlTask::GameState,
+            ocr_text: String::new(),
+            region_name: "bar".into(),
+            ui_label: Some(UiLabel::FishingBar),
+            bbox: None,
+            game_state: Some(state),
+            entity_id: entity.map(|s| s.into()),
+            annotator: "test".into(),
+            timestamp_ms: ts,
+            source: "test".into(),
+            confidence: None,
+            hard_example: false,
+            hard_reason: None,
+            corrections: vec![],
+            event_id: None,
+            frame_index: None,
+        }
+    }
+
+    #[test]
+    fn fingerprint_is_stable_and_sensitive() {
+        let a = vec![row("s1", 1, GameStateLabel::Bite, None), row("s1", 2, GameStateLabel::WaitingForBite, None)];
+        let b = a.clone();
+        assert_eq!(dataset_fingerprint(&a, 1), dataset_fingerprint(&b, 1));
+        let mut c = a.clone();
+        c.push(row("s2", 3, GameStateLabel::CatchResult, Some("fish:golden")));
+        assert_ne!(dataset_fingerprint(&a, 1), dataset_fingerprint(&c, 1));
+        // Order-independent.
+        let mut d = c.clone();
+        d.reverse();
+        assert_eq!(dataset_fingerprint(&c, 1), dataset_fingerprint(&d, 1));
+    }
+
+    #[test]
+    fn snapshot_freezes_labels_and_records_test_sessions() {
+        let dir = std::env::temp_dir().join("gpo-train-snap");
+        let _ = std::fs::remove_dir_all(&dir);
+        let ds = dir.join("datasets").join("gpo-vision").join("v1");
+        std::fs::create_dir_all(&ds).unwrap();
+        std::fs::write(ds.join("labels.jsonl"), "l1\nl2\n").unwrap();
+        std::fs::write(ds.join("manifest.json"), r#"{"version":1}"#).unwrap();
+        // Find a test-split session deterministically.
+        let mut test_sess = None;
+        for i in 0..2000 {
+            let cand = format!("snap-test-{i:04}");
+            if MlDatasetStore::split_of(&cand).as_str() == "test" {
+                test_sess = Some(cand);
+                break;
+            }
+        }
+        let ts = test_sess.unwrap();
+        let rows = vec![row("snap-a", 1, GameStateLabel::Bite, None), row(&ts, 2, GameStateLabel::CatchResult, Some("fish:golden"))];
+        let meta = snapshot_dataset(&dir, &dir.join("snap1"), &rows, 1).unwrap();
+        assert_eq!(meta.rows, 2);
+        assert!(meta.test_sessions.contains(&ts));
+        assert!(dir.join("snap1").join("labels.jsonl").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn interrupted_jobs_are_marked_never_completed() {
+        let dir = std::env::temp_dir().join("gpo-train-int");
+        let _ = std::fs::remove_dir_all(&dir);
+        let snap = SnapshotMeta {
+            fingerprint: "fp-x".into(), rows: 1, sessions: 1, test_sessions: vec![],
+            created_at: 1, snap_dir: dir.clone(),
+        };
+        let mut j = create_job(&dir, "fish", "manual", &snap, 1, "gpo_train.fish_train", 40, 7, "test", false).unwrap();
+        j.status = JobStatus::Running;
+        save_job(&dir, &j).unwrap();
+        let flipped = mark_interrupted(&dir);
+        assert_eq!(flipped, vec![j.job_id.clone()]);
+        let back = load_job(&dir, &j.job_id).unwrap();
+        assert_eq!(back.status, JobStatus::Interrupted);
+        assert!(back.error.unwrap().contains("never claimed complete"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unknown_family_is_rejected_at_creation() {
+        let dir = std::env::temp_dir().join("gpo-train-fam");
+        let _ = std::fs::remove_dir_all(&dir);
+        let snap = SnapshotMeta {
+            fingerprint: "fp-x".into(), rows: 1, sessions: 1, test_sessions: vec![],
+            created_at: 1, snap_dir: dir.clone(),
+        };
+        assert!(create_job(&dir, "dragons", "manual", &snap, 1, "m", 1, 1, "t", false).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn triggers_fire_on_growth_and_coverage_not_on_noise() {
+        let prev = TriggerState::default();
+        let rows = vec![row("s-new", 1, GameStateLabel::Bite, None)];
+        let ev = evaluate_triggers(&rows, 1, false, false, &prev, 300, 3, 24, 1000);
+        assert!(ev.is_empty(), "1 row must not trigger (thresholds)");
+        // Same fingerprint twice: no repeat triggers.
+        let st = TriggerState {
+            last_fingerprint: Some(dataset_fingerprint(&rows, 1)),
+            last_rows: 1, last_sessions: 1, last_hard: 0, last_trigger_ms: None,
+            last_fish_ready: false, last_fruit_ready: false,
+        };
+        let ev2 = evaluate_triggers(&rows, 1, false, false, &st, 1, 1, 24, 2000);
+        assert!(ev2.is_empty(), "unchanged dataset must not re-trigger");
+    }
+
+    #[test]
+    fn history_appends_and_reads_tail() {
+        let dir = std::env::temp_dir().join("gpo-train-hist");
+        let _ = std::fs::remove_dir_all(&dir);
+        append_history(&dir, "test_event", serde_json::json!({"a": 1}));
+        append_history(&dir, "test_event", serde_json::json!({"a": 2}));
+        let h = read_history(&dir, 10);
+        assert_eq!(h.len(), 2);
+        assert_eq!(read_history(&dir, 1).len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

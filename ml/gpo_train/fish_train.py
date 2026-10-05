@@ -284,9 +284,10 @@ def main() -> int:
         json.dump(rej, f, indent=2)
 
     # ---- OCR-empty independence slice (vision value where OCR is blind) ----
-    appdata = os.environ.get("APPDATA", "")
+    # Frozen-snapshot aware: same root the snapshot was loaded from.
+    from .dataset import dataset_root as _dataset_root
     ocr_empty_hit, ocr_empty_n, ver_hit, ver_n = 0, 0, 0, 0
-    with open(os.path.join(appdata, "gpo-autofish", "datasets", "gpo-vision", "v1", "labels.jsonl"), encoding="utf-8") as f:
+    with open(os.path.join(_dataset_root(), "labels.jsonl"), encoding="utf-8") as f:
         raw = [json.loads(l) for l in f if l.strip()]
     assert len(raw) == len(snap.rows)
     for i, y, p in zip(te, yt_t, [r.index(max(r)) for r in probs_t]):

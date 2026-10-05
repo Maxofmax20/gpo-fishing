@@ -48,6 +48,86 @@ pub struct CapabilityGate {
     pub blocking_requirement: Option<String>,
 }
 
+/// Per-entity qualification record (dashboard/explorer/eligibility input).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntityQual {
+    pub entity: String,
+    pub examples: usize,
+    pub sessions: usize,
+    pub train: usize,
+    pub validation: usize,
+    pub test: usize,
+    pub test_covered: bool,
+    pub ocr_agree: usize,
+    pub ocr_disagree: usize,
+    /// Meets the example+session bar (>=20 examples, >=3 sessions).
+    pub qualified: bool,
+}
+
+fn normalize_key(entity_id: &str) -> String {
+    pub_normalize_ocr(&entity_id.split(':').nth(1).unwrap_or(entity_id).replace('-', " "))
+}
+
+fn pub_normalize_ocr(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Qualify every entity under a prefix. Public so the Training Center
+/// explorer and eligibility engine share the exact gate arithmetic.
+pub fn qualify_entities(rows: &[MlAnnotation], prefix: &str) -> Vec<EntityQual> {
+    let mut by_ent: HashMap<&str, Vec<&MlAnnotation>> = HashMap::new();
+    for r in rows {
+        if let Some(e) = r.entity_id.as_deref() {
+            if e.starts_with(prefix) {
+                by_ent.entry(e).or_default().push(r);
+            }
+        }
+    }
+    let mut v: Vec<EntityQual> = by_ent
+        .into_iter()
+        .map(|(e, rs)| {
+            let key = normalize_key(e);
+            let mut agree = 0;
+            let mut disagree = 0;
+            let (mut tr, mut va, mut te) = (0, 0, 0);
+            for r in rs.iter() {
+                match MlDatasetStore::split_of(&r.session_id).as_str() {
+                    "train" => tr += 1,
+                    "validation" => va += 1,
+                    "test" => te += 1,
+                    _ => {}
+                }
+                if pub_normalize_ocr(&r.ocr_text).contains(&key as &str) {
+                    agree += 1;
+                } else {
+                    disagree += 1;
+                }
+            }
+            let sessions = rs.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
+            EntityQual {
+                entity: e.to_string(),
+                examples: rs.len(),
+                sessions,
+                train: tr,
+                validation: va,
+                test: te,
+                test_covered: te > 0,
+                ocr_agree: agree,
+                ocr_disagree: disagree,
+                qualified: rs.len() >= ENTITY_MIN_EXAMPLES && sessions >= ENTITY_MIN_SESSIONS,
+            }
+        })
+        .collect();
+    v.sort_by_key(|x| std::cmp::Reverse(x.examples));
+    v
+}
+
 fn gate(
     id: &str,
     name: &str,
@@ -143,61 +223,19 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
             ent_counts.entry(e).or_default().push(r);
         }
     }
-    // Heuristic port of fruit::normalize for OCR/entity agreement: lowercase,
-    // non-alphanumeric to space, collapse whitespace. Agreement = normalized
-    // OCR contains the entity key (e.g. "golden", "you got").
-    fn normalize_ocr(s: &str) -> String {
-        s.to_lowercase()
-            .chars()
-            .map(|c| if c.is_alphanumeric() { c } else { ' ' })
-            .collect::<String>()
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ")
-    }
-    fn entity_key(entity_id: &str) -> String {
-        normalize_ocr(&entity_id.split(':').nth(1).unwrap_or(entity_id).replace('-', " "))
-    }
-    struct Qualified<'a> {
-        entity: &'a str,
-        examples: usize,
-        sessions: usize,
-        test_covered: bool,
-        ocr_agree: usize,
-        ocr_disagree: usize,
-    }
-    let qualified = |prefix: &str| -> Vec<Qualified<'_>> {
-        let mut v: Vec<Qualified> = ent_counts
-            .iter()
-            .filter(|(e, _)| e.starts_with(prefix))
-            .map(|(e, rows)| {
-                let test = rows.iter().any(|r| MlDatasetStore::split_of(&r.session_id).as_str() == "test");
-                let sessions = rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
-                let key = entity_key(e);
-                let mut agree = 0;
-                let mut disagree = 0;
-                for r in rows.iter() {
-                    if normalize_ocr(&r.ocr_text).contains(&key as &str) {
-                        agree += 1;
-                    } else {
-                        disagree += 1;
-                    }
-                }
-                Qualified { entity: *e, examples: rows.len(), sessions, test_covered: test, ocr_agree: agree, ocr_disagree: disagree }
-            })
-            .filter(|q| q.examples >= ENTITY_MIN_EXAMPLES && q.sessions >= ENTITY_MIN_SESSIONS)
-            .collect();
-        v.sort_by_key(|x| std::cmp::Reverse(x.examples));
-        v
-    };
-    let fish_q = qualified("fish:");
-    let fruit_q = qualified("fruit:");
+    // Gate arithmetic counts QUALIFIED entities only (>=20 ex, >=3 sess);
+    // the explorer shows all entities with per-entity reasons.
+    let fish_q: Vec<EntityQual> =
+        qualify_entities(rows, "fish:").into_iter().filter(|q| q.qualified).collect();
+    let fruit_q: Vec<EntityQual> =
+        qualify_entities(rows, "fruit:").into_iter().filter(|q| q.qualified).collect();
     let fish_test = fish_q.iter().filter(|q| q.test_covered).count();
     let fruit_test = fruit_q.iter().filter(|q| q.test_covered).count();
     let fish_ready = fish_q.len() >= FISH_MIN_ENTITIES && fish_test >= ENTITY_MIN_TEST_COVERED;
     let fruit_ready = fruit_q.len() >= FRUIT_MIN_ENTITIES && fruit_test >= ENTITY_MIN_TEST_COVERED;
-    let qual_detail = |q: &[Qualified]| {
+    let qual_detail = |q: &[EntityQual]| {
         q.iter()
+            .filter(|x| x.qualified)
             .map(|x| format!("{}(n={} sess={} ocr±={}/{}{})", x.entity, x.examples, x.sessions, x.ocr_agree, x.ocr_disagree, if x.test_covered { " T" } else { "" }))
             .collect::<Vec<_>>()
             .join(", ")
@@ -346,6 +384,10 @@ pub struct ShadowEvent {
     /// log lines keep parsing.
     #[serde(default)]
     pub vision_confidence: Option<f32>,
+    /// Shadow model that produced this event (e.g. `fish_v1`). Additive so
+    /// pre-v5.5 log lines keep parsing; soak analysis groups by it.
+    #[serde(default)]
+    pub model_version: Option<String>,
 }
 
 pub fn shadow_log_path(data_dir: &Path) -> PathBuf {
@@ -541,6 +583,7 @@ mod tests {
             latency_ms: None,
             agreement: None,
             vision_confidence: None,
+            model_version: None,
         };
         append_shadow_event(&dir, &ev).unwrap();
         let st = shadow_status(&dir, false, &[]);

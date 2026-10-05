@@ -15,6 +15,15 @@
   "sha256": "a8fe9f667adfc8e085682938745a4365129255432a99af4429e28ebfb7c04c32",
   "temperature": 0.15,
   "test_accuracy": 1.0,
+  "macro_f1": 1.0,
+  "ece": null,
+  "test_sessions": 11,
+  "test_n": 391,
+  "per_class_f1": {
+    "waiting_for_bite": 1.0,
+    "bite": 1.0,
+    "catch_result": 1.0
+  },
   "preprocess": {
     "pad": "square-black",
     "resize": "bilinear",
