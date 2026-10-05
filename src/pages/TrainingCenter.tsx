@@ -9,8 +9,14 @@ import type {
   CandidateRecord,
   CompareView,
   DatasetExplorer,
+  DropEntry,
+  EntityHit,
   HistoryEntry,
-  ReviewItem,
+  ModelReadiness,
+  PriorityItem,
+  ReviewCoverageView,
+  ReviewImage,
+  ReviewRecord,
   TrainingJob,
   TrainingOverview,
   TrainingSettings,
@@ -18,7 +24,8 @@ import type {
 
 type SubTab =
   | "overview" | "dataset" | "fish" | "fruits" | "jobs"
-  | "candidates" | "models" | "compare" | "review" | "history" | "settings";
+  | "candidates" | "models" | "compare" | "review" | "coverage"
+  | "drops" | "readiness" | "history" | "settings";
 
 const TABS: { id: SubTab; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -30,6 +37,9 @@ const TABS: { id: SubTab; label: string }[] = [
   { id: "models", label: "Models" },
   { id: "compare", label: "Compare" },
   { id: "review", label: "Review" },
+  { id: "coverage", label: "Coverage" },
+  { id: "drops", label: "Drops" },
+  { id: "readiness", label: "Readiness" },
   { id: "history", label: "History" },
   { id: "settings", label: "Settings" },
 ];
@@ -54,14 +64,22 @@ export default function TrainingCenter() {
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
   const [candidates, setCandidates] = useState<CandidateRecord[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [review, setReview] = useState<ReviewItem[]>([]);
+  const [coverage, setCoverage] = useState<ReviewCoverageView | null>(null);
+  const [priority, setPriority] = useState<PriorityItem[]>([]);
+  const [drops, setDrops] = useState<DropEntry[]>([]);
+  const [readiness, setReadiness] = useState<ModelReadiness[]>([]);
+  const [selected, setSelected] = useState<PriorityItem | null>(null);
+  const [selPng, setSelPng] = useState<ReviewImage | null>(null);
+  const [selRecord, setSelRecord] = useState<ReviewRecord | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHits, setSearchHits] = useState<EntityHit[]>([]);
+  const [correctEntity, setCorrectEntity] = useState("");
   const [settings, setSettings] = useState<TrainingSettings | null>(null);
   const [backend, setBackend] = useState<BackendStatus | null>(null);
   const [compare, setCompare] = useState<CompareView | null>(null);
   const [compareId, setCompareId] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<{ title: string; body: string; label: string; run: () => Promise<void> } | null>(null);
-  const [skipped, setSkipped] = useState<Record<string, boolean>>({});
 
   const refreshAll = useCallback(async () => {
     try {
@@ -82,16 +100,22 @@ export default function TrainingCenter() {
 
   const refreshSlow = useCallback(async () => {
     try {
-      const [e, r, s, b] = await Promise.all([
+      const [e, s, b, cov, pri, dr, rd] = await Promise.all([
         api.datasetExplorer(),
-        api.reviewQueue(),
         api.trainingSettingsGet(),
         api.trainingBackend(),
+        api.reviewCoverage(),
+        api.reviewPriority(60),
+        api.dropsExplorer(),
+        api.readinessStatus(),
       ]);
       setExplorer(e);
-      setReview(r);
       setSettings(s);
       setBackend(b);
+      setCoverage(cov);
+      setPriority(pri);
+      setDrops(dr);
+      setReadiness(rd);
     } catch (e) {
       showToast("error", "Training Center details" + ": " + String(e));
     }
@@ -170,17 +194,64 @@ export default function TrainingCenter() {
     }
   };
 
-  const reviewAct = async (item: ReviewItem, kind: "confirm" | "unknown") => {
+  const selectForReview = async (item: PriorityItem) => {
+    setSelected(item);
+    setSelPng(null);
+    setSelRecord(null);
+    setCorrectEntity(item.entity_id ?? "");
+    setSearchQuery("");
+    setSearchHits([]);
     try {
-      if (kind === "confirm" && item.entity_id) {
-        await api.mlAnnotate(item.image_id, undefined, undefined, item.entity_id, false, undefined);
-      } else {
-        await api.mlAnnotate(item.image_id, undefined, undefined, undefined, true, "human: unknown");
-      }
-      setSkipped((m) => ({ ...m, [item.image_id]: true }));
-      showToast("info", kind === "confirm" ? "Label confirmed" : "Marked UNKNOWN (reviewed)");
+      const [png, rec] = await Promise.all([
+        api.reviewImage(item.image_id),
+        api.reviewGet(item.image_id),
+      ]);
+      setSelPng(png);
+      setSelRecord(rec);
     } catch (e) {
-      showToast("error", "Review annotate" + ": " + String(e));
+      showToast("error", "Load review image" + ": " + String(e));
+    }
+  };
+
+  const runSearch = async (q: string) => {
+    setSearchQuery(q);
+    if (q.trim().length < 2) {
+      setSearchHits([]);
+      return;
+    }
+    try {
+      setSearchHits(await api.reviewSearch(q.trim()));
+    } catch (e) {
+      showToast("error", "Entity search" + ": " + String(e));
+    }
+  };
+
+  const submitReview = async (kind: "correct" | "change" | "unknown" | "skip" | "resolve") => {
+    if (!selected) return;
+    try {
+      if (kind === "skip") {
+        await api.reviewSkip(selected.image_id);
+      } else if (kind === "unknown") {
+        await api.reviewApply(selected.image_id, {});
+      } else if (kind === "resolve") {
+        if (!correctEntity.trim()) {
+          showToast("error", "Resolve needs an entity id");
+          return;
+        }
+        await api.reviewResolve(selected.image_id, correctEntity.trim(), "manual conflict resolution");
+      } else {
+        const id = kind === "correct" ? selected.entity_id : correctEntity.trim();
+        if (!id) {
+          showToast("error", "No entity to confirm — pick one from search or mark UNKNOWN");
+          return;
+        }
+        await api.reviewApply(selected.image_id, { humanEntityId: id });
+      }
+      showToast("info", "Review recorded");
+      await refreshSlow();
+      await selectForReview(selected);
+    } catch (e) {
+      showToast("error", "Review" + ": " + String(e));
     }
   };
 
@@ -455,27 +526,204 @@ export default function TrainingCenter() {
       )}
 
       {tab === "review" && (
-        <Section title={`Review queue (${review.filter((r) => !skipped[r.image_id]).length})`}>
-          <div className="flex flex-col gap-2">
-            {review.filter((r) => !skipped[r.image_id]).slice(0, 20).map((r) => (
-              <div key={r.image_id} className="rounded-lg border border-line/70 px-2.5 py-1.5 text-[11px]">
-                <div className="flex items-center gap-2 flex-wrap">
-                  {r.reasons.map((x) => <Pill key={x} tone="warn">{x.slice(0, 60)}</Pill>)}
-                  {r.entity_id && <Pill tone="accent">{r.entity_id}</Pill>}
-                </div>
-                <div className="font-mono text-fg-mute mt-1 truncate">{r.ocr_text || "(no OCR)"} · {r.session_id}</div>
-                <div className="flex gap-1.5 mt-1.5">
-                  {r.entity_id && (
-                    <Button size="sm" kind="primary" onClick={() => reviewAct(r, "confirm")}>Confirm {r.entity_id}</Button>
+        <>
+          <Section title={`Review workbench — next best (${priority.length} queued)`}>
+            <div className="flex flex-col gap-1.5">
+              {priority.slice(0, 15).map((p) => (
+                <button
+                  key={p.image_id}
+                  onClick={() => selectForReview(p)}
+                  className={`text-left rounded-lg border px-2.5 py-1.5 text-[11px] hover:border-accent ${selected?.image_id === p.image_id ? "border-accent" : "border-line/70"}`}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Pill tone={p.score >= 128 ? "bad" : p.score >= 32 ? "warn" : "mute"}>{p.score}</Pill>
+                    <span className="font-mono text-fg-mute truncate">{p.image_id}</span>
+                    {p.entity_id && <Pill tone="accent">{p.entity_id}</Pill>}
+                    <Pill tone="mute">{p.review_status}</Pill>
+                  </div>
+                  <div className="text-fg-dim mt-0.5">{p.reason}</div>
+                  <div className="font-mono text-fg-mute truncate">{p.ocr_text || "(no OCR)"} · {p.session_id}</div>
+                </button>
+              ))}
+              {priority.length === 0 && (
+                <div className="text-[11px] text-fg-mute">Queue empty — everything collected is reviewed.</div>
+              )}
+            </div>
+          </Section>
+          {selected && (
+            <Section title={`Review: ${selected.image_id}`}>
+              <div className="flex flex-col gap-2">
+                {selPng ? (
+                  <img
+                    src={`data:image/png;base64,${selPng.png_base64}`}
+                    alt={selected.image_id}
+                    className="rounded-lg border border-line/70 max-w-full"
+                    style={{ imageRendering: "pixelated", maxHeight: 320 }}
+                  />
+                ) : (
+                  <div className="text-[11px] text-fg-mute">Loading PNG…</div>
+                )}
+                <div className="text-[11px] font-mono text-fg-dim break-words">
+                  <div>Session {selected.session_id} · {new Date(selected.timestamp_ms).toLocaleString()}</div>
+                  <div>OCR: {selected.ocr_text || "(none)"}</div>
+                  <div>
+                    Dataset entity: {selected.entity_id ?? "(none)"} · status {selected.review_status}
+                  </div>
+                  {selRecord && (
+                    <div>
+                      Prior review: {selRecord.review_status}
+                      {selRecord.human_entity_id ? ` → ${selRecord.human_entity_id}` : ""}
+                      {selRecord.model_prediction ? ` (model said ${selRecord.model_prediction}${selRecord.model_confidence != null ? ` @${selRecord.model_confidence.toFixed(2)}` : ""})` : " (no model prediction recorded)"}
+                      {selRecord.training_eligible ? " · training-eligible" : ` · excluded: ${selRecord.excluded_reason ?? "?"}`}
+                    </div>
                   )}
-                  <Button size="sm" kind="ghost" onClick={() => reviewAct(r, "unknown")}>Confirm UNKNOWN</Button>
-                  <Button size="sm" kind="ghost" onClick={() => setSkipped((m) => ({ ...m, [r.image_id]: true }))}>Skip</Button>
                 </div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {selected.entity_id && (
+                    <Button size="sm" kind="primary" disabled={busy !== null} onClick={() => submitReview("correct")}>
+                      Correct: {selected.entity_id}
+                    </Button>
+                  )}
+                  <Button size="sm" kind="ghost" disabled={busy !== null} onClick={() => submitReview("unknown")}>
+                    Unknown
+                  </Button>
+                  <Button size="sm" kind="ghost" disabled={busy !== null} onClick={() => submitReview("skip")}>
+                    Skip
+                  </Button>
+                  {selRecord?.review_status === "CONFLICT" && (
+                    <Button size="sm" kind="danger" disabled={busy !== null} onClick={() => submitReview("resolve")}>
+                      Resolve conflict
+                    </Button>
+                  )}
+                </div>
+                <div className="flex gap-1.5 flex-wrap items-center">
+                  <input
+                    value={correctEntity}
+                    onChange={(e) => { setCorrectEntity(e.target.value); runSearch(e.target.value); }}
+                    placeholder="entity_id to assign… (search below)"
+                    className="w-56 rounded-lg bg-black/30 border border-line px-2 py-1 text-[11px] text-fg font-mono"
+                  />
+                  <Button size="sm" disabled={busy !== null || !correctEntity.trim()} onClick={() => submitReview("change")}>
+                    Assign + correct
+                  </Button>
+                </div>
+                {searchQuery.trim().length >= 2 && (
+                  <div className="flex flex-col gap-1">
+                    {searchHits.length === 0 && (
+                      <div className="text-[11px] text-warn">NO CANONICAL MATCH — pick nothing, or Mark Unknown. New entities are never invented here.</div>
+                    )}
+                    {searchHits.map((h) => (
+                      <button
+                        key={h.entity_id}
+                        onClick={() => { setCorrectEntity(h.entity_id); setSearchHits([]); }}
+                        className="text-left rounded-lg border border-line/70 px-2 py-1 text-[11px] hover:border-accent"
+                      >
+                        <span className="font-mono text-fg">{h.entity_id}</span>{" "}
+                        <span className="text-fg-dim">{h.canonical_name} ({h.category})</span>{" "}
+                        <Pill tone={h.kind === "exact" ? "ok" : "warn"}>{h.kind}</Pill>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+        </>
+      )}
+
+      {tab === "coverage" && (
+        <Section title="Review coverage — what was actually reviewed">
+          {!coverage ? (
+            <div className="text-[11px] text-fg-mute">Loading…</div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="text-[11px] font-mono text-fg-dim break-words">
+                Total PNGs {coverage.total_rows} · reviewed {coverage.coverage.reviewed} · correct{" "}
+                {coverage.coverage.correct} · corrected {coverage.coverage.corrected} · unknown{" "}
+                {coverage.coverage.unknown} · skipped {coverage.coverage.skipped} · conflicts{" "}
+                {coverage.coverage.conflicts} · sessions {coverage.coverage.sessions} · eligible{" "}
+                {coverage.coverage.eligible} · excluded {coverage.coverage.excluded}
+              </div>
+              <div className="flex flex-col">
+                {coverage.per_entity.map((e) => (
+                  <div key={e.entity} className="flex items-center gap-2 px-1 py-1 border-b border-line/50 text-[11px] font-mono flex-wrap">
+                    <span className="w-44 truncate text-fg">{e.entity}</span>
+                    <span className="text-fg-dim">got {e.collected}</span>
+                    <span className="text-fg-dim">rev {e.reviewed} (✓{e.confirmed} ~{e.corrected} ?{e.unknown})</span>
+                    <span className="text-fg-dim">sess {e.sessions}</span>
+                    <Pill tone={e.eligible > 0 ? "ok" : "mute"}>eligible {e.eligible}</Pill>
+                  </div>
+                ))}
+                {coverage.per_entity.length === 0 && (
+                  <div className="text-[11px] text-fg-mute">No entity-linked rows yet.</div>
+                )}
+              </div>
+            </div>
+          )}
+        </Section>
+      )}
+
+      {tab === "drops" && (
+        <Section title="Fishing drops — canonical registry vs reality">
+          <div className="flex flex-col">
+            {drops.map((d) => (
+              <div key={d.entity_id} className="px-1 py-1.5 border-b border-line/50 text-[11px] flex flex-col gap-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-fg">{d.canonical_name}</span>
+                  <span className="font-mono text-fg-mute">{d.entity_id}</span>
+                  <Pill tone="mute">{d.category}</Pill>
+                  {d.rarity && <Pill tone="fruit">{d.rarity}</Pill>}
+                  {!d.fishing_drop && <Pill tone="mute">not a fishing drop</Pill>}
+                  <Pill tone={d.model_status === "IN_SCOPE" ? "ok" : "mute"}>{d.model_status}</Pill>
+                </div>
+                <div className="font-mono text-fg-dim">
+                  collected {d.collected} · reviewed {d.reviewed} · eligible {d.eligible} · sessions {d.sessions}
+                  {d.aliases.length > 0 && <span> · aka {d.aliases.slice(0, 4).join(", ")}</span>}
+                </div>
+                <div className="font-mono text-fg-mute">wiki: {d.wiki_source}{d.wiki_url ? ` · ${d.wiki_url}` : " (no per-entity URL in KB)"}</div>
               </div>
             ))}
-            {review.filter((r) => !skipped[r.image_id]).length === 0 && (
-              <div className="text-[11px] text-fg-mute">Queue empty — no hard, OCR-empty, or entity-less RESULT rows.</div>
-            )}
+            {drops.length === 0 && <div className="text-[11px] text-fg-mute">Loading…</div>}
+          </div>
+        </Section>
+      )}
+
+      {tab === "readiness" && (
+        <Section title="Model readiness — why ready or not">
+          <div className="flex flex-col gap-3">
+            {(readiness.length === 0) && <div className="text-[11px] text-fg-mute">Loading…</div>}
+            {readiness.map((r) => (
+              <div key={r.family} className="rounded-lg border border-line/70 px-2.5 py-2">
+                <div className="flex items-center gap-2 flex-wrap text-[12px]">
+                  <span className="font-semibold text-fg uppercase">{r.family} model</span>
+                  <Pill tone={r.status === "PRODUCTION_READY" ? "ok" : r.status === "NOT_READY" ? "bad" : "warn"}>
+                    {r.status}
+                  </Pill>
+                </div>
+                <div className="flex flex-col gap-0.5 mt-1.5">
+                  {r.checks.map((c) => (
+                    <div key={c.name} className="text-[11px] font-mono flex gap-2">
+                      <span className={c.passed ? "text-ok" : "text-bad"}>{c.passed ? "PASS" : "FAIL"}</span>
+                      <span className="text-fg">{c.name}</span>
+                      <span className="text-fg-dim break-words">{c.detail}</span>
+                    </div>
+                  ))}
+                </div>
+                {r.blockers.length > 0 && (
+                  <div className="mt-1.5 text-[11px]">
+                    <div className="text-fg font-semibold">
+                      {r.status === "NOT_READY" ? "WHY IS THIS MODEL NOT READY?" : "Remaining blockers:"}
+                    </div>
+                    {r.blockers.map((b) => (
+                      <div key={b} className="font-mono text-warn break-words">• {b}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            <div className="text-[11px] font-mono text-fg-mute break-words">
+              Reviewed ≠ trained. Trained ≠ evaluated. Evaluated ≠ shadow-validated. Shadow-validated ≠ production-enabled.
+            </div>
           </div>
         </Section>
       )}
@@ -520,6 +768,10 @@ export default function TrainingCenter() {
                 ["min_new_samples", "Min new samples to trigger"],
                 ["min_new_sessions", "Min new sessions to trigger"],
                 ["trigger_cooldown_hours", "Trigger cooldown (hours)"],
+                ["readiness_min_macro_f1", "Readiness: min macro-F1"],
+                ["readiness_min_worst_f1", "Readiness: min worst-class F1"],
+                ["readiness_min_shadow_events", "Readiness: min shadow events"],
+                ["readiness_min_review_coverage", "Readiness: min reviewed share"],
               ].map(([k, label]) => (
                 <label key={k} className="flex items-center justify-between gap-2">
                   <span>{label}</span>

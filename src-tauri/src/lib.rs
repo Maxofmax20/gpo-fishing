@@ -1,6 +1,7 @@
 pub mod app;
 pub mod bot;
 pub mod commands;
+pub mod commands_review;
 pub mod commands_training;
 pub mod config;
 pub mod core;
@@ -132,6 +133,18 @@ pub fn run() {
             commands_training::review_queue,
             commands_training::training_settings_get,
             commands_training::training_settings_set,
+            commands_review::review_image,
+            commands_review::review_get,
+            commands_review::review_list,
+            commands_review::review_coverage,
+            commands_review::review_apply,
+            commands_review::review_skip,
+            commands_review::review_resolve,
+            commands_review::review_priority,
+            commands_review::review_search,
+            commands_review::drops_explorer,
+            commands_review::readiness_status,
+            commands_review::hermes_tasks,
             commands::vpn_get_status,
             commands::vpn_connect,
             commands::vpn_disconnect,

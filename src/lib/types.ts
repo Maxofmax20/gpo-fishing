@@ -643,6 +643,7 @@ export type TrainingJob = {
   frozen_rows: number;
   frozen_sessions: number;
   frozen_test_sessions: string[];
+  review_fingerprint: string;
   snapshot_dir: string;
   created_at: number;
   started_at: number | null;
@@ -811,3 +812,131 @@ export type TrainingSettings = {
 };
 
 export type HistoryEntry = { ts: number; kind: string; detail: unknown };
+
+
+export type ReviewStatus =
+  | "UNREVIEWED" | "REVIEWED_CORRECT" | "REVIEWED_CORRECTED"
+  | "REVIEWED_UNKNOWN" | "REVIEWED_SKIPPED" | "CONFLICT";
+
+export type ReviewRecord = {
+  image_id: string;
+  event_id: string | null;
+  session_id: string;
+  review_status: ReviewStatus;
+  model_prediction: string | null;
+  model_confidence: number | null;
+  human_entity_id: string | null;
+  human_canonical_name: string | null;
+  ocr_text: string | null;
+  ocr_prediction: string | null;
+  vision_prediction: string | null;
+  vision_ocr_agreement: boolean | null;
+  is_hard_example: boolean;
+  reviewed_at: number | null;
+  reviewer_version: string;
+  correction_reason: string | null;
+  training_eligible: boolean;
+  excluded_reason: string | null;
+  dataset_version: number;
+};
+
+export type CoverageReport = {
+  total: number;
+  reviewed: number;
+  correct: number;
+  corrected: number;
+  unknown: number;
+  skipped: number;
+  conflicts: number;
+  sessions: number;
+  eligible: number;
+  excluded: number;
+};
+
+export type PerEntityReview = {
+  entity: string;
+  collected: number;
+  reviewed: number;
+  confirmed: number;
+  corrected: number;
+  unknown: number;
+  sessions: number;
+  eligible: number;
+};
+
+export type ReviewCoverageView = {
+  total_rows: number;
+  coverage: CoverageReport;
+  per_entity: PerEntityReview[];
+};
+
+export type PriorityItem = {
+  image_id: string;
+  session_id: string;
+  timestamp_ms: number;
+  ocr_text: string;
+  entity_id: string | null;
+  review_status: string;
+  score: number;
+  reason: string;
+};
+
+export type EntityHit = {
+  entity_id: string;
+  canonical_name: string;
+  category: string;
+  kind: string;
+};
+
+export type DropEntry = {
+  entity_id: string;
+  canonical_name: string;
+  category: string;
+  fishing_drop: boolean;
+  rarity: string | null;
+  aliases: string[];
+  wiki_source: string;
+  wiki_url: string | null;
+  collected: number;
+  reviewed: number;
+  eligible: number;
+  sessions: number;
+  model_status: string;
+};
+
+export type ReadinessStatus =
+  | "TRAINING_READY" | "CANDIDATE_READY" | "SHADOW_READY"
+  | "PRODUCTION_READY" | "NOT_READY";
+
+export type ReadinessCheck = { name: string; passed: boolean; detail: string };
+
+export type ModelReadiness = {
+  family: string;
+  status: ReadinessStatus;
+  checks: ReadinessCheck[];
+  blockers: string[];
+  evidence: Record<string, unknown>;
+};
+
+export type ReviewImage = {
+  image_id: string;
+  width: number;
+  height: number;
+  png_base64: string;
+};
+
+export type ReviewApplyResult = { record: ReviewRecord; dataset_updated: boolean };
+
+export type TriggerEvent = {
+  trigger_type: string;
+  reason: string;
+  evidence: unknown;
+  dataset_fingerprint: string;
+  timestamp_ms: number;
+};
+
+export type HermesTasks = {
+  triggers: TriggerEvent[];
+  readiness: ModelReadiness[];
+  history_tail: HistoryEntry[];
+};

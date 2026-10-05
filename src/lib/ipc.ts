@@ -50,6 +50,15 @@ import type {
   ReviewItem,
   TrainingSettings,
   HistoryEntry,
+  ReviewRecord,
+  ReviewCoverageView,
+  PriorityItem,
+  EntityHit,
+  DropEntry,
+  ModelReadiness,
+  ReviewImage,
+  ReviewApplyResult,
+  HermesTasks,
 } from "./types";
 
 export const api = {
@@ -171,6 +180,21 @@ export const api = {
   trainingSettingsGet: () => invoke<TrainingSettings>("training_settings_get"),
   trainingSettingsSet: (settings: TrainingSettings) =>
     invoke<TrainingSettings>("training_settings_set", { settings }),
+  reviewImage: (imageId: string) => invoke<ReviewImage>("review_image", { imageId }),
+  reviewGet: (imageId: string) => invoke<ReviewRecord | null>("review_get", { imageId }),
+  reviewList: (status?: string, limit?: number, offset?: number) =>
+    invoke<ReviewRecord[]>("review_list", { status, limit, offset }),
+  reviewCoverage: () => invoke<ReviewCoverageView>("review_coverage"),
+  reviewApply: (imageId: string, opts?: { humanEntityId?: string; humanCanonicalName?: string; correctionReason?: string; modelPrediction?: string; modelConfidence?: number }) =>
+    invoke<ReviewApplyResult>("review_apply", { imageId, ...opts }),
+  reviewResolve: (imageId: string, entityId: string, reason: string) =>
+    invoke<ReviewRecord>("review_resolve", { imageId, entityId, reason }),
+  reviewSkip: (imageId: string) => invoke<ReviewRecord>("review_skip", { imageId }),
+  reviewPriority: (limit?: number) => invoke<PriorityItem[]>("review_priority", { limit }),
+  reviewSearch: (query: string) => invoke<EntityHit[]>("review_search", { query }),
+  dropsExplorer: () => invoke<DropEntry[]>("drops_explorer"),
+  readinessStatus: () => invoke<ModelReadiness[]>("readiness_status"),
+  hermesTasks: () => invoke<HermesTasks>("hermes_tasks"),
 };
 
 type Events = {
