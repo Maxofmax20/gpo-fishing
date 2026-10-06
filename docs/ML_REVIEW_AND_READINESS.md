@@ -256,13 +256,21 @@ UI terms). Of the commonly cited fishing-drop names, only **`fish:swordfish`**
 exists. The following are **absent** and were deliberately not added:
 
 ```text
-Blue-Lip Grouper, Tigerfin, Exotic Tigerfin, Golden Tigerfin,
+Blue-Lip Grouper, Tigerfin, Exotic Tigerfin, Golden Tigerfin, Tiger,
 Skeletal Shark, Dark Skeletal Shark, Candy Corn Squid, Jack-O'-Bite,
 Fangfish, Anglerfish (the KB has fish:angelfish — a different fish),
 Crimson Polka Puffer, Golden Polka Puffer, Polka Puffer,
 Zebra Ribbon Angelfish, Golden Ribbon Angelfish,
 Sunken Armor, Sunken Anchor, Sunken Helmet
 ```
+
+`Tiger` is on that list because a human reviewer actually typed it: the single
+review on record has `human_entity_id: "fish:tiger"` against OCR text reading
+`"Nev Item <Exotic Tiserfin"`. `fish:tiger` is not in the KB, so the record was
+stored as `training_eligible: false, excluded_reason: "invalid canonical
+mapping"`. That is the gate working: a plausible-looking fish name is not
+evidence that the fish exists, so it is recorded as a conflict and excluded
+rather than added to the KB.
 
 `Crimson Snapper` exists only as two separate KB entries (`fish:crimson`,
 `fish:snapper`), never as a combined entity. Fish carry **no** rarity
