@@ -406,7 +406,6 @@ impl ReviewStore {
     }
 
     /// Deterministic content fingerprint: FNV-1a hex over
-
     /// `image_id|STATUS|entity` lines sorted by `image_id`.
     pub fn fingerprint(&self) -> String {
         let rows = self.list();
@@ -526,10 +525,6 @@ fn status_for(human_entity_id: Option<&str>, model_prediction: Option<&str>) -> 
         Some(h) if model_prediction == Some(h) => ReviewStatus::ReviewedCorrect,
         Some(_) => ReviewStatus::ReviewedCorrected,
     }
-}
-
-fn canonical_valid(name: Option<&str>) -> bool {
-    name.is_some_and(|s| !s.trim().is_empty())
 }
 
 /// Record (or refresh) a human verdict for `image_id`.

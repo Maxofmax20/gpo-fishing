@@ -1389,7 +1389,7 @@ mod tests {
                 .unwrap()
             })
             .collect();
-        let rows = vec![
+        let rows = [
             elig_row(&ids[0], "sess-elig-A", 100_000, Some(GameStateLabel::WaitingForBite), None, false, None),
             elig_row(&ids[1], "sess-elig-A", 200_000, Some(GameStateLabel::Bite), None, false, None),
             elig_row(&ids[2], "sess-elig-A", 200_500, Some(GameStateLabel::WaitingForBite), None, false, None),
@@ -1717,7 +1717,6 @@ mod tests {
         std::thread::scope(|s| {
             for _ in 0..THREADS {
                 let store = &ds;
-                let bytes = bytes;
                 let out = &out;
                 s.spawn(move || {
                     let id = store

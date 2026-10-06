@@ -2,23 +2,23 @@
 //!
 //! ## What each status MEANS (they are not interchangeable)
 //!
-//! * `NOT_ENOUGH_DATA`      - zero qualified classes: nothing to learn from.
-//! * `NOT_ENOUGH_CLASSES`   - some classes qualify, fewer than the gate wants.
-//! * `NOT_ENOUGH_SESSIONS`  - classes qualify but one falls short on the
-//!                            independent-session requirement.
-//! * `NOT_ENOUGH_REVIEW`    - data qualifies but human review coverage is
-//!                            below the floor, so training would learn from
-//!                            unverified labels.
-//! * `NOT_ENOUGH_TEST`      - qualified classes lack held-out TEST coverage.
-//! * `DATA_READY`           - data + review both pass. Training may start.
-//! * `TRAINING` / `EVALUATING` - a real job is running (live job phase).
-//! * `CANDIDATE_READY`      - an evaluated candidate clears the absolute
-//!                            quality bars and beats the incumbent.
-//! * `SHADOW_READY`         - candidate is deployed to shadow AND its soak
-//!                            has enough events, sessions and agreement.
-//! * `PRODUCTION_READY`     - **structurally unreachable** (see below).
-//! * `NOT_READY`            - no classified reason; never used as a catch-all
-//!                            for the above.
+//! Statuses, in lifecycle order. They are deliberately distinct:
+//!
+//! - `NOT_ENOUGH_DATA`: zero qualified classes; nothing to learn from.
+//! - `NOT_ENOUGH_CLASSES`: some classes qualify, fewer than the gate wants.
+//! - `NOT_ENOUGH_SESSIONS`: classes qualify but one falls short on the
+//!   independent-session requirement.
+//! - `NOT_ENOUGH_REVIEW`: data qualifies but human review coverage is below
+//!   the floor, so training would learn from unverified labels.
+//! - `NOT_ENOUGH_TEST`: qualified classes lack held-out TEST coverage.
+//! - `DATA_READY`: data and review both pass; training may start.
+//! - `TRAINING` / `EVALUATING`: a real job is running (live job phase).
+//! - `CANDIDATE_READY`: an evaluated candidate clears the absolute quality
+//!   bars.
+//! - `SHADOW_READY`: that candidate is deployed to shadow and its soak passes
+//!   volume, agreement and session spread.
+//! - `PRODUCTION_READY`: structurally unreachable (see below).
+//! - `NOT_READY`: no classified reason; never used as a catch-all.
 //!
 //! Training completion NEVER implies readiness: each transition requires its
 //! own evidence, checked in order.
@@ -349,12 +349,12 @@ pub fn assess_family(
         false,
     );
 
-    let mut quality_ok = false;
+    // Assigned in both match arms below; the initialiser is deliberately absent.
+    let quality_ok: bool;
     let mut worst_detail = "no candidate to measure".to_string();
     let mut worst_actual = "none".to_string();
     let mut worst_diff = "n/a".to_string();
     if let Some(r) = latest_eval {
-        quality_ok = true;
         let macro_ok = r.metrics.macro_f1 >= thresholds.min_macro_f1;
         c.add(
             "macro_f1",
@@ -367,7 +367,6 @@ pub fn assess_family(
             if macro_ok { String::new() } else { "Collect more qualified classes / review more samples for this family and retrain.".to_string() },
             false,
         );
-        quality_ok = macro_ok;
         // Name the offending class - a bare number is not actionable.
         let worst = r
             .metrics
@@ -377,11 +376,11 @@ pub fn assess_family(
         match worst {
             Some((cls, score)) => {
                 let ok = *score >= thresholds.min_worst_class_f1;
+                quality_ok = macro_ok && ok;
                 worst_detail =
                     format!("worst class {cls} F1 {:.3} (need >= {:.2})", score, thresholds.min_worst_class_f1);
                 worst_actual = format!("{cls} = {:.3}", score);
                 worst_diff = format!("{:.3} below floor", (thresholds.min_worst_class_f1 - *score).max(0.0));
-                quality_ok = quality_ok && ok;
                 c.add(
                     "worst_class_f1",
                     ReadinessStage::Evaluate,
@@ -395,6 +394,7 @@ pub fn assess_family(
                 );
             }
             None => {
+                quality_ok = false;
                 c.add(
                     "worst_class_f1",
                     ReadinessStage::Evaluate,
@@ -409,6 +409,7 @@ pub fn assess_family(
             }
         }
     } else {
+        quality_ok = false;
         c.add(
             "macro_f1",
             ReadinessStage::Evaluate,

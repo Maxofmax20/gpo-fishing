@@ -184,6 +184,8 @@ pub struct ReviewIntegrity {
     pub unreadable_lines: usize,
     pub audit_events: usize,
     pub last_event: Option<review::AuditEvent>,
+    /// The most recent audit events, newest last.
+    pub last_events: Vec<review::AuditEvent>,
     /// Image ids whose most recent state was an undo.
     pub restorable: Vec<String>,
 }
@@ -192,6 +194,16 @@ pub struct ReviewIntegrity {
 pub fn review_integrity(st: State<'_, AppState>, tail: Option<usize>) -> ReviewIntegrity {
     let store = review_store(st.store.dir());
     let audit = store.audit();
+    let want = tail.unwrap_or(50).clamp(1, 500);
+    let last_events: Vec<review::AuditEvent> = audit
+        .iter()
+        .rev()
+        .take(want)
+        .cloned()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     let restorable: Vec<String> = store
         .list()
         .into_iter()
@@ -202,6 +214,7 @@ pub fn review_integrity(st: State<'_, AppState>, tail: Option<usize>) -> ReviewI
         unreadable_lines: store.corrupt_lines().len(),
         audit_events: audit.len(),
         last_event: audit.last().cloned(),
+        last_events,
         restorable,
     }
 }
@@ -806,8 +819,8 @@ pub fn review_priority(
         items.retain(|i| i.ocr_disagreement);
     }
     match f.sort.as_str() {
-        "newest" => items.sort_by(|a, b| b.timestamp_ms.cmp(&a.timestamp_ms)),
-        "oldest" => items.sort_by(|a, b| a.timestamp_ms.cmp(&b.timestamp_ms)),
+        "newest" => items.sort_by_key(|i| std::cmp::Reverse(i.timestamp_ms)),
+        "oldest" => items.sort_by_key(|i| i.timestamp_ms),
         "least_confidence" => items.sort_by(|a, b| {
             a.model_confidence
                 .unwrap_or(-1.0)
@@ -846,17 +859,19 @@ pub struct EntityHit {
 pub fn review_search(st: State<'_, AppState>, query: String) -> Vec<EntityHit> {
     let kb = st.store.effective_knowledge();
     let by_id: HashMap<&str, _> = kb.entities().iter().map(|e| (e.id.as_str(), e)).collect();
-    let hit = |e: &&crate::core::knowledge::GpoEntity, kind: &str| EntityHit {
+    let hit = |e: &crate::core::knowledge::GpoEntity, kind: &str| EntityHit {
         entity_id: e.id.clone(),
         canonical_name: e.canonical_name.clone(),
         category: e.category.as_str().to_string(),
         kind: kind.to_string(),
     };
     match canon::resolve(&kb, &query) {
-        Resolution::Exact(id) => by_id.get(id.as_str()).map(|e| vec![hit(&e, "exact")]).unwrap_or_default(),
-        Resolution::Ambiguous(ids) => {
-            ids.iter().filter_map(|id| by_id.get(id.as_str())).map(|e| hit(&e, "ambiguous-pick-one")).collect()
-        }
+        Resolution::Exact(id) => by_id.get(id.as_str()).map(|e| vec![hit(e, "exact")]).unwrap_or_default(),
+        Resolution::Ambiguous(ids) => ids
+            .iter()
+            .filter_map(|id| by_id.get(id.as_str()))
+            .map(|e| hit(e, "ambiguous-pick-one"))
+            .collect(),
         Resolution::Unknown => vec![],
     }
 }
