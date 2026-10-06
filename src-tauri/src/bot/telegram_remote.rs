@@ -347,7 +347,7 @@ fn handle_command(
                 bot.ctx().platform.input.key(crate::core::types::Key::Char(ch), true);
                 std::thread::sleep(Duration::from_millis(70));
                 bot.ctx().platform.input.key(crate::core::types::Key::Char(ch), false);
-                let _ = post_telegram(token, chat_id, &format!("⌨️ <b>Pressed key [{ch}] in game!</b>"));
+                let _ = post_telegram(token, chat_id, &format!("⌨️ <b>Pressed key [{}] in game!</b>", telegram_escape(&ch.to_string())));
             } else {
                 let _ = post_telegram(token, chat_id, "ℹ️ <b>Usage:</b> <code>/key &lt;letter&gt;</code> (e.g. <code>/key t</code>)");
             }
@@ -574,7 +574,7 @@ fn handle_command(
                         let text_state = if new_state { "ALL ENABLED 🔔" } else { "ALL MUTED 🔕" };
                         format!("🔔 <b>Boss Alerts:</b> {text_state}")
                     } else {
-                        format!("⚠️ Unknown boss <b>{target}</b>.\nValid options: <code>hawkeye</code>, <code>roger</code>, <code>soulking</code>, <code>kizaru</code>, <code>merchant</code>, <code>all</code>, <code>sound</code>")
+                        format!("⚠️ Unknown boss <b>{}</b>.\nValid options: <code>hawkeye</code>, <code>roger</code>, <code>soulking</code>, <code>kizaru</code>, <code>merchant</code>, <code>all</code>, <code>sound</code>", telegram_escape(target))
                     };
                     let _ = bot.ctx().store.save(&s);
                     res
@@ -828,7 +828,7 @@ fn handle_command(
                 } else {
                     match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), &target_name, false, None, None) {
                         Ok(_) => {
-                            let _ = post_telegram(token, chat_id, &format!("▶️ <b>Started playing macro:</b> <code>{target_name}</code> (1 cycle)"));
+                            let _ = post_telegram(token, chat_id, &format!("▶️ <b>Started playing macro:</b> <code>{}</code> (1 cycle)", telegram_escape(&target_name)));
                         }
                         Err(e) => {
                             let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Playback failed:</b> {e}"));
@@ -842,7 +842,7 @@ fn handle_command(
                 } else {
                     match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), &target_name, true, None, None) {
                         Ok(_) => {
-                            let _ = post_telegram(token, chat_id, &format!("🔁 <b>Started LOOP playback for macro:</b> <code>{target_name}</code>\nSend <code>/macro stop</code> to halt."));
+                            let _ = post_telegram(token, chat_id, &format!("🔁 <b>Started LOOP playback for macro:</b> <code>{}</code>\nSend <code>/macro stop</code> to halt.", telegram_escape(&target_name)));
                         }
                         Err(e) => {
                             let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Playback failed:</b> {e}"));
@@ -891,7 +891,7 @@ fn handle_command(
                 } else {
                     match crate::bot::recorder::delete_macro(&bot.ctx().store, &target_name) {
                         Ok(_) => {
-                            let _ = post_telegram(token, chat_id, &format!("🗑️ <b>Deleted macro:</b> <code>{target_name}</code>"));
+                            let _ = post_telegram(token, chat_id, &format!("🗑️ <b>Deleted macro:</b> <code>{}</code>", telegram_escape(&target_name)));
                         }
                         Err(e) => {
                             let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Delete failed:</b> {e}"));
@@ -905,7 +905,7 @@ fn handle_command(
                     format!("⏺️ <b>RECORDING</b> ({} steps captured)", st.recorded_steps_count)
                 } else if st.is_playing {
                     let loop_txt = if st.is_looping { format!("(Loop #{})", st.current_loop) } else { "(Single cycle)".into() };
-                    format!("▶️ <b>PLAYING:</b> {} {}", st.playing_macro_name.as_deref().unwrap_or("Custom"), loop_txt)
+                    format!("▶️ <b>PLAYING:</b> {} {}", telegram_escape(st.playing_macro_name.as_deref().unwrap_or("Custom")), loop_txt)
                 } else {
                     "⏹️ <b>IDLE</b>".to_string()
                 };

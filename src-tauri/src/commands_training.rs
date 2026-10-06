@@ -428,6 +428,39 @@ pub fn training_restart(st: State<'_, AppState>, job_id: String) -> Result<train
     }
     let settings = st.settings.read().training.clone();
     let rows = rows_of_checked(&st.store)?;
+    // RESTART IS A TRAINING ENTRY POINT. It takes a fresh snapshot, so it can
+    // train on data that did not exist when the original job ran - including
+    // data a human has since marked training-ineligible. It used to check only
+    // that the old job had finished: no qualified-class gate, no human-review
+    // floor. One button click, no error, and a model trains on whatever is
+    // eligible now - possibly one row.
+    let running = training::list_jobs(st.store.dir())
+        .iter()
+        .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
+        .count();
+    let elig = family_eligibility(
+        &old.model_family,
+        &rows,
+        &settings,
+        true,
+        "",
+        running,
+        Some(st.store.dir()),
+        settings.readiness_min_review_coverage as f64,
+    );
+    if !elig.eligible {
+        let why = elig
+            .checks
+            .iter()
+            .filter(|c| !c.ok)
+            .map(|c| c.text.clone())
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Err(format!(
+            "{} restart refused: {why}",
+            old.model_family
+        ));
+    }
     let snap_dir = st.store.dir().join("training").join("snapshots").join(format!("snap-{}", crate::events::now_ms()));
     let snap = training::snapshot_dataset(st.store.dir(), &snap_dir, &rows, DATASET_VERSION)?;
     let mut job = training::create_job(
@@ -1041,7 +1074,24 @@ pub(crate) fn training_auto_tick(
     training: &Arc<Mutex<training::Supervisor>>,
 ) {
     let s = settings.read().training.clone();
-    let rows = rows_of(store);
+    // UNATTENDED PATH, SO IT MUST FAIL CLOSED. `rows_of` silently drops any
+    // labels.jsonl line that will not parse; a row the parser skipped is a row
+    // no filter can see, so it would vanish from an automatic training run
+    // without a record anywhere - and `SnapshotMeta` would still be internally
+    // consistent, because every count is computed over the truncated set.
+    let rows = match rows_of_checked(store) {
+        Ok(r) => r,
+        Err(e) => {
+            // No snapshot, no launch. The next tick retries.
+            tracing::warn!("auto-training skipped: {e}");
+            training::append_history(
+                store.dir(),
+                "auto_training_skipped",
+                serde_json::json!({ "reason": e }),
+            );
+            return;
+        }
+    };
     let gates = assess_capabilities(&rows);
     let gate_ready = |id: &str| gates.iter().find(|g| g.id == id).map(|g| g.ready).unwrap_or(false);
     let prev = training::load_trigger_state(store.dir());

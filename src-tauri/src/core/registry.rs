@@ -239,15 +239,40 @@ pub fn save_registry(data_dir: &Path, records: &[CandidateRecord]) -> Result<(),
 fn save_registry_locked(data_dir: &Path, records: &[CandidateRecord]) -> Result<(), String> {
     std::fs::create_dir_all(registry_dir(data_dir)).map_err(|e| e.to_string())?;
     let body = serde_json::to_string_pretty(records).map_err(|e| e.to_string())?;
-    let path = registry_path(data_dir);
-    let tmp = registry_dir(data_dir).join(format!("registry.json.{}.tmp", std::process::id()));
+    write_atomic(&registry_path(data_dir), body.as_bytes())
+}
+
+/// tmp -> write -> fsync -> rename.
+///
+/// A crash must never leave a half-written registry, manifest or model: those
+/// files are trust anchors, and a truncated one reads as valid-but-wrong far
+/// more often than as obviously broken.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let parent = path.parent().ok_or_else(|| format!("{} has no parent", path.display()))?;
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    // Unique per write, not per process: two deploys in one process must not
+    // share a staging file.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = parent.join(format!(
+        "{}.{}.{}.tmp",
+        path.file_name().and_then(|s| s.to_str()).unwrap_or("out"),
+        std::process::id(),
+        seq
+    ));
     {
-        use std::io::Write;
         let mut f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
-        f.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
+        f.write_all(bytes).map_err(|e| e.to_string())?;
         f.sync_all().map_err(|e| e.to_string())?;
     }
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
+}
+
+/// Atomic file copy: stage, fsync, rename.
+pub fn copy_atomic(src: &Path, dst: &Path) -> Result<(), String> {
+    let bytes = std::fs::read(src).map_err(|e| e.to_string())?;
+    write_atomic(dst, &bytes)
 }
 
 /// Has any shadow telemetry already been recorded for this family's slot?
@@ -604,7 +629,14 @@ pub fn promote_to_shadow(
         }
     }
     // Deploy: copy bytes, then write a fresh manifest naming this version.
-    std::fs::copy(&art, &live_onnx).map_err(|e| e.to_string())?;
+    //
+    // BOTH WRITES ARE ATOMIC (tmp -> fsync -> rename). A plain `copy`/`write`
+    // leaves a torn `.onnx` or `.json` if the process dies between them, and
+    // because `seed_shadow_models` now refuses to overwrite a manifest it
+    // cannot parse, that used to leave the app with no usable shadow model AND
+    // no automatic recovery - a self-inflicted lockout, fixable only by
+    // deleting files by hand.
+    copy_atomic(&art, &live_onnx)?;
     let manifest = serde_json::json!({
         "name": stem,
         "version": records[idx].model_version.to_string(),
@@ -636,8 +668,8 @@ pub fn promote_to_shadow(
         "preprocess": {"pad": "square-black", "resize": "bilinear", "size": 96,
                        "mean": records[idx].mean, "std": records[idx].std},
     });
-    std::fs::write(&live_json, serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())?;
+    let manifest_body = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
+    write_atomic(&live_json, manifest_body.as_bytes())?;
     // Re-verify the deployed bytes through the real loader path.
     let load_err = super::shadow_infer::ShadowEngine::load(models_dir).err();
     if let Some(e) = load_err {

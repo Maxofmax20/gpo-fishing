@@ -452,17 +452,36 @@ pub fn assess_family(
 
     // Soak is three independent requirements: volume, agreement and spread.
     // Volume alone proves nothing about behaviour.
-    let soak_events_ok = soak.map(|s| s.events >= thresholds.min_shadow_events).unwrap_or(false);
+    //
+    // VOLUME COUNTS SCORED EVENTS, not all events. For fish, `agreement` is
+    // `None` whenever OCR+KB did not resolve an entity - which is the expected
+    // steady state on RESULT frames (the trainer measures this explicitly as
+    // `ocr_empty_accuracy`). Counting those toward the volume bar let 100
+    // events of which 2 were resolvable satisfy "volume" while agreement was
+    // decided by those 2.
+    let scored = soak.map(|s| s.agree + s.disagree).unwrap_or(0);
+    let soak_events_ok = scored >= thresholds.min_shadow_events;
     c.add(
         "shadow_soak_events",
         ReadinessStage::Shadow,
         soak_events_ok,
-        soak.map(|s| format!("{} soak events", s.events)).unwrap_or_else(|| "no shadow telemetry yet".to_string()),
-        soak.map(|s| format!("{} events", s.events)).unwrap_or_else(|| "0".to_string()),
-        format!(">= {} events", thresholds.min_shadow_events),
-        soak.map(|s| format!("{} short", thresholds.min_shadow_events.saturating_sub(s.events)))
-            .unwrap_or_else(|| format!("{} short", thresholds.min_shadow_events)),
-        "Play with shadow observation enabled to accumulate soak events.".to_string(),
+        soak.map(|s| format!(
+            "{} scored soak event(s) of {} observed ({} had no OCR+KB baseline to compare against)",
+            s.agree + s.disagree,
+            s.events,
+            s.no_ocr_baseline
+        ))
+        .unwrap_or_else(|| "no shadow telemetry yet".to_string()),
+        soak.map(|s| format!("{} scored", s.agree + s.disagree)).unwrap_or_else(|| "0".to_string()),
+        format!(">= {} scored events", thresholds.min_shadow_events),
+        soak.map(|s| format!(
+            "{} short",
+            thresholds.min_shadow_events.saturating_sub(s.agree + s.disagree)
+        ))
+        .unwrap_or_else(|| format!("{} short", thresholds.min_shadow_events)),
+        "Play with shadow observation enabled. Events only count once OCR+KB produced an \
+         independent baseline to agree or disagree with; unscored events are not evidence."
+            .to_string(),
         false,
     );
     let agree = soak.and_then(|s| s.agreement_rate);
@@ -1255,5 +1274,67 @@ mod tests {
         let chk = r.checks.iter().find(|c| c.name == "shadow_evidence_revision").unwrap();
         assert!(!chk.passed);
         assert!(chk.detail.contains("not deployed"), "{}", chk.detail);
+    }
+
+    #[test]
+    fn unscored_soak_events_do_not_satisfy_the_volume_bar() {
+        // For fish, `agreement` is None whenever OCR+KB did not resolve an
+        // entity - which is the EXPECTED steady state on RESULT frames. The
+        // volume bar used to count those events, so 100 events of which 2 were
+        // resolvable satisfied "volume" while agreement was decided by those 2.
+        let mut s = soak(100, 4, 0.95);
+        s.events = 100;
+        s.agree = 1;
+        s.disagree = 0;
+        s.no_ocr_baseline = 99;
+        let r = assess_family(
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &[rec("fish", 2, 0.80, 0.65)],
+            Some(2),
+            Some(&s),
+            JobPhase::Idle,
+            &passed_jobs(),
+            &ReadinessThresholds::default(),
+        );
+        let vol = r.checks.iter().find(|c| c.name == "shadow_soak_events").unwrap();
+        assert!(!vol.passed, "1 scored event must not satisfy a 100-event floor");
+        assert!(vol.actual.contains("1 scored"), "{}", vol.actual);
+        assert!(
+            vol.detail.contains("99 had no OCR+KB baseline"),
+            "the unscored count must be visible: {}",
+            vol.detail
+        );
+        assert_ne!(
+            r.status,
+            ReadinessStatus::ShadowReady,
+            "agreement must not be decided by one comparison"
+        );
+        assert!(r.blockers.iter().any(|b| b.contains("shadow_soak_events")));
+    }
+
+    #[test]
+    fn a_fully_scored_soak_still_satisfies_the_volume_bar() {
+        // The fix must not make SHADOW_READY unreachable.
+        let mut s = soak(120, 4, 0.95);
+        s.events = 120;
+        s.agree = 116;
+        s.disagree = 4;
+        s.no_ocr_baseline = 0;
+        let r = assess_family(
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &[rec("fish", 2, 0.80, 0.65)],
+            Some(2),
+            Some(&s),
+            JobPhase::Idle,
+            &passed_jobs(),
+            &ReadinessThresholds::default(),
+        );
+        assert_eq!(r.status, ReadinessStatus::ShadowReady);
     }
 }

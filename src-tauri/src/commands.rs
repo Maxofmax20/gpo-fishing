@@ -71,6 +71,18 @@ pub fn settings_set(app: AppHandle, st: State<'_, AppState>, mut settings: Setti
         settings.ui.panel_size = cur.ui.panel_size;
         (cur.hotkeys != settings.hotkeys, cur.ui.hud_visible != settings.ui.hud_visible || cur.ui.hud_offset != settings.ui.hud_offset)
     };
+    // SAFETY CLAMP, BEFORE THE VALUE REACHES MEMORY.
+    //
+    // `Store::save` clamps a clone, so the file is protected - but
+    // `AppState.settings` is what `readiness_status` and `family_eligibility`
+    // actually read. Assigning first left the process holding whatever the
+    // client sent: all six readiness bars at 0 means SHADOW_READY is reachable
+    // with one shadow event and one agreeing comparison.
+    //
+    // The webview posts the whole `Settings` blob on any save, so this boundary
+    // is one field away from every settings write. Clamp here and there is
+    // nowhere left to bypass it.
+    crate::config::Store::clamp_safety_settings(&mut settings);
     *st.settings.write() = settings.clone();
     st.store.save(&settings).map_err(|e| e.to_string())?;
     if hotkeys_changed {

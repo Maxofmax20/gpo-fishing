@@ -1127,6 +1127,9 @@ pub fn save(&self, s: &Settings) -> Result<(), ConfigError> {
     pub fn save_preset(&self, name: &str, s: &Settings) -> Result<(), ConfigError> {
         fs::create_dir_all(self.presets_dir())?;
         let mut stored = s.clone();
+        // A preset is a settings blob like any other: it must not be able to
+        // carry a zeroed readiness bar out of here.
+        Self::clamp_safety_settings(&mut stored);
         stored.encrypt_secrets_for_storage();
         write_atomic(&self.preset_path(name)?, &serde_json::to_vec_pretty(&stored)?)
     }
@@ -1135,6 +1138,10 @@ pub fn save(&self, s: &Settings) -> Result<(), ConfigError> {
         let s = fs::read_to_string(self.preset_path(name)?)?;
         let mut parsed: Settings = serde_json::from_str(&s)?;
         parsed.decrypt_secrets_after_load();
+        // Preset files are plain JSON on disk and can be hand-edited, imported
+        // from elsewhere, or copied between installs. Clamp on the way in, so
+        // `preset_load` cannot put a zeroed bar into live memory.
+        Self::clamp_safety_settings(&mut parsed);
         Ok(parsed)
     }
 
@@ -1515,5 +1522,47 @@ mod tests {
         super::Store::clamp_safety_settings(&mut s);
         assert_eq!(s.training.readiness_min_macro_f1, before, "must not override a real choice");
         assert_eq!(s.training.readiness_min_shadow_events, 500);
+    }
+
+    #[test]
+    fn a_preset_cannot_carry_a_zeroed_readiness_bar() {
+        // The in-memory bypass: `Store::save` clamps a CLONE, so the file was
+        // protected while `AppState.settings` held whatever the client sent.
+        // `preset_load` -> `load_preset` applied a preset file with no clamp at
+        // all, and the webview posts the whole Settings blob on any save.
+        use super::Store;
+        let dir = std::env::temp_dir().join("gpo-preset-clamp");
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = Store::new(dir.clone());
+
+        let mut evil = Settings::default();
+        evil.training.readiness_min_macro_f1 = 0.0;
+        evil.training.readiness_min_shadow_agreement = 0.0;
+        evil.training.readiness_min_shadow_events = 0;
+        evil.training.readiness_min_shadow_sessions = 0;
+        evil.training.readiness_min_review_coverage = 0.0;
+        store.save_preset("evil", &evil).unwrap();
+
+        // On the way OUT: the saved preset must already be clamped.
+        let on_disk: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("presets").join("evil.json")).unwrap())
+                .unwrap();
+        assert!(on_disk["training"]["readiness_min_macro_f1"].as_f64().unwrap() >= 0.30);
+        assert!(on_disk["training"]["readiness_min_shadow_events"].as_u64().unwrap() >= 20);
+
+        // On the way IN: a hand-edited preset file must not reach memory.
+        let p = dir.join("presets").join("handmade.json");
+        let mut tampered = Settings::default();
+        tampered.training.readiness_min_macro_f1 = 0.0;
+        tampered.training.readiness_min_shadow_events = 0;
+        std::fs::write(&p, serde_json::to_vec_pretty(&tampered).unwrap()).unwrap();
+        let loaded = store.load_preset("handmade").unwrap();
+        assert!(
+            loaded.training.readiness_min_macro_f1 >= 0.30,
+            "a preset must not weaken a bar: {}",
+            loaded.training.readiness_min_macro_f1
+        );
+        assert!(loaded.training.readiness_min_shadow_events >= 20);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

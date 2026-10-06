@@ -696,21 +696,87 @@ fn for_each_line<F: FnMut(&str)>(&self, mut f: F) -> usize {
     /// One page of rows, newest first, with a server-side cap.
     ///
     /// The previous implementation read the whole file, reversed it, and
-    /// truncated to 100 - so displaying 100 rows cost a full parse. This reads
-    /// only the tail it needs, and the cap is enforced here rather than trusted
+    /// truncated to 100 - so displaying 100 rows cost a full parse of every row
+    /// in the dataset. `offset` counts back from the NEWEST row, which is what
+    /// the UI needs, and that makes the read bounded: only the tail of the file
+    /// has to be touched.
+    ///
+    /// Reads backwards in 64 KiB blocks until it has `offset + limit` rows. At
+    /// ~500 bytes per row that is a handful of blocks for any realistic page,
+    /// regardless of dataset size. The cap is enforced here rather than trusted
     /// from the caller.
     pub fn annotations_page(&self, offset: usize, limit: usize) -> Vec<MlAnnotation> {
         let limit = limit.clamp(1, Self::MAX_PAGE_ROWS);
+        let wanted = offset.saturating_add(limit);
+
+        // Fast path: walk back from EOF collecting the last `wanted` rows.
+        if let Some(rows) = self.tail_rows(wanted) {
+            return rows.into_iter().skip(offset).collect();
+        }
+
+        // Fallback (unreadable file, or a pathological tail): full read. Still
+        // streamed, still capped.
         let mut rows: Vec<MlAnnotation> = Vec::new();
         let _ = self.for_each_line(|l| {
             if let Ok(r) = serde_json::from_str::<MlAnnotation>(l) {
                 rows.push(r);
             }
         });
-        // Newest first: the UI shows the most recent captures. Walking in
-        // reverse and skipping is what makes `offset` mean "N rows back from the
-        // newest" rather than "row N of the file".
         rows.into_iter().rev().skip(offset).take(limit).collect()
+    }
+
+    /// The last `n` rows, NEWEST first, read backwards from end of file.
+    ///
+    /// Returns `None` if the file cannot be opened or read, so the caller can
+    /// fall back rather than silently returning an empty page - an empty page
+    /// would read as "the dataset is empty", which is the failure mode this
+    /// whole exercise exists to avoid.
+    fn tail_rows(&self, n: usize) -> Option<Vec<MlAnnotation>> {
+        use std::io::{Read, Seek, SeekFrom};
+        const BLOCK: usize = 64 * 1024;
+        let path = self.labels_path();
+        let mut f = std::fs::File::open(&path).ok()?;
+        let len = f.metadata().ok()?.len();
+        if len == 0 {
+            return Some(Vec::new());
+        }
+        let mut rows: Vec<MlAnnotation> = Vec::new();
+        let mut pos = len as i64;
+        // A trailing newline produces an empty final line; `filter` handles it.
+        let mut carry: Vec<u8> = Vec::new();
+        while pos > 0 && rows.len() < n {
+            let want = BLOCK.min(pos as usize);
+            pos -= want as i64;
+            f.seek(SeekFrom::Start(pos as u64)).ok()?;
+            let mut buf = vec![0u8; want];
+            f.read_exact(&mut buf).ok()?;
+            // Bytes before the block start may belong to a line that continues
+            // into it; prepend so we can complete it on the next iteration.
+            buf.extend_from_slice(&carry);
+            carry = Vec::new();
+            let mut lines: Vec<&[u8]> = buf.split(|b| *b == b'\n').collect();
+            // If the block did not start on a line boundary, the last chunk is a
+            // partial line: carry it forward rather than parsing a fragment.
+            if pos > 0 {
+                let tail = lines.pop().unwrap_or(&[]).to_vec();
+                carry = tail;
+            }
+            for line in lines.iter().rev() {
+                if line.iter().all(|b| b.is_ascii_whitespace()) {
+                    continue;
+                }
+                if let Ok(r) = serde_json::from_slice::<MlAnnotation>(line) {
+                    rows.push(r);
+                    if rows.len() >= n {
+                        break;
+                    }
+                }
+            }
+        }
+        // Already newest-first: the blocks were walked backwards and the rows
+        // within each block were collected in reverse. `skip(offset)` therefore
+        // counts back from the newest row, which is what `offset` means.
+        Some(rows)
     }
 
     /// Buffered line reader over `labels.jsonl`, or `None` when the file is absent.

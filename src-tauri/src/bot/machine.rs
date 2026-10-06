@@ -172,6 +172,42 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
     }
 }
 
+/// Validate a VIP server URL before it is handed to a shell.
+///
+/// `cmd /C start "" <url>` runs the URL through cmd.exe's parser, so argv
+/// quoting does NOT protect it: `x&calc` is passed unquoted by Rust (no
+/// whitespace) and cmd executes `calc` as a second command. `vip_server_url` is
+/// writable from the token-authenticated LAN dashboard, so this is an RCE
+/// primitive guarded only by the dashboard token.
+///
+/// Only an `https://` Roblox game URL is accepted, with nothing after it that
+/// cmd would interpret. Empty input is allowed through as empty (the caller
+/// skips the launch).
+pub fn validate_vip_server_url(raw: &str) -> Result<String, String> {
+    let url = raw.trim();
+    if url.is_empty() {
+        return Ok(String::new());
+    }
+    if url.len() > 512 {
+        return Err("too long".to_string());
+    }
+    if !url.starts_with("https://") {
+        return Err("must be https".to_string());
+    }
+    if !url.contains("roblox.com") {
+        return Err("must be a roblox.com URL".to_string());
+    }
+    // Belt and braces: even with the prefix checks above, refuse any character
+    // a shell could act on. A Roblox game URL needs none of these.
+    if let Some(bad) = url
+        .chars()
+        .find(|c| matches!(c, '&' | '|' | '<' | '>' | '^' | '%' | '!' | '`' | '"' | '\'' | '(' | ')' | '{' | '}' | ';' | '\n' | '\r' | '\t' | ' '))
+    {
+        return Err(format!("contains an illegal character {bad:?}"));
+    }
+    Ok(url.to_string())
+}
+
 fn wait_for_roblox(ctx: &Arc<Ctx>, notify_disconnect: bool) -> bool {
     if ctx.roblox_rect().is_some() {
         return true;
@@ -319,9 +355,19 @@ pub(super) fn attempt_reconnect(ctx: &Arc<Ctx>, reason: &str, rod_equipped: &mut
     // 3. If modal still present, attempt VIP URL or rejoin relaunch if configured
     if !reconnected {
         let vip = ctx.settings.read().features.vip_server_url.trim().to_string();
-        if !vip.is_empty() {
-            ctx.log_info(&format!("Auto-reconnect: Launching via VIP URL: {vip}"));
-            let _ = std::process::Command::new("cmd").args(["/C", "start", "", &vip]).spawn();
+        match validate_vip_server_url(&vip) {
+            Err(e) => ctx.log_info(&format!("Auto-reconnect: VIP URL rejected ({e})")),
+            Ok(url) => {
+                ctx.log_info(&format!("Auto-reconnect: Launching via VIP URL: {url}"));
+                // `cmd /C start` re-parses its argument string, so Rust's argv
+                // quoting is not enough: an unquoted `&` makes cmd run a second
+                // command. The URL is validated to be a bare https:// Roblox
+                // game URL first, so nothing that cmd would interpret can reach
+                // it.
+                let _ = std::process::Command::new("cmd")
+                    .args(["/C", "start", "", &url])
+                    .spawn();
+            }
         }
     }
 
@@ -1432,5 +1478,47 @@ mod tests {
         assert_eq!(meta.get("samples").and_then(|v| v.as_u64()), Some(0));
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_vip_url_cannot_smuggle_a_second_command_into_cmd() {
+        // `cmd /C start "" <url>` re-parses its argument string, so argv
+        // quoting does NOT protect it. `x&calc` has no whitespace, so Rust
+        // passes it unquoted and cmd runs `calc`. vip_server_url is writable
+        // from the token-authenticated LAN dashboard.
+        for bad in [
+            "x&calc",
+            "https://roblox.com/games/1&calc",
+            "https://roblox.com/games/1|calc",
+            "https://roblox.com/games/1^&calc",
+            "https://roblox.com/games/1\ncalc",
+            "https://roblox.com/games/1\rcalc",
+            "https://roblox.com/games/1 calc",
+            "https://roblox.com/games/1;calc",
+            "https://roblox.com/games/1$(calc)",
+            "https://roblox.com/games/1`calc`",
+            "https://roblox.com/games/1\"calc\"",
+        ] {
+            assert!(
+                validate_vip_server_url(bad).is_err(),
+                "must refuse {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_real_roblox_vip_url_is_accepted_and_empty_is_allowed() {
+        assert_eq!(
+            validate_vip_server_url("https://www.roblox.com/games/12345/Fish-It").unwrap(),
+            "https://www.roblox.com/games/12345/Fish-It"
+        );
+        // Empty means "no VIP configured": the caller skips the launch, so it
+        // must not be an error.
+        assert_eq!(validate_vip_server_url("").unwrap(), "");
+        assert_eq!(validate_vip_server_url("   ").unwrap(), "");
+        // Non-HTTPS and non-Roblox are refused even without metacharacters.
+        assert!(validate_vip_server_url("http://www.roblox.com/games/1").is_err());
+        assert!(validate_vip_server_url("https://evil.example.com/games/1").is_err());
+        assert!(validate_vip_server_url(&"h".repeat(600)).is_err());
     }
 }

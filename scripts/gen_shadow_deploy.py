@@ -45,6 +45,15 @@ MODELS_DIR = os.path.join(REPO, "src-tauri", "models")
 FIX_DIR = os.path.join(REPO, "src-tauri", "tests", "fixtures", "shadow")
 
 
+def vocab_sha(classes) -> str:
+    """Fingerprint of the index -> label mapping.
+
+    Must match `crate::core::ml_model::sha256_hex(classes.join("\\n"))` on the
+    Rust side, which is what `shadow_infer` verifies at load.
+    """
+    return hashlib.sha256("\n".join(classes).encode("utf-8")).hexdigest()
+
+
 def sha256(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -83,6 +92,10 @@ def main() -> int:
             "macro_f1": core.get("macro_f1", core.get("macroF1")),
             "test_n": core.get("n", ev.get("n")),
             "per_class_f1": {k: v["f1"] for k, v in per.items()},
+            # Test support per class. `compare()` refuses to let a class with
+            # very few held-out examples decide a promotion, and it needs the
+            # count to do that.
+            "per_class_support": {k: int(v.get("support", 0)) for k, v in per.items()},
         }
 
     def ece_of(run):
@@ -120,6 +133,10 @@ def main() -> int:
             "runtime": "tract",
             "input_width": INPUT_SIZE, "input_height": INPUT_SIZE,
             "classes": m["classes"], "sha256": sha256(dst),
+            # Fingerprint of the index -> label mapping. The .onnx checksum
+            # cannot catch a permuted `classes` array (the map lives here, not in
+            # the weights), so it is pinned and VERIFIED at load.
+            "vocab_sha": vocab_sha(m["classes"]),
             "temperature": m["temperature"],
             "test_accuracy": m["test_accuracy"],
             "macro_f1": m["macro_f1"],
@@ -127,6 +144,7 @@ def main() -> int:
             "test_sessions": m["test_sessions"],
             "test_n": m["test_n"],
             "per_class_f1": m["per_class_f1"],
+            "test_support": m.get("per_class_support", {}),
             "preprocess": {
                 "pad": "square-black", "resize": "bilinear", "size": INPUT_SIZE,
                 "mean": list(cfg["normalization"]["mean"]),
