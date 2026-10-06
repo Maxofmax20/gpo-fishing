@@ -1000,13 +1000,56 @@ impl Store {
         if fresh_install {
             let _ = self.save(&settings);
         }
+        // A hand-edited or tampered settings.json must not be able to weaken a
+        // safety gate: clamp before the value reaches any caller.
+        Self::clamp_safety_settings(&mut settings);
         settings
     }
 
-    pub fn save(&self, s: &Settings) -> Result<(), ConfigError> {
+    /// Clamp every safety-relevant setting into its valid range.
+///
+/// Called on load AND before every save. The dedicated training command
+/// validated these, but the generic settings path (presets, hand-edited
+/// settings.json, any future writer) did not - so a crafted preset could set a
+/// readiness bar to 0 and make the whole system report ready. Clamping at the
+/// persistence boundary means no caller can bypass it.
+pub fn clamp_safety_settings(s: &mut Settings) {
+    fn clamp_f32(v: f32, lo: f32, hi: f32, default: f32) -> f32 {
+        let out = if v.is_finite() && v >= lo && v <= hi { v } else { default };
+        if out != v {
+            tracing::warn!("safety threshold {v} out of range {lo}..={hi}; using {out}");
+        }
+        out
+    }
+    let t = &mut s.training;
+    t.readiness_min_macro_f1 = clamp_f32(t.readiness_min_macro_f1, 0.30, 1.0, 0.70);
+    t.readiness_min_worst_f1 = clamp_f32(t.readiness_min_worst_f1, 0.10, 1.0, 0.50);
+    t.readiness_min_shadow_agreement = clamp_f32(t.readiness_min_shadow_agreement, 0.50, 1.0, 0.80);
+    t.readiness_min_review_coverage = clamp_f32(t.readiness_min_review_coverage, 0.10, 1.0, 0.50);
+    t.readiness_min_shadow_events = t.readiness_min_shadow_events.clamp(20, 1_000_000);
+    t.readiness_min_shadow_sessions = t.readiness_min_shadow_sessions.clamp(1, 50);
+    t.max_concurrent_jobs = t.max_concurrent_jobs.clamp(1, 2);
+    t.min_new_samples = t.min_new_samples.max(50);
+    t.trigger_cooldown_hours = t.trigger_cooldown_hours.clamp(1, 24 * 30);
+    // These become a subprocess argv[0] and its cwd. No shell is involved, so
+    // this is not injection - but the metacharacter rejection belonged on
+    // every write path, not only the dedicated training command.
+    for p in [&mut t.python_path, &mut t.trainer_dir] {
+        if p.chars().any(|c| matches!(c, ';' | '&' | '|' | '`' | '$' | '\n' | '\r')) {
+            p.clear();
+        }
+        p.truncate(512);
+    }
+}
+
+pub fn save(&self, s: &Settings) -> Result<(), ConfigError> {
         fs::create_dir_all(&self.dir)?;
+        // Clamp here too, not only on load: a caller mutating in-memory
+        // settings then saving must not be able to persist a 0.
+        let mut normalized = s.clone();
+        Self::clamp_safety_settings(&mut normalized);
         // Secrets are encrypted at rest; the in-memory value stays plaintext.
-        let mut stored = s.clone();
+        let mut stored = normalized;
         stored.encrypt_secrets_for_storage();
         write_atomic(&self.settings_path(), &serde_json::to_vec_pretty(&stored)?)
     }
@@ -1402,5 +1445,64 @@ mod tests {
         assert!(s.points.purchase[1].is_some());
         assert!((s.regions.bar.w - 233.0 / 1920.0).abs() < 0.001);
         assert!(s.webhook.enabled);
+    }
+
+    #[test]
+    fn a_tampered_settings_file_cannot_weaken_a_readiness_bar() {
+        use super::Store;
+        let dir = std::env::temp_dir().join("gpo-clamp-load");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Hand-craft settings.json with every readiness bar set to 0 and a
+        // shell-metacharacter trainer path - what a crafted preset or a manual
+        // edit would produce.
+        let mut s = Settings::default();
+        s.training.readiness_min_macro_f1 = 0.0;
+        s.training.readiness_min_worst_f1 = 0.0;
+        s.training.readiness_min_shadow_agreement = 0.0;
+        s.training.readiness_min_review_coverage = 0.0;
+        s.training.readiness_min_shadow_events = 0;
+        s.training.readiness_min_shadow_sessions = 0;
+        s.training.python_path = "C:\\evil$(calc).exe".to_string();
+        std::fs::write(dir.join("settings.json"), serde_json::to_vec_pretty(&s).unwrap()).unwrap();
+
+        let loaded = Store::new(dir.clone()).load();
+        assert!(
+            loaded.training.readiness_min_macro_f1 >= 0.30,
+            "macro-F1 floor must survive a hand-edited file: {}",
+            loaded.training.readiness_min_macro_f1
+        );
+        assert!(loaded.training.readiness_min_shadow_agreement >= 0.50);
+        assert!(loaded.training.readiness_min_review_coverage >= 0.10);
+        assert!(loaded.training.readiness_min_shadow_events >= 20);
+        assert!(loaded.training.readiness_min_shadow_sessions >= 1);
+        assert!(
+            !loaded.training.python_path.contains('$'),
+            "a shell metacharacter must not survive into the trainer path"
+        );
+
+        // And a SAVE must clamp too, so an in-memory mutation cannot persist 0.
+        let store = Store::new(dir.clone());
+        let mut m = Settings::default();
+        m.training.readiness_min_macro_f1 = 0.0;
+        m.training.readiness_min_shadow_events = 0;
+        store.save(&m).unwrap();
+        let back = store.load();
+        assert!(back.training.readiness_min_macro_f1 >= 0.30);
+        assert!(back.training.readiness_min_shadow_events >= 20);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_reasonable_threshold_is_left_alone() {
+        let mut s = Settings::default();
+        s.training.readiness_min_macro_f1 = 0.85;
+        s.training.readiness_min_shadow_events = 500;
+        let before = s.training.readiness_min_macro_f1;
+        super::Store::clamp_safety_settings(&mut s);
+        assert_eq!(s.training.readiness_min_macro_f1, before, "must not override a real choice");
+        assert_eq!(s.training.readiness_min_shadow_events, 500);
     }
 }

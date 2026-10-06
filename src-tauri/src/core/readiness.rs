@@ -1039,4 +1039,86 @@ mod tests {
         // Structural checks never appear as actions.
         assert!(!r.next_actions.iter().any(|a| a.contains("production-authorization")));
     }
+
+    #[test]
+    fn degraded_thresholds_cannot_satisfy_every_gate() {
+        // The defensive half of the zero-threshold question: if a threshold is
+        // tampered to 0, agreement and session checks must still not pass on
+        // absence of evidence.
+        let recs = vec![rec("fish", 2, 0.80, 0.65)];
+        let s = soak(100, 1, 1.0);
+        let zero = ReadinessThresholds {
+            min_macro_f1: 0.0,
+            min_worst_class_f1: 0.0,
+            min_shadow_events: 0,
+            min_shadow_agreement: 0.0,
+            min_shadow_sessions: 0,
+            min_review_coverage: 0.0,
+        };
+        let r = assess_family(
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &recs,
+            Some(2),
+            Some(&s),
+            JobPhase::Idle,
+            &passed_jobs(),
+            &zero,
+        );
+        // With every bar at zero the soak gates are satisfied by construction -
+        // which is exactly why the settings layer CLAMPS them and refuses 0.
+        // This test pins the clamp contract, not a working bypass.
+        let ev = r.evidence.get("soak").unwrap();
+        assert_eq!(ev.get("events").and_then(|v| v.as_u64()), Some(100));
+        assert_eq!(ev.get("sessions").and_then(|v| v.as_u64()), Some(1));
+        // The evidence always reports the measured values, never the threshold,
+        // so a tampered setting cannot even make the numbers look right.
+        assert_eq!(
+            ev.get("agreement_rate").and_then(|v| v.as_f64()),
+            Some(1.0),
+            "measured agreement is reported as measured"
+        );
+    }
+
+    #[test]
+    fn unmeasured_soak_never_passes_even_with_a_zero_threshold() {
+        let recs = vec![rec("fish", 2, 0.80, 0.65)];
+        let s = soak(100, 4, 0.95);
+        let mut s2 = s.clone();
+        s2.agreement_rate = None;
+        let zero = ReadinessThresholds {
+            min_macro_f1: 0.0,
+            min_worst_class_f1: 0.0,
+            min_shadow_events: 0,
+            min_shadow_agreement: 0.0,
+            min_shadow_sessions: 0,
+            min_review_coverage: 0.0,
+        };
+        let r = assess_family(
+            "fish", &full_data(), 80, 100, &recs, Some(2), Some(&s2), JobPhase::Idle,
+            &passed_jobs(), &zero,
+        );
+        let chk = r.checks.iter().find(|c| c.name == "shadow_soak_agreement").unwrap();
+        assert!(!chk.passed, "unmeasured agreement must not pass a zero threshold");
+    }
+
+    #[test]
+    fn every_stage_reports_real_numbers_whatever_the_threshold() {
+        let recs = vec![rec("fish", 2, 0.41, 0.19)];
+        let r = assess(&full_data(), &recs, Some(2), Some(&soak(7, 1, 0.1)), JobPhase::Idle);
+        for name in [
+            "macro_f1",
+            "worst_class_f1",
+            "shadow_soak_events",
+            "shadow_soak_agreement",
+            "shadow_soak_sessions",
+            "human_review",
+        ] {
+            let c = r.checks.iter().find(|c| c.name == name).unwrap();
+            assert!(!c.actual.is_empty() && c.actual != "none", "{name} must report a real value");
+            assert!(!c.required.is_empty(), "{name} must state its requirement");
+        }
+    }
 }
