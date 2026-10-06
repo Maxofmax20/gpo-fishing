@@ -1,24 +1,22 @@
 [![Discord](https://img.shields.io/badge/Discord-Join%20Server-7289da?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/unPZxXAtfb)
 
-# 🎣 GPO Autofish v4.3 - GUIDE
+# 🎣 GPO Autofish - GUIDE
+
+**Current release: v5.7.0 — final feature release. See [FINAL_FEATURE_FREEZE.md](FINAL_FEATURE_FREEZE.md).**
+**Model status: fish is NOT READY (8/10 classes, 0% human-reviewed).** See
+[Where the model actually stands](#-where-the-model-actually-stands).
 
 **💬 Join our Discord server:** https://discord.gg/unPZxXAtfb
 
-## 🆕 What's New in v4.3.0?
+## 🆕 What's New in v5.7.0?
 
-**GPO Macro Data Collection** (needs no setup — it just works):
+**The real data pipeline is now trustworthy end to end.** Collection can capture
+real gameplay samples, a human reviews them, and only reviewed-and-eligible rows
+ever reach a trainer. See
+[v5.7.0](#-v570--final-feature-release) for what was fixed, and
+`docs/ML_REVIEW_AND_READINESS.md` for the authoritative contract.
 
-- 📼 Macro sessions now automatically collect real gameplay samples (start macro → COLLECTING, stop macro → finalized session)
-- 🎣 Reel episodes captured: waiting, bite, and result frames with OCR + perception verdicts
-- 🧲 Hard examples automatically retained (empty OCR, disagreements, unknowns)
-- 📊 Live counters in the Dashboard (samples, reels, hard examples) plus a session summary on stop
-- 🗂️ Samples reviewed in Setup → Training Dataset (Confirm/Correct/Unknown/Skip) and the versioned `gpo-vision` dataset with validation, baseline scoring, and training-readiness gate
-- 🔒 Collection stores game-UI crops and text only — no tokens, cookies, or chat; macro timing is never blocked (async bounded queue)
-- 🧠 ML remains unavailable until sufficient verified real gameplay data exists — OCR + heuristics keep running the bot
-
-Plus VPN honesty (verified-connected only), typed VPN macro steps, DPAPI secrets, authenticated web dashboard, strict CSP, and a signed auto-updater with stable/beta channels.
-
-## 🆕 What's New in v4.0?
+## 🆕 What's New in v4.3?
 
 **Complete Rewrite - Native, Fast & Tiny:**
 
@@ -198,12 +196,15 @@ Auto-update checks GitHub Releases on launch and can be turned off in Settings.
 - **Backups, not deletions**: settings reset and journal clear keep timestamped backups (`settings.backup-*.json`, `catches.backup-*.csv`) in the data folder (`%AppData%\gpo-autofish`). A corrupt `settings.json` is quarantined (`settings.backup-*.json`) instead of silently reset — the app shows the recovery note in Settings.
 - **Diagnostics**: Setup → Diagnostics → **Run check** probes the live Roblox window (bar/drop/bait-menu/server-time capture, vision confidence, OCR samples, calibration points) with per-item pass/warn/fail. Nothing is simulated.
 - **Signing**: releases are signed; `build_release.ps1` takes the key password from `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (never committed).
+- **Gates cannot be weakened by configuration** (v5.7.0): every readiness threshold is clamped on load *and* on save, so a hand-edited `settings.json`, a crafted preset, or any future writer cannot set a bar below its floor. Floors: macro-F1 ≥ 0.30, worst-class F1 ≥ 0.10, shadow agreement ≥ 0.50, reviewed share ≥ 0.10, shadow events ≥ 20, shadow sessions ≥ 1. Unmeasured evidence never satisfies a gate, whatever the threshold says.
+- **Model artifacts are verified before use**: the `.onnx` checksum *and* the index→label fingerprint are checked at load. A model family cannot occupy another family's slot. A deployed manifest that exists but cannot be parsed is never overwritten by the bundled model on next launch.
 
 ## 🚀 Releases & automatic updates
 
 - **Channels**: git tag `vX.Y.Z` publishes a stable release; `vX.Y.Z-beta.N` publishes a prerelease (beta). The app's auto-updater follows stable.
-- **Pipeline** (`.github/workflows/release.yml`): version gate (`scripts/check-versions.ps1` requires tag == `package.json` == `tauri.conf.json` == `Cargo.toml`) → frontend build → Rust tests → audits → signed Tauri build → updater artifacts (`latest.json` + `.sig`) attached to the GitHub Release. Any failure stops the release.
+- **Pipeline** (`.github/workflows/release.yml`): version gate (`scripts/check-versions.ps1` requires tag == `package.json` == `tauri.conf.json` == `Cargo.toml`) → frontend build → Rust tests → audits → signed Tauri build → **draft release** → verify installer, `.sig`, `latest.json` and `SHA256SUMS` → upload → **publish**. The release stays a private draft until every artifact is verified and attached, so a missing signature can never leave an unsigned build publicly downloadable. Any failure stops the release.
 - **Updater security**: HTTPS GitHub endpoint, minisign public key pinned in `tauri.conf.json`, private key only in GitHub Actions secrets. The updater verifies the signature before installing; a bad signature or malformed metadata aborts and the installed version stays intact.
+- **One installer path only.** The signed in-app updater is the *only* thing that installs an update. The Telegram `/update` command and the web dashboard's `update` command report availability and then defer to the in-app updater — they do not download or execute anything. Previously that path took a download URL verbatim from remote JSON with no host or scheme check, never checked the HTTP status, never verified a signature, and then ran the file; it bypassed the pinned key entirely. It also compared versions with `!=`, so a downgrade or a prerelease triggered an install.
 - **User experience**: the app checks 30s after launch and every 6h (never blocking, offline-safe), honoring Settings › auto-update. An update banner offers Install, Release Notes, or Later — installation always needs your click. Update failures toast an error and keep the current version.
 
 ## 🧠 Perception & VPN state
@@ -219,6 +220,102 @@ Auto-update checks GitHub Releases on launch and can be turned off in Settings.
 - **Canonical entities** (Training › Drops): stable KB-derived entity IDs are the only training labels; display names are metadata. The resolver never merges similar names (Skeletal Shark ≠ Dark Skeletal Shark ≠ shark) and short model strings never become canonical names. Substring matching is word-anchored with a length floor, and a lossy OCR-variant retry can only ever return a single unambiguous entity. Entities whose name is already claimed by another KB entry are shown as `alias of …` rather than hidden — Wet-fish rarity tiers and sunken items claimed by example drop lists were NOT added because they do not exist in the project's KB.
 - **Model readiness** (Training › Readiness): deterministic, differentiated statuses per family — `NOT_ENOUGH_DATA`, `NOT_ENOUGH_CLASSES`, `NOT_ENOUGH_SESSIONS`, `NOT_ENOUGH_REVIEW`, `NOT_ENOUGH_TEST`, `DATA_READY`, `TRAINING`, `EVALUATING`, `CANDIDATE_READY`, `SHADOW_READY`. Every gate reports actual / required / difference / next action. The shadow gate requires event volume **and** measured agreement **and** session spread. PRODUCTION_READY is structurally unreachable (no authorization mechanism exists) and reported as a design note, not an actionable blocker. Reviewed ≠ trained ≠ evaluated ≠ shadow-validated ≠ production-enabled.
 - **Hermes interface**: no Hermes code exists in this repo (verified). External orchestration uses the read-only `hermes_tasks` view (triggers + readiness + history) and the existing training commands; lessons are factual history records. Gates cannot be bypassed because no bypass path exists.
+
+### 🧊 v5.7.0 — final feature release
+
+Feature freeze. See **[FINAL_FEATURE_FREEZE.md](FINAL_FEATURE_FREEZE.md)**.
+
+This release was a correctness, safety and performance pass over the existing
+system. No new feature was added, and no gate was relaxed. What it fixed:
+
+**Evidence can no longer be attributed to the wrong thing**
+
+- The output-index → label map is read from the trainer's own vocabulary, not
+  re-derived by sorting. It only ever coincided before because the vocabulary
+  happened to be alphabetical; inserting a class would have silently permuted
+  every label while the artifact checksum stayed identical. A `vocab_sha`
+  fingerprint now travels with the model and is **verified at load**.
+- A manifest may not occupy another family's slot. It used to be keyed by the
+  manifest's self-declared `name`, so a copied manifest silently evicted the
+  real model and stopped observation with no error.
+- Readiness joins shadow telemetry on the same revision key the log uses, and a
+  new `shadow_evidence_revision` check requires the reported metrics and the
+  reported soak to describe the **same** revision before `SHADOW_READY`.
+- Version numbers are monotonic across registry loss, via a counter that
+  survives deleting the registry directory. With no counter and no intact
+  registry, numbering is **refused** rather than guessed — a recycled revision
+  would inherit a dead model's soak.
+- `promote_to_shadow` now writes `per_class_f1` and `test_support`. Omitting
+  them silently disabled the per-class regression gate after the first
+  promotion.
+- A class measured on very few held-out examples can no longer decide a
+  promotion on its own.
+
+**Bad data can no longer enter training quietly**
+
+- The Python review filter resolved `reviews.jsonl` from the wrong directory. In
+  the documented manual-run path it therefore found nothing and excluded
+  nothing — every skipped, unknown and disputed row would have trained.
+- **Training now enforces a human-review floor.** Readiness could report
+  `NOT_ENOUGH_REVIEW` while training ran on 100% collector-labelled rows, which
+  made the displayed blocker decorative. Machine labels are the bot's own
+  OCR+KB guesses and are not sufficient evidence on their own.
+- The collector's duplicate detection is byte-exact. It compared a 64-bit
+  average hash, so a visually different frame could alias an existing image and
+  the newer sample's OCR text was written onto the older image's row.
+- A dataset read that hits an I/O error is counted and reported, not silently
+  read as a shorter dataset.
+
+**Security**
+
+- The Telegram/web `/update` path no longer downloads or executes anything. It
+  took a download URL verbatim from remote JSON with no host or scheme check,
+  never inspected the HTTP status, never verified a signature, then executed the
+  file — bypassing the pinned minisign key that protects the in-app updater. It
+  now reports availability and defers to the signed updater. Its version check
+  was `!=`, so a downgrade or a prerelease triggered an install.
+- Readiness thresholds are clamped on **load and save**. A hand-edited
+  `settings.json` or a crafted preset could previously set every bar to 0 and
+  make the system report ready.
+- The release workflow builds as a **draft**, verifies the installer, signature,
+  manifest and SHA-256 sums, and only then publishes. It previously created a
+  public release and verified afterwards.
+- The trainer's integrity guards (`assert`-based) are always compiled in:
+  `PYTHONOPTIMIZE` is stripped from its environment.
+
+**Stability and responsiveness**
+
+- The backend health probe has a real timeout, kills the interpreter on expiry
+  (no orphan), and cannot stack. It used to block forever with no timeout while
+  being polled every few seconds.
+- Heavy review and training commands run off the UI thread.
+- Dataset reads are streamed with a server-side page cap; showing 100 samples no
+  longer parses the whole dataset.
+- Registry writes are atomic (tmp → fsync → rename).
+
+**A snapshot now explains itself**: dataset version, review fingerprint, the
+checksum of the exact bytes the trainer reads, and *why* each row is missing
+(counted by reason, taken from the human verdict). A bare "excluded: 3" cannot
+be acted on.
+
+### 🚦 Where the model actually stands
+
+```
+SOFTWARE COMPLETE
+MODEL NOT READY
+```
+
+| | |
+|---|---|
+| `state_v1` | solved, 1.0000 — protected, do not retrain without cause |
+| `fish_v1` | 0.5824 deployed — **8/10 classes, 0% reviewed, no candidate, no soak** |
+| fruit | 1/10 qualified, no trainer exists — `NOT_ENOUGH_DATA` |
+| sunken | `UNVERIFIED / NOT IN KB` — not invented |
+| production | `NOT READY`, by design; no production-control switch exists |
+
+**There is no "fish v2 candidate ready".** No such candidate has ever existed.
+Fish cannot train until ten classes each have ≥20 human-reviewed examples across
+≥3 independent sessions with a held-out TEST example.
 
 ## 📁 Project Structure
 

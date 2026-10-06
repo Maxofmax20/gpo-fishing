@@ -1,4 +1,4 @@
-# Human review, canonical entities and model readiness (v5.6.1)
+# Human review, canonical entities and model readiness (v5.7.0)
 
 This document describes how the review loop actually works, what it guarantees,
 and — just as importantly — what it does **not** do. Everything here is
@@ -121,6 +121,107 @@ snapshot that would contain zero rows is an error, never an empty training run.
 
 The trainer never reads `reviews.jsonl` itself. The frozen copy exists to make
 `review_fingerprint` computable and the decision auditable.
+
+### The verdict matrix
+
+This is the contract a reviewer relies on when they press a key. It is pinned as
+a test, not just a comment.
+
+| Verdict | In the training set? | Note |
+|---|---|---|
+| `CORRECT` | **yes** | model label confirmed by a human |
+| `CORRECTED` | **yes** | human supplied the correct label |
+| `UNREVIEWED` | **yes** | kept, counted in `rows_unreviewed` |
+| `UNKNOWN` | **no** | never becomes eligible automatically |
+| `SKIPPED` | **no** | never becomes eligible |
+| `CONFLICT` | **no** | until explicitly resolved |
+| `BAD_IMAGE` | **no** | fails the eligibility check |
+| unreadable `reviews.jsonl` | **snapshot refused** | see below |
+
+### Fail-closed on review data (v5.7.0)
+
+`reviews.jsonl` has three distinct states and conflating any two of them is a
+data-integrity failure:
+
+| State | Meaning | Behaviour |
+|---|---|---|
+| **absent** | nothing reviewed yet | legal; all rows unreviewed |
+| **present, fully parseable** | real review state | used |
+| **present, any line unreadable** | unknown | **snapshot refused** |
+
+The middle-right case is the one that used to fail open. One torn line made that
+row's `image_id` vanish from the eligibility map, so a row a human had *skipped*
+looked unreviewed and was kept — and it trained. A refused snapshot also leaves
+no trainer input behind. Repair the file or run Review › Rebuild from audit.
+
+### What a snapshot records about itself
+
+`SnapshotMeta` is written to the job so "exactly what data produced this model"
+is answerable months later, without the snapshot directory still existing:
+
+- `fingerprint` — SHA-256 over the surviving rows' logical fields
+- `labels_sha` — SHA-256 over the **frozen bytes** the trainer reads. Distinct
+  from `fingerprint`: two snapshots can agree on every field and differ
+  byte-for-byte, and then they are not the same training set.
+- `review_fingerprint` — the review state at freeze time
+- `exclusions` — **reason → count**, taken from the review record's own
+  `excluded_reason`/`status`. A bare "excluded: 3" cannot be acted on; a
+  reviewer cannot tell a human rejection from a data defect.
+- `rows`, `rows_unreviewed`, `rows_excluded_by_review`, `sessions`,
+  `test_sessions`
+
+Identical inputs produce byte-identical metadata — that is why `exclusions` is a
+sorted map rather than a hash map.
+
+### The trainer's own second filter
+
+`ml/gpo_train/dataset.py::review_excluded_ids` applies the review exclusion
+again, as defence in depth for manual runs. It resolves `reviews.jsonl` from
+**three** locations: beside the labels (the frozen snapshot), the dataset root's
+parent, and the store root — because the live dataset has no copy beside
+`labels.jsonl`. An unreadable review file raises rather than returning an empty
+set.
+
+### Training enforces the review floor
+
+Every eligibility check counts *collected* data. None of them asked whether a
+human had looked at it, so readiness could report `NOT_ENOUGH_REVIEW` while
+`training_start` happily trained on 100% collector-labelled rows — making the
+displayed blocker decorative.
+
+`family_eligibility` now requires a minimum share of scoped rows to be both
+**reviewed** and **training-eligible**, using `readiness_min_review_coverage`
+(floor 0.10, clamped). Collector labels carry `annotator: "collector"` and are
+the bot's own OCR+KB guesses; on their own they are not training evidence.
+
+### Class-map integrity
+
+The output-index → label mapping is read from the trainer's own
+`config.json["vocab"]`, never re-derived by sorting evaluation keys. It only ever
+agreed before because `FISH_VOCAB` happened to be alphabetical; inserting a class
+would have permuted every label while the artifact checksum and output width
+stayed identical — undetectable and unrecoverable.
+
+- A class **set** mismatch between vocab and evaluated classes is **refused**.
+- `vocab_sha` (SHA-256 of `classes.join("\n")`) travels into the candidate
+  record and the deployed manifest, and is **verified at load**. The `.onnx`
+  checksum cannot catch a permuted `classes` array, because the map lives in the
+  manifest JSON.
+- A manifest whose `name` does not match the file slot it occupies is refused: a
+  model family cannot cross slots.
+
+### Soak isolation
+
+Shadow telemetry is joined on `(slot, revision)`. The revision comes from one
+reader (`revision_from_manifest`) so readiness and the log can never disagree
+about the join key; passing "unknown" used to mean the legacy cross-revision
+union view, which let a fresh candidate inherit the incumbent's events.
+
+Version numbers are monotonic across registry loss. The counter lives **outside**
+`training/registry/` — that is the directory a user deletes to reset the app. If
+there is no counter and no intact registry, numbering is **refused** rather than
+guessed. `shadow_evidence_revision` additionally requires the reported metrics and
+the reported soak to describe the same revision before `SHADOW_READY`.
 
 ---
 
@@ -305,14 +406,23 @@ permission check.
 | A confirmed image still excluded | a check failed; the reason is on the record | read `excluded_reason` in Coverage › exclusions |
 | Conflict won't train | unresolved | resolve it with a reason |
 | Shadow gate stuck on events | soak is per revision; a new candidate starts at 0 | play with shadow observation on |
+| `shadow_evidence_revision` fails | the evaluated candidate is not the deployed one | promote the evaluated candidate so its soak is its own |
+| Status shows "Evidence: MISMATCH" | metrics and soak describe different revisions | same — the panel will not add numbers from two models together |
+| "no version counter and shadow telemetry already exists" | the registry was wiped but telemetry survived, so a revision cannot be proven unused | delete `shadow_events.jsonl` too if you truly mean a full reset, or restore the registry |
+| Train is refused with "human-reviewed" in the reason | the review floor is not met | review scoped rows in Training › Review; collector labels alone are not evidence |
 | "alias of fruit:…" in Drops | KB name collision | use the canonical entity id |
 | `unreadable_lines` > 0 | a state line could not be parsed (external edit, or a record from a newer build) | it is preserved, not lost; run Rebuild from audit |
 | Training refuses with "unreadable" | `reviews.jsonl` exists but a line will not parse | repair it, or Rebuild from audit; training stays blocked until then |
+| Backend shows "timed out" | `import torch` did not finish within the probe budget; the interpreter was terminated | check the interpreter and torch install; the probe never hangs the UI |
+| A readiness bar will not go below its floor | by design — clamped on load and on save | raise it instead; it cannot be lowered |
 | Fruit training button disabled | no fruit trainer module exists yet | needs a fruit trainer before any fruit training |
 
 ---
 
 ## 11. Known limitations
+
+These are real and deliberately not hidden. None of them is a gate that was
+weakened to hide a problem.
 
 - Fish have no rarity metadata; the KB has no seasonal concept. Neither is
   invented.
@@ -323,13 +433,51 @@ permission check.
   8 classes is UNKNOWN.
 - No fruit trainer module exists, so fruit training is blocked at the gate
   rather than failing at launch.
+- `state_v1` scores a perfect 1.0000 on its held-out split. That is a *plausibility
+  concern*, not a strength: the state crop is region-specific, so the model can
+  identify the state from crop geometry alone. There is no leakage monitor.
+  `state_v1` is protected and must not be retrained without cause.
+- Sessions are minted per macro run, not per day, so consecutive same-day runs
+  can land in different splits. Split purity is asserted (a session never spans
+  splits), but visual independence is not guaranteed.
+- Per-class regression gating is floored at 10 test examples. Below that a class
+  is reported but cannot move the verdict — in either direction.
+- `review_priority` must rank every unreviewed row to compute an honest
+  `total_matching`, so it is O(n) per request. It runs off the UI thread, so the
+  panel stays responsive, but it is not a constant-time query.
 - `seed_shadow_models` never overwrites a deployed model with a higher manifest
-  version, and promotion invalidates the cached engine. A restart therefore
-  keeps the promoted weights, and the revision reported in the UI is the
-  revision that is actually observing.
+  version, never overwrites one it cannot parse, and both promotion **and
+  rollback** invalidate the cached engine. A restart therefore keeps the promoted
+  weights, and the revision reported in the UI is the revision that is actually
+  observing.
 - Entity ids are derived from canonical names (`fruit:<lowercased name>`), so a
   rename in `fruit.rs` would orphan persisted references. Ids are stable in
   practice because the lists are curated, but there is no rename migration.
 - The audit log has no rotation; it grows by roughly one record per verdict.
 - `docs/knowledge_manifest_v1.json` is a pinned snapshot of KB contents; there
   is no automated drift check against the source lists.
+
+---
+
+## 12. Current state, honestly
+
+```
+SOFTWARE COMPLETE
+MODEL NOT READY
+```
+
+| Family | Classes | Reviewed | Candidate | Shadow | Status |
+|---|---|---|---|---|---|
+| fish | 8/10 | 0% | none | not started | `NOT_ENOUGH_CLASSES` |
+| fruit | 1/10 | 0% | none | none | `NOT_ENOUGH_DATA` |
+| state | solved (1.0000) | — | — | — | protected |
+| sunken | — | — | — | — | `UNVERIFIED / NOT IN KB` |
+
+**No candidate has ever been registered.** `registry.json` does not exist. Any
+claim that a "fish v2 candidate" is ready, or that it reached 0.80 macro-F1, is
+false — those numbers exist only in unit tests with fabricated class names.
+
+Fish cannot train until ten classes each have ≥20 human-reviewed examples across
+≥3 independent sessions with at least one held-out TEST example. Until then the
+Train button stays disabled, and that is the system working correctly.
+
