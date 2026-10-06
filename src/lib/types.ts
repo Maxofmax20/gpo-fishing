@@ -809,6 +809,15 @@ export type TrainingSettings = {
   trainer_dir: string;
   trigger_cooldown_hours: number;
   defer_while_fishing: boolean;
+  /** Model-readiness bars (v5.6/v5.6.1). Fail-closed: below any bar the
+   *  backend reports the exact gap. Event VOLUME alone never clears the
+   *  shadow gate - agreement and session spread are required too. */
+  readiness_min_macro_f1: number;
+  readiness_min_worst_f1: number;
+  readiness_min_shadow_events: number;
+  readiness_min_shadow_agreement: number;
+  readiness_min_shadow_sessions: number;
+  readiness_min_review_coverage: number;
 };
 
 export type HistoryEntry = { ts: number; kind: string; detail: unknown };
@@ -819,6 +828,7 @@ export type ReviewStatus =
   | "REVIEWED_UNKNOWN" | "REVIEWED_SKIPPED" | "CONFLICT";
 
 export type ReviewRecord = {
+  review_id: string;
   image_id: string;
   event_id: string | null;
   session_id: string;
@@ -841,6 +851,8 @@ export type ReviewRecord = {
 };
 
 export type CoverageReport = {
+  /** Number of review RECORDS. Not dataset rows - see
+   *  `ReviewCoverageView.total_rows` for that. */
   total: number;
   reviewed: number;
   correct: number;
@@ -848,9 +860,51 @@ export type CoverageReport = {
   unknown: number;
   skipped: number;
   conflicts: number;
+  /** Distinct sessions that have at least one review RECORD (NOT distinct
+   *  dataset sessions, and NOT sessions with reviewed rows only). */
   sessions: number;
   eligible: number;
   excluded: number;
+};
+
+/** One dataset session. `split` is the backend's train/validation/test
+ *  assignment derived from the session id. */
+export type SessionReview = {
+  session_id: string;
+  split: string;
+  collected: number;
+  reviewed: number;
+  eligible: number;
+};
+
+export type SplitReview = {
+  split: string;
+  collected: number;
+  reviewed: number;
+  eligible: number;
+  /** Distinct DATASET sessions contributing rows to this split (NOT sessions
+   *  with a review record - that is `CoverageReport.sessions`). */
+  sessions: number;
+};
+
+export type ExclusionReason = { reason: string; count: number };
+
+/** Per-entity verdict on whether the class clears the review bar. */
+export type ClassReadinessStatus =
+  | "READY"
+  | "INSUFFICIENT_REVIEW"
+  | "INSUFFICIENT_SESSIONS"
+  | "INSUFFICIENT_TEST"
+  | "NO_DATA";
+
+export type ClassReadiness = {
+  entity: string;
+  status: ClassReadinessStatus;
+  collected: number;
+  reviewed: number;
+  eligible: number;
+  sessions: number;
+  reason: string;
 };
 
 export type PerEntityReview = {
@@ -860,14 +914,32 @@ export type PerEntityReview = {
   confirmed: number;
   corrected: number;
   unknown: number;
+  skipped: number;
+  conflicts: number;
+  /** Distinct DATASET sessions that contributed rows for this entity. */
   sessions: number;
   eligible: number;
+  hard_examples: number;
+  train: number;
+  validation: number;
+  test: number;
 };
 
 export type ReviewCoverageView = {
+  /** Dataset rows in labels.jsonl - the denominator for every rate below. */
   total_rows: number;
+  /** Aggregate over REVIEW RECORDS only (so `total` is records, not rows). */
   coverage: CoverageReport;
   per_entity: PerEntityReview[];
+  per_session: SessionReview[];
+  per_split: SplitReview[];
+  /** Rows that exist but are not training-eligible, grouped by the exact
+   *  reason recorded at review time. */
+  exclusions: ExclusionReason[];
+  hard_examples: number;
+  /** Dataset rows with no review record at all. */
+  unreviewed: number;
+  class_readiness: ClassReadiness[];
 };
 
 export type PriorityItem = {
@@ -879,7 +951,17 @@ export type PriorityItem = {
   review_status: string;
   score: number;
   reason: string;
+  is_hard_example: boolean;
+  /** OCR text disagrees with the row's linked entity name. */
+  ocr_disagreement: boolean;
+  /** Only present when a prior review already recorded a model confidence. */
+  model_confidence: number | null;
 };
+
+/** Sort orders accepted by `review_priority`. */
+export type PrioritySort =
+  | "priority" | "newest" | "oldest"
+  | "least_confidence" | "most_confidence" | "rarest";
 
 export type EntityHit = {
   entity_id: string;
@@ -902,20 +984,83 @@ export type DropEntry = {
   eligible: number;
   sessions: number;
   model_status: string;
+  /** Set when this entity's canonical name is already claimed by another KB
+   *  entity, so it can never be resolved by name. */
+  shadowed_by: string | null;
 };
 
-export type ReadinessStatus =
-  | "TRAINING_READY" | "CANDIDATE_READY" | "SHADOW_READY"
-  | "PRODUCTION_READY" | "NOT_READY";
+/** Lifecycle stage a readiness check belongs to. Used to group checks so a
+ *  reviewer can tell "is my review work the blocker?" from "is the backend
+ *  missing?". */
+export type ReadinessStage =
+  | "DATA" | "REVIEW" | "TRAIN" | "EVALUATE" | "SHADOW" | "PRODUCTION";
 
-export type ReadinessCheck = { name: string; passed: boolean; detail: string };
+export type ReadinessStatus =
+  | "NOT_ENOUGH_DATA"
+  | "NOT_ENOUGH_CLASSES"
+  | "NOT_ENOUGH_SESSIONS"
+  | "NOT_ENOUGH_REVIEW"
+  | "NOT_ENOUGH_TEST"
+  | "DATA_READY"
+  | "TRAINING"
+  | "EVALUATING"
+  | "CANDIDATE_READY"
+  | "SHADOW_READY"
+  | "PRODUCTION_READY"
+  | "NOT_READY";
+
+export type ReadinessCheck = {
+  name: string;
+  stage: ReadinessStage;
+  passed: boolean;
+  /** One-line human sentence (compact form of the numbers below). */
+  detail: string;
+  /** Measured value, e.g. "8/10 qualified". */
+  actual: string;
+  /** Required value, e.g. "10/10" or ">= 0.70". */
+  required: string;
+  /** Signed shortfall, e.g. "2 class(es) short" or "none". */
+  difference: string;
+  /** What a human should do next. Empty when the check passes. */
+  next_action: string;
+  /** Cannot pass in this build by design (production authorization). Shown,
+   *  but never listed as an actionable blocker. */
+  structural: boolean;
+};
 
 export type ModelReadiness = {
   family: string;
   status: ReadinessStatus;
   checks: ReadinessCheck[];
+  /** Actionable failing checks only - structural ones are already excluded
+   *  by the backend. */
   blockers: string[];
+  /** Deduplicated, ordered concrete next steps. */
+  next_actions: string[];
   evidence: Record<string, unknown>;
+};
+
+/** One append-only entry from `review_audit.jsonl`. */
+export type ReviewAuditEvent = {
+  at_ms: number;
+  image_id: string;
+  /** One of REVIEW_CORRECTED / ENTITY_REMAP / REVIEW_EXCLUDED /
+   *  REVIEW_RESTORED / CONFLICT / RESOLVED. */
+  event: string;
+  detail: string | null;
+  /** Post-transition state. Absent on pre-v5.6.1 lines; such lines cannot
+   *  contribute to a rebuild. */
+  record: ReviewRecord | null;
+};
+
+export type ReviewIntegrity = {
+  /** Lines in reviews.jsonl that failed to parse and are being carried
+   *  through untouched. > 0 means real review data is at risk. */
+  unreadable_lines: number;
+  audit_events: number;
+  last_event: ReviewAuditEvent | null;
+  /** Image ids whose most recent state is restorable by undo. */
+  restorable: string[];
 };
 
 export type ReviewImage = {
@@ -925,7 +1070,13 @@ export type ReviewImage = {
   png_base64: string;
 };
 
-export type ReviewApplyResult = { record: ReviewRecord; dataset_updated: boolean };
+export type ReviewApplyResult = {
+  record: ReviewRecord;
+  dataset_updated: boolean;
+  /** Set when the dataset annotation could not be written - the label did
+   *  NOT land. Never silently swallowed. */
+  dataset_error: string | null;
+};
 
 export type TriggerEvent = {
   trigger_type: string;

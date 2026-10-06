@@ -53,11 +53,14 @@ import type {
   ReviewRecord,
   ReviewCoverageView,
   PriorityItem,
+  PrioritySort,
   EntityHit,
   DropEntry,
   ModelReadiness,
   ReviewImage,
   ReviewApplyResult,
+  ReviewIntegrity,
+  ReviewStatus,
   HermesTasks,
 } from "./types";
 
@@ -180,17 +183,54 @@ export const api = {
   trainingSettingsGet: () => invoke<TrainingSettings>("training_settings_get"),
   trainingSettingsSet: (settings: TrainingSettings) =>
     invoke<TrainingSettings>("training_settings_set", { settings }),
-  reviewImage: (imageId: string) => invoke<ReviewImage>("review_image", { imageId }),
+  // `maxDim` downscales server-side (same convention as region_preview) so a
+  // small OCR crop does not ship a multi-MB base64 blob into the WebView. 0
+  // serves the original bytes.
+  reviewImage: (imageId: string, maxDim?: number) =>
+    invoke<ReviewImage>("review_image", { imageId, maxDim }),
   reviewGet: (imageId: string) => invoke<ReviewRecord | null>("review_get", { imageId }),
-  reviewList: (status?: string, limit?: number, offset?: number) =>
+  /** `status` is the SCREAMING_SNAKE_CASE wire name (`ReviewStatus`), NOT the
+   *  Rust `Debug` form. Backend clamps limit to 1..200. */
+  reviewList: (status?: ReviewStatus, limit?: number, offset?: number) =>
     invoke<ReviewRecord[]>("review_list", { status, limit, offset }),
   reviewCoverage: () => invoke<ReviewCoverageView>("review_coverage"),
-  reviewApply: (imageId: string, opts?: { humanEntityId?: string; humanCanonicalName?: string; correctionReason?: string; modelPrediction?: string; modelConfidence?: number }) =>
-    invoke<ReviewApplyResult>("review_apply", { imageId, ...opts }),
+  // `modelPrediction` MUST be the queue item's own entity_id: without it the
+  // backend cannot tell "confirmed" from "corrected" and every confirm lands
+  // as REVIEWED_CORRECTED.
+  reviewApply: (
+    imageId: string,
+    opts?: {
+      humanEntityId?: string;
+      humanCanonicalName?: string;
+      correctionReason?: string;
+      modelPrediction?: string;
+      modelConfidence?: number;
+    },
+  ) => invoke<ReviewApplyResult>("review_apply", { imageId, ...opts }),
   reviewResolve: (imageId: string, entityId: string, reason: string) =>
     invoke<ReviewRecord>("review_resolve", { imageId, entityId, reason }),
   reviewSkip: (imageId: string) => invoke<ReviewRecord>("review_skip", { imageId }),
-  reviewPriority: (limit?: number) => invoke<PriorityItem[]>("review_priority", { limit }),
+  reviewUndo: (imageId: string) => invoke<ReviewRecord>("review_undo", { imageId }),
+  reviewIntegrity: (tail?: number) => invoke<ReviewIntegrity>("review_integrity", { tail }),
+  /** Reconstruct reviews.jsonl from the append-only audit log. Returns the
+   *  number of records recovered. */
+  reviewRebuild: () => invoke<number>("review_rebuild"),
+  reviewPriority: (opts?: {
+    limit?: number;
+    entity?: string;
+    session?: string;
+    onlyHard?: boolean;
+    onlyDisagreement?: boolean;
+    sort?: PrioritySort;
+  }) =>
+    invoke<PriorityItem[]>("review_priority", {
+      limit: opts?.limit,
+      entity: opts?.entity,
+      session: opts?.session,
+      onlyHard: opts?.onlyHard,
+      onlyDisagreement: opts?.onlyDisagreement,
+      sort: opts?.sort,
+    }),
   reviewSearch: (query: string) => invoke<EntityHit[]>("review_search", { query }),
   dropsExplorer: () => invoke<DropEntry[]>("drops_explorer"),
   readinessStatus: () => invoke<ModelReadiness[]>("readiness_status"),

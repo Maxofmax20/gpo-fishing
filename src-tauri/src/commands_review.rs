@@ -1076,6 +1076,7 @@ fn readiness_status_inner(
             deployed_version,
             soak_opt,
             phase,
+            &jobs,
             &thresholds,
         ));
     }
@@ -1113,6 +1114,7 @@ fn readiness_status_inner(
             None,
             None,
             JobPhase::Idle,
+            &jobs,
             &thresholds,
         ));
     }

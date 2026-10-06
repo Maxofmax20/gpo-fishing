@@ -41,6 +41,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::registry::{CandidateRecord, Lifecycle, SoakStats};
+use super::training::{JobStatus, TrainingJob};
 
 /// Lifecycle stage a check belongs to. Used by the UI to group checks so a
 /// reviewer can tell "is my review work the blocker?" from "is the backend
@@ -263,6 +264,7 @@ pub fn assess_family(
     deployed_version: Option<u32>,
     soak: Option<&SoakStats>,
     phase: JobPhase,
+    jobs: &[TrainingJob],
     thresholds: &ReadinessThresholds,
 ) -> ModelReadiness {
     let mut c = Ctx::new();
@@ -511,6 +513,27 @@ pub fn assess_family(
     );
 
     // ---------- STATUS ----------
+    // ---------- STAGE: TRAIN ----------
+    // A real job exists for this family and produced a usable snapshot.
+    // The snapshot is the human-review boundary, so this check reports the
+    // frozen row counts as evidence rather than a second opinion on them.
+    let job = jobs.iter().filter(|j| j.model_family == family).max_by_key(|j| j.created_at);
+    let job_passed = job.is_some_and(|j| j.status == JobStatus::Passed);
+    c.add(
+        "training_job",
+        ReadinessStage::Train,
+        job_passed,
+        job.map(|j| format!("{} ({})", j.status.as_str(), j.progress.stage))
+            .unwrap_or_else(|| "no training job has ever run for this family".to_string()),
+        job.map(|j| format!("{} rows / {} sessions frozen", j.frozen_rows, j.frozen_sessions))
+            .unwrap_or_else(|| "none".to_string()),
+        "1 job that produced an evaluation".to_string(),
+        job.map(|j| if job_passed { "none".to_string() } else { format!("last job {}", j.status.as_str()) })
+            .unwrap_or_else(|| "no job".to_string()),
+        if job_passed { String::new() } else { "Start a training job from Training > Jobs once DATA and REVIEW pass.".to_string() },
+        false,
+    );
+
     let data_ok = c.named("qualified_classes").map(|x| x.passed).unwrap_or(false);
     let test_ok = c.named("test_coverage").map(|x| x.passed).unwrap_or(false);
     let sess_ok_short = data.sessions_short.is_none();
@@ -662,6 +685,49 @@ mod tests {
         data(10, 10)
     }
 
+    fn job(family: &str, status: JobStatus) -> super::super::training::TrainingJob {
+        use std::path::PathBuf;
+        super::super::training::TrainingJob {
+            job_id: "j1".into(),
+            model_family: family.to_string(),
+            dataset_version: 1,
+            dataset_fingerprint: "fp".into(),
+            frozen_rows: 100,
+            frozen_sessions: 12,
+            frozen_test_sessions: vec!["s-test".into()],
+            review_fingerprint: "rv".into(),
+            snapshot_dir: PathBuf::new(),
+            created_at: 1,
+            started_at: Some(1),
+            finished_at: Some(2),
+            status,
+            requested_by: "manual".into(),
+            trainer_module: "gpo_train.fish_train".into(),
+            run_id: "r1".into(),
+            epochs: 40,
+            seed: 7,
+            code_version: "test".into(),
+            trainer_dir: String::new(),
+            work_dir: PathBuf::new(),
+            candidate_id: None,
+            evaluation: None,
+            error: None,
+            progress: super::super::training::JobProgress {
+                stage: "PASSED".to_string(),
+                epoch: 40,
+                total_epochs: 40,
+                val_metric: Some(0.8),
+                ..Default::default()
+            },
+            deferred_reason: None,
+            macro_running_at_start: false,
+        }
+    }
+
+    fn passed_jobs() -> Vec<super::super::training::TrainingJob> {
+        vec![job("fish", JobStatus::Passed)]
+    }
+
     fn assess(
         d: &DataGateInfo,
         recs: &[CandidateRecord],
@@ -669,7 +735,7 @@ mod tests {
         s: Option<&SoakStats>,
         phase: JobPhase,
     ) -> ModelReadiness {
-        assess_family("fish", d, 80, 100, recs, deployed, s, phase, &ReadinessThresholds::default())
+        assess_family("fish", d, 80, 100, recs, deployed, s, phase, &passed_jobs(), &ReadinessThresholds::default())
     }
 
     #[test]
@@ -721,6 +787,7 @@ mod tests {
             None,
             None,
             JobPhase::Idle,
+            &passed_jobs(),
             &ReadinessThresholds::default(),
         );
         assert_eq!(r.status, ReadinessStatus::NotEnoughReview);
@@ -740,6 +807,7 @@ mod tests {
             None,
             None,
             JobPhase::Idle,
+            &passed_jobs(),
             &ReadinessThresholds::default(),
         );
         assert_eq!(r.status, ReadinessStatus::DataReady, "the floor is inclusive");
@@ -749,6 +817,7 @@ mod tests {
     fn full_data_and_review_is_data_ready_not_training_ready() {
         let r = assess_family(
             "fish", &full_data(), 80, 100, &[], None, None, JobPhase::Idle,
+            &passed_jobs(),
             &ReadinessThresholds::default(),
         );
         assert_eq!(r.status, ReadinessStatus::DataReady);
@@ -834,6 +903,88 @@ mod tests {
         let r = assess(&full_data(), &recs, Some(9), Some(&s), JobPhase::Idle);
         assert_ne!(r.status, ReadinessStatus::ProductionReady);
         assert_eq!(r.status, ReadinessStatus::ShadowReady);
+    }
+
+    #[test]
+    fn train_stage_reports_the_real_job_outcome() {
+        // No job at all: the TRAIN stage must name that, not stay silent.
+        let r = assess_family(
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &[],
+            None,
+            None,
+            JobPhase::Idle,
+            &[],
+            &ReadinessThresholds::default(),
+        );
+        let chk = r.checks.iter().find(|c| c.name == "training_job").unwrap();
+        assert_eq!(chk.stage, ReadinessStage::Train);
+        assert!(!chk.passed);
+        assert!(chk.detail.contains("no training job"), "{}", chk.detail);
+        assert!(r.blockers.iter().any(|b| b.contains("training_job")));
+
+        // A FAILED job is reported honestly and stays a blocker.
+        let r = assess_family(
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &[],
+            None,
+            None,
+            JobPhase::Idle,
+            &[job("fish", JobStatus::Failed)],
+            &ReadinessThresholds::default(),
+        );
+        let chk = r.checks.iter().find(|c| c.name == "training_job").unwrap();
+        assert!(!chk.passed);
+        assert!(chk.actual.contains("rows"), "{}", chk.actual);
+
+        // A passed job clears it.
+        let r = assess_family(
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &[],
+            None,
+            None,
+            JobPhase::Idle,
+            &[job("fish", JobStatus::Passed)],
+            &ReadinessThresholds::default(),
+        );
+        let chk = r.checks.iter().find(|c| c.name == "training_job").unwrap();
+        assert!(chk.passed, "{}", chk.detail);
+        assert_eq!(chk.difference, "none");
+    }
+
+    #[test]
+    fn every_stage_is_represented_by_at_least_one_check() {
+        let recs = vec![rec("fish", 2, 0.80, 0.65)];
+        let r = assess(
+            &full_data(),
+            &recs,
+            Some(2),
+            Some(&soak(150, 4, 0.92)),
+            JobPhase::Idle,
+        );
+        for stage in [
+            ReadinessStage::Data,
+            ReadinessStage::Review,
+            ReadinessStage::Train,
+            ReadinessStage::Evaluate,
+            ReadinessStage::Shadow,
+            ReadinessStage::Production,
+        ] {
+            assert!(
+                r.checks.iter().any(|c| c.stage == stage),
+                "no check emitted for stage {}",
+                stage.as_str()
+            );
+        }
     }
 
     #[test]
