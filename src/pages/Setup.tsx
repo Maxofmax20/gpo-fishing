@@ -371,10 +371,16 @@ function MlDatasetPanel() {
       {readiness && (
         <div className="text-[11px] font-mono text-fg-dim break-words">
           <div>
-            TRAINING STATUS:{" "}
+            DATA QUALITY:{" "}
             <span className={readiness.ready ? "text-ok" : "text-warn"}>
               {readiness.training}
             </span>
+          </div>
+          <div className="text-fg-mute">
+            These are data-quality gates only (rows, sessions, held-out test,
+            coverage, leakage, validation). They say nothing about human review.
+            The authoritative verdict — including the review floor — is{" "}
+            <span className="text-fg-dim">Training › Readiness</span>.
           </div>
           <div>
             Entity-linked RESULTs: {readiness.entity_linked_result}/{readiness.required_entity_linked}

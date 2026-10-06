@@ -1081,9 +1081,20 @@ pub fn assess_readiness(
     TrainingReadiness {
         ready,
         training: if ready {
-            "READY FOR TRAINING".to_string()
+            // NOT "READY FOR TRAINING". These gates measure DATA QUALITY only -
+            // row counts, sessions, held-out test, class coverage, leakage,
+            // validation. They say nothing about whether a human has reviewed
+            // anything. The label used to be "READY FOR TRAINING", which meant
+            // this panel could print READY in green while Training > Readiness
+            // said NOT_ENOUGH_REVIEW and `training_start` refused with
+            // "collector labels alone are not training evidence". Two panels,
+            // two verdicts, opposite colours.
+            //
+            // Training > Readiness is the authoritative verdict. This is the
+            // data-quality precondition for it.
+            "DATA GATES PASS".to_string()
         } else {
-            "TRAINING BLOCKED".to_string()
+            "DATA GATES BLOCKED".to_string()
         },
         verified,
         required_verified: READINESS_MIN_VERIFIED,
@@ -2014,7 +2025,10 @@ mod tests {
         let r = assess(&ds);
         assert_eq!(r.entity_linked_result, 1000);
         assert!(r.ready, "clean volume must pass, got: {:?}", r.reasons);
-        assert_eq!(r.training, "READY FOR TRAINING");
+        // NOT "READY FOR TRAINING": these gates never see a review record, so
+        // they cannot claim training is ready. Training > Readiness owns that
+        // verdict, including the review floor.
+        assert_eq!(r.training, "DATA GATES PASS");
         assert_eq!(r.blocking_requirement, "none — all gates pass");
     }
 }
