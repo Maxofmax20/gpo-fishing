@@ -281,9 +281,24 @@ pub async fn training_overview(st: State<'_, AppState>) -> Result<TrainingOvervi
         let shadow_models = crate::core::shadow_infer::engine(&store.dir().join("models"))
             .map(|e| e.model_names().len())
             .unwrap_or(0);
-        // Real count, not the hardcoded 0 v5.6.x reported.
-        let shadow_events = registry::soak_stats(store.dir(), "fish_v1", usize::MAX).events
-            + registry::soak_stats(store.dir(), "state_v1", usize::MAX).events;
+        // Real count, not the hardcoded 0 v5.6.x reported - and scoped to the
+        // DEPLOYED REVISION of each slot, not the union of every revision that
+        // slot ever ran. `revision: None` is the legacy cross-revision view, so
+        // it could read non-zero while the model actually loaded has zero
+        // observations, contradicting the correctly-scoped readiness check
+        // shown beside it.
+        let deployed_revision = |stem: &str| -> Option<String> {
+            let raw = std::fs::read_to_string(store.dir().join("models").join(format!("{stem}.json"))).ok()?;
+            let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+            Some(crate::core::shadow_infer::revision_from_manifest(&v))
+        };
+        let shadow_events = ["fish_v1", "state_v1"]
+            .iter()
+            .map(|stem| {
+                registry::soak_stats_for(store.dir(), stem, deployed_revision(stem).as_deref(), usize::MAX)
+                    .events
+            })
+            .sum();
         Ok(TrainingOverview {
             dataset_version: DATASET_VERSION,
             rows: rows.len(),

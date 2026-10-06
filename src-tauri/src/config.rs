@@ -504,8 +504,19 @@ pub struct TrainingSettings {
     pub auto_enabled: bool,
     pub min_new_samples: usize,
     pub min_new_sessions: usize,
+    /// RETAINED FOR COMPATIBILITY ONLY - not read by any backend code.
+    /// A held-out TEST split is not optional and never was: the trainer always
+    /// withholds one and the promotion gate always reads test metrics. A flag
+    /// that suggests it could be turned off is a lie, so it is documented as
+    /// inert rather than presented as a control.
+    #[serde(default = "default_true")]
     pub require_held_out_test: bool,
     pub auto_promote_to_shadow: bool,
+    /// RETAINED FOR COMPATIBILITY ONLY - not read by any backend code.
+    /// Rollback is unconditional: a promoted model that fails to load is
+    /// restored from its archive automatically, and `rollback_family` refuses a
+    /// partial restore. There is nothing to enable or disable.
+    #[serde(default = "default_true")]
     pub auto_rollback: bool,
     pub max_concurrent_jobs: usize,
     pub allow_fish: bool,

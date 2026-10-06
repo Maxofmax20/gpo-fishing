@@ -1218,7 +1218,13 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
                     cur_ver,
                 );
             });
-            "Update initiated! The app will install and auto-resume fishing."
+            // HONESTY: the signed in-app updater is the only path that installs. The
+            // chat/web `/update` reports availability and deliberately does NOT
+            // download or execute anything (an unsigned installer fetched from
+            // remote JSON is remote code execution, and the pinned minisign key
+            // exists precisely to prevent that). The previous text claimed an
+            // install would happen - it would not.
+            "Checked for updates. Use the in-app updater (Settings -> Check for updates) to install; it verifies the release signature."
         }
         "set_vip_url" => {
             if let Some(val) = parsed.get("value").and_then(|v| v.as_str()) {

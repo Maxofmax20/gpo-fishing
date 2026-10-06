@@ -499,6 +499,52 @@ pub fn assess_family(
         false,
     );
 
+    // EVIDENCE MUST BELONG TO THE SAME MODEL. `latest_eval` is the highest
+    // evaluated version in the registry; the soak is whatever the on-disk
+    // manifest says. Nothing tied them, so a newly registered v5 candidate
+    // would inherit v4's 150-event, 4-session, 92%-agreement soak and be
+    // reported SHADOW_READY having been observed zero times.
+    //
+    // The candidate's metrics and the soak evidence must describe the same
+    // revision. When they do not, we report exactly that instead of adding
+    // numbers from different models together.
+    let evidence_owner = latest_eval.map(|r| r.model_version);
+    let same_revision = match (evidence_owner, deployed) {
+        (Some(a), Some(b)) => a == b,
+        // No evaluated candidate: nothing to mis-attribute.
+        (None, _) => true,
+        // A manifest exists but no record does: the deployed bytes are not
+        // described by any registry record, so no metrics are being claimed.
+        (Some(_), None) => false,
+    };
+    c.add(
+        "shadow_evidence_revision",
+        ReadinessStage::Shadow,
+        same_revision,
+        match (evidence_owner, deployed) {
+            (Some(a), Some(b)) if a == b => format!("metrics and soak both describe revision v{a}"),
+            (Some(a), Some(b)) => format!(
+                "evaluated candidate is v{a} but shadow is running v{b}; \
+                 v{a}'s metrics and v{b}'s soak are not the same evidence"
+            ),
+            (Some(a), None) => format!("evaluated candidate v{a} is not deployed to shadow"),
+            (None, _) => "no evaluated candidate".to_string(),
+        },
+        match (evidence_owner, deployed) {
+            (Some(a), Some(b)) if a == b => format!("v{a}"),
+            (Some(a), Some(b)) => format!("v{a} vs v{b}"),
+            _ => "none".to_string(),
+        },
+        "metrics and soak describe the same revision".to_string(),
+        if same_revision { "none".to_string() } else { "1 mismatch".to_string() },
+        if same_revision {
+            String::new()
+        } else {
+            "Promote the evaluated candidate to shadow so its soak is its own.".to_string()
+        },
+        false,
+    );
+
     // ---------- STAGE: PRODUCTION (structurally blocked) ----------
     c.add(
         "production_authorized",
@@ -562,7 +608,7 @@ pub fn assess_family(
             } else if !train_ok {
                 ReadinessStatus::DataReady
             } else if review_eval_ok && quality_ok {
-                if deployed.is_some() && soak_events_ok && agree_ok && sess_ok {
+                if deployed.is_some() && soak_events_ok && agree_ok && sess_ok && same_revision {
                     ReadinessStatus::ShadowReady
                 } else {
                     ReadinessStatus::CandidateReady

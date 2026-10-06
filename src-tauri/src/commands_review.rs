@@ -1215,14 +1215,28 @@ fn readiness_status_inner(
                 .ok()
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or(serde_json::Value::Null);
-        let deployed_version = manifest
-            .get("version")
-            .and_then(|x| x.as_str())
-            .and_then(|s| s.parse::<u32>().ok());
+        // ONE reader for the manifest version. v5.6.x re-parsed `version` here as a
+        // `u32` while the shadow log joins on the RAW STRING produced by
+        // `revision_from_manifest`. A manifest whose version was a JSON number,
+        // or any non-numeric string, therefore yielded `None` here - and `None`
+        // means the LEGACY UNION view: the soak counted every revision that
+        // slot had ever run, so a fresh candidate inherited the incumbent's
+        // evidence. One reader, one definition, one join key.
+        //
+        // `deployed_rev` (raw string) filters the soak; `deployed_version`
+        // (numeric) is only for display. A revision that is not a plain number
+        // still filters the soak correctly and simply reports as "unknown"
+        // revision in the UI, rather than silently widening the join.
+        let deployed_rev: Option<String> = if manifest.is_null() {
+            None
+        } else {
+            Some(crate::core::shadow_infer::revision_from_manifest(&manifest))
+        };
+        let deployed_version: Option<u32> = deployed_rev.as_deref().and_then(|s| s.parse().ok());
         let soak = registry::soak_stats_for(
             store_dir,
             stem,
-            deployed_version.map(|v| v.to_string()).as_deref(),
+            deployed_rev.as_deref(),
             500,
         );
         let soak_opt = (soak.events > 0).then_some(&soak);

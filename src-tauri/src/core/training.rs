@@ -596,6 +596,18 @@ impl Supervisor {
         for (k, v) in envs {
             cmd.env(k, v);
         }
+        // The trainer's data-integrity guards (session-overlap, minimum
+        // examples per class, held-out split non-empty) are written as
+        // `assert`. Under `python -O` / `PYTHONOPTIMIZE=1` every one of them
+        // silently vanishes, and a candidate can then train below scope with
+        // cross-split session leakage - while the app reports a normal
+        // candidate. Strip the flag from OUR environment so the guards are
+        // always compiled in, regardless of what the user has set globally.
+        cmd.env_remove("PYTHONOPTIMIZE");
+        // Hash randomisation only affects interpreter-level hash order, which
+        // the trainer already avoids, but a deterministic env makes a failed
+        // run reproducible from the log alone.
+        cmd.env("PYTHONHASHSEED", "0");
         let child = cmd.spawn().map_err(|e| format!("trainer spawn failed ({}): {e}", argv[0]))?;
         self.children.insert(job.job_id.clone(), child);
         job.status = JobStatus::Running;

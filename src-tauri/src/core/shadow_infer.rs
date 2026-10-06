@@ -47,6 +47,17 @@ struct ShadowManifest {
     temperature: f32,
     #[serde(default)]
     test_accuracy: Option<f32>,
+    /// Fingerprint of the index -> label mapping, written by the registry at
+    /// promotion time.
+    ///
+    /// `verify_weights` checks the `.onnx` bytes, but the class map lives in
+    /// this JSON file - so a hand-edited or mismatched `classes` array would
+    /// pass every checksum and silently attribute each logit index to the
+    /// wrong label. When the fingerprint is present it is authoritative: a
+    /// mismatch is a refusal, not a warning. Absent (manifests written before
+    /// v5.7.0) means the map is trusted verbatim.
+    #[serde(default)]
+    vocab_sha: Option<String>,
     preprocess: PreprocessSpec,
 }
 
@@ -118,6 +129,19 @@ fn load_one(models_dir: &Path, onnx_name: &str, json_name: &str) -> Result<Shado
         return Err(format!("{}: runtime '{}' is not this tract build", json_name, m.base.runtime));
     }
     verify_weights(&m.base, &onnx_path.to_path_buf()).map_err(|e| e.to_string())?;
+    // CLASS-MAP INTEGRITY. The weights checksum covers the `.onnx`; the index ->
+    // label mapping lives in this manifest, so it is verified separately. A
+    // mismatch means every observation would be attributed to the wrong label
+    // while all other checks pass.
+    if let Some(expected) = m.vocab_sha.as_deref().filter(|s| !s.is_empty()) {
+        let actual = super::ml_model::sha256_hex(m.base.classes.join("\n").as_bytes());
+        if actual != expected {
+            return Err(format!(
+                "{json_name}: class map does not match the manifest fingerprint \
+                 (expected {expected}, computed {actual}); refusing to load"
+            ));
+        }
+    }
     let mut typed = tract_onnx::onnx()
         .model_for_path(&onnx_path)
         .map_err(|e| format!("{onnx_name} load: {e}"))?;
@@ -347,6 +371,19 @@ pub fn seed_shadow_models(candidates: &[PathBuf], models_dir: &Path) -> Vec<Stri
                     }
                     continue;
                 }
+            } else if dj.exists() {
+                // A deployed manifest EXISTS but does not parse.
+                // `manifest_version` returning None here means "unknown
+                // version", and the old code then fell through and wrote the
+                // bundled v1 back over whatever was deployed - silently
+                // reverting a promotion while the registry still recorded the
+                // candidate as shadowed. An unreadable manifest is not an
+                // invitation to overwrite: refuse this slot.
+                tracing::warn!(
+                    "shadow seed: deployed {json} exists but is unreadable; \
+                     refusing to overwrite it (repair or remove it deliberately)"
+                );
+                continue;
             }
             if std::fs::write(&dj, &want_json).is_err()
                 || std::fs::write(&do_, &want_onnx).is_err()

@@ -270,14 +270,11 @@ fn shadow_events_exist_for(data_dir: &Path, family: &str) -> bool {
 /// recycled revision would join a dead revision's shadow events. A separate
 /// counter file survives a registry rebuild; if both are lost we refuse
 /// rather than guess.
-pub fn next_version(data_dir: &Path, records: &[CandidateRecord], family: &str) -> u32 {
-    next_version_checked(data_dir, records, family).unwrap_or_else(|e| {
-        tracing::error!("{e}");
-        // Fail closed by never inventing a colliding version.
-        u32::MAX
-    })
-}
-
+///
+/// There is deliberately NO infallible wrapper. A previous version returned
+/// `u32::MAX` on failure, which is a guaranteed-colliding sentinel waiting for
+/// the next caller. Refusing is the only honest answer, so the fallible form is
+/// the only form.
 pub fn next_version_checked(
     data_dir: &Path,
     records: &[CandidateRecord],
@@ -689,6 +686,13 @@ pub fn rollback_family(data_dir: &Path, models_dir: &Path, family: &str) -> Resu
         r.decision_reason = Some("rolled back: archive restored".to_string());
     }
     save_registry(data_dir, &records)?;
+    // Drop the cached engine. Promotion did this; rollback did not. Without it
+    // the in-process `ShadowEngine` keeps the weights we just ROLLED BACK FROM
+    // and stamps `model_revision` with the displaced revision, while readiness
+    // reads the restored manifest. The restored revision's soak is then frozen
+    // at its pre-promotion history and can satisfy SHADOW_READY with zero
+    // observations of the weights actually loaded.
+    super::shadow_infer::invalidate_engine();
     Ok(live_json)
 }
 

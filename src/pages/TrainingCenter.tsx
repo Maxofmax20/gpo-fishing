@@ -229,8 +229,13 @@ function FinalStatus({
   const classes = fish?.checks.find((c) => c.name === "qualified_classes");
   const reviewChk = fish?.checks.find((c) => c.name === "human_review");
   const trainChk = fish?.checks.find((c) => c.name === "training_job");
+  const evalChk = fish?.checks.find((c) => c.name === "candidate_evaluated");
   const shadowChk = fish?.checks.find((c) => c.name === "shadow_soak_events");
-  const hasCandidate = Boolean(trainChk?.passed);
+  const revChk = fish?.checks.find((c) => c.name === "shadow_evidence_revision");
+  // `training_job` is only about the JOB; whether a candidate actually exists
+  // in the registry is a different, authoritative check. Reading the job check
+  // here made a finished run look like a registered candidate.
+  const hasCandidate = Boolean(evalChk?.passed);
   const shadowStarted = Boolean(overview && overview.shadow_events > 0);
 
   // The single next action, derived from the FIRST unmet stage. Never guess.
@@ -279,11 +284,17 @@ function FinalStatus({
         reviewChk?.passed ? "OK" : reviewChk?.actual ?? "unknown",
         reviewChk?.difference !== "none" ? reviewChk?.difference : undefined,
       )}
-      {row("Training", hasCandidate ? "ok" : "mute", hasCandidate ? "Candidate exists" : "No candidate")}
+      {row(
+        "Training",
+        trainChk?.passed ? "ok" : "mute",
+        trainChk?.passed ? "Job passed" : "No job",
+        trainChk?.passed ? undefined : trainChk?.actual,
+      )}
       {row(
         "Evaluation",
         hasCandidate ? "ok" : "mute",
         hasCandidate ? "Registered" : "No candidate",
+        hasCandidate ? evalChk?.actual : undefined,
       )}
       {row(
         "Shadow",
@@ -291,6 +302,9 @@ function FinalStatus({
         shadowStarted ? `${overview?.shadow_events ?? 0} events` : "Not started",
         shadowChk?.passed === false && shadowStarted ? shadowChk?.required : undefined,
       )}
+      {revChk?.passed === false
+        ? row("Evidence", "bad", "MISMATCH", revChk.detail)
+        : null}
       {row("Production", "bad", "NOT READY", "by design — no production-control switch exists")}
       <div className="mt-1 pt-1 border-t border-line/50 text-[11px] text-fg">
         <span className="text-fg-dim">Next: </span>
@@ -1822,14 +1836,29 @@ export default function TrainingCenter() {
                 <span>Auto-promote passed candidates to shadow</span>
                 <Toggle value={settings.auto_promote_to_shadow} onChange={(v) => setSettings({ ...settings, auto_promote_to_shadow: v })} />
               </label>
-              <label className="flex items-center justify-between gap-2">
-                <span>Auto-rollback on shadow regression</span>
-                <Toggle value={settings.auto_rollback} onChange={(v) => setSettings({ ...settings, auto_rollback: v })} />
-              </label>
+              {/*
+                Auto-rollback has always been ON and is not read by any backend
+                code. It was rendered as a live toggle, so turning it off looked
+                like it disabled a safety behaviour when it changed nothing.
+                A safety control that cannot be operated must not be presented as
+                one - rollback remains unconditional.
+              */}
+              <div className="flex items-center justify-between gap-2 opacity-70">
+                <span>
+                  Auto-rollback on shadow regression
+                  <span className="ml-1 text-[10px] text-fg-mute">(always on — cannot be disabled)</span>
+                </span>
+                <Toggle value={true} onChange={() => {}} />
+              </div>
               <label className="flex items-center justify-between gap-2">
                 <span>Defer auto-training while fishing</span>
                 <Toggle value={settings.defer_while_fishing} onChange={(v) => setSettings({ ...settings, defer_while_fishing: v })} />
               </label>
+              <div className="text-[10px] text-fg-mute">
+                Readiness bars are clamped on load and on save: macro-F1 ≥ 0.30, worst-class ≥ 0.10,
+                shadow agreement ≥ 0.50, reviewed share ≥ 0.10, shadow events ≥ 20, sessions ≥ 1. A
+                hand-edited settings file cannot weaken them.
+              </div>
               {[
                 ["min_new_samples", "Min new samples to trigger"],
                 ["min_new_sessions", "Min new sessions to trigger"],
