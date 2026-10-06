@@ -63,6 +63,8 @@ pub fn dataset_fingerprint(rows: &[MlAnnotation], dataset_version: u32) -> Strin
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotMeta {
     pub fingerprint: String,
+    /// Rows ACTUALLY written into the frozen `labels.jsonl`, i.e. the
+    /// training set size AFTER human-review filtering (v5.6).
     pub rows: usize,
     pub sessions: usize,
     pub test_sessions: Vec<String>,
@@ -76,6 +78,17 @@ pub struct SnapshotMeta {
     /// Entity registry (KB) version the snapshot was taken against.
     #[serde(default = "default_kb_one")]
     pub entity_registry_version: u32,
+    /// Rows dropped from the snapshot because a human review recorded
+    /// `training_eligible: false` (Skip / Unknown / Conflict / bad image /
+    /// invalid canonical mapping / duplicate / missing provenance). Zero
+    /// for snapshots frozen before review filtering existed.
+    #[serde(default = "default_rows_excluded_by_review")]
+    pub rows_excluded_by_review: usize,
+    /// Rows with NO review record at all. They are KEPT (unreviewed data
+    /// keeps exactly the meaning it had before v5.6) but counted, so a
+    /// caller can show how much of the frozen set is human-verified.
+    #[serde(default = "default_rows_unreviewed")]
+    pub rows_unreviewed: usize,
 }
 
 fn default_review_none() -> String {
@@ -86,8 +99,76 @@ fn default_kb_one() -> u32 {
     1
 }
 
-/// Freeze the current label set for one job. Copies are small (labels +
-/// manifest only); images stay in place (content-addressed, immutable).
+fn default_rows_excluded_by_review() -> usize {
+    0
+}
+
+fn default_rows_unreviewed() -> usize {
+    0
+}
+
+// ---- human-review projection (training eligibility) ----
+
+/// Minimal projection of one `reviews.jsonl` line (see [`super::review`]).
+/// Only what training eligibility needs is read, so a record that predates
+/// newer review fields still parses.
+///
+/// `training_eligible` defaults to **false**, exactly like the full
+/// `ReviewRecord`: a review that exists but carries no positive verdict must
+/// never be mistaken for "no review at all" (which would let a bad image
+/// straight back into training).
+#[derive(Debug, Deserialize)]
+struct ReviewEligibilityLine {
+    image_id: String,
+    #[serde(default)]
+    training_eligible: bool,
+}
+
+/// Parse `reviews.jsonl` bytes into per-image eligibility lines. Unreadable
+/// or non-JSON lines are skipped: without an `image_id` they cannot be
+/// attributed to any row, so they cannot silently un-exclude anything.
+fn parse_review_eligibility(raw: &[u8]) -> Vec<ReviewEligibilityLine> {
+    let Ok(text) = std::str::from_utf8(raw) else { return Vec::new() };
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str::<ReviewEligibilityLine>(l).ok())
+        .collect()
+}
+
+/// `image_id -> training_eligible`. Exclusion is sticky: if the same image
+/// somehow appears twice with disagreeing verdicts, `false` wins (fail
+/// closed — the conservative answer is always the one that trains on less).
+fn review_eligibility_map(records: &[ReviewEligibilityLine]) -> HashMap<&str, bool> {
+    let mut map: HashMap<&str, bool> = HashMap::with_capacity(records.len());
+    for r in records {
+        map.entry(r.image_id.as_str())
+            .and_modify(|v| *v &= r.training_eligible)
+            .or_insert(r.training_eligible);
+    }
+    map
+}
+
+/// Freeze the current label set for one job, AFTER applying human review.
+///
+/// Copies are small (labels + manifest only); images stay in place
+/// (content-addressed, immutable).
+///
+/// SAFETY (v5.6) — the frozen `labels.jsonl` is FILTERED by
+/// `<data_dir>/reviews.jsonl`, the only channel by which a human verdict
+/// reaches the Python trainer. A row is written only when
+/// (a) it has no review record — unreviewed data keeps exactly the meaning
+/// it had before, this does not silently redefine it — or
+/// (b) its record says `training_eligible: true`.
+/// Anything a human skipped, called unknown, flagged as a conflict, or that
+/// failed the bad-image / canonical-id gate is physically ABSENT from the
+/// snapshot, so the trainer cannot learn from it even if it ignores our
+/// metadata. Rows are re-serialised with serde_json: input order and every
+/// other field are preserved unchanged.
+///
+/// Fail closed: a snapshot that would hold 0 rows is an error, never an
+/// empty training run. `fingerprint`, `rows`, `sessions` and
+/// `test_sessions` all describe the FILTERED set — i.e. exactly what
+/// trains — so a model is always traceable to its real training input.
 pub fn snapshot_dataset(
     data_dir: &Path,
     snap_dir: &Path,
@@ -96,21 +177,60 @@ pub fn snapshot_dataset(
 ) -> Result<SnapshotMeta, String> {
     let src = data_dir.join("datasets").join("gpo-vision").join("v1");
     std::fs::create_dir_all(snap_dir).map_err(|e| format!("snapshot dir: {e}"))?;
-    for name in ["labels.jsonl", "manifest.json"] {
-        let bytes =
-            std::fs::read(src.join(name)).map_err(|e| format!("snapshot read {name}: {e}"))?;
-        std::fs::write(snap_dir.join(name), &bytes).map_err(|e| format!("snapshot write {name}: {e}"))?;
-    }
-    // Freeze the review state alongside the labels (may not exist yet).
-    let mut review_fingerprint = default_review_none();
-    if let Ok(bytes) = std::fs::read(data_dir.join("reviews.jsonl")) {
-        if !bytes.is_empty() {
-            std::fs::write(snap_dir.join("reviews.jsonl"), &bytes)
-                .map_err(|e| format!("snapshot write reviews.jsonl: {e}"))?;
-            review_fingerprint = format!("rv-{}", &super::ml_model::sha256_hex(&bytes)[..16]);
+    // The dataset labels file must exist even though the snapshot is written
+    // from `rows` (the caller's parsed view, which is also what the
+    // fingerprint covers): a missing/unreadable dataset must fail loudly
+    // rather than quietly snapshot a half-loaded store.
+    std::fs::metadata(src.join("labels.jsonl")).map_err(|e| format!("snapshot read labels.jsonl: {e}"))?;
+    let manifest_bytes =
+        std::fs::read(src.join("manifest.json")).map_err(|e| format!("snapshot read manifest.json: {e}"))?;
+
+    // Read the review state ONCE: it both decides what may train and
+    // fingerprints exactly what humans had seen at freeze time.
+    let reviews_bytes = std::fs::read(data_dir.join("reviews.jsonl")).unwrap_or_default();
+    let review_records = parse_review_eligibility(&reviews_bytes);
+    let eligibility = review_eligibility_map(&review_records);
+
+    // Filter BEFORE any write, so a rejected snapshot leaves nothing behind.
+    let mut kept: Vec<MlAnnotation> = Vec::with_capacity(rows.len());
+    let mut rows_excluded_by_review = 0usize;
+    let mut rows_unreviewed = 0usize;
+    for r in rows {
+        match eligibility.get(r.image_id.as_str()) {
+            None => {
+                rows_unreviewed += 1;
+                kept.push(r.clone());
+            }
+            Some(true) => kept.push(r.clone()),
+            Some(false) => rows_excluded_by_review += 1,
         }
     }
-    let mut test_sessions: Vec<String> = rows
+    if kept.is_empty() {
+        return Err("training snapshot has 0 rows after review filtering".to_string());
+    }
+
+    // Frozen trainer input: the surviving rows, input order, every field
+    // untouched (serde_json round-trip of the annotation itself).
+    let mut labels = String::new();
+    for r in &kept {
+        let line = serde_json::to_string(r).map_err(|e| format!("snapshot serialise labels: {e}"))?;
+        labels.push_str(&line);
+        labels.push('\n');
+    }
+    std::fs::write(snap_dir.join("labels.jsonl"), labels.as_bytes())
+        .map_err(|e| format!("snapshot write labels.jsonl: {e}"))?;
+    // Manifest is dataset metadata, not row data: copied unchanged.
+    std::fs::write(snap_dir.join("manifest.json"), &manifest_bytes)
+        .map_err(|e| format!("snapshot write manifest.json: {e}"))?;
+
+    // Freeze the review state alongside the labels (may not exist yet).
+    let mut review_fingerprint = default_review_none();
+    if !reviews_bytes.is_empty() {
+        std::fs::write(snap_dir.join("reviews.jsonl"), &reviews_bytes)
+            .map_err(|e| format!("snapshot write reviews.jsonl: {e}"))?;
+        review_fingerprint = format!("rv-{}", &super::ml_model::sha256_hex(&reviews_bytes)[..16]);
+    }
+    let mut test_sessions: Vec<String> = kept
         .iter()
         .filter(|r| MlDatasetStore::split_of(&r.session_id).as_str() == "test")
         .map(|r| r.session_id.clone())
@@ -118,16 +238,18 @@ pub fn snapshot_dataset(
         .into_iter()
         .collect();
     test_sessions.sort();
-    let sessions = rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
+    let sessions = kept.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
     Ok(SnapshotMeta {
-        fingerprint: dataset_fingerprint(rows, dataset_version),
-        rows: rows.len(),
+        fingerprint: dataset_fingerprint(&kept, dataset_version),
+        rows: kept.len(),
         sessions,
         test_sessions,
         created_at: now_ms(),
         snap_dir: snap_dir.to_path_buf(),
         review_fingerprint,
         entity_registry_version: super::knowledge::KNOWLEDGE_VERSION,
+        rows_excluded_by_review,
+        rows_unreviewed,
     })
 }
 
@@ -821,6 +943,67 @@ mod tests {
         }
     }
 
+    /// Row with an explicit image_id (review filtering keys on it).
+    fn frow(image_id: &str, session: &str, ts: u64, state: GameStateLabel) -> MlAnnotation {
+        let mut r = row(session, ts, state, None);
+        r.image_id = image_id.to_string();
+        r
+    }
+
+    /// One `reviews.jsonl` line in the `ReviewRecord` shape.
+    fn review_line(image_id: &str, status: &str, eligible: bool, excluded: Option<&str>) -> serde_json::Value {
+        serde_json::json!({
+            "review_id": format!("rev-{image_id}"),
+            "image_id": image_id,
+            "session_id": "flt-sess",
+            "review_status": status,
+            "human_entity_id": eligible.then(|| "fish:golden".to_string()),
+            "training_eligible": eligible,
+            "excluded_reason": excluded,
+            "reviewed_at": 1,
+            "reviewer_version": "v5.6",
+            "dataset_version": 1,
+        })
+    }
+
+    /// Write `reviews.jsonl` in its real shape: ONE review object per line.
+    fn write_reviews(path: &Path, lines: &[serde_json::Value]) {
+        let body: String = lines.iter().map(|l| l.to_string() + "\n").collect();
+        std::fs::write(path, body).unwrap();
+    }
+
+    /// Disposable dataset whose reviews cover 3 of 4 rows:
+    /// `flt-a` eligible, `flt-b` eligible, `flt-c` explicitly skipped
+    /// (`excluded_reason: "skipped"`), `flt-d` unreviewed.
+    fn seeded_review_dir(tag: &str) -> (PathBuf, Vec<MlAnnotation>) {
+        let dir = std::env::temp_dir().join(format!("gpo-train-filter-{tag}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        let v1 = dir.join("datasets").join("gpo-vision").join("v1");
+        std::fs::create_dir_all(&v1).unwrap();
+        let rows = vec![
+            frow("flt-a", "flt-sess", 1, GameStateLabel::Bite),
+            frow("flt-b", "flt-sess", 2, GameStateLabel::WaitingForBite),
+            frow("flt-c", "flt-sess", 3, GameStateLabel::CatchResult),
+            frow("flt-d", "flt-sess", 4, GameStateLabel::CatchResult),
+        ];
+        let body: String = rows.iter().map(|r| serde_json::to_string(r).unwrap() + "\n").collect();
+        std::fs::write(v1.join("labels.jsonl"), body).unwrap();
+        std::fs::write(
+            v1.join("manifest.json"),
+            r#"{"name":"gpo-vision","version":1,"created_ms":1,"split_strategy":"hash","split_overrides":{}}"#,
+        )
+        .unwrap();
+        write_reviews(
+            &dir.join("reviews.jsonl"),
+            &[
+                review_line("flt-a", "REVIEWED_CORRECT", true, None),
+                review_line("flt-b", "REVIEWED_CORRECTED", true, None),
+                review_line("flt-c", "REVIEWED_SKIPPED", false, Some("skipped")),
+            ],
+        );
+        (dir, rows)
+    }
+
     #[test]
     fn fingerprint_is_stable_and_sensitive() {
         let a = vec![row("s1", 1, GameStateLabel::Bite, None), row("s1", 2, GameStateLabel::WaitingForBite, None)];
@@ -862,6 +1045,95 @@ mod tests {
     }
 
     #[test]
+    fn snapshot_drops_rows_a_human_marked_training_ineligible() {
+        let (dir, rows) = seeded_review_dir("mixed");
+        let snap_dir = dir.join("snap1");
+        let meta = snapshot_dataset(&dir, &snap_dir, &rows, 1).unwrap();
+
+        // Counts describe the FILTERED set (the training set), not the input.
+        assert_eq!(meta.rows, 3, "2 eligible + 1 unreviewed");
+        assert_eq!(meta.rows_excluded_by_review, 1);
+        assert_eq!(meta.rows_unreviewed, 1);
+
+        // The trainer-facing labels.jsonl holds exactly the survivors, in
+        // input order, and the human-skipped row is physically absent.
+        let raw = std::fs::read_to_string(snap_dir.join("labels.jsonl")).unwrap();
+        let parsed: Vec<MlAnnotation> =
+            raw.lines().map(|l| serde_json::from_str(l).expect("snapshot row must parse")).collect();
+        let ids: Vec<&str> = parsed.iter().map(|r| r.image_id.as_str()).collect();
+        assert_eq!(ids, vec!["flt-a", "flt-b", "flt-d"], "input order preserved");
+        assert!(!ids.contains(&"flt-c"), "skipped row must not reach the trainer");
+
+        // Every other field survives the serde_json round-trip untouched.
+        for got in &parsed {
+            let src = rows.iter().find(|r| r.image_id == got.image_id).unwrap();
+            assert_eq!(serde_json::to_value(src).unwrap(), serde_json::to_value(got).unwrap());
+        }
+        assert_eq!(parsed[2].game_state, Some(GameStateLabel::CatchResult));
+
+        // Manifest still copied unchanged; the frozen review state remains.
+        assert_eq!(
+            std::fs::read(snap_dir.join("manifest.json")).unwrap(),
+            std::fs::read(dir.join("datasets").join("gpo-vision").join("v1").join("manifest.json")).unwrap()
+        );
+        assert!(snap_dir.join("reviews.jsonl").exists(), "reviews.jsonl copy must survive filtering");
+        assert_ne!(meta.review_fingerprint, "none", "reviews exist so fingerprint must be set");
+
+        // Fingerprint + session counts describe what trains, not the input.
+        let kept: Vec<MlAnnotation> = rows.iter().filter(|r| r.image_id != "flt-c").cloned().collect();
+        assert_eq!(meta.fingerprint, dataset_fingerprint(&kept, 1));
+        assert_ne!(meta.fingerprint, dataset_fingerprint(&rows, 1), "excluded row must not be in the fingerprint");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn snapshot_fails_closed_when_review_excludes_every_row() {
+        let (dir, rows) = seeded_review_dir("allexcluded");
+        let reviews: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|r| review_line(&r.image_id, "REVIEWED_SKIPPED", false, Some("skipped")))
+            .collect();
+        write_reviews(&dir.join("reviews.jsonl"), &reviews);
+        let snap_dir = dir.join("snap-all");
+        let err = snapshot_dataset(&dir, &snap_dir, &rows, 1).unwrap_err();
+        assert!(err.contains("0 rows after review filtering"), "{err}");
+        assert!(!snap_dir.join("labels.jsonl").exists(), "never leave an empty training snapshot on disk");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn snapshot_refuses_to_freeze_an_empty_training_set() {
+        let dir = std::env::temp_dir().join("gpo-train-filter-empty");
+        let _ = std::fs::remove_dir_all(&dir);
+        let v1 = dir.join("datasets").join("gpo-vision").join("v1");
+        std::fs::create_dir_all(&v1).unwrap();
+        std::fs::write(v1.join("labels.jsonl"), "").unwrap();
+        std::fs::write(v1.join("manifest.json"), r#"{"version":1}"#).unwrap();
+        let err = snapshot_dataset(&dir, &dir.join("snap0"), &[], 1).unwrap_err();
+        assert!(err.contains("0 rows after review filtering"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn snapshot_of_unchanged_input_is_deterministic() {
+        let (dir, rows) = seeded_review_dir("determinism");
+        let a = snapshot_dataset(&dir, &dir.join("snap-a"), &rows, 1).unwrap();
+        let b = snapshot_dataset(&dir, &dir.join("snap-b"), &rows, 1).unwrap();
+        assert_eq!(a.fingerprint, b.fingerprint);
+        assert_eq!(a.rows, b.rows);
+        assert_eq!(a.rows_excluded_by_review, b.rows_excluded_by_review);
+        assert_eq!(a.rows_unreviewed, b.rows_unreviewed);
+        assert_eq!(a.review_fingerprint, b.review_fingerprint);
+        assert_eq!(a.test_sessions, b.test_sessions);
+        // The frozen trainer inputs are byte-identical too.
+        assert_eq!(
+            std::fs::read(dir.join("snap-a").join("labels.jsonl")).unwrap(),
+            std::fs::read(dir.join("snap-b").join("labels.jsonl")).unwrap()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn interrupted_jobs_are_marked_never_completed() {
         let dir = std::env::temp_dir().join("gpo-train-int");
         let _ = std::fs::remove_dir_all(&dir);
@@ -869,6 +1141,7 @@ mod tests {
             fingerprint: "fp-x".into(), rows: 1, sessions: 1, test_sessions: vec![],
             created_at: 1, snap_dir: dir.clone(),
             review_fingerprint: "none".into(), entity_registry_version: 1,
+            rows_excluded_by_review: 0, rows_unreviewed: 0,
         };
         let mut j = create_job(&dir, "fish", "manual", &snap, 1, "gpo_train.fish_train", 40, 7, "test", false).unwrap();
         j.status = JobStatus::Running;
@@ -889,6 +1162,7 @@ mod tests {
             fingerprint: "fp-x".into(), rows: 1, sessions: 1, test_sessions: vec![],
             created_at: 1, snap_dir: dir.clone(),
             review_fingerprint: "none".into(), entity_registry_version: 1,
+            rows_excluded_by_review: 0, rows_unreviewed: 0,
         };
         assert!(create_job(&dir, "dragons", "manual", &snap, 1, "m", 1, 1, "t", false).is_err());
         let _ = std::fs::remove_dir_all(&dir);

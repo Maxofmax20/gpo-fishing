@@ -11,6 +11,7 @@ docs/*
 !docs/knowledge_manifest_v1.json
 !docs/workflow_coverage_v1.json
 !docs/capability_matrix_v1.json
+!docs/ML_REVIEW_AND_READINESS.md
 ml/output/*/checkpoints/
 __pycache__/
 legacy/
