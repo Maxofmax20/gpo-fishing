@@ -56,6 +56,10 @@ frontend does not re-filter.
 | Unknown | `REVIEWED_UNKNOWN` | **no** — reason `unknown (no entity)` |
 | Skip | `REVIEWED_SKIPPED` | **no** — reason `skipped` |
 | Resolve conflict | `REVIEWED_CORRECTED` + audit `RESOLVED` | recomputed from real checks |
+
+Resolve requires the record to actually be `CONFLICT`; otherwise it would be a
+back door around the rule that a second disagreeing verdict may never
+silently overwrite a settled one.
 | Undo | back to `UNREVIEWED`, audit `REVIEW_RESTORED` | **no** |
 
 **A conflict is never training-eligible.** The store writes the demotion and
@@ -85,8 +89,15 @@ resulting record in full**. That makes the log authoritative:
   which images are restorable.
 - `review_rebuild` — replay the audit to reconstruct the exact effective
   state. Losing `reviews.jsonl` is recoverable.
-- `review_undo` — restores the prior state and **appends**; the log is never
-  rewritten or truncated.
+- `review_undo` - returns the row to `UNREVIEWED` (clearing the verdict
+  fields so no stale entity survives), **appends** one event, and the log is
+  never rewritten or truncated. The previous verdict stays visible in the
+  history.
+
+Unparseable lines in `reviews.jsonl` are preserved verbatim across writes
+rather than being deleted, and a snapshot **refuses to train** while any line
+is unreadable — an unreadable review file must never be mistaken for "nothing
+was excluded".
 
 Unparseable lines in `reviews.jsonl` are preserved verbatim across writes
 instead of being silently deleted by the next save.
@@ -295,7 +306,8 @@ permission check.
 | Conflict won't train | unresolved | resolve it with a reason |
 | Shadow gate stuck on events | soak is per revision; a new candidate starts at 0 | play with shadow observation on |
 | "alias of fruit:…" in Drops | KB name collision | use the canonical entity id |
-| `unreadable_lines` > 0 | a state line could not be parsed (e.g. crash mid-write) | it is preserved, not lost; run Rebuild from audit |
+| `unreadable_lines` > 0 | a state line could not be parsed (external edit, or a record from a newer build) | it is preserved, not lost; run Rebuild from audit |
+| Training refuses with "unreadable" | `reviews.jsonl` exists but a line will not parse | repair it, or Rebuild from audit; training stays blocked until then |
 | Fruit training button disabled | no fruit trainer module exists yet | needs a fruit trainer before any fruit training |
 
 ---
@@ -311,5 +323,13 @@ permission check.
   8 classes is UNKNOWN.
 - No fruit trainer module exists, so fruit training is blocked at the gate
   rather than failing at launch.
+- `seed_shadow_models` never overwrites a deployed model with a higher manifest
+  version, and promotion invalidates the cached engine. A restart therefore
+  keeps the promoted weights, and the revision reported in the UI is the
+  revision that is actually observing.
+- Entity ids are derived from canonical names (`fruit:<lowercased name>`), so a
+  rename in `fruit.rs` would orphan persisted references. Ids are stable in
+  practice because the lists are curated, but there is no rename migration.
+- The audit log has no rotation; it grows by roughly one record per verdict.
 - `docs/knowledge_manifest_v1.json` is a pinned snapshot of KB contents; there
   is no automated drift check against the source lists.
