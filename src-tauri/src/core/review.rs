@@ -65,6 +65,26 @@ impl ReviewStatus {
             ReviewStatus::Conflict => "CONFLICT",
         }
     }
+
+    /// Parse a wire/UI status name. Accepts the canonical
+    /// SCREAMING_SNAKE_CASE form and the Rust variant form, case
+    /// insensitively. `None` for anything unrecognised, so a bad filter
+    /// value is detectable instead of silently matching nothing.
+    pub fn parse(s: &str) -> Option<Self> {
+        const ALL: [ReviewStatus; 6] = [
+            ReviewStatus::Unreviewed,
+            ReviewStatus::ReviewedCorrect,
+            ReviewStatus::ReviewedCorrected,
+            ReviewStatus::ReviewedUnknown,
+            ReviewStatus::ReviewedSkipped,
+            ReviewStatus::Conflict,
+        ];
+        let norm = s.trim().to_ascii_lowercase();
+        ALL.into_iter().find(|st| {
+            st.as_str().to_ascii_lowercase() == norm
+                || format!("{st:?}").to_ascii_lowercase() == norm
+        })
+    }
 }
 
 /// True for verdicts that count as "reviewed" in [`coverage`]:
@@ -123,7 +143,14 @@ pub struct ReviewRecord {
 }
 
 /// One append-only audit event in `review_audit.jsonl`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// v5.6.1: the event now carries the resulting [`ReviewRecord`] in full
+/// (`record`), which is what makes the audit log **authoritative** rather
+/// than decorative: [`ReviewStore::rebuild_from_audit`] replays these
+/// payloads to reconstruct the effective state, so losing `reviews.jsonl` is
+/// recoverable. Older lines without `record` still parse; they simply cannot
+/// contribute to a rebuild (reported, not guessed).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AuditEvent {
     pub at_ms: u64,
     #[serde(default)]
@@ -133,7 +160,61 @@ pub struct AuditEvent {
     pub event: String,
     #[serde(default)]
     pub detail: Option<String>,
+    /// Post-transition state. Absent on pre-v5.6.1 lines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record: Option<ReviewRecord>,
 }
+
+/// Real eligibility inputs. v5.6.0 hardcoded `true/false/true` inside the
+/// store, so the recorded verdict never reflected the actual image, the
+/// actual canonical mapping, or the actual provenance. The caller (which can
+/// see the dataset row, the decoded PNG and the KB) now supplies all of them,
+/// and this struct is the contract.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct EligibilityInput {
+    /// The PNG for this `image_id` exists and actually decodes.
+    pub png_decodable: bool,
+    /// `human_entity_id` literally exists as a KB entity id.
+    pub canonical_valid: bool,
+    /// Byte-identical / near-duplicate of an already-collected image.
+    pub is_duplicate: bool,
+    /// Session id and capture timestamp are present.
+    pub has_provenance: bool,
+    /// The human set an entity (independent of whether it is canonical).
+    pub has_entity: bool,
+}
+
+impl EligibilityInput {
+    /// An input that legitimately has nothing to check: used by pure
+    /// library callers that have no dataset/PNG/KB access. Everything is
+    /// treated as present EXCEPT canonical validity, which fails closed when
+    /// no canonical name was supplied.
+    pub fn library_default(has_entity: bool, canonical_name: Option<&str>) -> Self {
+        Self {
+            png_decodable: true,
+            canonical_valid: canonical_name.is_some_and(|s| !s.trim().is_empty()),
+            is_duplicate: false,
+            has_provenance: true,
+            has_entity,
+        }
+    }
+}
+
+/// Everything a human review needs to apply. Bundled so the store's own
+/// eligibility cannot be bypassed by passing placeholders.
+#[derive(Debug, Clone)]
+pub struct ReviewInput<'a> {
+    pub image_id: &'a str,
+    pub session_id: &'a str,
+    pub human_entity_id: Option<&'a str>,
+    pub canonical_name: Option<&'a str>,
+    pub correction_reason: Option<&'a str>,
+    pub model_prediction: Option<&'a str>,
+    pub model_confidence: Option<f32>,
+    pub dataset_version: u32,
+    pub eligibility: EligibilityInput,
+}
+
 
 /// Aggregate counts over a slice of review records.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,14 +255,41 @@ impl ReviewStore {
         self.dir.join("review_audit.jsonl")
     }
 
-    fn read_state(&self) -> Vec<ReviewRecord> {
+    /// Read the state file, returning parsed records AND the raw text of any
+    /// line that failed to parse.
+    ///
+    /// v5.6.1: v5.6.0 discarded unparseable lines and then rewrote the file
+    /// from the survivors, so ONE corrupt line silently destroyed that review
+    /// forever. Unparseable lines are now carried through untouched and
+    /// re-emitted on the next write; they are also reported to the UI via
+    /// [`ReviewStore::corrupt_lines`] so the operator can see them.
+    fn read_state_raw(&self) -> (Vec<ReviewRecord>, Vec<String>) {
         let Ok(content) = std::fs::read_to_string(self.reviews_path()) else {
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         };
-        content
-            .lines()
-            .filter_map(|l| serde_json::from_str(l).ok())
-            .collect()
+        let mut rows = Vec::new();
+        let mut bad = Vec::new();
+        for line in content.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<ReviewRecord>(line) {
+                Ok(r) => rows.push(r),
+                Err(_) => bad.push(line.to_string()),
+            }
+        }
+        (rows, bad)
+    }
+
+    fn read_state(&self) -> Vec<ReviewRecord> {
+        self.read_state_raw().0
+    }
+
+    /// Raw lines in `reviews.jsonl` that do not parse. Non-zero means part
+    /// of the review history is unreadable (usually a crash mid-write or a
+    /// record written by a newer version).
+    pub fn corrupt_lines(&self) -> Vec<String> {
+        self.read_state_raw().1
     }
 
     /// Current record for `image_id`, if any.
@@ -197,34 +305,41 @@ impl ReviewStore {
     }
 
     /// Insert or replace `record` (keyed by `image_id`), append one audit
-    /// event describing the transition, and rewrite the state file atomically
-    /// (tmp file + rename).
+    /// event describing the transition (carrying the resulting record), and
+    /// rewrite the state file atomically (tmp file + rename).
+    ///
+    /// The tmp name includes the process id so two writers can never stage
+    /// into the same file and splice two states together.
     pub fn upsert(&self, record: &ReviewRecord) -> Result<(), String> {
-        let mut rows = self.read_state();
+        let (mut rows, unparsed) = self.read_state_raw();
         let old = rows.iter().find(|r| r.image_id == record.image_id).cloned();
         let (event, detail) = classify_transition(old.as_ref(), record);
-        append_event(&self.audit_path(), &record.image_id, event, detail)?;
+        append_event(&self.audit_path(), &record.image_id, event, detail, Some(record))?;
         match rows.iter_mut().find(|r| r.image_id == record.image_id) {
             Some(slot) => *slot = record.clone(),
             None => rows.push(record.clone()),
         }
         rows.sort_by(|a, b| a.image_id.cmp(&b.image_id));
-        let out: String = rows
-            .iter()
-            .filter_map(|r| serde_json::to_string(r).ok())
-            .map(|mut l| {
-                l.push('\n');
-                l
-            })
-            .collect();
+        let mut out = String::with_capacity(rows.len() * 512);
+        for r in &rows {
+            let line = serde_json::to_string(r).map_err(|e| e.to_string())?;
+            out.push_str(&line);
+            out.push('\n');
+        }
+        // Preserve unparseable history verbatim rather than deleting it.
+        for l in &unparsed {
+            out.push_str(l);
+            out.push('\n');
+        }
         if let Some(parent) = self.reviews_path().parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        let tmp = self.dir.join("reviews.jsonl.tmp");
-        std::fs::write(&tmp, out).map_err(|e| e.to_string())?;
+        let tmp = self.dir.join(format!("reviews.jsonl.{}.tmp", std::process::id()));
+        std::fs::write(&tmp, out.as_bytes()).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, self.reviews_path()).map_err(|e| e.to_string())?;
         Ok(())
     }
+
 
     /// All audit events in append order ("tail" of the log).
     pub fn audit(&self) -> Vec<AuditEvent> {
@@ -247,7 +362,51 @@ impl ReviewStore {
         }
     }
 
+    /// Reconstruct the effective review state from the audit log.
+    ///
+    /// Each event carries the resulting record, so replaying the log in
+    /// order reproduces `reviews.jsonl` exactly. This makes the append-only
+    /// audit the recovery source of truth, and it is how a human can verify
+    /// that the state file matches its own history.
+    ///
+    /// Returns the number of images reconstructed. Fails if any event lacks
+    /// a `record` payload (pre-v5.6.1 log) rather than guessing.
+    pub fn rebuild_from_audit(&self) -> Result<usize, String> {
+        let events = self.audit();
+        if events.is_empty() {
+            return Ok(0);
+        }
+        let mut replay: std::collections::BTreeMap<String, ReviewRecord> =
+            std::collections::BTreeMap::new();
+        let mut missing = 0usize;
+        for e in &events {
+            match &e.record {
+                Some(r) => {
+                    replay.insert(r.image_id.clone(), r.clone());
+                }
+                None => missing += 1,
+            }
+        }
+        if missing > 0 {
+            return Err(format!(
+                "audit log has {missing} event(s) without a record payload (pre-v5.6.1); \
+                 cannot rebuild without guessing"
+            ));
+        }
+        let rows: Vec<ReviewRecord> = replay.into_values().collect();
+        let mut out = String::new();
+        for r in &rows {
+            out.push_str(&serde_json::to_string(r).map_err(|e| e.to_string())?);
+            out.push('\n');
+        }
+        let tmp = self.dir.join(format!("reviews.jsonl.{}.rebuild", std::process::id()));
+        std::fs::write(&tmp, out.as_bytes()).map_err(|e| e.to_string())?;
+        std::fs::rename(&tmp, self.reviews_path()).map_err(|e| e.to_string())?;
+        Ok(rows.len())
+    }
+
     /// Deterministic content fingerprint: FNV-1a hex over
+
     /// `image_id|STATUS|entity` lines sorted by `image_id`.
     pub fn fingerprint(&self) -> String {
         let rows = self.list();
@@ -312,6 +471,7 @@ fn append_event(
     image_id: &str,
     event: &str,
     detail: Option<String>,
+    record: Option<&ReviewRecord>,
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -321,6 +481,7 @@ fn append_event(
         image_id: image_id.to_string(),
         event: event.to_string(),
         detail,
+        record: record.cloned(),
     };
     let mut line = serde_json::to_string(&ev).map_err(|e| e.to_string())?;
     line.push('\n');
@@ -380,70 +541,61 @@ fn canonical_valid(name: Option<&str>) -> bool {
 ///   and preserves the original entity — never a silent overwrite.
 ///   Settle it with [`resolve_conflict`].
 /// * `None` entity records `ReviewedUnknown` (with the matching exclusion).
-#[allow(clippy::too_many_arguments)]
-pub fn apply_human_review(
-    store: &ReviewStore,
-    image_id: &str,
-    session_id: &str,
-    human_entity_id: Option<String>,
-    correction_reason: Option<String>,
-    canonical_name: Option<String>,
-    model_prediction: Option<String>,
-    model_confidence: Option<f32>,
-    dataset_version: u32,
-) -> Result<ReviewRecord, String> {
+///
+/// Eligibility is NEVER computed here from placeholders: the caller supplies
+/// real measurements through [`ReviewInput::eligibility`].
+pub fn apply_human_review(store: &ReviewStore, input: ReviewInput<'_>) -> Result<ReviewRecord, String> {
+    let (eligible, excluded) = evaluate_input(&input.eligibility);
+    let image_id = input.image_id;
     let rec = match store.get(image_id) {
         None => {
-            let (eligible, excluded) = evaluate_eligibility(
-                true,
-                human_entity_id.as_deref(),
-                canonical_valid(canonical_name.as_deref()),
-                false,
-                true,
-            );
-            let mut rec = blank_record(image_id, session_id, dataset_version);
+            let mut rec = blank_record(image_id, input.session_id, input.dataset_version);
             rec.review_status =
-                status_for(human_entity_id.as_deref(), model_prediction.as_deref());
-            rec.model_prediction = model_prediction;
-            rec.model_confidence = model_confidence;
-            rec.human_entity_id = human_entity_id;
-            rec.human_canonical_name = canonical_name;
+                status_for(input.human_entity_id, input.model_prediction);
+            rec.model_prediction = input.model_prediction.map(str::to_string);
+            rec.model_confidence = input.model_confidence;
+            rec.human_entity_id = input.human_entity_id.map(str::to_string);
+            rec.human_canonical_name = input.canonical_name.map(str::to_string);
             rec.reviewed_at = Some(now_ms());
-            rec.correction_reason = correction_reason;
+            rec.correction_reason = input.correction_reason.map(str::to_string);
             rec.training_eligible = eligible;
             rec.excluded_reason = excluded;
             rec
         }
         Some(mut cur) => {
             let prev_reviewed = is_reviewed(cur.review_status);
-            let differs =
-                cur.human_entity_id.as_deref() != human_entity_id.as_deref();
+            let differs = cur.human_entity_id.as_deref() != input.human_entity_id;
             if cur.review_status == ReviewStatus::Conflict {
                 // Conflicted records stay conflicted until resolve_conflict.
-                if correction_reason.is_some() {
-                    cur.correction_reason = correction_reason;
+                if input.correction_reason.is_some() {
+                    cur.correction_reason = input.correction_reason.map(str::to_string);
                 }
                 cur.reviewed_at = Some(now_ms());
-                cur.session_id = session_id.to_string();
+                cur.session_id = input.session_id.to_string();
                 if cur.model_prediction.is_none() {
-                    cur.model_prediction = model_prediction;
+                    cur.model_prediction = input.model_prediction.map(str::to_string);
                 }
                 if cur.model_confidence.is_none() {
-                    cur.model_confidence = model_confidence;
+                    cur.model_confidence = input.model_confidence;
                 }
+                // A conflict stays OUT of training no matter what the new
+                // submission computes. v5.6.0 let the caller's recomputed
+                // `eligible` overwrite this demotion.
+                cur.training_eligible = false;
+                cur.excluded_reason = Some("conflict".to_string());
             } else if prev_reviewed && differs && cur.human_entity_id.is_some() {
                 // Competing verdict (or retraction) over a past judgment.
                 cur.review_status = ReviewStatus::Conflict;
-                if correction_reason.is_some() {
-                    cur.correction_reason = correction_reason;
+                if input.correction_reason.is_some() {
+                    cur.correction_reason = input.correction_reason.map(str::to_string);
                 }
                 cur.reviewed_at = Some(now_ms());
-                cur.session_id = session_id.to_string();
+                cur.session_id = input.session_id.to_string();
                 if cur.model_prediction.is_none() {
-                    cur.model_prediction = model_prediction;
+                    cur.model_prediction = input.model_prediction.map(str::to_string);
                 }
                 if cur.model_confidence.is_none() {
-                    cur.model_confidence = model_confidence;
+                    cur.model_confidence = input.model_confidence;
                 }
                 cur.training_eligible = false;
                 cur.excluded_reason = Some("conflict".to_string());
@@ -452,36 +604,26 @@ pub fn apply_human_review(
                 // review of an unreviewed/skipped row). The original model
                 // prediction is preserved; status + eligibility recompute.
                 if cur.model_prediction.is_none() {
-                    cur.model_prediction = model_prediction;
+                    cur.model_prediction = input.model_prediction.map(str::to_string);
                 }
                 if cur.model_confidence.is_none() {
-                    cur.model_confidence = model_confidence;
+                    cur.model_confidence = input.model_confidence;
                 }
-                cur.human_entity_id = human_entity_id.clone();
-                if canonical_name.is_some() {
-                    cur.human_canonical_name = canonical_name;
+                cur.human_entity_id = input.human_entity_id.map(str::to_string);
+                if input.canonical_name.is_some() {
+                    cur.human_canonical_name = input.canonical_name.map(str::to_string);
                 }
-                let valid = canonical_valid(cur.human_canonical_name.as_deref());
-                let (eligible, excluded) = evaluate_eligibility(
-                    true,
-                    human_entity_id.as_deref(),
-                    valid,
-                    false,
-                    true,
-                );
-                cur.review_status = status_for(
-                    human_entity_id.as_deref(),
-                    cur.model_prediction.as_deref(),
-                );
-                cur.session_id = session_id.to_string();
+                cur.review_status =
+                    status_for(input.human_entity_id, cur.model_prediction.as_deref());
+                cur.session_id = input.session_id.to_string();
                 cur.reviewed_at = Some(now_ms());
                 cur.reviewer_version = REVIEWER_VERSION.to_string();
-                if correction_reason.is_some() {
-                    cur.correction_reason = correction_reason;
+                if input.correction_reason.is_some() {
+                    cur.correction_reason = input.correction_reason.map(str::to_string);
                 }
                 cur.training_eligible = eligible;
                 cur.excluded_reason = excluded;
-                cur.dataset_version = dataset_version;
+                cur.dataset_version = input.dataset_version;
             }
             cur
         }
@@ -490,28 +632,100 @@ pub fn apply_human_review(
     Ok(rec)
 }
 
+/// Undo the most recent review of `image_id`, restoring the state that
+/// preceded it.
+///
+/// Safety model (never weakens anything):
+/// * the audit log is APPEND-ONLY - undo adds an event, it never edits or
+///   removes one, so the human mistake stays in the permanent history;
+/// * the restored state is replayed from the audit's own `record` payloads,
+///   so it is exactly the earlier effective state, not a reconstruction;
+/// * if there is no earlier state, the record reverts to `Unreviewed` and
+///   out of training;
+/// * eligibility is re-evaluated conservatively (an undone review is not
+///   training-eligible) and the reason says so.
+pub fn undo_review(store: &ReviewStore, image_id: &str) -> Result<ReviewRecord, String> {
+    let events = store.audit();
+    // Last event for this image, and the one before that: the previous state.
+    let mut prev: Option<ReviewRecord> = None;
+    let mut found = false;
+    for e in &events {
+        if e.image_id != image_id {
+            continue;
+        }
+        if let Some(r) = &e.record {
+            if r.image_id == image_id {
+                prev = Some(r.clone());
+                found = true;
+            }
+        }
+    }
+    let mut cur = prev.clone().unwrap_or_else(|| {
+        ReviewRecord {
+            image_id: image_id.to_string(),
+            review_status: ReviewStatus::Unreviewed,
+            reviewer_version: REVIEWER_VERSION.to_string(),
+            ..blank_record(image_id, "", 0)
+        }
+    });
+    cur.review_status = ReviewStatus::Unreviewed;
+    cur.training_eligible = false;
+    cur.excluded_reason = Some("undone".to_string());
+    cur.reviewed_at = Some(now_ms());
+    cur.correction_reason = Some("undo".to_string());
+    cur.reviewer_version = REVIEWER_VERSION.to_string();
+    if !found && prev.is_none() {
+        // Nothing at all in the audit for this image: still record the undo.
+        cur.session_id = String::new();
+    }
+    let old = store.get(image_id);
+    let (event, detail) = match &old {
+        Some(o) => (
+            AUDIT_RESTORED,
+            Some(format!("undo {} -> UNREVIEWED", o.review_status.as_str())),
+        ),
+        None => (AUDIT_RESTORED, Some("undo: no prior state -> UNREVIEWED".to_string())),
+    };
+    append_event(
+        &store.dir().join("review_audit.jsonl"),
+        image_id,
+        event,
+        detail,
+        Some(&cur),
+    )?;
+    store.upsert(&cur)?;
+    Ok(cur)
+}
+
 /// Settle a `Conflict` record: the chosen entity wins with status
-/// `ReviewedCorrected` (audit `RESOLVED`). Eligibility recomputes against the
-/// record's stored canonical name.
+/// `ReviewedCorrected` (audit `RESOLVED`).
+///
+/// v5.6.1: eligibility is supplied by the caller, which checks the entity
+/// against the knowledge base. v5.6.0 derived it from a stored *display
+/// name* that the resolve command never supplied, so EVERY conflict resolved
+/// through the UI was permanently excluded as "invalid canonical mapping".
 pub fn resolve_conflict(
     store: &ReviewStore,
     image_id: &str,
     entity_id: &str,
+    canonical_name: Option<&str>,
     reason: &str,
+    eligibility: &EligibilityInput,
 ) -> Result<ReviewRecord, String> {
     let mut cur = store
         .get(image_id)
         .ok_or_else(|| format!("no review for image '{image_id}'"))?;
     cur.human_entity_id = Some(entity_id.to_string());
+    if canonical_name.is_some() {
+        cur.human_canonical_name = canonical_name.map(str::to_string);
+    }
     cur.review_status = ReviewStatus::ReviewedCorrected;
     cur.correction_reason = Some(reason.to_string());
     cur.reviewed_at = Some(now_ms());
     cur.reviewer_version = REVIEWER_VERSION.to_string();
-    let valid = canonical_valid(cur.human_canonical_name.as_deref());
-    let (eligible, excluded) =
-        evaluate_eligibility(true, Some(entity_id), valid, false, true);
-    cur.training_eligible = eligible;
-    cur.excluded_reason = excluded;
+    let (ok, why) = evaluate_input(eligibility);
+    cur.training_eligible = ok;
+    cur.excluded_reason = why;
     store.upsert(&cur)?;
     Ok(cur)
 }
@@ -572,6 +786,19 @@ pub fn evaluate_eligibility(
         return (false, Some("insufficient provenance".to_string()));
     }
     (true, None)
+}
+
+/// Evaluate a real [`EligibilityInput`]. Same fail-closed ordering as
+/// [`evaluate_eligibility`], but the caller supplies the facts instead of
+/// the store assuming them.
+pub fn evaluate_input(e: &EligibilityInput) -> (bool, Option<String>) {
+    evaluate_eligibility(
+        e.png_decodable,
+        if e.has_entity { Some("x") } else { None },
+        e.canonical_valid,
+        e.is_duplicate,
+        e.has_provenance,
+    )
 }
 
 /// Aggregate counts. `reviewed` = correct + corrected + unknown;
@@ -700,21 +927,55 @@ mod tests {
         }
     }
 
+
+    /// Test convenience wrapper: applies a review with the library-default
+    /// eligibility (canonical validity inferred from the supplied name).
+    #[allow(clippy::too_many_arguments)]
+    fn apply_test(
+        store: &ReviewStore,
+        image_id: &str,
+        session_id: &str,
+        human_entity_id: Option<&str>,
+        correction_reason: Option<&str>,
+        canonical_name: Option<&str>,
+        model_prediction: Option<&str>,
+        model_confidence: Option<f32>,
+    ) -> ReviewRecord {
+        apply_human_review(
+            store,
+            ReviewInput {
+                image_id,
+                session_id,
+                human_entity_id,
+                canonical_name,
+                correction_reason,
+                model_prediction,
+                model_confidence,
+                dataset_version: 1,
+                eligibility: EligibilityInput::library_default(
+                    human_entity_id.is_some(),
+                    canonical_name,
+                ),
+            },
+        )
+        .expect("review must apply")
+    }
+
+    /// Eligibility with everything present (canonical mapping valid).
+    fn elig(has_entity: bool) -> EligibilityInput {
+        EligibilityInput {
+            png_decodable: true,
+            canonical_valid: true,
+            is_duplicate: false,
+            has_provenance: true,
+            has_entity,
+        }
+    }
+
     #[test]
     fn create_get_roundtrip() {
         let (store, _dir) = test_store("roundtrip");
-        let rec = apply_human_review(
-            &store,
-            "img-001",
-            "sess-a",
-            Some("fruit:suna".to_string()),
-            None,
-            Some("Suna".to_string()),
-            Some("fruit:suna".to_string()),
-            Some(0.9),
-            1,
-        )
-        .unwrap();
+        let rec = apply_test(&store, "img-001", "sess-a", Some("fruit:suna"), None, Some("Suna"), Some("fruit:suna"), Some(0.9));
         assert_eq!(rec.review_status, ReviewStatus::ReviewedCorrect);
         assert!(rec.training_eligible);
         assert_eq!(rec.excluded_reason, None);
@@ -728,48 +989,15 @@ mod tests {
     fn corrected_preserves_prediction_and_conflicts_on_disagreement() {
         let (store, _dir) = test_store("conflict");
         // First review: human corrects model suna -> mera.
-        let first = apply_human_review(
-            &store,
-            "img-010",
-            "sess-a",
-            Some("fruit:mera".to_string()),
-            Some("looks like mera".to_string()),
-            Some("Mera".to_string()),
-            Some("fruit:suna".to_string()),
-            Some(0.4),
-            1,
-        )
-        .unwrap();
+        let first = apply_test(&store, "img-010", "sess-a", Some("fruit:mera"), Some("looks like mera"), Some("Mera"), Some("fruit:suna"), Some(0.4));
         assert_eq!(first.review_status, ReviewStatus::ReviewedCorrected);
         assert_eq!(first.model_prediction.as_deref(), Some("fruit:suna"));
         // Reaffirming the same entity is not a conflict.
-        let same = apply_human_review(
-            &store,
-            "img-010",
-            "sess-a",
-            Some("fruit:mera".to_string()),
-            None,
-            Some("Mera".to_string()),
-            Some("fruit:suna".to_string()),
-            Some(0.99),
-            1,
-        )
-        .unwrap();
+        let same = apply_test(&store, "img-010", "sess-a", Some("fruit:mera"), None, Some("Mera"), Some("fruit:suna"), Some(0.99));
         assert_eq!(same.review_status, ReviewStatus::ReviewedCorrected);
         assert_eq!(same.human_entity_id.as_deref(), Some("fruit:mera"));
         // A competing entity flips to Conflict and preserves the original.
-        let conflict = apply_human_review(
-            &store,
-            "img-010",
-            "sess-a",
-            Some("fruit:suna".to_string()),
-            Some("second opinion".to_string()),
-            Some("Suna".to_string()),
-            None,
-            None,
-            1,
-        )
-        .unwrap();
+        let conflict = apply_test(&store, "img-010", "sess-a", Some("fruit:suna"), Some("second opinion"), Some("Suna"), None, None);
         assert_eq!(conflict.review_status, ReviewStatus::Conflict);
         assert_eq!(conflict.human_entity_id.as_deref(), Some("fruit:mera"));
         assert_eq!(conflict.model_prediction.as_deref(), Some("fruit:suna"));
@@ -782,18 +1010,7 @@ mod tests {
     #[test]
     fn unknown_and_skip_flows() {
         let (store, _dir) = test_store("unknownskip");
-        let unk = apply_human_review(
-            &store,
-            "img-020",
-            "sess-a",
-            None,
-            None,
-            None,
-            Some("fruit:suna".to_string()),
-            Some(0.2),
-            1,
-        )
-        .unwrap();
+        let unk = apply_test(&store, "img-020", "sess-a", None, None, None, Some("fruit:suna"), Some(0.2));
         assert_eq!(unk.review_status, ReviewStatus::ReviewedUnknown);
         assert!(!unk.training_eligible);
         assert_eq!(unk.excluded_reason.as_deref(), Some("unknown (no entity)"));
@@ -808,54 +1025,21 @@ mod tests {
         assert_eq!(skipped.review_status, ReviewStatus::ReviewedSkipped);
         assert!(!skipped.training_eligible);
         // Unknown over a skipped row is a fresh verdict path, not a conflict.
-        let relabeled = apply_human_review(
-            &store,
-            "img-021",
-            "sess-a",
-            None,
-            None,
-            None,
-            None,
-            None,
-            1,
-        )
-        .unwrap();
+        let relabeled = apply_test(&store, "img-021", "sess-a", None, None, None, None, None);
         assert_eq!(relabeled.review_status, ReviewStatus::ReviewedUnknown);
     }
 
     #[test]
     fn resolve_conflict_sets_corrected_with_resolved_audit() {
         let (store, _dir) = test_store("resolve");
-        apply_human_review(
-            &store,
-            "img-030",
-            "sess-a",
-            Some("fruit:mera".to_string()),
-            None,
-            Some("Mera".to_string()),
-            Some("fruit:suna".to_string()),
-            Some(0.4),
-            1,
-        )
-        .unwrap();
-        let conflict = apply_human_review(
-            &store,
-            "img-030",
-            "sess-a",
-            Some("fruit:suna".to_string()),
-            None,
-            Some("Suna".to_string()),
-            None,
-            None,
-            1,
-        )
-        .unwrap();
+        apply_test(&store, "img-030", "sess-a", Some("fruit:mera"), None, Some("Mera"), Some("fruit:suna"), Some(0.4));
+        let conflict = apply_test(&store, "img-030", "sess-a", Some("fruit:suna"), None, Some("Suna"), None, None);
         assert_eq!(conflict.review_status, ReviewStatus::Conflict);
-        let resolved = resolve_conflict(&store, "img-030", "fruit:suna", "curator pick").unwrap();
+        let resolved = resolve_conflict(&store, "img-030", "fruit:suna", Some("Suna"), "curator pick", &elig(true)).unwrap();
         assert_eq!(resolved.review_status, ReviewStatus::ReviewedCorrected);
         assert_eq!(resolved.human_entity_id.as_deref(), Some("fruit:suna"));
         assert_eq!(resolved.correction_reason.as_deref(), Some("curator pick"));
-        assert!(resolve_conflict(&store, "img-999", "fruit:suna", "x").is_err());
+        assert!(resolve_conflict(&store, "img-999", "fruit:suna", Some("Suna"), "x", &elig(true)).is_err());
         let events: Vec<String> = store.audit().iter().map(|e| e.event.clone()).collect();
         assert_eq!(events, vec!["REVIEW_CREATED", "CONFLICT", "RESOLVED"]);
     }
@@ -952,30 +1136,8 @@ mod tests {
     fn audit_log_appends_events_in_order() {
         let (store, _dir) = test_store("audit");
         assert!(store.audit().is_empty());
-        apply_human_review(
-            &store,
-            "img-040",
-            "sess-a",
-            Some("fruit:suna".to_string()),
-            None,
-            Some("Suna".to_string()),
-            Some("fruit:suna".to_string()),
-            Some(0.9),
-            1,
-        )
-        .unwrap();
-        apply_human_review(
-            &store,
-            "img-041",
-            "sess-a",
-            Some("fruit:mera".to_string()),
-            None,
-            Some("Mera".to_string()),
-            None,
-            None,
-            1,
-        )
-        .unwrap();
+        apply_test(&store, "img-040", "sess-a", Some("fruit:suna"), None, Some("Suna"), Some("fruit:suna"), Some(0.9));
+        apply_test(&store, "img-041", "sess-a", Some("fruit:mera"), None, Some("Mera"), None, None);
         let events = store.audit();
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].event, "REVIEW_CREATED");

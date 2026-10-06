@@ -516,11 +516,15 @@ pub struct TrainingSettings {
     pub trainer_dir: String,
     pub trigger_cooldown_hours: u64,
     pub defer_while_fishing: bool,
-    /// Model-readiness bars (v5.6). Documented, user-visible, fail-closed:
-    /// a model below any bar reports NOT READY with the exact gap.
+    /// Model-readiness bars (v5.6, hardened v5.6.1). Documented,
+    /// user-visible, fail-closed: a model below any bar reports NOT READY
+    /// with the exact gap. Event VOLUME alone never satisfies the shadow
+    /// gate - agreement and session spread are required too.
     pub readiness_min_macro_f1: f32,
     pub readiness_min_worst_f1: f32,
     pub readiness_min_shadow_events: usize,
+    pub readiness_min_shadow_agreement: f32,
+    pub readiness_min_shadow_sessions: usize,
     pub readiness_min_review_coverage: f32,
 }
 
@@ -543,6 +547,8 @@ impl Default for TrainingSettings {
             readiness_min_macro_f1: 0.70,
             readiness_min_worst_f1: 0.50,
             readiness_min_shadow_events: 100,
+            readiness_min_shadow_agreement: 0.80,
+            readiness_min_shadow_sessions: 3,
             readiness_min_review_coverage: 0.50,
         }
     }
