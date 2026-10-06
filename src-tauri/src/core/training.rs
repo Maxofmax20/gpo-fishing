@@ -124,15 +124,28 @@ struct ReviewEligibilityLine {
     training_eligible: bool,
 }
 
-/// Parse `reviews.jsonl` bytes into per-image eligibility lines. Unreadable
-/// or non-JSON lines are skipped: without an `image_id` they cannot be
-/// attributed to any row, so they cannot silently un-exclude anything.
-fn parse_review_eligibility(raw: &[u8]) -> Vec<ReviewEligibilityLine> {
-    let Ok(text) = std::str::from_utf8(raw) else { return Vec::new() };
-    text.lines()
-        .filter(|l| !l.trim().is_empty())
-        .filter_map(|l| serde_json::from_str::<ReviewEligibilityLine>(l).ok())
-        .collect()
+/// Parse `reviews.jsonl` bytes into per-image eligibility lines, ALSO
+/// returning how many non-empty lines failed to parse.
+///
+/// The count matters: silently dropping a line would make an excluded row
+/// look unreviewed, and unreviewed rows are kept. Callers must fail closed
+/// when it is non-zero.
+fn parse_review_eligibility(raw: &[u8]) -> (Vec<ReviewEligibilityLine>, usize) {
+    let Ok(text) = std::str::from_utf8(raw) else {
+        return (Vec::new(), if raw.is_empty() { 0 } else { 1 });
+    };
+    let mut rows = Vec::new();
+    let mut unreadable = 0usize;
+    for line in text.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<ReviewEligibilityLine>(line) {
+            Ok(r) => rows.push(r),
+            Err(_) => unreadable += 1,
+        }
+    }
+    (rows, unreadable)
 }
 
 /// `image_id -> training_eligible`. Exclusion is sticky: if the same image
@@ -187,8 +200,34 @@ pub fn snapshot_dataset(
 
     // Read the review state ONCE: it both decides what may train and
     // fingerprints exactly what humans had seen at freeze time.
-    let reviews_bytes = std::fs::read(data_dir.join("reviews.jsonl")).unwrap_or_default();
-    let review_records = parse_review_eligibility(&reviews_bytes);
+    //
+    // FAIL CLOSED (v5.6.1). v5.6.0 used `unwrap_or_default()` and then
+    // silently skipped unparseable lines, so a read error OR one corrupt
+    // line made every excluded row look "unreviewed" and it trained anyway.
+    // A missing file legitimately means "no reviews exist yet"; an existing
+    // but unreadable file must NOT be treated the same way, because the safe
+    // reading of a lost review file is "nothing may be assumed reviewed".
+    let reviews_path = data_dir.join("reviews.jsonl");
+    let reviews_bytes = match std::fs::read(&reviews_path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => {
+            return Err(format!(
+                "snapshot: cannot read {} ({e}); refusing to train because \
+                 review exclusions cannot be verified",
+                reviews_path.display()
+            ))
+        }
+    };
+    let (review_records, unreadable) = parse_review_eligibility(&reviews_bytes);
+    if unreadable > 0 {
+        return Err(format!(
+            "snapshot: {} line(s) of reviews.jsonl are unreadable; refusing to train \
+             because review exclusions would be silently ignored. \
+             Repair the file or run Review > Rebuild from audit.",
+            unreadable
+        ));
+    }
     let eligibility = review_eligibility_map(&review_records);
 
     // Filter BEFORE any write, so a rejected snapshot leaves nothing behind.
@@ -351,18 +390,35 @@ pub fn jobs_dir(data_dir: &Path) -> PathBuf {
     data_dir.join(TRAINING_SUBDIR).join("jobs")
 }
 
-fn job_path(data_dir: &Path, job_id: &str) -> PathBuf {
-    jobs_dir(data_dir).join(format!("{job_id}.json"))
+/// Reject any `job_id` that is not a plain, path-free token.
+///
+/// `job_id` arrives from the UI on cancel/restart/discard/decide, and
+/// `job_path` interpolates it straight into a filename. Job ids are minted
+/// internally as `job-<ms>-<n>`, so an allowlist costs nothing and removes the
+/// whole traversal / device-name / overlong-name class.
+fn valid_job_id(job_id: &str) -> bool {
+    !job_id.is_empty()
+        && job_id.len() <= 64
+        && job_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+fn job_path(data_dir: &Path, job_id: &str) -> Result<PathBuf, String> {
+    if !valid_job_id(job_id) {
+        return Err(format!("invalid job id '{job_id}'"));
+    }
+    Ok(jobs_dir(data_dir).join(format!("{job_id}.json")))
 }
 
 pub fn save_job(data_dir: &Path, job: &TrainingJob) -> Result<(), String> {
     std::fs::create_dir_all(jobs_dir(data_dir)).map_err(|e| e.to_string())?;
     let body = serde_json::to_string_pretty(job).map_err(|e| e.to_string())?;
-    std::fs::write(job_path(data_dir, &job.job_id), body).map_err(|e| e.to_string())
+    std::fs::write(job_path(data_dir, &job.job_id)?, body).map_err(|e| e.to_string())
 }
 
 pub fn load_job(data_dir: &Path, job_id: &str) -> Result<TrainingJob, String> {
-    let raw = std::fs::read_to_string(job_path(data_dir, job_id)).map_err(|e| e.to_string())?;
+    let raw = std::fs::read_to_string(job_path(data_dir, job_id)?).map_err(|e| e.to_string())?;
     serde_json::from_str(&raw).map_err(|e| e.to_string())
 }
 
@@ -970,6 +1026,42 @@ mod tests {
     fn write_reviews(path: &Path, lines: &[serde_json::Value]) {
         let body: String = lines.iter().map(|l| l.to_string() + "\n").collect();
         std::fs::write(path, body).unwrap();
+    }
+
+    /// A review file that exists but cannot be read back must FAIL the
+    /// snapshot, never be treated as "no reviews exist".
+    ///
+    /// This is the fail-open that let an excluded row train: one unparseable
+    /// line made its `image_id` vanish from the eligibility map, so the row
+    /// looked unreviewed and was kept.
+    #[test]
+    fn snapshot_refuses_when_the_review_file_cannot_be_parsed() {
+        let (dir, rows) = seeded_review_dir("corrupt-review");
+        let reviews = dir.join("reviews.jsonl");
+        let mut body = std::fs::read_to_string(&reviews).unwrap();
+        // A line from a newer writer, or a truncated write.
+        body.push_str("{ this is not a review record\n");
+        std::fs::write(&reviews, body).unwrap();
+
+        let err = snapshot_dataset(&dir, &dir.join("snap"), &rows, 1).unwrap_err();
+        assert!(err.contains("unreadable"), "{err}");
+        assert!(err.contains("refusing to train"), "{err}");
+        // And nothing was written: a rejected snapshot leaves no trainer input.
+        assert!(!dir.join("snap").join("labels.jsonl").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An absent review file legitimately means "nothing reviewed yet", and
+    /// must keep working (otherwise a first run could never train).
+    #[test]
+    fn snapshot_allows_a_missing_review_file() {
+        let (dir, rows) = seeded_review_dir("no-review-file");
+        let _ = std::fs::remove_file(dir.join("reviews.jsonl"));
+        let snap = snapshot_dataset(&dir, &dir.join("snap"), &rows, 1).unwrap();
+        assert_eq!(snap.rows, rows.len(), "unreviewed rows are kept");
+        assert_eq!(snap.rows_unreviewed, rows.len());
+        assert_eq!(snap.review_fingerprint, "none");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Disposable dataset whose reviews cover 3 of 4 rows:

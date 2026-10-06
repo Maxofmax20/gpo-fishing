@@ -826,6 +826,36 @@ pub fn training_settings_set(
     if settings.python_path.len() > 512 || settings.trainer_dir.len() > 512 {
         return Err("path too long".to_string());
     }
+    // Readiness bars are user-visible configuration, but they are safety
+    // gates: a 0 (or an absurd value) would let a mediocre model satisfy
+    // SHADOW_READY. Valid ranges keep the meaning of "ready" meaningful
+    // without hiding the threshold from the user.
+    if !(0.0..=1.0).contains(&settings.readiness_min_macro_f1)
+        || settings.readiness_min_macro_f1 < 0.3
+    {
+        return Err("readiness_min_macro_f1 must be 0.30..=1.00".to_string());
+    }
+    if !(0.0..=1.0).contains(&settings.readiness_min_worst_f1)
+        || settings.readiness_min_worst_f1 < 0.1
+    {
+        return Err("readiness_min_worst_f1 must be 0.10..=1.00".to_string());
+    }
+    if !(0.0..=1.0).contains(&settings.readiness_min_shadow_agreement)
+        || settings.readiness_min_shadow_agreement < 0.5
+    {
+        return Err("readiness_min_shadow_agreement must be 0.50..=1.00".to_string());
+    }
+    if !(0.0..=1.0).contains(&settings.readiness_min_review_coverage)
+        || settings.readiness_min_review_coverage < 0.1
+    {
+        return Err("readiness_min_review_coverage must be 0.10..=1.00".to_string());
+    }
+    if settings.readiness_min_shadow_events < 20 {
+        return Err("readiness_min_shadow_events must be >= 20".to_string());
+    }
+    if settings.readiness_min_shadow_sessions < 1 || settings.readiness_min_shadow_sessions > 50 {
+        return Err("readiness_min_shadow_sessions must be 1..=50".to_string());
+    }
     // No shell metacharacters: these values become subprocess argv[0]/cwd,
     // never shell strings, but reject outright anyway (defense in depth).
     for v in [&settings.python_path, &settings.trainer_dir] {

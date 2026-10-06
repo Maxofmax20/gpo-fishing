@@ -442,6 +442,11 @@ pub fn promote_to_shadow(
     records[idx].manifest_sha = sha_file(&live_json).ok();
     records[idx].decision_reason = Some(format!("promoted to shadow: {}", comparison.reasons.join("; ")));
     save_registry(data_dir, &records)?;
+    // The running process still holds the previous weights; drop the cache so
+    // the next observation actually runs the promoted candidate and stamps
+    // events with ITS revision (otherwise telemetry is attributed to weights
+    // that are no longer deployed, and the new revision's soak stays empty).
+    super::shadow_infer::invalidate_engine();
     Ok(live_json)
 }
 

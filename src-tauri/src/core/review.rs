@@ -20,6 +20,20 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+/// Per-write staging counter. The pid alone does not disambiguate two threads
+/// inside one process, and `write_state` is a read-modify-write, so a shared
+/// temp path would splice two states together.
+static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Serialises the read-modify-write in [`ReviewStore::write_state`].
+///
+/// Mirrors `core::ml_dataset::LABELS_WRITE_LOCK`. All review commands are
+/// currently synchronous (hence main-thread), so this is a guard against a
+/// future `async` command silently opening a lost-update window, not a fix
+/// for an observable bug today.
+static STATE_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Reviewer tool version stamped on new/updated records.
 pub const REVIEWER_VERSION: &str = "v5.6";
@@ -311,10 +325,41 @@ impl ReviewStore {
     /// The tmp name includes the process id so two writers can never stage
     /// into the same file and splice two states together.
     pub fn upsert(&self, record: &ReviewRecord) -> Result<(), String> {
-        let (mut rows, unparsed) = self.read_state_raw();
+        // The lock must span READ -> WRITE, not just the write: taking it
+        // inside `write_state` leaves a lost-update window (two writers both
+        // read N rows, both write N+1, one update vanishes).
+        let _guard = STATE_WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let (rows, unparsed) = self.read_state_raw();
         let old = rows.iter().find(|r| r.image_id == record.image_id).cloned();
         let (event, detail) = classify_transition(old.as_ref(), record);
+        self.write_state_locked(rows, unparsed, record, event, detail)
+    }
+
+    /// Insert/replace with an EXPLICIT audit event, for transitions the
+    /// generic classifier cannot infer (e.g. an undo).
+    pub fn upsert_with_event(
+        &self,
+        record: &ReviewRecord,
+        event: &str,
+        detail: Option<String>,
+    ) -> Result<(), String> {
+        let _guard = STATE_WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let (rows, unparsed) = self.read_state_raw();
+        self.write_state_locked(rows, unparsed, record, event, detail)
+    }
+
+    /// Caller MUST hold `STATE_WRITE_LOCK` (it spans read -> write).
+    #[allow(clippy::needless_pass_by_value)]
+    fn write_state_locked(
+        &self,
+        rows: Vec<ReviewRecord>,
+        unparsed: Vec<String>,
+        record: &ReviewRecord,
+        event: &str,
+        detail: Option<String>,
+    ) -> Result<(), String> {
         append_event(&self.audit_path(), &record.image_id, event, detail, Some(record))?;
+        let mut rows = rows;
         match rows.iter_mut().find(|r| r.image_id == record.image_id) {
             Some(slot) => *slot = record.clone(),
             None => rows.push(record.clone()),
@@ -334,8 +379,20 @@ impl ReviewStore {
         if let Some(parent) = self.reviews_path().parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        let tmp = self.dir.join(format!("reviews.jsonl.{}.tmp", std::process::id()));
-        std::fs::write(&tmp, out.as_bytes()).map_err(|e| e.to_string())?;
+        // Unique staging path per write (pid is NOT enough: two threads in one
+        // process would collide, and the read-modify-write above is exactly the
+        // pattern that turns a collision into a torn file).
+        let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+        let tmp = self.dir.join(format!("reviews.jsonl.{}.{seq}.tmp", std::process::id()));
+        {
+            use std::io::Write;
+            let mut f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+            f.write_all(out.as_bytes()).map_err(|e| e.to_string())?;
+            // Durability: without this a power loss can leave a renamed file
+            // whose contents were still dirty in the write-back cache, which
+            // would silently drop human exclusions.
+            f.sync_all().map_err(|e| e.to_string())?;
+        }
         std::fs::rename(&tmp, self.reviews_path()).map_err(|e| e.to_string())?;
         Ok(())
     }
@@ -627,68 +684,65 @@ pub fn apply_human_review(store: &ReviewStore, input: ReviewInput<'_>) -> Result
     Ok(rec)
 }
 
-/// Undo the most recent review of `image_id`, restoring the state that
-/// preceded it.
+/// Undo the most recent review of `image_id`.
+///
+/// The canonical undo target is `UNREVIEWED`: undoing a review returns work,
+/// it does not re-apply a different verdict. The previous record is read from
+/// the audit only to preserve context (session id, OCR text, hard-example
+/// flag) - every VERDICT field is cleared, so an undone record can never
+/// carry a stale `human_entity_id` under an unreviewed status.
 ///
 /// Safety model (never weakens anything):
 /// * the audit log is APPEND-ONLY - undo adds an event, it never edits or
 ///   removes one, so the human mistake stays in the permanent history;
-/// * the restored state is replayed from the audit's own `record` payloads,
-///   so it is exactly the earlier effective state, not a reconstruction;
-/// * if there is no earlier state, the record reverts to `Unreviewed` and
-///   out of training;
-/// * eligibility is re-evaluated conservatively (an undone review is not
-///   training-eligible) and the reason says so.
+/// * the record reverts to `UNREVIEWED` and out of training, with the reason
+///   `"undone"`, so an undone image cannot reach the trainer.
 pub fn undo_review(store: &ReviewStore, image_id: &str) -> Result<ReviewRecord, String> {
-    let events = store.audit();
-    // Last event for this image, and the one before that: the previous state.
-    let mut prev: Option<ReviewRecord> = None;
-    let mut found = false;
-    for e in &events {
-        if e.image_id != image_id {
-            continue;
+    let previous = store.audit().into_iter().rev().find_map(|e| {
+        (e.image_id == image_id)
+            .then_some(e.record)
+            .flatten()
+            .filter(|r| r.image_id == image_id)
+    });
+    let old = store.get(image_id);
+    let mut cur = match (&previous, &old) {
+        (Some(p), _) => ReviewRecord {
+            // Context preserved, verdict cleared.
+            session_id: p.session_id.clone(),
+            ocr_text: p.ocr_text.clone(),
+            is_hard_example: p.is_hard_example,
+            event_id: p.event_id.clone(),
+            dataset_version: p.dataset_version,
+            ..blank_record(image_id, "", p.dataset_version)
+        },
+        (None, Some(o)) => {
+            let mut r = o.clone();
+            r.review_id = String::new();
+            r
         }
-        if let Some(r) = &e.record {
-            if r.image_id == image_id {
-                prev = Some(r.clone());
-                found = true;
-            }
+        (None, None) => blank_record(image_id, "", 0),
+    };
+    if cur.session_id.is_empty() {
+        if let Some(o) = &old {
+            cur.session_id = o.session_id.clone();
         }
     }
-    let mut cur = prev.clone().unwrap_or_else(|| {
-        ReviewRecord {
-            image_id: image_id.to_string(),
-            review_status: ReviewStatus::Unreviewed,
-            reviewer_version: REVIEWER_VERSION.to_string(),
-            ..blank_record(image_id, "", 0)
-        }
-    });
     cur.review_status = ReviewStatus::Unreviewed;
+    cur.human_entity_id = None;
+    cur.human_canonical_name = None;
     cur.training_eligible = false;
     cur.excluded_reason = Some("undone".to_string());
     cur.reviewed_at = Some(now_ms());
     cur.correction_reason = Some("undo".to_string());
     cur.reviewer_version = REVIEWER_VERSION.to_string();
-    if !found && prev.is_none() {
-        // Nothing at all in the audit for this image: still record the undo.
-        cur.session_id = String::new();
-    }
-    let old = store.get(image_id);
-    let (event, detail) = match &old {
-        Some(o) => (
-            AUDIT_RESTORED,
-            Some(format!("undo {} -> UNREVIEWED", o.review_status.as_str())),
-        ),
-        None => (AUDIT_RESTORED, Some("undo: no prior state -> UNREVIEWED".to_string())),
+    cur.review_id = blank_record(image_id, &cur.session_id, cur.dataset_version).review_id;
+    let detail = match &old {
+        Some(o) => format!("undo {} -> UNREVIEWED", o.review_status.as_str()),
+        None => "undo: no prior state -> UNREVIEWED".to_string(),
     };
-    append_event(
-        &store.dir().join("review_audit.jsonl"),
-        image_id,
-        event,
-        detail,
-        Some(&cur),
-    )?;
-    store.upsert(&cur)?;
+    // One event only: `upsert` derives its own transition event from the
+    // resulting record, which is the state the rebuild replays.
+    store.upsert_with_event(&cur, AUDIT_RESTORED, Some(detail))?;
     Ok(cur)
 }
 
@@ -710,6 +764,17 @@ pub fn resolve_conflict(
     let mut cur = store
         .get(image_id)
         .ok_or_else(|| format!("no review for image '{image_id}'"))?;
+    // Precondition: resolving requires an actual CONFLICT. Without this,
+    // `resolve` becomes a back door around the rule in `apply_human_review`
+    // that a second disagreeing verdict may never silently overwrite a
+    // settled one.
+    if cur.review_status != ReviewStatus::Conflict {
+        return Err(format!(
+            "image '{image_id}' is {}, not CONFLICT; nothing to resolve \
+             (use a normal review to change a settled verdict)",
+            cur.review_status.as_str()
+        ));
+    }
     cur.human_entity_id = Some(entity_id.to_string());
     if canonical_name.is_some() {
         cur.human_canonical_name = canonical_name.map(str::to_string);
@@ -727,6 +792,13 @@ pub fn resolve_conflict(
 
 /// Mark an image explicitly skipped (stays out of training with reason
 /// `"skipped"`). Preserves any existing verdict fields.
+///
+/// v5.6.1: the doc previously claimed undo "restores the previous effective
+/// state". It does not: the canonical undo target for a human review is
+/// `UNREVIEWED` (work not done, not a verdict to roll back to), and the
+/// previous record's verdict fields are cleared so a stale `human_entity_id`
+/// cannot survive under an unreviewed status. History is preserved in the
+/// append-only audit; nothing is deleted.
 pub fn skip_review(
     store: &ReviewStore,
     image_id: &str,
@@ -1191,5 +1263,117 @@ mod tests {
         changed.human_entity_id = Some("fruit:mera".to_string());
         b.upsert(&changed).unwrap();
         assert_ne!(a.fingerprint(), b.fingerprint());
+    }
+
+    #[test]
+    fn resolve_requires_an_actual_conflict() {
+        // Without this precondition, `resolve_conflict` is a back door around
+        // the rule that a second disagreeing verdict may never silently
+        // overwrite a settled one.
+        let (store, _d) = test_store("resolve-precondition");
+        let settled = apply_test(
+            &store,
+            "img-1",
+            "sess-a",
+            Some("fruit:mera"),
+            None,
+            Some("Mera"),
+            Some("fruit:mera"),
+            Some(0.8),
+        );
+        assert_eq!(settled.review_status, ReviewStatus::ReviewedCorrect);
+        let err = resolve_conflict(
+            &store,
+            "img-1",
+            "fruit:suna",
+            Some("Suna"),
+            "should not be allowed",
+            &elig(true),
+        )
+        .unwrap_err();
+        assert!(err.contains("not CONFLICT"), "{err}");
+        assert_eq!(
+            store.get("img-1").unwrap().review_status,
+            ReviewStatus::ReviewedCorrect
+        );
+        assert_eq!(
+            store.get("img-1").unwrap().human_entity_id.as_deref(),
+            Some("fruit:mera")
+        );
+    }
+
+    #[test]
+    fn undo_clears_the_verdict_and_appends_exactly_one_event() {
+        let (store, _d) = test_store("undo-single-event");
+        apply_test(
+            &store,
+            "img-2",
+            "sess-a",
+            Some("fruit:mera"),
+            None,
+            Some("Mera"),
+            Some("fruit:mera"),
+            Some(0.8),
+        );
+        let before = store.audit().len();
+        let undone = undo_review(&store, "img-2").unwrap();
+        assert_eq!(undone.review_status, ReviewStatus::Unreviewed);
+        assert_eq!(undone.excluded_reason.as_deref(), Some("undone"));
+        // No stale verdict may survive under an unreviewed status.
+        assert_eq!(undone.human_entity_id, None);
+        assert_eq!(undone.human_canonical_name, None);
+        assert!(!undone.training_eligible);
+        // Exactly one appended event, and it is the RESTORED one.
+        let after = store.audit();
+        assert_eq!(after.len(), before + 1, "undo must append exactly one event");
+        assert_eq!(after.last().unwrap().event, AUDIT_RESTORED);
+        // Session context survives so the row still maps to its dataset row.
+        assert_eq!(undone.session_id, "sess-a");
+    }
+
+    #[test]
+    fn undo_rebuild_reproduces_the_undone_state() {
+        let (store, _d) = test_store("undo-rebuild");
+        apply_test(
+            &store,
+            "img-3",
+            "sess-a",
+            Some("fruit:mera"),
+            None,
+            Some("Mera"),
+            Some("fruit:mera"),
+            Some(0.8),
+        );
+        undo_review(&store, "img-3").unwrap();
+        let expected = store.list();
+        std::fs::remove_file(store.dir().join("reviews.jsonl")).unwrap();
+        assert_eq!(store.rebuild_from_audit().unwrap(), 1);
+        assert_eq!(store.list(), expected);
+    }
+
+    #[test]
+    fn concurrent_upserts_do_not_lose_updates_or_torn_the_file() {
+        // Two threads in one process share a pid, so a pid-only temp name would
+        // collide and splice two states together.
+        let (store, _d) = test_store("concurrent");
+        let dir = store.dir().to_path_buf();
+        let s1 = ReviewStore::new(dir.clone());
+        let s2 = ReviewStore::new(dir.clone());
+        let a = std::thread::spawn(move || {
+            for i in 0..40 {
+                let r = sample_record(&format!("c{i}"), "s", ReviewStatus::ReviewedCorrect, true);
+                s1.upsert(&r).unwrap();
+            }
+        });
+        let b = std::thread::spawn(move || {
+            for i in 100..140 {
+                let r = sample_record(&format!("c{i}"), "s", ReviewStatus::ReviewedCorrect, true);
+                s2.upsert(&r).unwrap();
+            }
+        });
+        a.join().unwrap();
+        b.join().unwrap();
+        assert_eq!(store.list().len(), 80, "no update may be lost");
+        assert_eq!(store.corrupt_lines().len(), 0, "file must not be torn");
     }
 }

@@ -270,8 +270,33 @@ pub fn engine(models_dir: &Path) -> Option<std::sync::MutexGuard<'static, Shadow
     Some(guard)
 }
 
+/// Read the manifest `version` field as a number. `None` when absent or
+/// unparseable (which is treated as "not a promoted candidate").
+fn manifest_version(path: &Path) -> Option<u64> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    match v.get("version")? {
+        serde_json::Value::Number(n) => n.as_u64(),
+        serde_json::Value::String(s) => s.trim().parse::<u64>().ok(),
+        _ => None,
+    }
+}
+
+/// Drop the cached engine so the next `engine()` call re-reads the models
+/// directory. Called when the deployed bytes change (seeding or promotion);
+/// without this the process keeps running the weights it loaded at startup
+/// and stamps telemetry with the wrong revision.
+pub fn invalidate_engine() {
+    if let Some(cell) = ENGINE.get() {
+        if let Ok(mut guard) = cell.lock() {
+            guard.models.clear();
+        }
+    }
+}
+
 /// Seed `%APPDATA%/models` from bundled candidates. Copies a file only when
-/// missing or checksum-divergent, then re-verifies. Allowlist enforced.
+/// missing, checksum-divergent, or strictly older than what is deployed.
+/// Allowlist enforced.
 pub fn seed_shadow_models(candidates: &[PathBuf], models_dir: &Path) -> Vec<String> {
     let _ = std::fs::create_dir_all(models_dir);
     let mut seeded = Vec::new();
@@ -288,11 +313,34 @@ pub fn seed_shadow_models(candidates: &[PathBuf], models_dir: &Path) -> Vec<Stri
         let do_ = models_dir.join(onnx);
         let same = std::fs::read(&dj).map(|b| b == want_json).unwrap_or(false)
             && std::fs::read(&do_).map(|b| b == want_onnx).unwrap_or(false);
-        if !same
-            && (std::fs::write(&dj, &want_json).is_err() || std::fs::write(&do_, &want_onnx).is_err())
-        {
-            tracing::warn!("shadow seed: write failed for {onnx}");
-            continue;
+        // NEVER downgrade a deployed candidate. A promoted model has a
+        // manifest `version` above the bundled one; overwriting it on the next
+        // launch would silently restore the old weights while the registry
+        // still claims the candidate is shadowed - and the soak for the old
+        // revision is already populated. Promotion must survive a restart.
+        if !same {
+            if let Some(existing) = manifest_version(&dj) {
+                let bundled = manifest_version(&sj).unwrap_or(0);
+                if existing > bundled {
+                    tracing::info!(
+                        "shadow seed: keeping deployed {onnx} v{existing} (bundled is v{bundled})"
+                    );
+                    match load_one(models_dir, onnx, json) {
+                        Ok(_) => seeded.push(onnx.to_string()),
+                        Err(e) => tracing::warn!("shadow seed: deployed {onnx} rejected: {e}"),
+                    }
+                    continue;
+                }
+            }
+            if std::fs::write(&dj, &want_json).is_err()
+                || std::fs::write(&do_, &want_onnx).is_err()
+            {
+                tracing::warn!("shadow seed: write failed for {onnx}");
+                continue;
+            }
+            // The deployed bytes changed: drop the cached engine so the next
+            // inference actually loads what is on disk.
+            invalidate_engine();
         }
         // Verify what is on disk (seeded or pre-existing) before trusting.
         match load_one(models_dir, onnx, json) {

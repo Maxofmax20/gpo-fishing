@@ -150,16 +150,66 @@ class SplitSet:
     excluded: list = field(default_factory=list)
 
 
+def review_excluded_ids(root: str) -> set[str]:
+    """Image ids a human marked NOT training-eligible, from the frozen copy.
+
+    Defence in depth. `core/training.rs::snapshot_dataset` already writes a
+    FILTERED `labels.jsonl`, so nothing here can rescue an excluded row from
+    that path. This exists for the OTHER path: running
+    `python -m gpo_train.fish_train` by hand against the live dataset
+    (`GPO_DATASET_DIR` unset), where `labels.jsonl` is unfiltered and the
+    reviewer channel would otherwise be bypassed entirely.
+
+    Returns an empty set when there are no reviews (nothing reviewed yet is a
+    legitimate state) AND raises when the file exists but cannot be parsed -
+    silently treating an unreadable review file as "nothing excluded" would
+    reintroduce the exact fail-open this guards against.
+    """
+    path = os.path.join(root, "reviews.jsonl")
+    if not os.path.isfile(path):
+        return set()
+    excluded: set[str] = set()
+    unreadable = 0
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+                image_id = r["image_id"]
+                eligible = bool(r.get("training_eligible", False))
+            except (json.JSONDecodeError, KeyError, TypeError):
+                unreadable += 1
+                continue
+            if isinstance(image_id, str) and not eligible:
+                excluded.add(image_id)
+    if unreadable:
+        raise RuntimeError(
+            f"{unreadable} line(s) of reviews.jsonl are unreadable; refusing to "
+            f"train because review exclusions cannot be verified. Repair the "
+            f"file or rebuild it from review_audit.jsonl."
+        )
+    return excluded
+
+
 def build_splits(snap: DatasetSnapshot) -> SplitSet:
     """Session-pure splits + eligibility buckets. Raises on any session
     appearing in more than one split (must never happen by construction)."""
     import os as _os
 
     transition = compute_transition_ids(snap.rows)
+    # Second, independent application of the human-review channel (see
+    # review_excluded_ids). Harmless for app-launched jobs - the Rust side has
+    # already removed these rows - and load-bearing for a manual run.
+    excluded_by_review = review_excluded_ids(dataset_root())
     out = SplitSet()
     seen_sessions: dict[str, str] = {}
     for i, r in enumerate(snap.rows):
         if not r.session_id or not _os.path.isfile(r.image_path):
+            out.excluded.append(i)
+            continue
+        if r.image_id in excluded_by_review:
             out.excluded.append(i)
             continue
         split = snap.split_of(r.session_id)

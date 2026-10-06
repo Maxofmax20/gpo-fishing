@@ -540,6 +540,11 @@ pub fn assess_family(
     let review_ok = c.named("human_review").map(|x| x.passed).unwrap_or(false);
     let review_eval_ok = c.named("candidate_evaluated").map(|x| x.passed).unwrap_or(false);
 
+    // Ordered exactly like the lifecycle: the FIRST unmet stage is the status.
+// A later stage is never reported while an earlier one is red - otherwise a
+// failed training job could still surface as SHADOW_READY from an older
+// registry entry, which is precisely the "readiness lies" failure mode.
+    let train_ok = c.named("training_job").map(|x| x.passed).unwrap_or(false);
     let status = match phase {
         JobPhase::Training => ReadinessStatus::Training,
         JobPhase::Evaluating => ReadinessStatus::Evaluating,
@@ -554,6 +559,8 @@ pub fn assess_family(
                 ReadinessStatus::NotEnoughTest
             } else if !review_ok {
                 ReadinessStatus::NotEnoughReview
+            } else if !train_ok {
+                ReadinessStatus::DataReady
             } else if review_eval_ok && quality_ok {
                 if deployed.is_some() && soak_events_ok && agree_ok && sess_ok {
                     ReadinessStatus::ShadowReady
@@ -985,6 +992,35 @@ mod tests {
                 stage.as_str()
             );
         }
+    }
+
+    #[test]
+    fn a_failed_latest_job_cannot_still_report_shadow_ready() {
+        // The exact v5.6.1 lie: an old registry entry + a populated soak, but
+        // the newest training job failed. Status must drop back, not claim
+        // SHADOW_READY from the previous model.
+        let recs = vec![rec("fish", 2, 0.80, 0.65)];
+        let good = assess(&full_data(), &recs, Some(2), Some(&soak(150, 4, 0.92)), JobPhase::Idle);
+        assert_eq!(good.status, ReadinessStatus::ShadowReady);
+
+        let failed_job = assess_family(
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &recs,
+            Some(2),
+            Some(&soak(150, 4, 0.92)),
+            JobPhase::Idle,
+            &[job("fish", JobStatus::Failed)],
+            &ReadinessThresholds::default(),
+        );
+        assert_ne!(
+            failed_job.status,
+            ReadinessStatus::ShadowReady,
+            "a failed latest job must cap the status"
+        );
+        assert!(failed_job.blockers.iter().any(|b| b.contains("training_job")));
     }
 
     #[test]

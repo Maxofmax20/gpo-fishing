@@ -597,11 +597,22 @@ pub fn review_apply(
                 Some("human: unknown".to_string()),
             )
         } else {
+            // A human entity that is NOT a KB id: the verdict is recorded and
+            // excluded, but `labels.jsonl` is deliberately left untouched.
+            // Never report `dataset_updated: true` for a write that did not
+            // happen - that is exactly the signal the reviewer needs.
+            dataset_error = Some(format!(
+                "'{}' is not a canonical entity id; label not written and the \
+                 sample is excluded from training",
+                record.human_entity_id.as_deref().unwrap_or("")
+            ));
             Ok(row.clone())
         };
-        match outcome {
-            Ok(_) => dataset_updated = true,
-            Err(e) => dataset_error = Some(e),
+        if dataset_error.is_none() {
+            match outcome {
+                Ok(_) => dataset_updated = true,
+                Err(e) => dataset_error = Some(e),
+            }
         }
     }
     Ok(ReviewApplyResult { record, dataset_updated, dataset_error })
@@ -649,14 +660,27 @@ pub fn review_resolve(
         &reason,
         &eligibility,
     )?;
-    MlDatasetStore::new(st.store.dir().to_path_buf())
-        .annotate(&image_id, None, None, None, Some(entity_id), "human", false, None)?;
+    // Only write the dataset label when the record actually re-enters
+    // training. Writing it for an ineligible resolution would leave a label
+    // the snapshot then drops anyway, and would misreport what was done.
+    if rec.training_eligible {
+        MlDatasetStore::new(st.store.dir().to_path_buf())
+            .annotate(&image_id, None, None, None, Some(entity_id), "human", false, None)?;
+    }
     Ok(rec)
 }
 
 /// Undo the last review of an image. The audit keeps the mistake.
 #[tauri::command]
 pub fn review_undo(st: State<'_, AppState>, image_id: String) -> Result<ReviewRecord, String> {
+    // Require a real dataset row: without this, any string (including a
+    // phantom id) becomes a review record that inflates the coverage counts
+    // and is resurrected by rebuild_from_audit.
+    MlDatasetStore::new(st.store.dir().to_path_buf())
+        .annotations()
+        .into_iter()
+        .find(|r| r.image_id == image_id)
+        .ok_or_else(|| format!("no dataset row for '{image_id}'"))?;
     review::undo_review(&review_store(st.store.dir()), &image_id)
 }
 
@@ -891,15 +915,36 @@ fn mark_in_latest_snapshot(data_dir: &std::path::Path, items: &mut [PriorityItem
         .map(|(_, p)| p);
     let Some(snap) = newest else { return };
     let Ok(text) = std::fs::read_to_string(snap.join("labels.jsonl")) else { return };
-    let in_snap: HashSet<String> = text
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
-        .filter_map(|v| v.get("image_id").and_then(|x| x.as_str()).map(str::to_string))
-        .collect();
+    // Streaming parse: `image_id` is read out of each line without building a
+    // `serde_json::Value` for every row, which on a large snapshot was the
+    // single most expensive part of building the queue.
+    let mut in_snap: HashSet<String> = HashSet::new();
+    for line in text.lines() {
+        if line.is_empty() || !line.contains("\"image_id\"") {
+            continue;
+        }
+        if let Some(id) = json_str_field(line, "image_id") {
+            in_snap.insert(id);
+        }
+    }
     for i in items.iter_mut() {
         i.in_latest_snapshot = in_snap.contains(i.image_id.as_str());
     }
+}
+
+/// Extract a top-level string field without a full JSON parse.
+///
+/// Deliberately simple: it looks for `"field"` followed by `:` and a quoted
+/// string, and unescapes only via `serde_json` on the extracted slice. A
+/// malformed line yields `None` (fail closed - the row is simply not marked).
+fn json_str_field(line: &str, field: &str) -> Option<String> {
+    let needle = format!("\"{field}\"");
+    let at = line.find(&needle)? + needle.len();
+    let rest = line[at..].trim_start();
+    let rest = rest.strip_prefix(':')?.trim_start();
+    let rest = rest.strip_prefix('"')?;
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
 }
 
 // ---------------------------------------------------------------------------
