@@ -1202,6 +1202,87 @@ fn register_bot_commands(client: &reqwest::blocking::Client, token: &str) {
     }
 }
 
+/// Semver-ish comparison: returns `Some(true)` when `remote` is NEWER than
+/// `current`.
+///
+/// v5.6.x used string inequality (`remote_ver == cur_ver`), so ANY difference
+/// triggered an install - including a silent DOWNGRADE or a jump to a
+/// prerelease. This refuses both.
+fn is_newer_version(remote: &str, current: &str) -> Option<bool> {
+    fn parse(s: &str) -> Option<(u64, u64, u64, bool)> {
+        let s = s.trim().trim_start_matches('v');
+        let core = s.split(['-', '+']).next()?;
+        let mut parts = core.split('.');
+        let num = |it: &mut std::str::Split<'_, char>| -> Option<u64> {
+            match it.next() {
+                Some(t) => t.parse::<u64>().ok(),
+                None => None,
+            }
+        };
+        let major = num(&mut parts)?;
+        let minor = num(&mut parts)?;
+        let patch = match parts.next() {
+            Some(t) => t.parse::<u64>().ok()?,
+            None => 0,
+        };
+        // A prerelease is older than its own release, and never something to
+        // auto-install from a "latest" channel.
+        let pre = s.contains('-');
+        Some((major, minor, patch, pre))
+    }
+    let r = parse(remote)?;
+    let c = parse(current)?;
+    if r.3 && !c.3 {
+        return Some(false);
+    }
+    Some(r > c)
+}
+
+/// Validate a release download URL.
+///
+/// The manifest is remote input. Only the exact GitHub release-assets origin is
+/// accepted, and HTTPS only, so a compromised or MITM'd `latest.json` cannot
+/// redirect the installer download (or make it plain HTTP).
+fn validated_download_url(url: &str) -> Result<&str, Box<dyn std::error::Error + Send + Sync>> {
+    const RELEASE_HOST: &str = "https://github.com/";
+    const ASSET_HOST: &str = "https://objects.githubusercontent.com/";
+    if !(url.starts_with(RELEASE_HOST) || url.starts_with(ASSET_HOST)) {
+        return Err(format!("refusing download from untrusted host: {url}").into());
+    }
+    Ok(url)
+}
+
+/// Reject a version string that is not a plain dotted number.
+///
+/// The value is interpolated into both a filename and a PowerShell command
+/// string; anything with quotes, separators or `..` in it is an injection or a
+/// path-traversal vector.
+fn safe_version_token(v: &str) -> Result<&str, Box<dyn std::error::Error + Send + Sync>> {
+    if v.is_empty() || v.len() > 32 || !v.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
+        return Err(format!("refusing malformed version string: {v:?}").into());
+    }
+    if v.contains("..") || v.starts_with('.') || v.ends_with('.') {
+        return Err(format!("refusing malformed version string: {v:?}").into());
+    }
+    Ok(v)
+}
+
+/// Escape text for Telegram's `parse_mode=HTML` message bodies.
+fn telegram_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+/// Telegram/web `/update`: download and install a published release.
+///
+/// SECURITY (v5.7.0). This path is SEPARATE from the signed Tauri updater and
+/// previously had NO integrity check at all: the URL came verbatim from remote
+/// JSON with no host allowlist, the HTTP status was never inspected, the bytes
+/// were never verified, and the result was executed. The pinned minisign key
+/// protecting the desktop updater was bypassed entirely, which turns a
+/// hijacked release asset into remote code execution.
+///
+/// v5.7.0 therefore REFUSES to install from here and directs the user to the
+/// signed in-app updater. The download-and-execute path is not reintroduced.
 pub fn check_and_apply_update(
     bot: Option<&Arc<Bot>>,
     token: Option<&str>,
@@ -1223,77 +1304,56 @@ pub fn check_and_apply_update(
         .and_then(|v| v.as_str())
         .ok_or("Invalid latest.json manifest")?
         .trim_start_matches('v');
+    safe_version_token(remote_ver)?;
 
-    if remote_ver == cur_ver {
-        return Ok(format!(
-            "✅ <b>You're already running the latest version!</b> (v{cur_ver})"
-        ));
+    match is_newer_version(remote_ver, cur_ver) {
+        Some(false) => {
+            return Ok(format!(
+                "\u{2705} You're on the latest version (v{}).",
+                telegram_escape(cur_ver)
+            ))
+        }
+        Some(true) => {}
+        None => {
+            return Err(format!(
+                "cannot compare versions (remote {remote_ver:?}, current {cur_ver:?})"
+            )
+            .into())
+        }
     }
 
-    let download_url = resp
+    if let Some(raw) = resp
         .get("platforms")
         .and_then(|p| p.get("windows-x86_64"))
         .and_then(|w| w.get("url"))
         .and_then(|u| u.as_str())
-        .ok_or("No download URL for windows-x86_64")?;
-
-    let notes = resp.get("notes").and_then(|n| n.as_str()).unwrap_or("");
-    if let (Some(tok), Some(cid)) = (token, chat_id) {
-        let _ = post_telegram(
-            tok,
-            cid,
-            &format!(
-                "🚀 <b>New Version Found: v{remote_ver}!</b>\n\n<i>{notes}</i>\n\n⬇️ Downloading installer in the background..."
-            ),
-        );
-    }
-
-    let temp_dir = std::env::temp_dir();
-    let installer_path = temp_dir.join(format!("GPO.Autofish_{remote_ver}_setup.exe"));
-
-    let mut exe_resp = client
-        .get(download_url)
-        .header("User-Agent", "gpo-autofish")
-        .send()?;
-    let mut file = std::fs::File::create(&installer_path)?;
-    std::io::copy(&mut exe_resp, &mut file)?;
-    drop(file);
-
-    if let (Some(tok), Some(cid)) = (token, chat_id) {
-        let _ = post_telegram(
-            tok,
-            cid,
-            "📦 <b>Update downloaded successfully!</b>\nInstalling update and restarting GPO Autofish...",
-        );
-    }
-
-    // If bot was running, persist state so it auto-resumes after update
-    if let Some(b) = bot {
-        let was_running = b.is_running();
-        if was_running {
-            let _ = b.ctx().store.save_resume_state(true);
+    {
+        if let Err(e) = validated_download_url(raw) {
+            return Err(e);
         }
     }
 
-    let current_exe = std::env::current_exe()?;
-    let current_exe_str = current_exe.to_string_lossy();
-    let installer_str = installer_path.to_string_lossy();
-
-    // Hidden PowerShell supervisor: waits for silent installer to finish, then restarts the app!
-    let ps_cmd = format!(
-        "Start-Sleep -Milliseconds 800; Start-Process -FilePath '{}' -ArgumentList '/S' -Wait; Start-Process -FilePath '{}'",
-        installer_str, current_exe_str
+    let notes = resp
+        .get("notes")
+        .and_then(|n| n.as_str())
+        .unwrap_or("");
+    let msg = format!(
+        "\u{1F449} <b>Version v{} is available</b> (you have v{})\n\n{}\n\nFor security this build will NOT download and run an installer from chat. Use the in-app updater (Settings \u{2192} Check for updates), which verifies the release signature before installing.",
+        telegram_escape(remote_ver),
+        telegram_escape(cur_ver),
+        telegram_escape(notes),
     );
+    if let (Some(tok), Some(cid)) = (token, chat_id) {
+        let _ = post_telegram(tok, cid, &msg);
+    }
 
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x08000000;
-    std::process::Command::new("powershell")
-        .args(["-WindowStyle", "Hidden", "-Command", &ps_cmd])
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn()?;
-
-    std::thread::sleep(Duration::from_millis(600));
-    std::process::exit(0);
+    // Persist "was running" so the signed in-app update can resume cleanly.
+    if let Some(b) = bot {
+        if b.is_running() {
+            let _ = b.ctx().store.save_resume_state(true);
+        }
+    }
+    Ok(msg)
 }
 
 /// Dashboard URL with the per-install token attached, so the Telegram
@@ -1329,5 +1389,55 @@ mod tests {
             dashboard_authed_url("http://localhost:3888", "   "),
             "http://localhost:3888"
         );
+    }
+
+    #[test]
+    fn updater_never_installs_a_downgrade() {
+        // v5.6.x compared with `!=`, so an OLDER release triggered an install.
+        assert_eq!(is_newer_version("5.6.1", "5.6.1"), Some(false));
+        assert_eq!(is_newer_version("5.6.0", "5.6.1"), Some(false), "downgrade must be refused");
+        assert_eq!(is_newer_version("5.5.9", "5.7.0"), Some(false));
+        assert_eq!(is_newer_version("5.7.0", "5.6.1"), Some(true));
+        assert_eq!(is_newer_version("v5.7.0", "5.6.1"), Some(true));
+        // Numeric, not lexical: 5.10 > 5.9 (string compare gets this wrong).
+        assert_eq!(is_newer_version("5.10.0", "5.9.0"), Some(true));
+        assert_eq!(is_newer_version("5.9.0", "5.10.0"), Some(false));
+        // A prerelease is never an auto-install from the "latest" channel.
+        assert_eq!(is_newer_version("5.7.0-beta.1", "5.6.1"), Some(false));
+        assert_eq!(is_newer_version("garbage", "5.6.1"), None);
+    }
+
+    #[test]
+    fn updater_rejects_untrusted_download_hosts() {
+        assert!(validated_download_url("https://github.com/o/r/releases/download/v1/x.exe").is_ok());
+        assert!(validated_download_url("https://objects.githubusercontent.com/x").is_ok());
+        // The whole point of the fix: these must never be followed.
+        assert!(validated_download_url("http://github.com/o/r/x.exe").is_err(), "plain HTTP");
+        assert!(validated_download_url("https://evil.example.com/x.exe").is_err());
+        assert!(validated_download_url("https://github.com.evil.example/x.exe").is_err());
+        assert!(validated_download_url("file:///C:/Windows/System32/cmd.exe").is_err());
+        assert!(validated_download_url("https://raw.githubusercontent.com/x").is_err());
+    }
+
+    #[test]
+    fn version_token_blocks_injection_and_traversal() {
+        assert!(safe_version_token("5.7.0").is_ok());
+        // PowerShell string break-out (the value used to reach a `-Command`).
+        assert!(safe_version_token("5.7.0'; calc; '").is_err());
+        assert!(safe_version_token("5.7.0`whoami`").is_err());
+        assert!(safe_version_token("5.7.0\"; Start-Process evil").is_err());
+        assert!(safe_version_token("5.7.0$(id)").is_err());
+        // Path traversal (the value used to build a temp filename).
+        assert!(safe_version_token("../../evil").is_err());
+        assert!(safe_version_token(r"..\..\evil").is_err());
+        assert!(safe_version_token("5..0").is_err());
+        assert!(safe_version_token("").is_err());
+        assert!(safe_version_token(&"9".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn telegram_html_is_escaped() {
+        // Release notes are remote text rendered with parse_mode=HTML.
+        assert_eq!(telegram_escape("<b>x</b> & y"), "&lt;b&gt;x&lt;/b&gt; &amp; y");
     }
 }

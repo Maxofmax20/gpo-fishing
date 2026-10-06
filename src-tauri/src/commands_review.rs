@@ -37,6 +37,19 @@ use crate::core::review::{
 };
 use crate::core::training;
 
+/// Run a blocking read/aggregate off the UI thread.
+///
+/// Every command in this module parses the whole `labels.jsonl` and/or the
+/// whole `reviews.jsonl`. Run synchronously (the default for a non-`async`
+/// Tauri command) that work happens on the main thread and the panel freezes
+/// on a large dataset. `spawn_blocking` moves it to the blocking pool, which
+/// is bounded - not an unbounded thread per call.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 fn review_store(data_dir: &std::path::Path) -> ReviewStore {
     ReviewStore::new(data_dir.to_path_buf())
 }
@@ -156,13 +169,23 @@ pub fn review_get(st: State<'_, AppState>, image_id: String) -> Option<ReviewRec
 }
 
 #[tauri::command]
-pub fn review_list(
+pub async fn review_list(
     st: State<'_, AppState>,
     status: Option<String>,
     limit: Option<usize>,
     offset: Option<usize>,
+) -> Result<Vec<ReviewRecord>, String> {
+    let dir = st.store.dir().to_path_buf();
+    blocking(move || Ok(review_list_sync(&dir, status, limit, offset))).await
+}
+
+fn review_list_sync(
+    dir: &std::path::Path,
+    status: Option<String>,
+    limit: Option<usize>,
+    offset: Option<usize>,
 ) -> Vec<ReviewRecord> {
-    let mut v = review_store(st.store.dir()).list();
+    let mut v = review_store(dir).list();
     if let Some(s) = status {
         // v5.6.0 compared against `{:?}` ("ReviewedCorrect") while the wire
         // format and the TS type are SCREAMING_SNAKE_CASE, so every documented
@@ -191,8 +214,13 @@ pub struct ReviewIntegrity {
 }
 
 #[tauri::command]
-pub fn review_integrity(st: State<'_, AppState>, tail: Option<usize>) -> ReviewIntegrity {
-    let store = review_store(st.store.dir());
+pub async fn review_integrity(st: State<'_, AppState>, tail: Option<usize>) -> Result<ReviewIntegrity, String> {
+    let dir = st.store.dir().to_path_buf();
+    blocking(move || Ok(review_integrity_sync(&dir, tail))).await
+}
+
+fn review_integrity_sync(dir: &std::path::Path, tail: Option<usize>) -> ReviewIntegrity {
+    let store = review_store(dir);
     let audit = store.audit();
     let want = tail.unwrap_or(50).clamp(1, 500);
     let last_events: Vec<review::AuditEvent> = audit
@@ -221,8 +249,9 @@ pub fn review_integrity(st: State<'_, AppState>, tail: Option<usize>) -> ReviewI
 
 /// Reconstruct `reviews.jsonl` from the append-only audit log.
 #[tauri::command]
-pub fn review_rebuild(st: State<'_, AppState>) -> Result<usize, String> {
-    review_store(st.store.dir()).rebuild_from_audit()
+pub async fn review_rebuild(st: State<'_, AppState>) -> Result<usize, String> {
+    let dir = st.store.dir().to_path_buf();
+    blocking(move || review_store(&dir).rebuild_from_audit()).await
 }
 
 #[derive(Debug, Serialize)]
@@ -302,9 +331,14 @@ const CLASS_MIN_REVIEWED: usize = 20;
 const CLASS_MIN_SESSIONS: usize = 3;
 
 #[tauri::command]
-pub fn review_coverage(st: State<'_, AppState>) -> ReviewCoverageView {
-    let rows = load_rows(st.store.dir());
-    let store = review_store(st.store.dir());
+pub async fn review_coverage(st: State<'_, AppState>) -> Result<ReviewCoverageView, String> {
+    let dir = st.store.dir().to_path_buf();
+    blocking(move || Ok(review_coverage_sync(&dir))).await
+}
+
+fn review_coverage_sync(dir: &std::path::Path) -> ReviewCoverageView {
+    let rows = load_rows(dir);
+    let store = review_store(dir);
     let records = store.list();
     let coverage = review::coverage(&records);
     let by_image: HashMap<&str, &ReviewRecord> =
@@ -735,7 +769,7 @@ pub struct QueueFilter {
 /// queue is stable across reloads and a reviewer sees the same order twice.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub fn review_priority(
+pub async fn review_priority(
     st: State<'_, AppState>,
     limit: Option<usize>,
     entity: Option<String>,
@@ -744,9 +778,27 @@ pub fn review_priority(
     only_disagreement: Option<bool>,
     sort: Option<String>,
     status: Option<review::ReviewStatus>,
+) -> Result<PriorityPage, String> {
+    let dir = st.store.dir().to_path_buf();
+    blocking(move || {
+        Ok(review_priority_sync(&dir, limit, entity, session, only_hard, only_disagreement, sort, status))
+    })
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+fn review_priority_sync(
+    dir: &std::path::Path,
+    limit: Option<usize>,
+    entity: Option<String>,
+    session: Option<String>,
+    only_hard: Option<bool>,
+    only_disagreement: Option<bool>,
+    sort: Option<String>,
+    status: Option<review::ReviewStatus>,
 ) -> PriorityPage {
-    let rows = load_rows(st.store.dir());
-    let store = review_store(st.store.dir());
+    let rows = load_rows(dir);
+    let store = review_store(dir);
     let records = store.list();
     let reviews: HashMap<&str, &ReviewRecord> =
         records.iter().map(|r| (r.image_id.as_str(), r)).collect();
@@ -869,7 +921,7 @@ pub fn review_priority(
         });
     }
     let total_matching = items.len();
-    mark_in_latest_snapshot(st.store.dir(), &mut items);
+    mark_in_latest_snapshot(dir, &mut items);
     match f.sort.as_str() {
         "newest" => items.sort_by_key(|i| std::cmp::Reverse(i.timestamp_ms)),
         "oldest" => items.sort_by_key(|i| i.timestamp_ms),
@@ -1002,13 +1054,18 @@ pub struct DropEntry {
 }
 
 #[tauri::command]
-pub fn drops_explorer(st: State<'_, AppState>) -> Vec<DropEntry> {
+pub async fn drops_explorer(st: State<'_, AppState>) -> Result<Vec<DropEntry>, String> {
+    let dir = st.store.dir().to_path_buf();
     let kb = st.store.effective_knowledge();
-    let rows = load_rows(st.store.dir());
-    let reviews = review_store(st.store.dir()).list();
+    blocking(move || Ok(drops_explorer_sync(&dir, kb))).await
+}
+
+fn drops_explorer_sync(dir: &std::path::Path, kb: crate::core::knowledge::KnowledgeBase) -> Vec<DropEntry> {
+    let rows = load_rows(dir);
+    let reviews = review_store(dir).list();
     let rev_by_image: HashMap<&str, &ReviewRecord> =
         reviews.iter().map(|r| (r.image_id.as_str(), r)).collect();
-    let fish_scope: HashSet<String> = std::fs::read_to_string(st.store.dir().join("models").join("fish_v1.json"))
+    let fish_scope: HashSet<String> = std::fs::read_to_string(dir.join("models").join("fish_v1.json"))
         .ok()
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
         .and_then(|v| v.get("classes").cloned())
@@ -1076,20 +1133,20 @@ pub fn drops_explorer(st: State<'_, AppState>) -> Vec<DropEntry> {
 // ---------------------------------------------------------------------------
 
 fn readiness_status_inner(
-    store: &crate::config::Store,
+    store_dir: &std::path::Path,
     settings: &crate::config::Settings,
 ) -> Vec<readiness::ModelReadiness> {
-    let rows = load_rows(store.dir());
+    let rows = load_rows(store_dir);
     let all = &rows.all;
     let gates = assess_capabilities(all);
     let gate = |id: &str| gates.iter().find(|g| g.id == id);
-    let reviews = review_store(store.dir()).list();
+    let reviews = review_store(store_dir).list();
     let reviewed_ids: HashSet<&str> = reviews
         .iter()
         .filter(|r| r.training_eligible)
         .map(|r| r.image_id.as_str())
         .collect();
-    let records = registry::load_registry(store.dir());
+    let records = registry::load_registry(store_dir);
     let thresholds = readiness::ReadinessThresholds {
         min_macro_f1: settings.training.readiness_min_macro_f1,
         min_worst_class_f1: settings.training.readiness_min_worst_f1,
@@ -1098,7 +1155,7 @@ fn readiness_status_inner(
         min_shadow_sessions: settings.training.readiness_min_shadow_sessions,
         min_review_coverage: settings.training.readiness_min_review_coverage,
     };
-    let jobs = training::list_jobs(store.dir());
+    let jobs = training::list_jobs(store_dir);
 
     let mut out = Vec::new();
     for (family, prefix, stem) in
@@ -1154,7 +1211,7 @@ fn readiness_status_inner(
 
         // Deployed revision, and the soak FOR THAT REVISION ONLY.
         let manifest: serde_json::Value =
-            std::fs::read_to_string(store.dir().join("models").join(format!("{stem}.json")))
+            std::fs::read_to_string(store_dir.join("models").join(format!("{stem}.json")))
                 .ok()
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or(serde_json::Value::Null);
@@ -1163,7 +1220,7 @@ fn readiness_status_inner(
             .and_then(|x| x.as_str())
             .and_then(|s| s.parse::<u32>().ok());
         let soak = registry::soak_stats_for(
-            store.dir(),
+            store_dir,
             stem,
             deployed_version.map(|v| v.to_string()).as_deref(),
             500,
@@ -1241,9 +1298,10 @@ fn job_phase(jobs: &[training::TrainingJob], family: &str) -> JobPhase {
 }
 
 #[tauri::command]
-pub fn readiness_status(st: State<'_, AppState>) -> Vec<readiness::ModelReadiness> {
-    let settings = st.settings.read();
-    readiness_status_inner(&st.store, &settings)
+pub async fn readiness_status(st: State<'_, AppState>) -> Result<Vec<readiness::ModelReadiness>, String> {
+    let store_dir = st.store.dir().to_path_buf();
+    let settings = st.settings.read().clone();
+    blocking(move || Ok(readiness_status_inner(&store_dir, &settings))).await
 }
 
 // ---------------------------------------------------------------------------
@@ -1282,7 +1340,7 @@ pub fn hermes_tasks(st: State<'_, AppState>) -> HermesTasks {
     );
     HermesTasks {
         triggers,
-        readiness: readiness_status_inner(&st.store, &settings),
+        readiness: readiness_status_inner(st.store.dir(), &settings),
         history_tail: training::read_history(st.store.dir(), 20),
     }
 }

@@ -20,6 +20,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::Duration;
 
 use super::ml_dataset::{MlAnnotation, MlDatasetStore};
 use super::ml_model::sha256_hex;
@@ -782,6 +784,8 @@ fn finalize_job(data_dir: &Path, job: &mut TrainingJob, trainer_dir: &str, exit_
 
 // ---- backend availability ----
 
+/// Honest capability probe: runs `<python> -c "import torch..."` with a
+/// bounded wall-clock timeout and never more than one probe in flight.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackendStatus {
     pub available: bool,
@@ -793,9 +797,120 @@ pub struct BackendStatus {
     pub detail: String,
 }
 
-/// Honest capability probe: runs `<python> -c "import torch..."` with a
-/// timeout. Anything missing is reported by name, never papered over.
+/// Anything missing is reported by name, never papered over.
 pub fn check_backend(python_path: &str, trainer_dir: &str) -> BackendStatus {
+    check_backend_with_timeout(python_path, trainer_dir, DEFAULT_BACKEND_PROBE_TIMEOUT)
+}
+
+/// Default wall-clock budget for the backend health probe.
+///
+/// `import torch` on a cold Windows filesystem cache can take several seconds.
+/// Past that, something is wrong (a hung interpreter, a network filesystem
+/// stall) and we must not hold the caller hostage: the probe is polled
+/// repeatedly, so a hang would otherwise freeze the panel indefinitely.
+pub const DEFAULT_BACKEND_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Single-flight guard for the health probe.
+///
+/// `training_overview` is polled every few seconds. Without this, a slow
+/// probe stacks up: each poll starts another `python`, and they pile up until
+/// the machine is saturated. One probe at a time; overlapping callers get the
+/// cached result of the most recent completed probe instead of spawning a
+/// second process.
+static BACKEND_PROBE: Mutex<Option<(String, String, BackendStatus)>> = Mutex::new(None);
+
+/// Run `python -c <code>`, killing it after `timeout`.
+///
+/// Uses `spawn` + a bounded wait loop rather than `Command::output()` (which
+/// has no timeout at all) and then `kill`s + `wait`s so no orphan interpreter
+/// is left behind. stdout/stderr are piped and read on the helper threads, so
+/// a chatty interpreter cannot deadlock us by filling a pipe buffer.
+fn probe_python(python_path: &str, code: &str, timeout: Duration) -> Result<std::process::Output, String> {
+    let mut child = std::process::Command::new(python_path)
+        .arg("-c")
+        .arg(code)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    let mut out_pipe = child.stdout.take();
+    let mut err_pipe = child.stderr.take();
+    let out_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(p) = out_pipe.as_mut() {
+            let _ = std::io::Read::read_to_end(p, &mut buf);
+        }
+        buf
+    });
+    let err_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        if let Some(p) = err_pipe.as_mut() {
+            let _ = std::io::Read::read_to_end(p, &mut buf);
+        }
+        buf
+    });
+
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stdout = out_handle.join().unwrap_or_default();
+                let stderr = err_handle.join().unwrap_or_default();
+                return Ok(std::process::Output { status, stdout, stderr });
+            }
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    // Terminate the tree, then reap it: no orphan process.
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!("probe timed out after {}s", timeout.as_secs()));
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                return Err(e.to_string());
+            }
+        }
+    }
+}
+
+pub fn check_backend_with_timeout(
+    python_path: &str,
+    trainer_dir: &str,
+    timeout: Duration,
+) -> BackendStatus {
+    // Single-flight: reuse the last result for the same configuration rather
+    // than spawning a second interpreter.
+    {
+        let cached = BACKEND_PROBE.lock().ok().and_then(|g| g.clone());
+        if let Some((p, t, st)) = cached {
+            if p == python_path && t == trainer_dir {
+                return st;
+            }
+        }
+    }
+    let status = check_backend_uncached(python_path, trainer_dir, timeout);
+    if let Ok(mut g) = BACKEND_PROBE.lock() {
+        *g = Some((python_path.to_string(), trainer_dir.to_string(), status.clone()));
+    }
+    status
+}
+
+/// Drop the cached probe result (call after the training settings change).
+pub fn invalidate_backend_probe() {
+    if let Ok(mut g) = BACKEND_PROBE.lock() {
+        *g = None;
+    }
+}
+
+fn check_backend_uncached(
+    python_path: &str,
+    trainer_dir: &str,
+    timeout: Duration,
+) -> BackendStatus {
     let mut st = BackendStatus {
         available: false,
         python_path: python_path.to_string(),
@@ -809,13 +924,22 @@ pub fn check_backend(python_path: &str, trainer_dir: &str) -> BackendStatus {
         st.detail = "python_path is not configured (Training settings)".to_string();
         return st;
     }
-    let probe = std::process::Command::new(python_path)
-        .arg("-c")
-        .arg("import sys, torch; print(torch.__version__)")
-        .output();
-    match probe {
+    match probe_python(
+        python_path,
+        "import sys, torch; print(torch.__version__)",
+        timeout,
+    ) {
         Err(e) => {
-            st.detail = format!("cannot execute '{python_path}': {e}");
+            // Distinguish "cannot run at all" from "ran but hung": the second
+            // is a hang, and saying so is the difference between a misconfigured
+            // path and a wedged interpreter.
+            let (ok, detail) = if e.starts_with("probe timed out") {
+                (true, format!("torch import did not finish within {}s (interpreter terminated): {e}", timeout.as_secs()))
+            } else {
+                (false, format!("cannot execute '{python_path}': {e}"))
+            };
+            st.python_ok = ok;
+            st.detail = detail;
             return st;
         }
         Ok(out) if !out.status.success() => {

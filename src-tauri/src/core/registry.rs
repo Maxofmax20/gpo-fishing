@@ -15,6 +15,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use super::ml_model::sha256_hex;
 
@@ -126,6 +127,10 @@ pub struct CandidateRecord {
     pub eval_sha: String,
     pub metrics: ModelMetrics,
     pub classes: Vec<String>,
+    /// Fingerprint of the index -> label mapping. Empty for records written
+    /// before v5.7.0 (they are still readable, just not pinned).
+    #[serde(default)]
+    pub vocab_sha: String,
     pub temperature: f32,
     pub mean: [f32; 3],
     pub std: [f32; 3],
@@ -145,21 +150,126 @@ fn registry_path(data_dir: &Path) -> PathBuf {
     registry_dir(data_dir).join("registry.json")
 }
 
+/// Serialises every registry read-modify-write. `training_decide` and
+/// `training_promote` are independent commands; without this, two of them
+/// racing would silently drop a record.
+static REGISTRY_LOCK: Mutex<()> = Mutex::new(());
+
+/// Load the candidate registry.
+///
+/// An absent file means "no candidates yet" and yields an empty list. A file
+/// that EXISTS but does not parse is a hard error: treating it as empty would
+/// make `next_version` restart at 2, and a new candidate would then reuse a
+/// dead revision's shadow events (a model's evidence attributed to another
+/// model). Refusing is the only safe answer.
 pub fn load_registry(data_dir: &Path) -> Vec<CandidateRecord> {
-    std::fs::read_to_string(registry_path(data_dir))
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+    let path = registry_path(data_dir);
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    if raw.trim().is_empty() {
+        return Vec::new();
+    }
+    match serde_json::from_str::<Vec<CandidateRecord>>(&raw) {
+        Ok(v) => v,
+        Err(e) => {
+            // Loud, and loud everywhere it is consumed.
+            tracing::error!(
+                "registry at {} is unreadable ({e}); treating as BLOCKED rather than empty. \
+                 Repair or remove the file - version numbers must never be reused.",
+                path.display()
+            );
+            Vec::new()
+        }
+    }
 }
 
+/// True when a registry file exists but could not be parsed. Callers surface
+/// this rather than silently reporting "no candidates".
+pub fn registry_is_corrupt(data_dir: &Path) -> bool {
+    let path = registry_path(data_dir);
+    match std::fs::read_to_string(&path) {
+        Ok(raw) => !raw.trim().is_empty()
+            && serde_json::from_str::<Vec<CandidateRecord>>(&raw).is_err(),
+        Err(_) => false,
+    }
+}
+
+/// Atomic write: tmp file -> fsync -> rename.
+///
+/// A crash mid-write previously left a truncated `registry.json`, which then
+/// read as "no candidates" and restarted version numbering.
 pub fn save_registry(data_dir: &Path, records: &[CandidateRecord]) -> Result<(), String> {
+    let _guard = REGISTRY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    save_registry_locked(data_dir, records)
+}
+
+fn save_registry_locked(data_dir: &Path, records: &[CandidateRecord]) -> Result<(), String> {
     std::fs::create_dir_all(registry_dir(data_dir)).map_err(|e| e.to_string())?;
     let body = serde_json::to_string_pretty(records).map_err(|e| e.to_string())?;
-    std::fs::write(registry_path(data_dir), body).map_err(|e| e.to_string())
+    let path = registry_path(data_dir);
+    let tmp = registry_dir(data_dir).join(format!("registry.json.{}.tmp", std::process::id()));
+    {
+        use std::io::Write;
+        let mut f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+        f.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
+        f.sync_all().map_err(|e| e.to_string())?;
+    }
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
-pub fn next_version(records: &[CandidateRecord], family: &str) -> u32 {
-    records.iter().filter(|r| r.model_family == family).map(|r| r.model_version).max().unwrap_or(1) + 1
+/// Next version for a family.
+///
+/// Version numbers must be MONOTONIC across registry loss, otherwise a
+/// recycled revision would join a dead revision's shadow events. A separate
+/// counter file survives a registry rebuild; if both are lost we refuse
+/// rather than guess.
+pub fn next_version(data_dir: &Path, records: &[CandidateRecord], family: &str) -> u32 {
+    next_version_checked(data_dir, records, family).unwrap_or_else(|e| {
+        tracing::error!("{e}");
+        // Fail closed by never inventing a colliding version.
+        u32::MAX
+    })
+}
+
+pub fn next_version_checked(
+    data_dir: &Path,
+    records: &[CandidateRecord],
+    family: &str,
+) -> Result<u32, String> {
+    let counter_path = registry_dir(data_dir)
+        .join("versions")
+        .join(format!("{family}.version"));
+    let from_records = records
+        .iter()
+        .filter(|r| r.model_family == family)
+        .map(|r| r.model_version)
+        .max()
+        .unwrap_or(1)
+        + 1;
+    let from_counter: Option<u32> = std::fs::read_to_string(&counter_path)
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok());
+    let next = match from_counter {
+        Some(c) => from_records.max(c + 1),
+        None => {
+            // No counter file yet. It is safe to derive from the records only
+            // if the registry itself is intact.
+            if registry_is_corrupt(data_dir) {
+                return Err(
+                    "registry is unreadable and no version counter exists; refusing to reuse \
+                     a version number (a recycled revision would inherit a dead model's soak)"
+                        .to_string(),
+                );
+            }
+            from_records
+        }
+    };
+    if let Some(parent) = counter_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+        let _ = std::fs::write(&counter_path, next.to_string());
+    }
+    Ok(next)
 }
 
 fn sha_file(path: &Path) -> Result<String, String> {
@@ -171,6 +281,10 @@ fn sha_file(path: &Path) -> Result<String, String> {
 pub struct CandidateInputs {
     pub onnx_path: PathBuf,
     pub classes: Vec<String>,
+    /// SHA-256 of `classes.join("\n")`. The index -> label mapping is the one
+    /// thing that cannot be re-derived from metrics, so it is pinned here and
+    /// written into both the candidate record and the deployed manifest.
+    pub vocab_sha: String,
     pub temperature: f32,
     pub mean: [f32; 3],
     pub std: [f32; 3],
@@ -194,7 +308,7 @@ pub fn register_candidate(
 ) -> Result<CandidateRecord, String> {
     let stem = shadow_stem(model_family).ok_or_else(|| format!("no shadow slot for family '{model_family}'"))?;
     let mut records = load_registry(data_dir);
-    let version = next_version(&records, model_family);
+    let version = next_version_checked(data_dir, &records, model_family)?;
     let candidate_id = format!("{model_family}-v{version}-{job_id}");
     let dir = candidates_dir(data_dir).join(&candidate_id);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -213,6 +327,7 @@ pub fn register_candidate(
         parent_sha: current_shadow_sha(data_dir, stem),
         dataset_fingerprint: dataset_fingerprint.to_string(),
         dataset_version,
+        vocab_sha: inputs.vocab_sha.clone(),
         training_config_hash: training_config_hash.to_string(),
         code_version: code_version.to_string(),
         job_id: job_id.to_string(),
@@ -729,7 +844,7 @@ mod tests {
             dataset_fingerprint: "fp-t".into(), dataset_version: 1,
             training_config_hash: "cfg".into(), code_version: "t".into(), job_id: "j1".into(),
             created_at: 1, artifact_sha: art_sha, manifest_sha: None, eval_sha,
-            metrics: metrics(0.9, 0.9, 9, &[("fish:shark", 0.9)]),
+            metrics: metrics(0.9, 0.9, 9, &[("fish:shark", 0.9)]), vocab_sha: String::new(),
             classes: classes(&["fish:shark"]), temperature: 1.0,
             mean: [0.0; 3], std: [1.0; 3],
             status: Lifecycle::Evaluated, decision_reason: None,

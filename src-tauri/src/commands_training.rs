@@ -23,6 +23,15 @@ fn rows_of(store: &Store) -> Vec<crate::core::ml_dataset::MlAnnotation> {
     MlDatasetStore::new(store.dir().to_path_buf()).annotations()
 }
 
+/// Fail-closed variant for any decision that shapes TRAINING.
+///
+/// An unreadable row means a row no filter can see, so it could be silently
+/// frozen into (or out of) a snapshot. Any caller that derives eligibility,
+/// a split, or a snapshot must use this instead of `rows_of`.
+fn rows_of_checked(store: &Store) -> Result<Vec<crate::core::ml_dataset::MlAnnotation>, String> {
+    MlDatasetStore::new(store.dir().to_path_buf()).annotations_checked()
+}
+
 fn trainer_module_for(family: &str) -> Option<&'static str> {
     match family {
         "fish" => Some("gpo_train.fish_train"),
@@ -177,57 +186,81 @@ fn family_eligibility(
     FamilyEligibility { family: family.to_string(), eligible: ok, checks }
 }
 
-#[tauri::command]
-pub fn training_overview(st: State<'_, AppState>) -> TrainingOverview {
-    let store = &st.store;
-    let settings = st.settings.read();
-    let rows = rows_of(store);
-    let sessions = rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
-    let last_collection_ms = rows.iter().map(|r| r.timestamp_ms).max().unwrap_or(0);
-    let backend = training::check_backend(&settings.training.python_path, &settings.training.trainer_dir);
-    let running = training::list_jobs(store.dir())
-        .iter()
-        .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
-        .count();
-    let last_ms = last_training_ms(store);
-    let last_rows = training::list_jobs(store.dir())
-        .into_iter()
-        .filter_map(|j| if j.finished_at == last_ms { Some(j.frozen_rows) } else { None })
-        .max()
-        .unwrap_or(0);
-    let shadow_flag = settings.features.ml_shadow;
-    drop(settings);
-    let shadow_models = crate::core::shadow_infer::engine(&store.dir().join("models"))
-        .map(|e| e.model_names().len())
-        .unwrap_or(0);
-    TrainingOverview {
-        dataset_version: DATASET_VERSION,
-        rows: rows.len(),
-        sessions,
-        last_collection_ms,
-        last_training_ms: last_ms,
-        new_since_training: rows.len().saturating_sub(last_rows),
-        models: deployed_models(store),
-        shadow_enabled: shadow_flag && shadow_models > 0,
-        shadow_events: 0,
-        eligibility: ["fish", "fruit", "state"]
-            .iter()
-            .map(|f| {
-                let s = st.settings.read();
-                family_eligibility(f, &rows_of(store), &s.training, backend.available, &backend.detail, running)
-            })
-            .collect(),
-        auto_enabled: st.settings.read().training.auto_enabled,
-        backend_available: backend.available,
-        backend_detail: backend.detail,
-        production_control: "OFF".to_string(),
-    }
+/// Run a blocking aggregate off the UI thread.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn training_backend(st: State<'_, AppState>) -> training::BackendStatus {
-    let s = st.settings.read();
-    training::check_backend(&s.training.python_path, &s.training.trainer_dir)
+pub async fn training_overview(st: State<'_, AppState>) -> Result<TrainingOverview, String> {
+    // Snapshot everything the closure needs BEFORE blocking: `State` is a
+    // borrow of app state and cannot cross into a blocking task.
+    let store_dir = st.store.dir().to_path_buf();
+    let python_path = st.settings.read().training.python_path.clone();
+    let trainer_dir = st.settings.read().training.trainer_dir.clone();
+    let shadow_flag = st.settings.read().features.ml_shadow;
+    let tsettings = st.settings.read().training.clone();
+    blocking(move || {
+        // One parse, reused for every aggregate below. v5.6.x called
+        // `rows_of(store)` four times on this path - four full
+        // labels.jsonl parses per poll.
+        // Read-only view of the same directory the app already uses.
+        let store = crate::config::Store::new(store_dir.clone());
+        let rows = rows_of(&store);
+        let sessions = rows
+            .iter()
+            .map(|r| r.session_id.as_str())
+            .collect::<HashSet<_>>()
+            .len();
+        let last_collection_ms = rows.iter().map(|r| r.timestamp_ms).max().unwrap_or(0);
+        let backend = training::check_backend(&python_path, &trainer_dir);
+        let jobs = training::list_jobs(store.dir());
+        let running = jobs
+            .iter()
+            .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
+            .count();
+        let last_ms = last_training_ms(&store);
+        let last_rows = jobs
+            .iter()
+            .filter_map(|j| if j.finished_at == last_ms { Some(j.frozen_rows) } else { None })
+            .max()
+            .unwrap_or(0);
+        let shadow_models = crate::core::shadow_infer::engine(&store.dir().join("models"))
+            .map(|e| e.model_names().len())
+            .unwrap_or(0);
+        // Real count, not the hardcoded 0 v5.6.x reported.
+        let shadow_events = registry::soak_stats(store.dir(), "fish_v1", usize::MAX).events
+            + registry::soak_stats(store.dir(), "state_v1", usize::MAX).events;
+        Ok(TrainingOverview {
+            dataset_version: DATASET_VERSION,
+            rows: rows.len(),
+            sessions,
+            last_collection_ms,
+            last_training_ms: last_ms,
+            new_since_training: rows.len().saturating_sub(last_rows),
+            models: deployed_models(&store),
+            shadow_enabled: shadow_flag && shadow_models > 0,
+            shadow_events,
+            eligibility: ["fish", "fruit", "state"]
+                .iter()
+                .map(|f| family_eligibility(f, &rows, &tsettings, backend.available, &backend.detail, running))
+                .collect(),
+            auto_enabled: tsettings.auto_enabled,
+            backend_available: backend.available,
+            backend_detail: backend.detail,
+            production_control: "OFF".to_string(),
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn training_backend(st: State<'_, AppState>) -> Result<training::BackendStatus, String> {
+    let python_path = st.settings.read().training.python_path.clone();
+    let trainer_dir = st.settings.read().training.trainer_dir.clone();
+    blocking(move || Ok(training::check_backend(&python_path, &trainer_dir))).await
 }
 
 // ---- jobs ----
@@ -244,7 +277,7 @@ pub fn training_start(
     if !backend.available {
         return Err(format!("training backend unavailable: {}", backend.detail));
     }
-    let rows = rows_of(&st.store);
+    let rows = rows_of_checked(&st.store)?;
     let running = training::list_jobs(st.store.dir())
         .iter()
         .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
@@ -328,7 +361,7 @@ pub fn training_restart(st: State<'_, AppState>, job_id: String) -> Result<train
         return Err("only finished jobs restart (cancel it first)".to_string());
     }
     let settings = st.settings.read().training.clone();
-    let rows = rows_of(&st.store);
+    let rows = rows_of_checked(&st.store)?;
     let snap_dir = st.store.dir().join("training").join("snapshots").join(format!("snap-{}", crate::events::now_ms()));
     let snap = training::snapshot_dataset(st.store.dir(), &snap_dir, &rows, DATASET_VERSION)?;
     let mut job = training::create_job(
@@ -390,12 +423,56 @@ fn candidate_inputs_for(
         .unwrap_or(0) as usize;
     let metrics = registry::ModelMetrics::from_trainer_files(&eval, cal.as_ref(), rej.as_ref(), test_sessions)
         .ok_or_else(|| "evaluation files lack core accuracy/macro-F1: refusing".to_string())?;
+    // CLASS MAP (v5.7.0). The trainer's OWN vocabulary is the authority for
+    // output-index -> label. v5.6.x derived this from the evaluation file's
+    // keys and then SORTED them, which only coincided with the trainer's order
+    // because the vocabulary happened to be alphabetical. Any insertion or
+    // reorder would silently permute every label while the artifact checksum
+    // and output width stayed identical - unobservable, and unrecoverable.
+    // Prefer `config.json["vocab"]` and refuse when it disagrees with the
+    // evaluated classes.
     let per = eval.get("per_entity").or_else(|| eval.get("per_class"));
-    let mut classes: Vec<String> = per
+    let evaluated: Vec<String> = per
         .and_then(|m| m.as_object())
         .map(|m| m.keys().cloned().collect())
         .unwrap_or_default();
-    classes.sort();
+    let classes: Vec<String> = match cfg.get("vocab").and_then(|v| v.as_array()) {
+        Some(a) => {
+            let vocab: Vec<String> = a
+                .iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect();
+            if vocab.is_empty() {
+                return Err("config.json vocab is empty: refusing".to_string());
+            }
+            // The two must describe the same class SET. A different ORDER is
+            // fine (the trainer defines the order); a different SET is not.
+            let mut a = vocab.clone();
+            let mut b = evaluated.clone();
+            a.sort();
+            b.sort();
+            if !evaluated.is_empty() && a != b {
+                return Err(format!(
+                    "class map mismatch: trainer vocab {:?} does not match evaluated classes {:?}; refusing",
+                    vocab, evaluated
+                ));
+            }
+            vocab
+        }
+        None => {
+            // No vocabulary recorded (legacy run): fall back, but say so.
+            tracing::warn!("config.json has no vocab; falling back to sorted evaluation keys");
+            let mut c = evaluated;
+            c.sort();
+            c
+        }
+    };
+    if classes.is_empty() {
+        return Err("no class map available: refusing to register".to_string());
+    }
+    // Stable fingerprint of the index -> label mapping, carried into the
+    // registry and the manifest so a later permutation is detectable.
+    let vocab_sha = crate::core::ml_model::sha256_hex(classes.join("\n").as_bytes());
     let norm = cfg
         .get("normalization")
         .ok_or_else(|| "config.json lacks normalization: refusing".to_string())?;
@@ -414,6 +491,7 @@ fn candidate_inputs_for(
     };
     let temperature = read("calibration.json").ok().and_then(|c| c.get("temperature").and_then(|t| t.as_f64())).unwrap_or(1.0) as f32;
     Ok(registry::CandidateInputs {
+        vocab_sha,
         onnx_path: out.join(if job.model_family == "fish" { "fish_vision_v1.onnx" } else { "gpo_vision_v1.onnx" }),
         classes,
         temperature,

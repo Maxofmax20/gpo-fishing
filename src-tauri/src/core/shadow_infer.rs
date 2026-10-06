@@ -159,7 +159,23 @@ impl ShadowEngine {
                 continue;
             }
             let m = load_one(models_dir, onnx, json)?;
-            models.insert(m.name.clone(), m);
+            // FAMILY INTEGRITY. The map key must be the SLOT, not whatever
+            // the manifest claims. Otherwise a fish manifest copied over the
+            // state files inserts under "fish_v1", silently EVICTS the real
+            // fish entry, and `models.get("state_v1")` returns None forever -
+            // state shadow observation stops with no error and readiness still
+            // reads a perfectly valid state_v1.json off disk.
+            let expected = onnx.trim_end_matches(".onnx").to_string();
+            if m.name != expected {
+                return Err(format!(
+                    "{json} declares model '{}' but occupies slot '{expected}'; \\
+                     refusing to load (a model family cannot cross slots)",
+                    m.name
+                ));
+            }
+            if models.insert(m.name.clone(), m).is_some() {
+                return Err(format!("duplicate shadow model '{expected}'"));
+            }
         }
         if models.is_empty() {
             return Err(format!("no shadow models in {}", models_dir.display()));

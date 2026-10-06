@@ -426,8 +426,19 @@ impl MlDatasetStore {
         // taken here and NOT inside `append_annotation` — this mutex is not
         // reentrant, and `append_annotation` has no other caller.
         let _guard = LABELS_WRITE_LOCK.lock();
-        // Exact duplicate? Return the existing id without duplicating bytes.
-        if let Some(existing) = self.find_by_hash(hash)? {
+        // EXACT-duplicate check by CONTENT, not by the 64-bit average hash.
+        //
+        // `png_ahash` is a 64-bit perceptual signature over an 8x8 luminance
+        // grid: two genuinely different frames collide with non-trivial
+        // probability. v5.6.x treated a collision as "same image", returned the
+        // other id, and the caller then wrote the NEW sample's OCR text and
+        // entity id onto the row describing the OLD pixels - silent ground
+        // truth corruption with no error anywhere.
+        //
+        // The average hash is still the identity (it is what `image_id`
+        // encodes and what near-duplicate reporting uses), but a collision now
+        // only allocates a `-N` suffix instead of aliasing two frames.
+        if let Some(existing) = self.find_identical_bytes(hash, png_bytes)? {
             return Ok(existing);
         }
         let mut image_id = format!("{hash:016x}");
@@ -463,14 +474,24 @@ impl MlDatasetStore {
         Ok(image_id)
     }
 
-    fn find_by_hash(&self, hash: u64) -> Result<Option<String>, String> {
-        for ann in self.annotations() {
-            if let Some(h) = image_id_hash(&ann.image_id) {
-                if h == hash {
-                    return Ok(Some(ann.image_id));
-                }
+    /// Find a row whose stored image bytes are IDENTICAL to `png_bytes`.
+///
+/// Only candidates sharing the average hash are considered (an index-free
+/// linear scan over rows is fine at dataset scale), and then the bytes on disk
+/// must match exactly. A shared average hash is therefore a *hint*, never a
+/// decision.
+fn find_identical_bytes(&self, hash: u64, png_bytes: &[u8]) -> Result<Option<String>, String> {
+    for ann in self.annotations() {
+        if image_id_hash(&ann.image_id) != Some(hash) {
+            continue;
+        }
+        let path = self.images_dir().join(format!("{}.png", ann.image_id));
+        if let Ok(bytes) = std::fs::read(&path) {
+            if bytes == png_bytes {
+                return Ok(Some(ann.image_id));
             }
         }
+    }
         Ok(None)
     }
 
@@ -575,6 +596,48 @@ impl MlDatasetStore {
         let out = render_labels(&rows);
         write_labels_atomic(&self.root, &self.labels_path(), &out)?;
         Ok(true)
+    }
+
+    /// Rows whose line failed to parse. Counted, never silently dropped.
+    pub fn unreadable_lines(&self) -> usize {
+        let Ok(content) = std::fs::read_to_string(self.labels_path()) else {
+            return 0;
+        };
+        content
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .filter(|l| serde_json::from_str::<MlAnnotation>(l).is_err())
+            .count()
+    }
+
+    /// Parse the whole label set, but report a partially-written file.
+    ///
+    /// `annotations()` cannot fail closed for every caller (read-only UI
+    /// panels want data even when one row is odd), but a training snapshot or
+    /// an eligibility decision must not silently proceed with missing rows: a
+    /// row the parser skipped is a row no filter can see, so it could be
+    /// frozen out of a training set without trace.
+    pub fn annotations_checked(&self) -> Result<Vec<MlAnnotation>, String> {
+        let Ok(content) = std::fs::read_to_string(self.labels_path()) else {
+            return Ok(Vec::new());
+        };
+        let mut rows = Vec::new();
+        let mut bad = 0usize;
+        for line in content.lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<MlAnnotation>(line) {
+                Ok(r) => rows.push(r),
+                Err(_) => bad += 1,
+            }
+        }
+        if bad > 0 {
+            return Err(format!(
+                "labels.jsonl has {bad} unreadable line(s); refusing to act on a partial dataset"
+            ));
+        }
+        Ok(rows)
     }
 
     pub fn annotations(&self) -> Vec<MlAnnotation> {

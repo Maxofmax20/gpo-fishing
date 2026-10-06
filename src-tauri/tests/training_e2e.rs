@@ -165,8 +165,19 @@ fn candidate_inputs_from_stub(
         .cloned()
         .collect();
     classes.sort();
-    registry::CandidateInputs {
+    let vocab_sha = {
+    // Local stand-in for `core::ml_model::sha256_hex` (private to the crate).
+    // Only needs to be stable, not cryptographic, for the test.
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in classes.join("\n").as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    format!("{h:016x}")
+};
+registry::CandidateInputs {
         onnx_path: out.join("model.onnx"),
+        vocab_sha,
         classes,
         temperature: 1.0,
         mean: [0.0; 3],

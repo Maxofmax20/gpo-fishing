@@ -649,6 +649,7 @@ mod tests {
                 kept_accuracy: None,
             },
             classes: vec!["fish:a".into(), "fish:worst".into()],
+            vocab_sha: String::new(),
             temperature: 1.0,
             mean: [0.0; 3],
             std: [1.0; 3],
