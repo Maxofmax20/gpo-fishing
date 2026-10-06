@@ -751,6 +751,10 @@ mod tests {
             frozen_sessions: 12,
             frozen_test_sessions: vec!["s-test".into()],
             review_fingerprint: "rv".into(),
+            snapshot_labels_sha: "ln-test".into(),
+            snapshot_exclusions: Default::default(),
+            snapshot_rows_excluded_by_review: 0,
+            snapshot_rows_unreviewed: 0,
             snapshot_dir: PathBuf::new(),
             created_at: 1,
             started_at: Some(1),
@@ -1166,5 +1170,90 @@ mod tests {
             assert!(!c.actual.is_empty() && c.actual != "none", "{name} must report a real value");
             assert!(!c.required.is_empty(), "{name} must state its requirement");
         }
+    }
+
+    #[test]
+    fn a_candidate_cannot_inherit_a_different_revisions_soak() {
+        // The v5.7.0 failure: `latest_eval` is the highest EVALUATED version in
+        // the registry; the soak is whatever the on-disk manifest says. With
+        // v4 already soaked (150 events / 4 sessions / 92% agreement) and v5
+        // merely registered, readiness reported SHADOW_READY for v5 - pairing
+        // v5's macro-F1 with v4's telemetry.
+        let v4 = rec("fish", 4, 0.80, 0.70);
+        let v5 = rec("fish", 5, 0.85, 0.75);
+        let recs = vec![v4, v5];
+        let r = assess_family(
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &recs,
+            Some(4), // manifest still runs v4
+            Some(&soak(150, 4, 0.92)),
+            JobPhase::Idle,
+            &passed_jobs(),
+            &ReadinessThresholds::default(),
+        );
+        assert_ne!(
+            r.status,
+            ReadinessStatus::ShadowReady,
+            "v5's metrics plus v4's soak is not evidence for v5"
+        );
+        assert_eq!(r.status, ReadinessStatus::CandidateReady);
+        let chk = r.checks.iter().find(|c| c.name == "shadow_evidence_revision").unwrap();
+        assert!(!chk.passed);
+        assert!(
+            chk.detail.contains("v5") && chk.detail.contains("v4"),
+            "must name both revisions: {}",
+            chk.detail
+        );
+        assert!(chk.next_action.contains("Promote"), "{}", chk.next_action);
+        assert!(r.blockers.iter().any(|b| b.contains("shadow_evidence_revision")));
+    }
+
+    #[test]
+    fn a_candidate_with_its_own_deployed_soak_is_shadow_ready() {
+        // The fix must not become a permanent blocker: the soak and the metrics
+        // describing the same revision is the normal, good case.
+        let recs = vec![rec("fish", 5, 0.85, 0.75)];
+        let r = assess_family(
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &recs,
+            Some(5),
+            Some(&soak(150, 4, 0.92)),
+            JobPhase::Idle,
+            &passed_jobs(),
+            &ReadinessThresholds::default(),
+        );
+        assert_eq!(r.status, ReadinessStatus::ShadowReady);
+        let chk = r.checks.iter().find(|c| c.name == "shadow_evidence_revision").unwrap();
+        assert!(chk.passed, "{}", chk.detail);
+        assert!(!r.blockers.iter().any(|b| b.contains("shadow_evidence_revision")));
+    }
+
+    #[test]
+    fn a_deployed_revision_with_no_registry_record_is_not_claimed_as_evidence() {
+        // Bytes are deployed but no record describes them: there are no metrics
+        // to report, so the panel must say so rather than pairing the soak with
+        // some older candidate's numbers.
+        let recs = vec![rec("fish", 5, 0.85, 0.75)];
+        let r = assess_family(
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &recs,
+            None,
+            Some(&soak(150, 4, 0.92)),
+            JobPhase::Idle,
+            &passed_jobs(),
+            &ReadinessThresholds::default(),
+        );
+        let chk = r.checks.iter().find(|c| c.name == "shadow_evidence_revision").unwrap();
+        assert!(!chk.passed);
+        assert!(chk.detail.contains("not deployed"), "{}", chk.detail);
     }
 }

@@ -1072,6 +1072,21 @@ export default function TrainingCenter() {
                   {j.error && <span className="text-bad"> · {j.error.slice(0, 200)}</span>}
                   {j.candidate_id && <span> · candidate {j.candidate_id}</span>}
                 </div>
+                {/*
+                  What actually trained, from the frozen snapshot: the bytes'
+                  checksum, and why any row is missing. "100 rows" alone cannot
+                  answer "exactly what data produced this model".
+                */}
+                <div className="font-mono text-[10px] text-fg-mute mt-0.5 break-words">
+                  frozen {j.snapshot_labels_sha} · {j.snapshot_rows_unreviewed} unreviewed ·{" "}
+                  {j.snapshot_rows_excluded_by_review} excluded
+                  {Object.entries(j.snapshot_exclusions).map(([why, n]) => (
+                    <span key={why}>
+                      {" · "}
+                      {why}: {n}
+                    </span>
+                  ))}
+                </div>
                 {j.progress.log_tail.length > 0 && (
                   <div className="font-mono text-[10px] text-fg-mute mt-1 break-words">
                     {j.progress.log_tail.slice(-2).map((l, i) => <div key={i}>{l.slice(0, 160)}</div>)}

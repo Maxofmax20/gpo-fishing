@@ -18,7 +18,7 @@
 //!   startup is honestly marked INTERRUPTED (never claimed complete).
 
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -91,6 +91,21 @@ pub struct SnapshotMeta {
     /// caller can show how much of the frozen set is human-verified.
     #[serde(default = "default_rows_unreviewed")]
     pub rows_unreviewed: usize,
+    /// Why each excluded row was excluded, counted by reason.
+    ///
+    /// A bare count cannot be acted on: a reviewer cannot tell a human rejection
+    /// from a data defect. Sorted, so the map is stable across runs and two
+    /// snapshots of the same data produce byte-identical metadata.
+    #[serde(default)]
+    pub exclusions: BTreeMap<String, usize>,
+    /// Fingerprint of the frozen `labels.jsonl` BYTES the trainer reads
+    /// (`ln-<first 16 hex of sha256>`).
+    ///
+    /// Distinct from `fingerprint`, which hashes the rows' logical fields: two
+    /// snapshots can agree on every field and still differ byte-for-byte, and
+    /// then they are not the same training set.
+    #[serde(default = "default_labels_none")]
+    pub labels_sha: String,
 }
 
 fn default_review_none() -> String {
@@ -109,6 +124,10 @@ fn default_rows_unreviewed() -> usize {
     0
 }
 
+fn default_labels_none() -> String {
+    "none".to_string()
+}
+
 // ---- human-review projection (training eligibility) ----
 
 /// Minimal projection of one `reviews.jsonl` line (see [`super::review`]).
@@ -124,6 +143,12 @@ struct ReviewEligibilityLine {
     image_id: String,
     #[serde(default)]
     training_eligible: bool,
+    /// Present so the snapshot can record WHY a row was dropped. A bare
+    /// "excluded: 3" is not actionable.
+    #[serde(default)]
+    status: Option<String>,
+    #[serde(default)]
+    excluded_reason: Option<String>,
 }
 
 /// Parse `reviews.jsonl` bytes into per-image eligibility lines, ALSO
@@ -231,11 +256,35 @@ pub fn snapshot_dataset(
         ));
     }
     let eligibility = review_eligibility_map(&review_records);
+    // Human-readable reason per excluded image, straight from the review record.
+    let reasons: HashMap<&str, String> = review_records
+        .iter()
+        .filter(|r| !r.training_eligible)
+        .map(|r| {
+            let why = r
+                .excluded_reason
+                .clone()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| match r.status.as_deref().unwrap_or("") {
+                    "SKIPPED" => "human skipped".to_string(),
+                    "UNKNOWN" => "human marked unknown".to_string(),
+                    "CONFLICT" => "unresolved conflict".to_string(),
+                    "" => "human verdict: not training-eligible".to_string(),
+                    other => format!("human verdict {other}: not training-eligible"),
+                });
+            (r.image_id.as_str(), why)
+        })
+        .collect();
 
     // Filter BEFORE any write, so a rejected snapshot leaves nothing behind.
     let mut kept: Vec<MlAnnotation> = Vec::with_capacity(rows.len());
     let mut rows_excluded_by_review = 0usize;
     let mut rows_unreviewed = 0usize;
+    // WHY each row is absent, counted. A bare "excluded: 3" tells a reviewer
+    // nothing; they cannot tell a human rejection from a data defect, and so
+    // cannot act on it. Recorded per reason so the snapshot is auditable on its
+    // own terms.
+    let mut exclusions: BTreeMap<String, usize> = BTreeMap::new();
     for r in rows {
         match eligibility.get(r.image_id.as_str()) {
             None => {
@@ -243,7 +292,17 @@ pub fn snapshot_dataset(
                 kept.push(r.clone());
             }
             Some(true) => kept.push(r.clone()),
-            Some(false) => rows_excluded_by_review += 1,
+            Some(false) => {
+                rows_excluded_by_review += 1;
+                *exclusions
+                    .entry(
+                        reasons
+                            .get(r.image_id.as_str())
+                            .cloned()
+                            .unwrap_or_else(|| "human verdict: not training-eligible".to_string()),
+                    )
+                    .or_insert(0) += 1;
+            }
         }
     }
     if kept.is_empty() {
@@ -280,6 +339,12 @@ pub fn snapshot_dataset(
         .collect();
     test_sessions.sort();
     let sessions = kept.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
+    // CHECKSUM OF THE ACTUAL TRAINING INPUT. `fingerprint` describes the rows;
+    // this describes the bytes the trainer will read. Two snapshots with the
+    // same fingerprint but different bytes (a changed serialiser, a stray
+    // whitespace change, a truncated write) are different training sets, and
+    // only this catches it.
+    let labels_sha = format!("ln-{}", &super::ml_model::sha256_hex(labels.as_bytes())[..16]);
     Ok(SnapshotMeta {
         fingerprint: dataset_fingerprint(&kept, dataset_version),
         rows: kept.len(),
@@ -291,6 +356,8 @@ pub fn snapshot_dataset(
         entity_registry_version: super::knowledge::KNOWLEDGE_VERSION,
         rows_excluded_by_review,
         rows_unreviewed,
+        exclusions,
+        labels_sha,
     })
 }
 
@@ -363,6 +430,20 @@ pub struct TrainingJob {
     /// Review fingerprint frozen with the snapshot ("none" when unreviewed).
     #[serde(default = "default_review_none")]
     pub review_fingerprint: String,
+    /// Checksum of the frozen `labels.jsonl` this job trains on.
+    ///
+    /// "Exactly what data produced this model" has to be answerable from the
+    /// job record alone, months later, without the snapshot directory still
+    /// being present.
+    #[serde(default = "default_labels_none")]
+    pub snapshot_labels_sha: String,
+    /// Why rows were absent from the frozen set, counted by reason.
+    #[serde(default)]
+    pub snapshot_exclusions: BTreeMap<String, usize>,
+    #[serde(default)]
+    pub snapshot_rows_excluded_by_review: usize,
+    #[serde(default)]
+    pub snapshot_rows_unreviewed: usize,
     pub snapshot_dir: PathBuf,
     pub created_at: u64,
     pub started_at: Option<u64>,
@@ -492,6 +573,10 @@ pub fn create_job(
         frozen_sessions: snapshot.sessions,
         frozen_test_sessions: snapshot.test_sessions.clone(),
         review_fingerprint: snapshot.review_fingerprint.clone(),
+        snapshot_labels_sha: snapshot.labels_sha.clone(),
+        snapshot_exclusions: snapshot.exclusions.clone(),
+        snapshot_rows_excluded_by_review: snapshot.rows_excluded_by_review,
+        snapshot_rows_unreviewed: snapshot.rows_unreviewed,
         snapshot_dir: snapshot.snap_dir.clone(),
         created_at: now_ms(),
         started_at: None,
@@ -1381,6 +1466,7 @@ mod tests {
             created_at: 1, snap_dir: dir.clone(),
             review_fingerprint: "none".into(), entity_registry_version: 1,
             rows_excluded_by_review: 0, rows_unreviewed: 0,
+            exclusions: BTreeMap::new(), labels_sha: "none".into(),
         };
         let mut j = create_job(&dir, "fish", "manual", &snap, 1, "gpo_train.fish_train", 40, 7, "test", false).unwrap();
         j.status = JobStatus::Running;
@@ -1402,6 +1488,7 @@ mod tests {
             created_at: 1, snap_dir: dir.clone(),
             review_fingerprint: "none".into(), entity_registry_version: 1,
             rows_excluded_by_review: 0, rows_unreviewed: 0,
+            exclusions: BTreeMap::new(), labels_sha: "none".into(),
         };
         assert!(create_job(&dir, "dragons", "manual", &snap, 1, "m", 1, 1, "t", false).is_err());
         let _ = std::fs::remove_dir_all(&dir);
@@ -1506,6 +1593,49 @@ mod tests {
         for bad in ["../escape", "..\\escape", "a/b", "a\\b", "", "NUL", &"x".repeat(80)] {
             assert!(load_job(&dir, bad).is_err(), "must reject {bad:?}");
         }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_snapshot_states_why_each_row_is_missing_and_hashes_its_input() {
+        let (dir, rows) = seeded_review_dir("why");
+        let meta = snapshot_dataset(&dir, &dir.join("snap"), &rows, 1).unwrap();
+        // Exclusions are counted BY REASON, from the review record itself.
+        assert_eq!(meta.rows_excluded_by_review, 1);
+        let reasons: Vec<String> = meta.exclusions.keys().cloned().collect();
+        assert_eq!(reasons.len(), 1, "one reason per excluded row: {:?}", meta.exclusions);
+        assert!(
+            reasons[0].contains("skipped") || reasons[0].contains("SKIP"),
+            "the reason must come from the human verdict, not a generic label: {:?}",
+            reasons
+        );
+        assert_eq!(meta.exclusions.values().sum::<usize>(), meta.rows_excluded_by_review);
+        // The frozen bytes are hashed so two snapshots that agree on every field
+        // but differ byte-for-byte are still distinguishable.
+        assert!(meta.labels_sha.starts_with("ln-"), "{}", meta.labels_sha);
+        let on_disk = std::fs::read(dir.join("snap").join("labels.jsonl")).unwrap();
+        let expect = format!("ln-{}", &crate::core::ml_model::sha256_hex(&on_disk)[..16]);
+        assert_eq!(meta.labels_sha, expect, "the hash must be of the real file");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn identical_inputs_produce_identical_snapshot_metadata() {
+        // Reproducibility: same dataset + same reviews + same config => same
+        // snapshot, metadata included. A BTreeMap (not HashMap) is what makes
+        // the serialised `exclusions` stable across runs.
+        let (dir, rows) = seeded_review_dir("repro2");
+        let a = snapshot_dataset(&dir, &dir.join("a"), &rows, 1).unwrap();
+        let b = snapshot_dataset(&dir, &dir.join("b"), &rows, 1).unwrap();
+        assert_eq!(a.labels_sha, b.labels_sha);
+        assert_eq!(
+            serde_json::to_string(&a.exclusions).unwrap(),
+            serde_json::to_string(&b.exclusions).unwrap()
+        );
+        assert_eq!(
+            std::fs::read(dir.join("a").join("labels.jsonl")).unwrap(),
+            std::fs::read(dir.join("b").join("labels.jsonl")).unwrap()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -823,10 +823,10 @@ fn ml_store(st: &State<'_, AppState>) -> crate::core::ml_dataset::MlDatasetStore
 
 #[tauri::command]
 pub fn ml_samples(st: State<'_, AppState>) -> Vec<crate::core::ml_dataset::MlAnnotation> {
-    let mut rows = ml_store(&st).annotations();
-    rows.reverse();
-    rows.truncate(100);
-    rows
+    // Bounded read. This previously parsed the entire labels file, reversed it,
+    // and truncated to 100 - so showing the newest 100 samples cost a full parse
+    // of every row in the dataset.
+    ml_store(&st).annotations_page(0, 100)
 }
 
 #[tauri::command]

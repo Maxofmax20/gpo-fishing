@@ -644,6 +644,12 @@ export type TrainingJob = {
   frozen_sessions: number;
   frozen_test_sessions: string[];
   review_fingerprint: string;
+  /** Checksum of the frozen labels.jsonl this job trained on. */
+  snapshot_labels_sha: string;
+  /** Why rows were absent from the frozen set, counted by reason. */
+  snapshot_exclusions: Record<string, number>;
+  snapshot_rows_excluded_by_review: number;
+  snapshot_rows_unreviewed: number;
   snapshot_dir: string;
   created_at: number;
   started_at: number | null;

@@ -616,16 +616,48 @@ impl MlDatasetStore {
         Ok(true)
     }
 
+/// Stream every non-empty line of `labels.jsonl` into `f`.
+///
+/// ONE read path for every reader, so none of them can quietly disagree about
+/// what the file contains. Returns how many lines could not be read at all.
+///
+/// An I/O error ends the iteration and is COUNTED: a truncated read must never
+/// be mistaken for a shorter dataset, because every downstream number - row
+/// counts, session counts, splits, the snapshot - is computed from this stream.
+fn for_each_line<F: FnMut(&str)>(&self, mut f: F) -> usize {
+    let Some(reader) = self.lines() else { return 0 };
+    let mut it = std::io::BufRead::lines(reader);
+    let mut io_errors = 0usize;
+    loop {
+        match it.next() {
+            Some(Ok(l)) => {
+                if !l.trim().is_empty() {
+                    f(&l);
+                }
+            }
+            Some(Err(e)) => {
+                io_errors += 1;
+                tracing::warn!(
+                    "labels.jsonl read error after {} line(s): {e}; dataset is TRUNCATED",
+                    io_errors
+                );
+                break;
+            }
+            None => break,
+        }
+    }
+    io_errors
+}
+
     /// Rows whose line failed to parse. Counted, never silently dropped.
     pub fn unreadable_lines(&self) -> usize {
-        let Ok(content) = std::fs::read_to_string(self.labels_path()) else {
-            return 0;
-        };
-        content
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .filter(|l| serde_json::from_str::<MlAnnotation>(l).is_err())
-            .count()
+        let mut bad = 0usize;
+        let _ = self.for_each_line(|l| {
+            if serde_json::from_str::<MlAnnotation>(l).is_err() {
+                bad += 1;
+            }
+        });
+        bad
     }
 
     /// Parse the whole label set, but report a partially-written file.
@@ -636,19 +668,19 @@ impl MlDatasetStore {
     /// row the parser skipped is a row no filter can see, so it could be
     /// frozen out of a training set without trace.
     pub fn annotations_checked(&self) -> Result<Vec<MlAnnotation>, String> {
-        let Ok(content) = std::fs::read_to_string(self.labels_path()) else {
-            return Ok(Vec::new());
-        };
         let mut rows = Vec::new();
         let mut bad = 0usize;
-        for line in content.lines() {
-            if line.trim().is_empty() {
-                continue;
-            }
-            match serde_json::from_str::<MlAnnotation>(line) {
-                Ok(r) => rows.push(r),
-                Err(_) => bad += 1,
-            }
+        // Streamed, not slurped: `read_to_string` materialised the entire
+        // labels file as one String before a single row was parsed, so at 100k
+        // rows the String and the parsed Vec were both fully resident.
+        let io_errors = self.for_each_line(|l| match serde_json::from_str::<MlAnnotation>(l) {
+            Ok(r) => rows.push(r),
+            Err(_) => bad += 1,
+        });
+        if io_errors > 0 {
+            return Err(format!(
+                "labels.jsonl had {io_errors} read error(s); refusing to act on a truncated dataset"
+            ));
         }
         if bad > 0 {
             return Err(format!(
@@ -658,11 +690,52 @@ impl MlDatasetStore {
         Ok(rows)
     }
 
+    /// Hard ceiling on how many rows one page may return.
+    pub const MAX_PAGE_ROWS: usize = 500;
+
+    /// One page of rows, newest first, with a server-side cap.
+    ///
+    /// The previous implementation read the whole file, reversed it, and
+    /// truncated to 100 - so displaying 100 rows cost a full parse. This reads
+    /// only the tail it needs, and the cap is enforced here rather than trusted
+    /// from the caller.
+    pub fn annotations_page(&self, offset: usize, limit: usize) -> Vec<MlAnnotation> {
+        let limit = limit.clamp(1, Self::MAX_PAGE_ROWS);
+        let mut rows: Vec<MlAnnotation> = Vec::new();
+        let _ = self.for_each_line(|l| {
+            if let Ok(r) = serde_json::from_str::<MlAnnotation>(l) {
+                rows.push(r);
+            }
+        });
+        // Newest first: the UI shows the most recent captures. Walking in
+        // reverse and skipping is what makes `offset` mean "N rows back from the
+        // newest" rather than "row N of the file".
+        rows.into_iter().rev().skip(offset).take(limit).collect()
+    }
+
+    /// Buffered line reader over `labels.jsonl`, or `None` when the file is absent.
+    ///
+    /// A 256 KiB buffer: JSONL rows are ~500 bytes, so this absorbs many rows per
+    /// syscall without the file ever being resident in full.
+    fn lines(&self) -> Option<std::io::BufReader<std::fs::File>> {
+        Some(std::io::BufReader::with_capacity(
+            256 * 1024,
+            std::fs::File::open(self.labels_path()).ok()?,
+        ))
+    }
+
     pub fn annotations(&self) -> Vec<MlAnnotation> {
-        let Ok(content) = std::fs::read_to_string(self.labels_path()) else {
-            return Vec::new();
-        };
-        content.lines().filter_map(|l| serde_json::from_str(l).ok()).collect()
+        // The parsed Vec is inherently O(rows) because the caller asked for
+        // every row, but the whole-file String is no longer resident alongside
+        // it, and a read error is now visible instead of looking like an empty
+        // file.
+        let mut rows = Vec::new();
+        let _ = self.for_each_line(|l| {
+            if let Ok(r) = serde_json::from_str::<MlAnnotation>(l) {
+                rows.push(r);
+            }
+        });
+        rows
     }
 
     /// Annotate (or correct) one image's labels. Corrections append to
@@ -1914,6 +1987,66 @@ mod tests {
         assert!(err.contains("unreadable"), "{err}");
         // The lenient reader still works for read-only panels.
         assert_eq!(store.annotations().len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn paged_reads_are_bounded_server_side() {
+        let dir = std::env::temp_dir().join("gpo-page-cap");
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = MlDatasetStore::new(dir.clone());
+        // Distinct images so dedup does not fold them.
+        let png = |v: u8| {
+            let mut px = vec![v; 16 * 16 * 3];
+            for (i, b) in px.iter_mut().enumerate() {
+                if i % 3 == 0 {
+                    *b = v.wrapping_add((i % 7) as u8);
+                }
+            }
+            let mut out = Vec::new();
+            {
+                use image::ImageEncoder;
+                image::codecs::png::PngEncoder::new(&mut out)
+                    .write_image(&px, 16, 16, image::ExtendedColorType::Rgb8)
+                    .unwrap();
+            }
+            out
+        };
+        for i in 0..12u8 {
+            store
+                .import_png(
+                    &png(i * 17),
+                    "s1",
+                    MlTask::EntityRecognition,
+                    None,
+                    &format!("ocr{i}"),
+                    "drop",
+                    "gameplay",
+                )
+                .unwrap();
+        }
+        assert_eq!(store.annotations().len(), 12);
+
+        // A caller asking for 100_000 gets the server ceiling, not 100_000.
+        let page = store.annotations_page(0, 100_000);
+        assert_eq!(page.len(), MlDatasetStore::MAX_PAGE_ROWS.min(12));
+
+        // Newest first, exactly the requested window.
+        let first = store.annotations_page(0, 3);
+        assert_eq!(first.len(), 3);
+        assert_eq!(first[0].ocr_text, "ocr11", "newest row first");
+        assert_eq!(first[1].ocr_text, "ocr10");
+        assert_eq!(first[2].ocr_text, "ocr9");
+
+        // Paging walks without overlap or gaps.
+        let second = store.annotations_page(3, 3);
+        assert_eq!(second[0].ocr_text, "ocr8");
+        assert_eq!(second[2].ocr_text, "ocr6");
+
+        // Offsets past the end return nothing rather than panicking.
+        assert!(store.annotations_page(999, 10).is_empty());
+        // A zero limit is clamped up to 1, never to "everything".
+        assert_eq!(store.annotations_page(0, 0).len(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
