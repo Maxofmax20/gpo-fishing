@@ -942,6 +942,18 @@ export type ReviewCoverageView = {
   class_readiness: ClassReadiness[];
 };
 
+/**
+ * The priority queue plus the TRUE total, so the UI can say
+ * "showing 200 of 4,118" instead of implying the returned rows are all of it.
+ */
+export type PriorityPage = {
+  items: PriorityItem[];
+  /** Rows matching the filter BEFORE `limit` was applied. */
+  total_matching: number;
+  /** Hard cap on rows returned in one request. */
+  limit: number;
+};
+
 export type PriorityItem = {
   image_id: string;
   session_id: string;

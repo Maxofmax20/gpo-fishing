@@ -52,7 +52,7 @@ import type {
   HistoryEntry,
   ReviewRecord,
   ReviewCoverageView,
-  PriorityItem,
+  PriorityPage,
   PrioritySort,
   EntityHit,
   DropEntry,
@@ -222,14 +222,21 @@ export const api = {
     onlyHard?: boolean;
     onlyDisagreement?: boolean;
     sort?: PrioritySort;
-  }) =>
-    invoke<PriorityItem[]>("review_priority", {
+    /**
+     * Switches the queue from "pending work" to "records with this status",
+     * so reviewed/conflicted items can be inspected without client-side
+     * filtering. UNREVIEWED here means "explicitly unreviewed" (e.g. undone).
+     */
+    status?: ReviewStatus;
+  }): Promise<PriorityPage> =>
+    invoke<PriorityPage>("review_priority", {
       limit: opts?.limit,
       entity: opts?.entity,
       session: opts?.session,
       onlyHard: opts?.onlyHard,
       onlyDisagreement: opts?.onlyDisagreement,
       sort: opts?.sort,
+      status: opts?.status,
     }),
   reviewSearch: (query: string) => invoke<EntityHit[]>("review_search", { query }),
   dropsExplorer: () => invoke<DropEntry[]>("drops_explorer"),

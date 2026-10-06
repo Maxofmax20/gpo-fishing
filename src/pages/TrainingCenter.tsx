@@ -133,24 +133,6 @@ function fromPriorityItem(p: PriorityItem): QueueRow {
   };
 }
 
-function fromReviewRecord(r: ReviewRecord): QueueRow {
-  return {
-    image_id: r.image_id,
-    session_id: r.session_id,
-    // A reviewed row has no capture timestamp in ReviewRecord; `reviewed_at`
-    // is what the backend does expose, so it is labelled as review time.
-    timestamp_ms: r.reviewed_at ?? 0,
-    ocr_text: r.ocr_text ?? "",
-    entity_id: r.human_entity_id ?? r.model_prediction,
-    review_status: r.review_status,
-    score: null,
-    reason: r.excluded_reason ? `excluded: ${r.excluded_reason}` : `reviewed by ${r.reviewer_version || "unknown"}`,
-    is_hard_example: r.is_hard_example,
-    ocr_disagreement: r.vision_ocr_agreement === false,
-    model_confidence: r.model_confidence,
-    from_status_filter: true,
-  };
-}
 
 /** Types the target of a keydown/click as an element, for the text-entry
  *  guard. Returns null for anything that is not a DOM node. */
@@ -277,6 +259,8 @@ export default function TrainingCenter() {
   const [coverage, setCoverage] = useState<ReviewCoverageView | null>(null);
   const [queue, setQueue] = useState<QueueRow[]>([]);
   const [queueTruncated, setQueueTruncated] = useState(false);
+  /** Rows matching the current filter, before the request limit. */
+  const [queueTotal, setQueueTotal] = useState(0);
   const [integrity, setIntegrity] = useState<ReviewIntegrity | null>(null);
   const [drops, setDrops] = useState<DropEntry[]>([]);
   const [readiness, setReadiness] = useState<ModelReadiness[]>([]);
@@ -352,39 +336,38 @@ export default function TrainingCenter() {
   }, []);
 
   /**
-   * The one place the queue is fetched. Every filter is pushed to the
-   * backend: `review_priority` for the pending queue, `review_list` when a
-   * status filter is active (the priority command has no status parameter).
-   * Nothing is filtered in the browser.
+   * The one place the queue is fetched. Every filter - including the status
+   * filter - is pushed to `review_priority`, which also returns the true
+   * `total_matching` before `limit` was applied. Nothing is filtered in the
+   * browser.
    */
-  const fetchQueue = useCallback(async (): Promise<QueueRow[]> => {
-    if (fStatus) return (await api.reviewList(fStatus, QUEUE_LIMIT)).map(fromReviewRecord);
-    const items = await api.reviewPriority({
+  const fetchQueue = useCallback(async (): Promise<{ rows: QueueRow[]; total: number }> => {
+    const page = await api.reviewPriority({
       limit: QUEUE_LIMIT,
       entity: fEntity || undefined,
       session: fSession || undefined,
       onlyHard: fHard,
       onlyDisagreement: fDisagree,
       sort: fSort,
+      status: fStatus || undefined,
     });
-    return items.map(fromPriorityItem);
+    return { rows: page.items.map(fromPriorityItem), total: page.total_matching };
   }, [fStatus, fEntity, fSession, fHard, fDisagree, fSort]);
 
-  const applyQueue = useCallback((items: QueueRow[]) => {
-    setQueue(items);
-    // `length === limit` means the backend truncated; the true total is
-    // unknowable from here, so the UI never claims one.
-    setQueueTruncated(items.length >= QUEUE_LIMIT);
+  const applyQueue = useCallback((rows: QueueRow[], total: number) => {
+    setQueue(rows);
+    setQueueTotal(total);
+    setQueueTruncated(total > rows.length);
   }, []);
 
   /** Queue + coverage. This is the only tier a human verdict triggers —
    *  `refreshSlow` reads seven whole-dataset commands. */
   const refreshQueue = useCallback(async (): Promise<QueueRow[]> => {
     try {
-      const [items, cov] = await Promise.all([fetchQueue(), api.reviewCoverage()]);
-      applyQueue(items);
+      const [{ rows, total }, cov] = await Promise.all([fetchQueue(), api.reviewCoverage()]);
+      applyQueue(rows, total);
       setCoverage(cov);
-      return items;
+      return rows;
     } catch (e) {
       showToast("error", "Review queue" + ": " + String(e));
       return [];
@@ -444,9 +427,9 @@ export default function TrainingCenter() {
     let live = true;
     (async () => {
       try {
-        const items = await fetchQueue();
+        const { rows, total } = await fetchQueue();
         if (!live) return;
-        applyQueue(items);
+        applyQueue(rows, total);
         // A filter change redefines the list, so the old index is meaningless.
         setCursor(0);
         setLastVerdict(null);
@@ -1361,7 +1344,11 @@ export default function TrainingCenter() {
             </Section>
           )}
 
-          <Section title={`Queue (${queue.length} loaded${queueTruncated ? `, truncated at ${QUEUE_LIMIT}` : ""})`}>
+          <Section
+            title={`Queue (${queue.length} loaded${
+              queueTruncated ? ` of ${queueTotal} matching, request capped at ${QUEUE_LIMIT}` : ""
+            })`}
+          >
             <div className="flex flex-col gap-1.5 p-3">
               {queue.slice(0, 15).map((p, i) => (
                 <button

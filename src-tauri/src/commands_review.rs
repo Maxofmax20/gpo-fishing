@@ -664,6 +664,20 @@ pub fn review_undo(st: State<'_, AppState>, image_id: String) -> Result<ReviewRe
 // Prioritized queue
 // ---------------------------------------------------------------------------
 
+/// The priority queue plus the TRUE total.
+///
+/// v5.6.x returned a bare `Vec`, so the UI could only say how many rows the
+/// single request returned. The count is returned alongside so the UI can
+/// say "showing 200 of 4,118" instead of inventing a total.
+#[derive(Debug, Serialize)]
+pub struct PriorityPage {
+    pub items: Vec<PriorityItem>,
+    /// Rows matching the filter BEFORE `limit` was applied.
+    pub total_matching: usize,
+    /// Hard cap on rows returned in one request.
+    pub limit: usize,
+}
+
 #[derive(Debug, Serialize)]
 pub struct PriorityItem {
     pub image_id: String,
@@ -677,6 +691,8 @@ pub struct PriorityItem {
     pub is_hard_example: bool,
     pub ocr_disagreement: bool,
     pub model_confidence: Option<f32>,
+    /// True when this row is present in the most recent frozen training
+    /// snapshot (i.e. it is already being learned from).
     pub in_latest_snapshot: bool,
 }
 
@@ -694,6 +710,7 @@ pub struct QueueFilter {
 /// Ordering is by weighted score, then newest-first, then image id, so the
 /// queue is stable across reloads and a reviewer sees the same order twice.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn review_priority(
     st: State<'_, AppState>,
     limit: Option<usize>,
@@ -702,7 +719,8 @@ pub fn review_priority(
     only_hard: Option<bool>,
     only_disagreement: Option<bool>,
     sort: Option<String>,
-) -> Vec<PriorityItem> {
+    status: Option<review::ReviewStatus>,
+) -> PriorityPage {
     let rows = load_rows(st.store.dir());
     let store = review_store(st.store.dir());
     let records = store.list();
@@ -729,6 +747,7 @@ pub fn review_priority(
     // v5.6.0 fed `hard_example` into the *low-confidence* slot, so hard
     // examples were displayed as "low model confidence" even though the queue
     // carries no confidence at all. Each flag now gets its own slot.
+    let cap = limit.unwrap_or(200).clamp(1, 500);
     let mut items = Vec::new();
     for r in &rows.all {
         let prior = reviews.get(r.image_id.as_str()).copied();
@@ -818,6 +837,15 @@ pub fn review_priority(
     if f.only_disagreement {
         items.retain(|i| i.ocr_disagreement);
     }
+    // A status filter makes this a REVIEWED queue rather than a pending one.
+    if let Some(want) = status {
+        items.retain(|i| {
+            let cur = reviews.get(i.image_id.as_str()).map(|r| r.review_status);
+            cur.map(|c| c == want).unwrap_or(want == review::ReviewStatus::Unreviewed)
+        });
+    }
+    let total_matching = items.len();
+    mark_in_latest_snapshot(st.store.dir(), &mut items);
     match f.sort.as_str() {
         "newest" => items.sort_by_key(|i| std::cmp::Reverse(i.timestamp_ms)),
         "oldest" => items.sort_by_key(|i| i.timestamp_ms),
@@ -839,8 +867,39 @@ pub fn review_priority(
                 .then(a.image_id.cmp(&b.image_id))
         }),
     }
-    items.truncate(limit.unwrap_or(200).clamp(1, 500));
-    items
+    items.truncate(cap);
+    PriorityPage { items, total_matching, limit: cap }
+}
+
+/// Flag rows that are already in the most recent frozen training snapshot, so
+/// a reviewer can see which samples the current models have learned from.
+///
+/// Bounded work: only the newest few snapshots are inspected, and a missing
+/// or unreadable snapshot simply leaves the flag false rather than failing.
+fn mark_in_latest_snapshot(data_dir: &std::path::Path, items: &mut [PriorityItem]) {
+    let Ok(rd) = std::fs::read_dir(data_dir.join("training").join("snapshots")) else { return };
+    let newest = rd
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir())
+        .filter_map(|e| {
+            e.metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .map(|t| (t, e.path()))
+        })
+        .max_by_key(|(t, _)| *t)
+        .map(|(_, p)| p);
+    let Some(snap) = newest else { return };
+    let Ok(text) = std::fs::read_to_string(snap.join("labels.jsonl")) else { return };
+    let in_snap: HashSet<String> = text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+        .filter_map(|v| v.get("image_id").and_then(|x| x.as_str()).map(str::to_string))
+        .collect();
+    for i in items.iter_mut() {
+        i.in_latest_snapshot = in_snap.contains(i.image_id.as_str());
+    }
 }
 
 // ---------------------------------------------------------------------------
