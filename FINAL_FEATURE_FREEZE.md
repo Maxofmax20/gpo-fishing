@@ -141,9 +141,13 @@ These are two separate claims and both are true.
 | fruit | 1/10 qualified. No trainer exists. `NOT_ENOUGH_DATA`. |
 | sunken | `UNVERIFIED / NOT IN KB`. Not invented. |
 
-Fish is **8/10** qualified classes and **0%** human review coverage, so its
-readiness status is `NOT_ENOUGH_CLASSES` — and no model quality number can
-override that.
+Live dataset: 8,609 rows, 8,609 images, 1 review record (0 eligible), 0 registered
+candidates, 23,448 shadow telemetry lines.
+
+Fish is **8/10** qualified classes and **1 reviewed row out of 8,609** (and that
+one review is a CONFLICT resolved as `invalid canonical mapping`, so it is not
+training-eligible), so its readiness status is `NOT_ENOUGH_CLASSES` — and no
+model quality number can override that.
 
 **There is no "fish v2 candidate ready".** No such candidate has ever existed.
 Any claim to that effect is false and must be removed from documentation.

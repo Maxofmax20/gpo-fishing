@@ -468,14 +468,20 @@ MODEL NOT READY
 
 | Family | Classes | Reviewed | Candidate | Shadow | Status |
 |---|---|---|---|---|---|
-| fish | 8/10 | 0% | none | not started | `NOT_ENOUGH_CLASSES` |
-| fruit | 1/10 | 0% | none | none | `NOT_ENOUGH_DATA` |
+| fish | 8/10 | 1 row / 8,609 (0 eligible) | none | not started | `NOT_ENOUGH_CLASSES` |
+| fruit | 1/10 | 0 | none | none | `NOT_ENOUGH_DATA` |
 | state | solved (1.0000) | — | — | — | protected |
 | sunken | — | — | — | — | `UNVERIFIED / NOT IN KB` |
 
 **No candidate has ever been registered.** `registry.json` does not exist. Any
 claim that a "fish v2 candidate" is ready, or that it reached 0.80 macro-F1, is
 false — those numbers exist only in unit tests with fabricated class names.
+
+The single review on record is a CONFLICT whose human label was
+`fish:tiger`; that entity is not in the KB, so the record is
+`training_eligible: false, excluded_reason: "invalid canonical mapping"`. The
+system correctly refused to turn a plausible-looking fish name into a canonical
+entity.
 
 Fish cannot train until ten classes each have ≥20 human-reviewed examples across
 ≥3 independent sessions with at least one held-out TEST example. Until then the

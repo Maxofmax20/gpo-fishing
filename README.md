@@ -3,7 +3,7 @@
 # 🎣 GPO Autofish - GUIDE
 
 **Current release: v5.7.0 — final feature release. See [FINAL_FEATURE_FREEZE.md](FINAL_FEATURE_FREEZE.md).**
-**Model status: fish is NOT READY (8/10 classes, 0% human-reviewed).** See
+**Model status: fish is NOT READY (8/10 classes, 1 reviewed row out of 8,609, no candidate).** See
 [Where the model actually stands](#-where-the-model-actually-stands).
 
 **💬 Join our Discord server:** https://discord.gg/unPZxXAtfb
@@ -308,14 +308,18 @@ MODEL NOT READY
 | | |
 |---|---|
 | `state_v1` | solved, 1.0000 — protected, do not retrain without cause |
-| `fish_v1` | 0.5824 deployed — **8/10 classes, 0% reviewed, no candidate, no soak** |
+| `fish_v1` | 0.5824 deployed — **8/10 classes, 1 reviewed row of 8,609, no candidate, no soak** |
 | fruit | 1/10 qualified, no trainer exists — `NOT_ENOUGH_DATA` |
 | sunken | `UNVERIFIED / NOT IN KB` — not invented |
 | production | `NOT READY`, by design; no production-control switch exists |
 
-**There is no "fish v2 candidate ready".** No such candidate has ever existed.
-Fish cannot train until ten classes each have ≥20 human-reviewed examples across
-≥3 independent sessions with a held-out TEST example.
+Live dataset: 8,609 rows, 8,609 images, 1 review record (0 training-eligible),
+0 registered candidates, 23,448 shadow telemetry lines.
+
+**There is no "fish v2 candidate ready".** No such candidate has ever existed —
+`registry.json` does not exist. Fish cannot train until ten classes each have ≥20
+human-reviewed examples across ≥3 independent sessions with a held-out TEST
+example.
 
 ## 📁 Project Structure
 
