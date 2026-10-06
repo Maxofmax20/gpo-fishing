@@ -165,8 +165,20 @@ def review_excluded_ids(root: str) -> set[str]:
     silently treating an unreadable review file as "nothing excluded" would
     reintroduce the exact fail-open this guards against.
     """
-    path = os.path.join(root, "reviews.jsonl")
-    if not os.path.isfile(path):
+    # `reviews.jsonl` lives in the STORE root, not beside `labels.jsonl`. The
+    # frozen snapshot carries a copy next to the labels; the live dataset does
+    # not. v5.7.0 looked only beside the labels, so in the manual-run fallback
+    # (GPO_DATASET_DIR unset) it found no file and silently excluded NOTHING -
+    # every row a human skipped, called unknown or flagged as a conflict would
+    # have trained.
+    candidates = [
+        os.path.join(root, "reviews.jsonl"),
+        os.path.join(os.path.dirname(os.path.abspath(root)), "reviews.jsonl"),
+        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(root)))),
+                    "reviews.jsonl"),
+    ]
+    path = next((p for p in candidates if os.path.isfile(p)), None)
+    if path is None:
         return set()
     excluded: set[str] = set()
     unreadable = 0

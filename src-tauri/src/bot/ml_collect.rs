@@ -295,13 +295,26 @@ impl MlCollector {
                 self.inner.written.fetch_add(1, Ordering::SeqCst);
                 self.inner.last_write_ms.store(now_ms(), Ordering::SeqCst);
                 self.inner.session_images.lock().push(image_id.clone());
+                // A DEDUP FOLD is not a new sample: `import_png` returned the
+                // existing id because the bytes were already stored. Counting
+                // it as written (and as a session sample) overstated collection
+                // yield, and `set_event` below would attach this moment's frame
+                // index to the other moment's row.
+                let folded = !self.dataset.image_is_new(&image_id);
+                if !folded {
+                    self.inner.written.fetch_add(1, Ordering::SeqCst);
+                    self.inner.last_write_ms.store(now_ms(), Ordering::SeqCst);
+                }
                 // Dedup may have folded this sample onto identical pixels
-                // from an earlier moment: carry over the reading ( OCR text
+                // from an earlier moment: carry over the reading (OCR text
                 // + entity) into empty fields rather than losing it.
                 let _ = self.dataset.fill_metadata(&image_id, &ocr, entity.as_deref());
-                // Attach labels known at capture time; otherwise just flag
-                // hard examples. Either way the sample is stored unlabeled
-                // for later human review (never auto-labeled).
+                // Machine-derived labels at capture time (game state from the
+                // state machine, ui_label from the bot, entity from OCR+KB).
+                // These are recorded with `annotator: "collector"` and are
+                // NOT training-eligible: `snapshot_dataset` keeps unreviewed
+                // rows but the review layer is what grants eligibility, so a
+                // collector label alone never trains.
                 if job.ui_label.is_some() || job.entity_id.is_some() || job.game_state.is_some() {
                     let _ = self.dataset.annotate(
                         &image_id,
@@ -322,19 +335,21 @@ impl MlCollector {
                 // Mirror counters into the session meta (best-effort) and
                 // attach temporal provenance: the pre-increment sample count
                 // is the zero-based per-session capture sequence.
-                if let Some(meta) = self.inner.session.lock().as_mut() {
-                    let frame_index = meta.samples as u64;
-                    let event_id = format!("{}#f{frame_index:06}", meta.session_id);
-                    let _ = self.dataset.set_event(&image_id, &event_id, frame_index);
-                    meta.samples += 1;
-                    #[cfg(test)]
-                    eprintln!("DEBUG meta-incr samples={}", meta.samples);
-                    if hard.is_some() {
-                        meta.hard_examples += 1;
+                //
+                // A DEDUP FOLD gets no frame index: the pixels belong to an
+                // earlier moment, and stamping this moment's index onto that
+                // row would assert a temporal provenance that never happened.
+                if !folded {
+                    if let Some(meta) = self.inner.session.lock().as_mut() {
+                        let frame_index = meta.samples;
+                        let event_id = format!("{}#f{frame_index:06}", meta.session_id);
+                        let _ = self.dataset.set_event(&image_id, &event_id, frame_index);
+                        meta.samples += 1;
+                        if hard.is_some() {
+                            meta.hard_examples += 1;
+                        }
                     }
                 }
-                #[cfg(test)]
-                eprintln!("DEBUG write_one done written-thread");
             }
             Err(e) => {
                 self.inner.write_errors.fetch_add(1, Ordering::SeqCst);

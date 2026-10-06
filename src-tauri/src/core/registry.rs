@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use super::ml_model::sha256_hex;
+use super::training::TRAINING_SUBDIR;
 
 fn now_ms() -> u64 {
     crate::events::now_ms()
@@ -249,6 +250,20 @@ fn save_registry_locked(data_dir: &Path, records: &[CandidateRecord]) -> Result<
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
+/// Has any shadow telemetry already been recorded for this family's slot?
+///
+/// The join key for soak evidence is `(stem, revision)`. If nothing has ever
+/// been observed for the slot, version 2 provably has no prior events; if
+/// something has, we can no longer prove that and must not reuse a number.
+fn shadow_events_exist_for(data_dir: &Path, family: &str) -> bool {
+    let Ok(raw) = std::fs::read_to_string(super::ml_capability::shadow_log_path(data_dir)) else {
+        return false;
+    };
+    let Some(stem) = shadow_stem(family) else { return false };
+    raw.lines().filter_map(|l| serde_json::from_str::<super::ml_capability::ShadowEvent>(l).ok())
+        .any(|e| e.model_version.as_deref() == Some(stem))
+}
+
 /// Next version for a family.
 ///
 /// Version numbers must be MONOTONIC across registry loss, otherwise a
@@ -268,7 +283,12 @@ pub fn next_version_checked(
     records: &[CandidateRecord],
     family: &str,
 ) -> Result<u32, String> {
-    let counter_path = registry_dir(data_dir)
+    // The counter lives OUTSIDE registry_dir: that directory is exactly what
+    // a user (or a "clear training data" cleanup) deletes to reset the app.
+    // A counter inside it dies with the registry, and the next candidate would
+    // recycle a dead revision's shadow events.
+    let counter_path = data_dir
+        .join(TRAINING_SUBDIR)
         .join("versions")
         .join(format!("{family}.version"));
     let from_records = records
@@ -284,12 +304,20 @@ pub fn next_version_checked(
     let next = match from_counter {
         Some(c) => from_records.max(c + 1),
         None => {
-            // No counter file yet. It is safe to derive from the records only
-            // if the registry itself is intact.
-            if registry_is_corrupt(data_dir) {
+            // No counter file (first run, or a wipe that took it too).
+            //
+            // The bundled manifests are version "1", so `from_records` yields 2
+            // for an empty registry: that is safe ONLY while no shadow
+            // telemetry exists for this slot. Once any event has been recorded,
+            // we cannot prove revision 2 has never been observed - and reusing
+            // it would merge a new model's soak with a dead model's. In that
+            // state we refuse rather than guess.
+            let slot_observed = shadow_events_exist_for(data_dir, family);
+            if registry_is_corrupt(data_dir) || slot_observed {
                 return Err(
-                    "registry is unreadable and no version counter exists; refusing to reuse \
-                     a version number (a recycled revision would inherit a dead model's soak)"
+                    "no version counter and shadow telemetry already exists for this slot; \
+                     refusing to reuse a version number (a recycled revision would inherit a \
+                     dead model's shadow events)"
                         .to_string(),
                 );
             }
@@ -590,6 +618,10 @@ pub fn promote_to_shadow(
         "input_width": 96,
         "input_height": 96,
         "classes": records[idx].classes,
+        // Fingerprint of the index -> label mapping. Written so a later
+        // permutation of `classes` is detectable; the weights checksum alone
+        // cannot catch it (the array lives in the manifest, not the .onnx).
+        "vocab_sha": records[idx].vocab_sha,
         "sha256": sha_file(&live_onnx)?,
         "temperature": records[idx].temperature,
         "test_accuracy": records[idx].metrics.accuracy,
@@ -597,6 +629,13 @@ pub fn promote_to_shadow(
         "ece": records[idx].metrics.ece,
         "test_sessions": records[idx].metrics.test_sessions,
         "test_n": records[idx].metrics.test_n,
+        // MANDATORY. v5.6.x omitted these, and `current_metrics_for` rebuilds
+        // the incumbent's metrics FROM THIS FILE on the next comparison. With
+        // `per_class_f1` empty, the per-class regression gate could never fire
+        // again after the first promotion - a documented fail-closed gate,
+        // silently disabled.
+        "per_class_f1": records[idx].metrics.per_class_f1,
+        "test_support": records[idx].metrics.per_class_test_support,
         "preprocess": {"pad": "square-black", "resize": "bilinear", "size": 96,
                        "mean": records[idx].mean, "std": records[idx].std},
     });
@@ -1272,6 +1311,63 @@ mod tests {
         assert!(
             after_loss > v4,
             "a lost registry must not recycle a version: {after_loss} <= {v4}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_fully_wiped_registry_still_refuses_to_recycle_a_version() {
+        // The strongest form: registry AND counter both gone, while
+        // shadow_events.jsonl (which lives in the data-dir root) survives with a
+        // dead revision's events. Deriving `max(records)+1` from an empty list
+        // would hand back version 2 and merge the two soaks.
+        let dir = std::env::temp_dir().join("gpo-reg-wiped");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Shadow telemetry survives a registry wipe (it lives in the data-dir
+        // root), so revision 2 is no longer provably unused.
+        std::fs::write(
+            dir.join("shadow_events.jsonl"),
+            b"{\"session_id\":\"s1\",\"event_id\":\"e1\",\"timestamp_ms\":1,\"model_version\":\"fish_v1\",\"model_revision\":\"2\"}\n",
+        )
+        .unwrap();
+
+        let err = next_version_checked(&dir, &[], "fish").unwrap_err();
+        assert!(
+            err.contains("refusing to reuse"),
+            "a wiped registry must refuse to number when telemetry exists: {err}"
+        );
+
+        // With an intact registry holding records, numbering resumes safely.
+        let _ = std::fs::remove_file(dir.join("shadow_events.jsonl"));
+        save_registry(&dir, &[record_for("fish", 3)]).unwrap();
+        assert_eq!(next_version_checked(&dir, &load_registry(&dir), "fish").unwrap(), 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_version_counter_survives_deleting_the_registry_directory() {
+        let dir = std::env::temp_dir().join("gpo-reg-counter-survival");
+        let _ = std::fs::remove_dir_all(&dir);
+        let recs = vec![record_for("fish", 1)];
+        save_registry(&dir, &recs).unwrap();
+        assert_eq!(next_version_checked(&dir, &recs, "fish").unwrap(), 2);
+
+        // The scenario that actually broke: wiping the registry directory.
+        let _ = std::fs::remove_dir_all(registry_dir(&dir));
+
+        // Shadow telemetry lives in the data-dir root and is untouched.
+        std::fs::write(
+            dir.join("shadow_events.jsonl"),
+            b"{\"session_id\":\"s1\",\"event_id\":\"e1\",\"timestamp_ms\":1,\"model_version\":\"fish_v1\",\"model_revision\":\"2\"}\n",
+        )
+        .unwrap();
+
+        let next = next_version_checked(&dir, &[], "fish").unwrap();
+        assert_ne!(
+            next, 2,
+            "must not hand back the dead revision 2, or its soak is inherited"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

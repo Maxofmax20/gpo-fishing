@@ -480,7 +480,25 @@ impl MlDatasetStore {
 /// linear scan over rows is fine at dataset scale), and then the bytes on disk
 /// must match exactly. A shared average hash is therefore a *hint*, never a
 /// decision.
-fn find_identical_bytes(&self, hash: u64, png_bytes: &[u8]) -> Result<Option<String>, String> {
+/// True when `import_png` stored a NEW image for this id.
+    ///
+    /// `import_png` returns the EXISTING id when the bytes were already
+    /// present (an exact-duplicate fold). The collector needs to tell "a new
+    /// sample was stored" from "this folded onto an earlier one": v5.6.x
+    /// counted both as `written`, inflating the yield the UI reports, and
+    /// stamped a second frame index onto one image's provenance.
+    ///
+    /// Safe only under `LABELS_WRITE_LOCK`, which the caller holds from
+    /// `import_png`.
+    pub fn image_is_new(&self, image_id: &str) -> bool {
+        self.annotations()
+            .iter()
+            .find(|a| a.image_id == image_id)
+            .map(|a| a.frame_index.is_none())
+            .unwrap_or(true)
+    }
+
+    fn find_identical_bytes(&self, hash: u64, png_bytes: &[u8]) -> Result<Option<String>, String> {
     for ann in self.annotations() {
         if image_id_hash(&ann.image_id) != Some(hash) {
             continue;
@@ -1794,5 +1812,108 @@ mod tests {
         assert!(out.iter().all(|id| *id == out[0]), "all racing imports must fold onto one id");
         labels_lines(&ds);
         assert_eq!(ds.annotations().len(), 1, "identical bytes must not duplicate rows");
+    }
+
+    /// Two visually DIFFERENT images that share an 8x8 average hash are the
+    /// case the old dedup got wrong: it treated them as the same picture.
+    fn colliding_pair() -> (Vec<u8>, Vec<u8>) {
+        // Same coarse luminance grid, different detail.
+        let make = |detail: bool| {
+            let mut px = vec![0u8; 32 * 32 * 3];
+            for y in 0..32 {
+                for x in 0..32 {
+                    // Every 4x4 block gets one of 8x8 luminance bands.
+                    let band = ((y / 4) * 8 + (x / 4)) as u8;
+                    let v = band.saturating_mul(7);
+                    let i = (y * 32 + x) * 3;
+                    let v = if detail { v } else { v.saturating_add(40) };
+                    px[i] = v;
+                    px[i + 1] = v;
+                    px[i + 2] = v;
+                }
+            }
+            let mut png = Vec::new();
+            {
+                use image::ImageEncoder;
+                image::codecs::png::PngEncoder::new(&mut png)
+                    .write_image(&px, 32, 32, image::ExtendedColorType::Rgb8)
+                    .unwrap();
+            }
+            png
+        };
+        (make(true), make(false))
+    }
+
+    #[test]
+    fn dedup_never_merges_two_different_images_that_share_an_average_hash() {
+        // v5.6.x deduped on the 64-bit 8x8 average hash, so a perceptual
+        // collision aliased two frames onto one row and the newer sample's OCR
+        // text / entity id was then written onto the OLDER image's row:
+        // silent ground-truth corruption with no error anywhere.
+        let dir = std::env::temp_dir().join("gpo-dedup-collision");
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = MlDatasetStore::new(dir.clone());
+        let (a, b) = colliding_pair();
+
+        // The images differ...
+        assert_ne!(a, b, "the fixture images must actually differ");
+        let id_a = store
+            .import_png(&a, "s1", MlTask::EntityRecognition, None, "FIRST", "drop", "gameplay")
+            .unwrap();
+        let id_b = store
+            .import_png(&b, "s1", MlTask::EntityRecognition, None, "SECOND", "drop", "gameplay")
+            .unwrap();
+        // Unconditionally: distinct bytes must always get distinct rows,
+        // whether or not this particular fixture happens to collide.
+        assert_ne!(id_a, id_b, "distinct bytes must never alias onto one row");
+        assert_eq!(store.annotations().len(), 2, "both rows must exist");
+        // The two rows must keep their OWN ocr text.
+        let rows = store.annotations();
+        let oa = rows.iter().find(|r| r.image_id == id_a).unwrap();
+        let ob = rows.iter().find(|r| r.image_id == id_b).unwrap();
+        assert_eq!(oa.ocr_text, "FIRST");
+        assert_eq!(ob.ocr_text, "SECOND", "labels must not bleed between images");
+
+        // Exact bytes still dedup.
+        let again = store
+            .import_png(&a, "s1", MlTask::EntityRecognition, None, "FIRST", "drop", "gameplay")
+            .unwrap();
+        assert_eq!(again, id_a, "identical bytes must fold onto the same row");
+        assert_eq!(store.annotations().len(), 2, "an exact duplicate adds no row");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn checked_reads_refuse_a_partial_dataset() {
+        let dir = std::env::temp_dir().join("gpo-labels-checked");
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = MlDatasetStore::new(dir.clone());
+        store
+            .import_png(
+                &colliding_pair().0,
+                "s1",
+                MlTask::EntityRecognition,
+                None,
+                "x",
+                "drop",
+                "gameplay",
+            )
+            .unwrap();
+        assert!(store.annotations_checked().is_ok());
+        assert_eq!(store.unreadable_lines(), 0);
+
+        // A malformed line must make the checked read fail, not silently
+        // shrink the dataset: a skipped row is a row no filter can see, so it
+        // could be frozen into (or out of) a snapshot with no trace.
+        let p = dir.join("datasets").join("gpo-vision").join("v1").join("labels.jsonl");
+        let mut body = std::fs::read_to_string(&p).unwrap();
+        body.push_str("{ not a row\n");
+        std::fs::write(&p, body).unwrap();
+        assert_eq!(store.unreadable_lines(), 1);
+        let err = store.annotations_checked().unwrap_err();
+        assert!(err.contains("unreadable"), "{err}");
+        // The lenient reader still works for read-only panels.
+        assert_eq!(store.annotations().len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -116,6 +116,7 @@ fn last_training_ms(store: &Store) -> Option<u64> {
         .max()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn family_eligibility(
     family: &str,
     rows: &[crate::core::ml_dataset::MlAnnotation],
@@ -123,6 +124,8 @@ fn family_eligibility(
     backend_ok: bool,
     backend_detail: &str,
     running: usize,
+    store_dir: Option<&std::path::Path>,
+    review_floor: f64,
 ) -> FamilyEligibility {
     let mut checks: Vec<GateCheck> = Vec::new();
     let mut ok = true;
@@ -183,6 +186,54 @@ fn family_eligibility(
         }
         _ => fail! {format!("unknown family '{family}'")},
     }
+
+    // HUMAN REVIEW GATE. Every check above is about COLLECTED data; none of it
+    // says a human ever looked at it. v5.6.x would report NOT_ENOUGH_REVIEW in
+    // the Readiness tab while happily training a model on 100%
+    // collector-labelled rows - the displayed blocker was decorative.
+    //
+    // Machine labels (annotator: "collector") are what the bot's own OCR+KB
+    // guess produced. Training on them is possible; training on them WITHOUT a
+    // human having checked the data is how a wrong label becomes a permanently
+    // learned "fact". This gate makes the review requirement enforceable.
+    let scoped: Vec<&crate::core::ml_dataset::MlAnnotation> = match family {
+        "fish" => rows.iter().filter(|r| r.entity_id.as_deref().is_some_and(|e| e.starts_with("fish:"))).collect(),
+        "fruit" => rows.iter().filter(|r| r.entity_id.as_deref().is_some_and(|e| e.starts_with("fruit:"))).collect(),
+        _ => rows
+            .iter()
+            .filter(|r| matches!(r.game_state.as_ref().map(|g| g.as_str()),
+                Some("waiting_for_bite") | Some("bite") | Some("catch_result")))
+            .collect(),
+    };
+    if scoped.is_empty() {
+        fail! {"no scoped rows for this family yet"};
+    } else {
+        let dir = store_dir.unwrap_or(std::path::Path::new("."));
+        let reviewed = crate::core::review::ReviewStore::new(dir.to_path_buf())
+            .list()
+            .into_iter()
+            .filter(|r| r.training_eligible)
+            .filter(|r| scoped.iter().any(|s| s.image_id == r.image_id))
+            .count();
+        let share = reviewed as f64 / scoped.len() as f64;
+        if share >= review_floor {
+            pass! {format!(
+                "{reviewed}/{} scoped rows human-reviewed and eligible ({:.0}% >= {:.0}%)",
+                scoped.len(),
+                share * 100.0,
+                review_floor * 100.0
+            )};
+        } else {
+            fail! {format!(
+                "only {reviewed}/{} scoped rows are human-reviewed and training-eligible \
+                 ({:.0}% < {:.0}% floor); collector labels alone are not training evidence",
+                scoped.len(),
+                share * 100.0,
+                review_floor * 100.0
+            )};
+        }
+    }
+
     FamilyEligibility { family: family.to_string(), eligible: ok, checks }
 }
 
@@ -245,7 +296,7 @@ pub async fn training_overview(st: State<'_, AppState>) -> Result<TrainingOvervi
             shadow_events,
             eligibility: ["fish", "fruit", "state"]
                 .iter()
-                .map(|f| family_eligibility(f, &rows, &tsettings, backend.available, &backend.detail, running))
+                .map(|f| family_eligibility(f, &rows, &tsettings, backend.available, &backend.detail, running, Some(store.dir()), tsettings.readiness_min_review_coverage as f64))
                 .collect(),
             auto_enabled: tsettings.auto_enabled,
             backend_available: backend.available,
@@ -282,7 +333,7 @@ pub fn training_start(
         .iter()
         .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
         .count();
-    let elig = family_eligibility(&family, &rows, &settings, true, "", running);
+    let elig = family_eligibility(&family, &rows, &settings, true, "", running, Some(st.store.dir()), settings.readiness_min_review_coverage as f64);
     if !elig.eligible {
         return Err(format!(
             "{} training blocked: {}",
@@ -1035,7 +1086,7 @@ pub(crate) fn training_auto_tick(
     if running >= s.max_concurrent_jobs.max(1) {
         return;
     }
-    let elig = family_eligibility(family, &rows, &s, true, "", running);
+    let elig = family_eligibility(family, &rows, &s, true, "", running, Some(store.dir()), s.readiness_min_review_coverage as f64);
     if !elig.eligible {
         training::append_history(
             store.dir(),
