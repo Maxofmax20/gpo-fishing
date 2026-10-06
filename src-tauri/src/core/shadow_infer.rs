@@ -8,6 +8,9 @@
 //!   may LOG the observations and nothing else.
 //! - The production provider (`ml_model.rs`) is untouched: `available()`
 //!   stays false, so nothing here can activate control.
+//! - Every loaded model carries its manifest revision, so shadow telemetry is
+//!   attributable to specific weights: a candidate promoted over a slot
+//!   (same stem) cannot inherit the displaced model's soak evidence.
 //!
 //! Preprocessing MUST equal training preprocessing (pad-to-square black,
 //! bilinear resize, /255, dataset mean/std — see each model's manifest
@@ -52,7 +55,13 @@ pub type ShadowSession =
     RunnableModel<TypedFact, Box<dyn TypedOp>, Graph<TypedFact, Box<dyn TypedOp>>>;
 
 pub struct ShadowModel {
+    /// Shadow slot stem (e.g. `fish_v1`). CONSTANT per slot: promoting a new
+    /// candidate overwrites these weights under the same name, so the stem
+    /// alone does not identify weights.
     pub name: String,
+    /// Manifest `version`, stringified. The revision half of the model's
+    /// identity: the stem says WHICH slot, this says WHICH weights.
+    pub revision: String,
     pub classes: Vec<String>,
     pub temperature: f32,
     pub test_accuracy: Option<f32>,
@@ -60,9 +69,38 @@ pub struct ShadowModel {
     session: ShadowSession,
 }
 
+impl ShadowModel {
+    /// Revision-aware identity, `<stem>@<revision>` (e.g. `fish_v1@2`). The
+    /// revision half is the raw manifest `version` string (no normalization)
+    /// so it equals the on-disk join key exactly. Two loads of the same slot
+    /// with different revisions are different models; never join telemetry on
+    /// the stem alone.
+    pub fn identity(&self) -> String {
+        format!("{}@{}", self.name, self.revision)
+    }
+
+    /// The revision half alone: the shadow-log grouping key that keeps a
+    /// newly promoted candidate's soak separate from the incumbent's.
+    pub fn identity_revision(&self) -> String {
+        self.revision.clone()
+    }
+}
+
 pub struct ShadowEngine {
     pub models_dir: PathBuf,
     pub models: HashMap<String, ShadowModel>,
+}
+
+/// Manifest `version` -> revision string. Strings pass through trimmed,
+/// numbers are stringified, and an absent/empty field becomes `"0"` so a
+/// manifest written before revisions existed still loads with a defined
+/// (unversioned) identity instead of colliding with a numbered one.
+pub fn revision_from_manifest(manifest: &serde_json::Value) -> String {
+    match manifest.get("version") {
+        Some(serde_json::Value::String(s)) if !s.trim().is_empty() => s.trim().to_string(),
+        Some(serde_json::Value::Number(n)) => n.to_string(),
+        _ => "0".to_string(),
+    }
 }
 
 fn load_one(models_dir: &Path, onnx_name: &str, json_name: &str) -> Result<ShadowModel, String> {
@@ -71,6 +109,11 @@ fn load_one(models_dir: &Path, onnx_name: &str, json_name: &str) -> Result<Shado
     let raw = std::fs::read_to_string(&json_path).map_err(|e| format!("{json_name}: {e}"))?;
     let m: ShadowManifest =
         serde_json::from_str(&raw).map_err(|e| format!("{json_name} invalid: {e}"))?;
+    // Revision is read from the raw document (not the typed field) so numeric
+    // versions and a missing/empty version both resolve deterministically.
+    let revision = revision_from_manifest(
+        &serde_json::from_str::<serde_json::Value>(&raw).unwrap_or(serde_json::Value::Null),
+    );
     if m.base.runtime != "tract" {
         return Err(format!("{}: runtime '{}' is not this tract build", json_name, m.base.runtime));
     }
@@ -94,6 +137,7 @@ fn load_one(models_dir: &Path, onnx_name: &str, json_name: &str) -> Result<Shado
     // Shape-check: single output of [1, n_classes].
     Ok(ShadowModel {
         name: m.base.name.clone(),
+        revision,
         classes: m.base.classes.clone(),
         temperature: m.temperature,
         test_accuracy: m.test_accuracy,
@@ -393,5 +437,52 @@ mod tests {
         // Lower temperature sharpens.
         let sharp = softmax_temp(&[2.0, 1.0, 0.0], 0.15);
         assert!(sharp[0] > p[0]);
+    }
+
+    #[test]
+    fn revision_is_read_from_the_manifest_version() {
+        // Strings pass through; numbers are stringified; absent/empty falls
+        // back to "0" so a pre-revision manifest still has a defined identity
+        // (and cannot collide with a numbered revision).
+        assert_eq!(revision_from_manifest(&serde_json::json!({"version": "2"})), "2");
+        assert_eq!(revision_from_manifest(&serde_json::json!({"version": " 7 "})), "7");
+        assert_eq!(revision_from_manifest(&serde_json::json!({"version": 12})), "12");
+        assert_eq!(revision_from_manifest(&serde_json::json!({"version": ""})), "0");
+        assert_eq!(revision_from_manifest(&serde_json::json!({"version": null})), "0");
+        assert_eq!(revision_from_manifest(&serde_json::json!({"name": "fish_v1"})), "0");
+        assert_eq!(revision_from_manifest(&serde_json::Value::Null), "0");
+    }
+
+    #[test]
+    fn model_identity_is_stem_at_revision() {
+        let models_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
+        let engine = match ShadowEngine::load(&models_dir) {
+            Ok(e) => e,
+            Err(e) => panic!("repo models must load: {e}"),
+        };
+        for model in ["state_v1", "fish_v1"] {
+            let m = &engine.models[model];
+            // Identity names the weights, not just the slot.
+            assert_eq!(m.identity(), format!("{model}@{}", m.revision));
+            assert_eq!(m.identity_revision(), m.revision);
+            assert!(!m.revision.is_empty());
+            // ...and it matches the on-disk manifest it was loaded from.
+            let raw: serde_json::Value = serde_json::from_str(
+                &std::fs::read_to_string(models_dir.join(format!("{model}.json"))).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(m.revision, revision_from_manifest(&raw), "{model} revision drift");
+        }
+        // A promotion rewrites the manifest with a bumped `version` and the
+        // SAME stem: the identity must change even though the slot does not.
+        // The revision half is the RAW manifest version string (no "v"
+        // normalization) so it equals the on-disk join key exactly.
+        let promoted = serde_json::json!({"name": "fish_v1", "version": "2"});
+        let rev = revision_from_manifest(&promoted);
+        assert_eq!(rev, "2");
+        assert_eq!(format!("{}@{}", "fish_v1", rev), "fish_v1@2");
+        // A manifest whose version is literally "v2" keeps that spelling.
+        let v_spelled = revision_from_manifest(&serde_json::json!({"version": "v2"}));
+        assert_eq!(format!("{}@{}", "fish_v1", v_spelled), "fish_v1@v2");
     }
 }

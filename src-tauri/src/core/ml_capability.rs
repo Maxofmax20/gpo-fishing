@@ -388,6 +388,14 @@ pub struct ShadowEvent {
     /// pre-v5.5 log lines keep parsing; soak analysis groups by it.
     #[serde(default)]
     pub model_version: Option<String>,
+    /// Manifest `version` (revision) of the model that produced this event
+    /// (e.g. `"2"`). `model_version` alone is a CONSTANT per slot: promoting a
+    /// new candidate writes the same `name`, so stem-only grouping unions every
+    /// revision ever run and lets a fresh candidate inherit the incumbent's
+    /// soak. This field is the join key that keeps them apart. Additive so
+    /// pre-v5.6 log lines (which carry no revision) keep parsing.
+    #[serde(default)]
+    pub model_revision: Option<String>,
 }
 
 pub fn shadow_log_path(data_dir: &Path) -> PathBuf {
@@ -584,6 +592,7 @@ mod tests {
             agreement: None,
             vision_confidence: None,
             model_version: None,
+            model_revision: None,
         };
         append_shadow_event(&dir, &ev).unwrap();
         let st = shadow_status(&dir, false, &[]);
@@ -599,5 +608,52 @@ mod tests {
         assert_eq!(st3["mode"], "ON");
         assert_eq!(st3["production_control"], "OFF");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn shadow_event_carries_model_revision_and_reads_legacy_lines() {
+        let base = serde_json::json!({
+            "session_id": "s", "event_id": "s#f1", "timestamp_ms": 7,
+            "vision_state": null, "production_state": null, "state_confidence": null,
+            "result_category": null, "entity": null, "ocr_text": null,
+            "normalized_entity": null, "policy_recommendation": null,
+            "would_be_action": null, "actual_action": null, "confirmation": null,
+            "latency_ms": null, "agreement": true,
+            "model_version": "fish_v1",
+        });
+        // New field round-trips: stem AND revision both survive the log.
+        let ev: ShadowEvent =
+            serde_json::from_value(clone_with(&base, "model_revision", "7")).unwrap();
+        assert_eq!(ev.model_revision.as_deref(), Some("7"));
+        assert_eq!(ev.model_version.as_deref(), Some("fish_v1"));
+        let line = serde_json::to_string(&ev).unwrap();
+        let back: ShadowEvent = serde_json::from_str(&line).unwrap();
+        assert_eq!(back.model_revision.as_deref(), Some("7"));
+        assert_eq!(back.event_id, "s#f1");
+        // Legacy log line (pre-revision, also pre-vision_confidence): parses
+        // with the field absent, and absence means "unknown revision" — never
+        // a guessed one.
+        let legacy: ShadowEvent = serde_json::from_value(base.clone()).unwrap();
+        assert_eq!(legacy.model_revision, None);
+        assert_eq!(legacy.vision_confidence, None);
+        let legacy_line = serde_json::to_string(&legacy).unwrap();
+        assert!(legacy_line.contains("\"model_revision\":null"), "unknown revision must stay explicit null, got {legacy_line}");
+        let legacy_back: ShadowEvent = serde_json::from_str(&legacy_line).unwrap();
+        assert_eq!(legacy_back.model_revision, None);
+        // Explicit null in the log is also tolerated.
+        let nulled: ShadowEvent =
+            serde_json::from_value(clone_with(&base, "model_revision", serde_json::Value::Null))
+                .unwrap();
+        assert_eq!(nulled.model_revision, None);
+    }
+
+    fn clone_with(
+        v: &serde_json::Value,
+        key: &str,
+        val: impl Into<serde_json::Value>,
+    ) -> serde_json::Value {
+        let mut o = v.clone();
+        o.as_object_mut().unwrap().insert(key.to_string(), val.into());
+        o
     }
 }

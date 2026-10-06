@@ -762,8 +762,23 @@ fn maybe_collect_ml_sample(ctx: &Ctx, verdict: &fruit::CatchVerdict, text: &str)
         hard_reasons.push("perception unknown");
     }
     let hard = if hard_reasons.is_empty() { None } else { Some(hard_reasons.join("; ")) };
-    let entity = obs.entity.as_ref().map(|m| {
-        kb.find_by_name(&m.canonical_name).map(|e| e.id.clone()).unwrap_or_else(|| m.entity_id.clone())
+    // `EntityMatch.entity_id` is ALREADY the canonical KB id perception
+    // resolved (it is `entity.id.clone()` of the entity it actually matched),
+    // so it is the authoritative value for the label. Re-resolving
+    // `canonical_name` is NOT equivalent: the KB name index is first-wins
+    // (`or_insert` over canonical name + aliases + OCR aliases), so an alias
+    // key can already belong to a DIFFERENT entity and would relabel this row
+    // with the wrong id — silent ground-truth corruption in the training set.
+    // Name lookup is therefore only a fallback for a match that carries no id
+    // at all, and a failed lookup stays `None` (unknown) rather than inventing
+    // one: a missing label is honestly downstream-handled (hard/unknown),
+    // whereas a fabricated id is not detectable from the row alone.
+    let entity: Option<String> = obs.entity.as_ref().and_then(|m| {
+        if !m.entity_id.trim().is_empty() {
+            Some(m.entity_id.clone())
+        } else {
+            kb.find_by_name(&m.canonical_name).map(|e| e.id.clone())
+        }
     });
     submit_ml_frame(
         ctx,
@@ -904,13 +919,23 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         let workflow_id = format!("wf-{session_id}-{}", crate::events::now_ms());
         {
             use crate::core::workflow::{ActionEvent, ConfirmationState};
+            // `ActionEvent.entity_id` is a stable knowledge-base id
+            // (`fruit:suna`), and this event is persisted into the workflow
+            // log — so it must be RESOLVED, never synthesised. `fruit_name`
+            // is an OCR/Gemini display string, and `format!("fruit:{…}")`
+            // over it fabricated an id for any unknown or misspelled catch
+            // (e.g. a Gemini-provided name), poisoning downstream linkage.
+            // Resolve against the KB; an unrecognised catch stays `None`
+            // (honest "unknown entity") instead of a plausible-looking lie.
+            let canonical_entity_id: Option<String> =
+                ctx.store.effective_knowledge().find_by_name(&fruit_name).map(|e| e.id.clone());
             let policy_event = ActionEvent {
                 workflow_id: workflow_id.clone(),
                 event_id: format!("{workflow_id}#result"),
                 frame_index: None,
                 session_id: session_id.clone(),
                 result_event_id: None,
-                entity_id: Some(format!("fruit:{}", fruit_name.to_ascii_lowercase())),
+                entity_id: canonical_entity_id,
                 entity_type: Some("fruit".to_string()),
                 policy_decision: Some(policy.action.as_str().to_string()),
                 action_requested: None,

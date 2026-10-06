@@ -5,6 +5,10 @@
 //! input APIs, never change macro state, and their return values are `()`
 //! so no caller can branch control flow on a vision prediction. The
 //! production macro behaves identically with shadow on or off.
+//!
+//! Each logged event carries the observing model's stem AND its manifest
+//! revision, so a candidate promoted over a slot (stem unchanged, weights
+//! replaced) is measured on its own observations, never the incumbent's.
 
 use std::time::Instant;
 
@@ -59,6 +63,10 @@ pub fn observe_state(ctx: &super::ctx::Ctx, frame: &crate::core::types::Frame, p
         agreement: Some(vision_is_live == production_bar_present),
         vision_confidence: None,
         model_version: Some(m.name.clone()),
+        // Stem + revision: promotion overwrites a slot's weights under the
+        // same stem, so stem alone would merge this candidate's telemetry
+        // with the incumbent's.
+        model_revision: Some(m.identity_revision()),
     };
     let _ = append_shadow_event(ctx.store.dir(), &ev);
 }
@@ -115,6 +123,7 @@ pub fn observe_fish(
         // confidence travels with the event and policy ignores it.
         vision_confidence: Some(conf),
         model_version: Some(m.name.clone()),
+        model_revision: Some(m.identity_revision()),
     };
     let _ = append_shadow_event(ctx.store.dir(), &ev);
 }

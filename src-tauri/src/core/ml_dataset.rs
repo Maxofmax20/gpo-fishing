@@ -42,9 +42,11 @@
 //! redefine `verified` to include them; report state coverage separately
 //! (state_eligibility) and keep the entity gate intact.
 
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use crate::core::knowledge::KnowledgeBase;
 use crate::core::types::Frame;
@@ -54,6 +56,59 @@ pub const DATASET_VERSION: u32 = 1;
 /// Hamming distance on the 64-bit perceptual hash at/below which two frames
 /// are reported as near-duplicates.
 pub const NEAR_DUP_HAMMING: u32 = 6;
+
+/// Serialises every `labels.jsonl` mutation in this process.
+///
+/// Why it exists: each mutator below is a read-all → mutate-one → write-all →
+/// rename cycle over ONE file, and there are two independent writers — the
+/// long-lived `ml-collect-writer` thread (`import_png` + `fill_metadata` +
+/// `annotate` + `set_hard_example` + `set_event`) and the UI review path on the
+/// main thread (`annotate`). Unserialised, two writers can each read the same
+/// row set, apply *different* mutations, and write the whole file back: the
+/// second write silently discards the first writer's update (a lost update that
+/// no error reports). Holding this guard across the ENTIRE cycle
+/// (read → mutate → write → rename) makes the file a serial history.
+///
+/// Reads (`annotations`, `validate`, `state_eligibility`) deliberately do NOT
+/// take the lock: the file is only ever replaced by `rename` over a complete
+/// temp file, so an unsynchronised reader always observes either the whole old
+/// file or the whole new one — never a torn line. Locking readers would also
+/// nest, and this mutex is not reentrant.
+static LABELS_WRITE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Monotonic counter making each temp file name unique within a process, so a
+/// writer that somehow bypasses (or outlives) the lock can never scribble over
+/// a sibling's in-flight temp file.
+static TMP_WRITE_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Per-write temp path: `labels.jsonl.<pid>.<seq>.tmp`. Unique per write, so
+/// concurrent writers never share a staging file. Any temp left behind by a
+/// crashed/older run carries a different name and is inert.
+fn labels_tmp_path(root: &Path) -> PathBuf {
+    let seq = TMP_WRITE_SEQ.fetch_add(1, Ordering::Relaxed);
+    root.join(format!("labels.jsonl.{}.{seq}.tmp", std::process::id()))
+}
+
+/// Serialise rows to `labels.jsonl` via a unique temp file + atomic rename.
+/// The rename is what makes the file all-or-nothing for readers; uniqueness of
+/// the temp is what keeps two writers from colliding before that rename.
+fn write_labels_atomic(root: &Path, labels: &Path, out: &str) -> Result<(), String> {
+    let tmp = labels_tmp_path(root);
+    std::fs::write(&tmp, out).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, labels).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Render rows back to JSONL (one `MlAnnotation` per line).
+fn render_labels(rows: &[MlAnnotation]) -> String {
+    rows.iter()
+        .filter_map(|a| serde_json::to_string(a).ok())
+        .map(|mut l| {
+            l.push('\n');
+            l
+        })
+        .collect()
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -362,7 +417,15 @@ impl MlDatasetStore {
         source: &str,
     ) -> Result<String, String> {
         self.init()?;
+        // Decode/hash BEFORE taking the lock: this is the expensive part and
+        // needs no shared state.
         let hash = png_ahash(png_bytes)?;
+        // The guard covers dedup + file write + row append as ONE critical
+        // section: two threads importing identical bytes concurrently must not
+        // both observe "not present" and both append a row. Note the lock is
+        // taken here and NOT inside `append_annotation` — this mutex is not
+        // reentrant, and `append_annotation` has no other caller.
+        let _guard = LABELS_WRITE_LOCK.lock();
         // Exact duplicate? Return the existing id without duplicating bytes.
         if let Some(existing) = self.find_by_hash(hash)? {
             return Ok(existing);
@@ -411,6 +474,14 @@ impl MlDatasetStore {
         Ok(None)
     }
 
+    /// Append one row to `labels.jsonl`.
+    ///
+    /// Called ONLY from `import_png`, which already holds
+    /// `LABELS_WRITE_LOCK`; appending a single complete line in one
+    /// `write_all` is what keeps this safe against the read-modify-write
+    /// mutators — a writer holding the lock rewrites the file wholesale, so
+    /// the append must be serialised against them (it must NOT take the lock
+    /// itself: not reentrant).
     fn append_annotation(&self, ann: &MlAnnotation) -> Result<(), String> {
         let mut line = serde_json::to_string(ann).map_err(|e| e.to_string())?;
         line.push('\n');
@@ -427,6 +498,8 @@ impl MlDatasetStore {
     /// Flag an imported sample as a hard example with a reason. Used by the
     /// gameplay collector for low-confidence/disagreement observations.
     pub fn set_hard_example(&self, image_id: &str, reason: &str) -> Result<(), String> {
+        // Read → mutate → write → rename as one critical section.
+        let _guard = LABELS_WRITE_LOCK.lock();
         let mut rows = self.annotations();
         {
             let ann = rows
@@ -436,24 +509,16 @@ impl MlDatasetStore {
             ann.hard_example = true;
             ann.hard_reason = Some(reason.to_string());
         }
-        let out: String = rows
-            .iter()
-            .filter_map(|a| serde_json::to_string(a).ok())
-            .map(|mut l| {
-                l.push('\n');
-                l
-            })
-            .collect();
-        let tmp = self.root.join("labels.jsonl.tmp");
-        std::fs::write(&tmp, out).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, self.labels_path()).map_err(|e| e.to_string())?;
-        Ok(())
+        let out = render_labels(&rows);
+        write_labels_atomic(&self.root, &self.labels_path(), &out)
     }
 
     /// Attach temporal provenance to an imported row. First capture wins:
     /// never overwrites an existing `event_id` (exact-dedupe folds reuse the
     /// first moment's pixels, so the first moment's id stays honest).
     pub fn set_event(&self, image_id: &str, event_id: &str, frame_index: u64) -> Result<bool, String> {
+        // Read → mutate → write → rename as one critical section.
+        let _guard = LABELS_WRITE_LOCK.lock();
         let mut rows = self.annotations();
         let changed = {
             let ann = rows
@@ -470,17 +535,8 @@ impl MlDatasetStore {
         if !changed {
             return Ok(false);
         }
-        let out: String = rows
-            .iter()
-            .filter_map(|a| serde_json::to_string(a).ok())
-            .map(|mut l| {
-                l.push('\n');
-                l
-            })
-            .collect();
-        let tmp = self.root.join("labels.jsonl.tmp");
-        std::fs::write(&tmp, out).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, self.labels_path()).map_err(|e| e.to_string())?;
+        let out = render_labels(&rows);
+        write_labels_atomic(&self.root, &self.labels_path(), &out)?;
         Ok(true)
     }
 
@@ -490,6 +546,8 @@ impl MlDatasetStore {
     /// fields and never touches moment-specific labels (`game_state`,
     /// `ui_label`). Returns true when anything was filled.
     pub fn fill_metadata(&self, image_id: &str, ocr_text: &str, entity_id: Option<&str>) -> Result<bool, String> {
+        // Read → mutate → write → rename as one critical section.
+        let _guard = LABELS_WRITE_LOCK.lock();
         let mut rows = self.annotations();
         let changed = {
             let ann = rows
@@ -514,17 +572,8 @@ impl MlDatasetStore {
         if !changed {
             return Ok(false);
         }
-        let out: String = rows
-            .iter()
-            .filter_map(|a| serde_json::to_string(a).ok())
-            .map(|mut l| {
-                l.push('\n');
-                l
-            })
-            .collect();
-        let tmp = self.root.join("labels.jsonl.tmp");
-        std::fs::write(&tmp, out).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, self.labels_path()).map_err(|e| e.to_string())?;
+        let out = render_labels(&rows);
+        write_labels_atomic(&self.root, &self.labels_path(), &out)?;
         Ok(true)
     }
 
@@ -549,11 +598,18 @@ impl MlDatasetStore {
         hard_example: bool,
         hard_reason: Option<String>,
     ) -> Result<MlAnnotation, String> {
+        // BBox validation is pure — do it before locking so a rejected call
+        // never blocks a writer.
         if let Some(b) = &bbox {
             if !b.valid() {
                 return Err("invalid bounding box (must be 0..1 relative, x+w<=1, y+h<=1)".to_string());
             }
         }
+        // Read → mutate → write → rename as one critical section. This is the
+        // UI review path, racing the collector's writer thread on the same
+        // file; without the guard a reviewer's label could be wiped by a
+        // concurrently-collected sample's whole-file rewrite.
+        let _guard = LABELS_WRITE_LOCK.lock();
         let mut rows = self.annotations();
         let updated = {
             let ann = rows
@@ -577,17 +633,8 @@ impl MlDatasetStore {
             }
             ann.clone()
         };
-        let out: String = rows
-            .iter()
-            .filter_map(|a| serde_json::to_string(a).ok())
-            .map(|mut l| {
-                l.push('\n');
-                l
-            })
-            .collect();
-        let tmp = self.root.join("labels.jsonl.tmp");
-        std::fs::write(&tmp, out).map_err(|e| e.to_string())?;
-        std::fs::rename(&tmp, self.labels_path()).map_err(|e| e.to_string())?;
+        let out = render_labels(&rows);
+        write_labels_atomic(&self.root, &self.labels_path(), &out)?;
         Ok(updated)
     }
 
@@ -1447,5 +1494,243 @@ mod tests {
             "distinct files are similarity, not event leakage: {:?}",
             rep.same_file_cross_split
         );
+    }
+
+    // ---- labels.jsonl concurrency (lost-update / torn-file) ----
+    //
+    // The collector's writer thread and the UI review path both run
+    // read-modify-write cycles over ONE `labels.jsonl`. These tests drive the
+    // mutators concurrently against a single store and assert the two
+    // properties the lock exists to provide:
+    //   1. no lost update — every mutation is present in the final file, and
+    //   2. no torn file — every line is complete, parseable JSON.
+
+    /// Raw `labels.jsonl` split into lines, asserting the file is well-formed
+    /// JSONL (no truncated/torn line from an interleaved writer).
+    fn labels_lines(ds: &MlDatasetStore) -> Vec<String> {
+        let raw = std::fs::read_to_string(ds.labels_path()).expect("labels.jsonl readable");
+        assert!(!raw.is_empty(), "labels.jsonl must not be empty");
+        assert!(raw.ends_with('\n'), "labels.jsonl must end with a newline");
+        let lines: Vec<String> = raw.lines().map(|l| l.to_string()).collect();
+        for (i, l) in lines.iter().enumerate() {
+            assert!(
+                serde_json::from_str::<MlAnnotation>(l).is_ok(),
+                "line {i} is not a complete JSON object (torn write): {l}"
+            );
+        }
+        lines
+    }
+
+    /// Distinct-bytes imports: `cell_png(&[i])` flips exactly one ahash bit, so
+    /// every row gets its own image id (uniform fills all share one hash).
+    fn seed_rows(ds: &MlDatasetStore, n: usize) -> Vec<String> {
+        (0..n)
+            .map(|i| {
+                ds.import_png(&cell_png(&[i]), "sess-conc", MlTask::UiDetection, None, "", "bar", "t")
+                    .expect("import")
+            })
+            .collect()
+    }
+
+    #[test]
+    fn concurrent_annotate_hard_and_fill_lose_no_update() {
+        // Three mutators × 3 threads, hammering ONE store. Row sets are
+        // DISJOINT (rows 0-2 annotate, 3-5 hard, 6-8 fill) so each assertion
+        // is unambiguous — no mutator can legitimately undo another's effect.
+        const N: usize = 9;
+        let (ds, _d) = store("conc3");
+        let ids = seed_rows(&ds, N);
+        assert_eq!(ids.iter().collect::<HashSet<_>>().len(), N, "ids must be distinct");
+
+        const ROUNDS: usize = 12;
+        std::thread::scope(|s| {
+            for t in 0..3usize {
+                let ds = &ds;
+                let ids = &ids;
+                s.spawn(move || {
+                    for _ in 0..ROUNDS {
+                        match t {
+                            0 => {
+                                for id in &ids[0..3] {
+                                    ds.annotate(
+                                        id,
+                                        Some(UiLabel::FishingBar),
+                                        None,
+                                        Some(GameStateLabel::Bite),
+                                        Some("fruit:suna".into()),
+                                        &format!("ann-{t}"),
+                                        false,
+                                        None,
+                                    )
+                                    .unwrap();
+                                }
+                            }
+                            1 => {
+                                for id in &ids[3..6] {
+                                    ds.set_hard_example(id, &format!("hard-{t}")).unwrap();
+                                }
+                            }
+                            _ => {
+                                for id in &ids[6..9] {
+                                    ds.fill_metadata(id, "Suna fruit", Some("fruit:suna")).unwrap();
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+
+        // (2) Not torn.
+        let lines = labels_lines(&ds);
+        assert_eq!(lines.len(), N, "row count must survive concurrent rewrites");
+
+        // (1) No lost update: every mutation landed, every row intact.
+        let rows = ds.annotations();
+        assert_eq!(rows.len(), N);
+        for (i, id) in ids.iter().enumerate() {
+            let r = rows.iter().find(|r| &r.image_id == id).expect("row survives");
+            match i {
+                0..=2 => {
+                    assert_eq!(r.ui_label, Some(UiLabel::FishingBar), "annotate lost on {id}");
+                    assert_eq!(r.game_state, Some(GameStateLabel::Bite), "annotate lost on {id}");
+                    assert_eq!(r.entity_id.as_deref(), Some("fruit:suna"));
+                }
+                3..=5 => {
+                    assert!(r.hard_example, "set_hard_example lost on {id}");
+                    assert_eq!(r.hard_reason.as_deref(), Some("hard-1"));
+                }
+                _ => {
+                    assert_eq!(r.ocr_text, "Suna fruit", "fill_metadata lost on {id}");
+                    assert_eq!(r.entity_id.as_deref(), Some("fruit:suna"));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn annotate_racing_import_png_loses_no_appended_row() {
+        // The collector APPENDS (import_png) while the review path REWRITES
+        // the whole file (annotate). Without serialisation, the rewrite is
+        // built from a stale read and silently drops rows appended in between.
+        let (ds, _d) = store("concimport");
+        let base = seed_rows(&ds, 3);
+        let reviewed: &String = &base[0];
+
+        const IMPORTS: usize = 6;
+        const ROUNDS: usize = 8;
+        std::thread::scope(|s| {
+            // Appender (collector writer path).
+            let store = &ds;
+            s.spawn(move || {
+                for i in 0..IMPORTS {
+                    store
+                        .import_png(
+                            &cell_png(&[10 + i]),
+                            "sess-conc",
+                            MlTask::UiDetection,
+                            None,
+                            "",
+                            "bar",
+                            "t",
+                        )
+                        .expect("import");
+                    std::thread::yield_now();
+                }
+            });
+            // Reviewer (UI main-thread path): rewrites the whole file.
+            let store = &ds;
+            s.spawn(move || {
+                for _ in 0..ROUNDS {
+                    store
+                        .annotate(
+                            reviewed,
+                            Some(UiLabel::BaitMenu),
+                            None,
+                            Some(GameStateLabel::CatchResult),
+                            Some("fruit:mera".into()),
+                            "reviewer",
+                            false,
+                            None,
+                        )
+                        .unwrap();
+                    std::thread::yield_now();
+                }
+            });
+        });
+
+        labels_lines(&ds); // no torn file
+        let rows = ds.annotations();
+        // 3 seeded + 6 appended, all present.
+        assert_eq!(rows.len(), 3 + IMPORTS, "appended rows were lost to a concurrent rewrite");
+        for id in &base {
+            assert!(rows.iter().any(|r| &r.image_id == id), "seeded row {id} lost");
+        }
+        let r = rows.iter().find(|r| r.image_id == *reviewed).expect("reviewed row");
+        assert_eq!(r.ui_label, Some(UiLabel::BaitMenu));
+        assert_eq!(r.entity_id.as_deref(), Some("fruit:mera"));
+    }
+
+    #[test]
+    fn stale_temp_file_from_earlier_write_is_inert() {
+        // A leftover staging file (crash mid-write, or the legacy fixed
+        // `labels.jsonl.tmp`) must never be picked up, renamed over
+        // `labels.jsonl`, or read as data. Per-write unique names make any
+        // leftover inert by construction.
+        let (ds, _d) = store("stale");
+        let ids = seed_rows(&ds, 4);
+        let root = ds.labels_path().parent().unwrap().to_path_buf();
+
+        // Garbage in a stale per-write temp AND in the legacy fixed temp.
+        let stale_seq = format!("labels.jsonl.{}.999999.tmp", std::process::id());
+        let stale_bytes = b"{\"image_id\":\"garbage\",\"torn\":tru\nnot json at all";
+        std::fs::write(root.join(&stale_seq), stale_bytes).unwrap();
+        std::fs::write(root.join("labels.jsonl.tmp"), b"TOTALLY NOT JSONL").unwrap();
+
+        // Mutate twice: both must succeed against the real file.
+        ds.annotate(&ids[0], Some(UiLabel::ServerTime), None, None, None, "t", false, None).unwrap();
+        ds.set_hard_example(&ids[1], "hard: stale").unwrap();
+
+        labels_lines(&ds);
+        let rows = ds.annotations();
+        assert_eq!(rows.len(), 4, "stale temp files must not contribute rows");
+        assert!(rows.iter().all(|r| r.image_id != "garbage"));
+        assert_eq!(
+            rows.iter().find(|r| r.image_id == ids[0]).unwrap().ui_label,
+            Some(UiLabel::ServerTime)
+        );
+        assert!(rows.iter().find(|r| r.image_id == ids[1]).unwrap().hard_example);
+
+        // Stale files are left alone (never consumed, never renamed onto us).
+        assert_eq!(std::fs::read(root.join(&stale_seq)).unwrap(), stale_bytes.to_vec());
+        assert_eq!(std::fs::read(root.join("labels.jsonl.tmp")).unwrap(), b"TOTALLY NOT JSONL");
+    }
+
+    #[test]
+    fn concurrent_imports_of_identical_bytes_dedup_once() {
+        // import_png's dedup check + row append must be one critical section,
+        // or two racing imports of the same bytes both append a row.
+        let (ds, _d) = store("concdedup");
+        let bytes: &Vec<u8> = &cell_png(&[3]);
+        const THREADS: usize = 6;
+        let out = std::sync::Mutex::new(Vec::new());
+        std::thread::scope(|s| {
+            for _ in 0..THREADS {
+                let store = &ds;
+                let bytes = bytes;
+                let out = &out;
+                s.spawn(move || {
+                    let id = store
+                        .import_png(bytes, "sess-conc", MlTask::UiDetection, None, "", "bar", "t")
+                        .expect("import");
+                    out.lock().unwrap().push(id);
+                });
+            }
+        });
+        let out = out.into_inner().unwrap();
+        assert_eq!(out.len(), THREADS);
+        assert!(out.iter().all(|id| *id == out[0]), "all racing imports must fold onto one id");
+        labels_lines(&ds);
+        assert_eq!(ds.annotations().len(), 1, "identical bytes must not duplicate rows");
     }
 }

@@ -480,7 +480,7 @@ pub fn rollback_family(data_dir: &Path, models_dir: &Path, family: &str) -> Resu
 
 // ---- soak: shadow agreement over real gameplay ----
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SoakStats {
     pub model: String,
     pub events: usize,
@@ -489,31 +489,110 @@ pub struct SoakStats {
     pub no_ocr_baseline: usize,
     pub mean_confidence: Option<f32>,
     pub agreement_rate: Option<f32>,
+    /// Manifest revision these stats describe; `""` = unfiltered (every
+    /// revision of the stem, the legacy view).
+    #[serde(default)]
+    pub revision: String,
+    /// Distinct `session_id`s behind `events`. Soak evidence concentrated in
+    /// one session is not evidence about the model.
+    #[serde(default)]
+    pub sessions: usize,
+    /// Distinct entity labels seen (vision `entity` or normalized OCR id).
+    #[serde(default)]
+    pub distinct_entities: usize,
+    /// Counted events that carried an entity label at all.
+    #[serde(default)]
+    pub uniques: usize,
+    /// Log lines that failed to parse. Counted, never silently dropped.
+    #[serde(default)]
+    pub malformed_lines: usize,
+    /// Repeated `event_id`s skipped, so a re-appended line cannot inflate
+    /// the soak.
+    #[serde(default)]
+    pub duplicates_skipped: usize,
+}
+
+/// Stem-only soak view (legacy behaviour): every event logged under
+/// `model_name`, all revisions unioned.
+pub fn soak_stats(data_dir: &Path, model_name: &str, last_n: usize) -> SoakStats {
+    soak_stats_for(data_dir, model_name, None, last_n)
 }
 
 /// Agreement telemetry for one shadow model over recent shadow events.
 /// Reads the real append-only log; never synthesizes.
-pub fn soak_stats(data_dir: &Path, model_name: &str, last_n: usize) -> SoakStats {
+///
+/// `revision` scopes the count to one revision of the slot (from
+/// `ShadowEvent::model_revision`). This is what makes soak evidence
+/// attributable: `model_version` is a CONSTANT per slot — `promote_to_shadow`
+/// writes `"name": <stem>` for every promoted version — so a stem-only query
+/// returns the UNION across revisions and a freshly promoted candidate would
+/// inherit the incumbent's soak with zero observations of its own weights.
+/// `None` keeps the old stem-only filter so pre-revision logs still count.
+pub fn soak_stats_for(
+    data_dir: &Path,
+    model_name: &str,
+    revision: Option<&str>,
+    last_n: usize,
+) -> SoakStats {
     let path = super::ml_capability::shadow_log_path(data_dir);
-    let Ok(raw) = std::fs::read_to_string(&path) else {
-        return SoakStats {
-            model: model_name.to_string(), events: 0, agree: 0, disagree: 0,
-            no_ocr_baseline: 0, mean_confidence: None, agreement_rate: None,
-        };
+    let mut stats = SoakStats {
+        model: model_name.to_string(),
+        events: 0,
+        agree: 0,
+        disagree: 0,
+        no_ocr_baseline: 0,
+        mean_confidence: None,
+        agreement_rate: None,
+        revision: revision.unwrap_or_default().to_string(),
+        sessions: 0,
+        distinct_entities: 0,
+        uniques: 0,
+        malformed_lines: 0,
+        duplicates_skipped: 0,
     };
-    let mut evs: Vec<super::ml_capability::ShadowEvent> = raw
-        .lines()
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .filter(|e: &super::ml_capability::ShadowEvent| e.model_version.as_deref() == Some(model_name))
-        .collect();
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        return stats;
+    };
+    let mut seen_ids: HashSet<String> = HashSet::new();
+    let mut evs: Vec<super::ml_capability::ShadowEvent> = Vec::new();
+    for line in raw.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let Ok(e) = serde_json::from_str::<super::ml_capability::ShadowEvent>(line) else {
+            // A line that cannot be parsed cannot be attributed to a model,
+            // so the count is honest-but-global; never silently ignored.
+            stats.malformed_lines += 1;
+            continue;
+        };
+        if e.model_version.as_deref() != Some(model_name) {
+            continue;
+        }
+        // Revision join: absent revision (legacy line) counts ONLY in the
+        // unfiltered view, never as evidence for a specific candidate.
+        if let Some(r) = revision {
+            if e.model_revision.as_deref() != Some(r) {
+                continue;
+            }
+        }
+        if !seen_ids.insert(e.event_id.clone()) {
+            stats.duplicates_skipped += 1;
+            continue;
+        }
+        evs.push(e);
+    }
     if evs.len() > last_n {
         evs.drain(..evs.len() - last_n);
     }
+    stats.events = evs.len();
     let mut agree = 0;
     let mut disagree = 0;
     let mut no_base = 0;
     let mut conf_sum = 0f64;
     let mut conf_n = 0usize;
+    let mut sessions: HashSet<String> = HashSet::new();
+    let mut entities: HashSet<String> = HashSet::new();
+    // Session/entity diversity is measured over the SAME tail as `events`.
     for e in &evs {
         match e.agreement {
             Some(true) => agree += 1,
@@ -525,17 +604,32 @@ pub fn soak_stats(data_dir: &Path, model_name: &str, last_n: usize) -> SoakStats
             conf_sum += v as f64;
             conf_n += 1;
         }
+        if !e.session_id.is_empty() {
+            sessions.insert(e.session_id.clone());
+        }
+        // Vision label and normalized OCR id share one distinct-value set:
+        // both answer "which fish was this".
+        if let Some(v) = e
+            .entity
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .or_else(|| e.normalized_entity.as_deref().filter(|s| !s.is_empty()))
+        {
+            stats.uniques += 1;
+            entities.insert(v.to_string());
+        }
     }
+    stats.sessions = sessions.len();
+    stats.distinct_entities = entities.len();
     let scored = agree + disagree;
-    SoakStats {
-        model: model_name.to_string(),
-        events: evs.len(),
-        agree,
-        disagree,
-        no_ocr_baseline: no_base,
-        mean_confidence: if conf_n > 0 { Some((conf_sum / conf_n as f64) as f32) } else { None },
-        agreement_rate: if scored > 0 { Some(agree as f32 / scored as f32) } else { None },
-    }
+    stats.agree = agree;
+    stats.disagree = disagree;
+    stats.no_ocr_baseline = no_base;
+    stats.mean_confidence =
+        if conf_n > 0 { Some((conf_sum / conf_n as f64) as f32) } else { None };
+    stats.agreement_rate =
+        if scored > 0 { Some(agree as f32 / scored as f32) } else { None };
+    stats
 }
 
 #[cfg(test)]
@@ -682,5 +776,254 @@ mod tests {
         let m = ModelMetrics::from_trainer_files(&v, None, None, 3).unwrap();
         assert_eq!(m.test_sessions, 3);
         assert!(m.ece.is_none());
+    }
+
+    // ---- soak: revision attribution ----
+
+    /// One shadow log line for stem `fish_v1`. `revision: None` omits the key
+    /// entirely, i.e. a pre-revision log line.
+    fn soak_line(
+        event_id: &str,
+        session: &str,
+        revision: Option<&str>,
+        agreement: Option<bool>,
+        entity: Option<&str>,
+        normalized: Option<&str>,
+        conf: Option<f32>,
+    ) -> serde_json::Value {
+        let mut v = serde_json::json!({
+            "session_id": session,
+            "event_id": event_id,
+            "timestamp_ms": 1,
+            "vision_state": null,
+            "production_state": null,
+            "state_confidence": conf,
+            "result_category": null,
+            "entity": entity,
+            "ocr_text": null,
+            "normalized_entity": normalized,
+            "policy_recommendation": null,
+            "would_be_action": null,
+            "actual_action": null,
+            "confirmation": null,
+            "latency_ms": null,
+            "agreement": agreement,
+            "model_version": "fish_v1",
+        });
+        if let Some(r) = revision {
+            v.as_object_mut().unwrap().insert("model_revision".into(), r.into());
+        }
+        v
+    }
+
+    /// Write a shadow log to a fresh temp data dir; returns the dir.
+    fn soak_dir(name: &str, lines: &[serde_json::Value]) -> PathBuf {
+        let dir = std::env::temp_dir().join(name);
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let body: String =
+            lines.iter().map(|l| format!("{}\n", serde_json::to_string(l).unwrap())).collect();
+        std::fs::write(super::super::ml_capability::shadow_log_path(&dir), body).unwrap();
+        dir
+    }
+
+    /// 5 events for the incumbent revision, 3 for the freshly promoted one.
+    /// `dir_name` must be unique: tests run in parallel.
+    fn two_revision_log(dir_name: &str) -> PathBuf {
+        let mut lines = Vec::new();
+        for i in 0..5 {
+            lines.push(soak_line(
+                &format!("sA#v1-{i}"),
+                "sA",
+                Some("1"),
+                Some(true),
+                Some("fish:shark"),
+                None,
+                Some(0.9),
+            ));
+        }
+        for i in 0..3 {
+            lines.push(soak_line(
+                &format!("sB#v2-{i}"),
+                "sB",
+                Some("2"),
+                Some(false),
+                Some("fish:golden"),
+                None,
+                Some(0.4),
+            ));
+        }
+        soak_dir(dir_name, &lines)
+    }
+
+    #[test]
+    fn soak_counts_only_the_requested_revision() {
+        // Regression: promotion rewrites `"name": <stem>` for every version,
+        // so a stem-only query UNIONs revisions and a brand-new candidate
+        // would inherit the incumbent's soak. The revision join keeps them
+        // apart: 3 observed events, never 8.
+        let dir = two_revision_log("gpo-reg-soak-rev-a");
+        let v2 = soak_stats_for(&dir, "fish_v1", Some("2"), 500);
+        assert_eq!(v2.events, 3, "a candidate's soak must not include its predecessor's events");
+        assert_eq!(v2.agree, 0);
+        assert_eq!(v2.disagree, 3);
+        assert_eq!(v2.revision, "2");
+        let v1 = soak_stats_for(&dir, "fish_v1", Some("1"), 500);
+        assert_eq!(v1.events, 5);
+        assert_eq!(v1.agree, 5);
+        // An unknown revision observes nothing rather than inheriting soak.
+        assert_eq!(soak_stats_for(&dir, "fish_v1", Some("9"), 500).events, 0);
+        // Other slots and families stay separate.
+        assert_eq!(soak_stats_for(&dir, "state_v1", Some("2"), 500).events, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn soak_without_revision_keeps_the_legacy_union() {
+        let dir = two_revision_log("gpo-reg-soak-rev-b");
+        // Backward compat: the stem-only view still sees every event, and the
+        // convenience wrapper behaves identically.
+        let all = soak_stats_for(&dir, "fish_v1", None, 500);
+        assert_eq!(all.events, 8);
+        assert_eq!(all.revision, "");
+        assert_eq!(all.agree, 5);
+        assert_eq!(all.disagree, 3);
+        assert_eq!(all.sessions, 2);
+        let legacy = soak_stats(&dir, "fish_v1", 500);
+        assert_eq!(legacy.events, 8);
+        assert_eq!(legacy.agree, all.agree);
+        assert_eq!(legacy.agreement_rate, all.agreement_rate);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn events_without_a_revision_parse_and_only_count_unfiltered() {
+        let old = soak_line("old#1", "sOld", None, Some(true), None, None, Some(0.7));
+        assert!(old.get("model_revision").is_none(), "legacy line must omit the key");
+        let new = soak_line("new#1", "sNew", Some("2"), Some(true), None, None, Some(0.7));
+        let dir = soak_dir("gpo-reg-soak-legacy", &[old, new]);
+        // Old-format events still parse and still count for the stem view...
+        let all = soak_stats(&dir, "fish_v1", 500);
+        assert_eq!(all.events, 2);
+        assert_eq!(all.sessions, 2);
+        // ...but they are NEVER evidence for a specific revision.
+        let v2 = soak_stats_for(&dir, "fish_v1", Some("2"), 500);
+        assert_eq!(v2.events, 1);
+        assert_eq!(v2.sessions, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn duplicate_event_ids_are_counted_once() {
+        let a = soak_line("dup#1", "sA", Some("2"), Some(true), Some("fish:shark"), None, Some(0.8));
+        let b = soak_line("dup#1", "sA", Some("2"), Some(true), Some("fish:shark"), None, Some(0.8));
+        let c = soak_line("dup#2", "sB", Some("2"), Some(false), Some("fish:golden"), None, Some(0.6));
+        let dir = soak_dir("gpo-reg-soak-dupes", &[a, b, c]);
+        let s = soak_stats_for(&dir, "fish_v1", Some("2"), 500);
+        assert_eq!(s.events, 2, "a re-appended line must not inflate the soak");
+        assert_eq!(s.duplicates_skipped, 1);
+        assert_eq!(s.agree, 1);
+        assert_eq!(s.disagree, 1);
+        // Dedupe is per requested view: the duplicate of a DIFFERENT revision
+        // is still just that other revision's event.
+        assert_eq!(soak_stats_for(&dir, "fish_v1", Some("9"), 500).duplicates_skipped, 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn malformed_lines_are_counted_and_do_not_abort_the_parse() {
+        let good = soak_line("ok#1", "sA", Some("2"), Some(true), Some("fish:shark"), None, Some(0.8));
+        let dir = soak_dir("gpo-reg-soak-malformed", &[good]);
+        // Append garbage: a truncated object, a non-JSON line, and a blank.
+        let log = super::super::ml_capability::shadow_log_path(&dir);
+        let mut raw = std::fs::read_to_string(&log).unwrap();
+        raw.push_str("{\"session_id\":\"sA\",\"event_id\":\"torn\n");
+        raw.push_str("not json at all\n");
+        raw.push('\n');
+        raw.push_str(&format!("{}\n", serde_json::to_string(&soak_line("ok#2", "sB", Some("2"), Some(true), Some("fish:golden"), None, Some(0.9))).unwrap()));
+        std::fs::write(&log, raw).unwrap();
+        let s = soak_stats_for(&dir, "fish_v1", Some("2"), 500);
+        assert_eq!(s.events, 2, "a malformed line must not abort or corrupt the parse");
+        assert_eq!(s.malformed_lines, 2);
+        assert_eq!(s.sessions, 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn soak_counts_distinct_sessions_and_entities() {
+        let lines = vec![
+            soak_line("e1", "s1", Some("2"), Some(true), Some("fish:shark"), None, Some(0.9)),
+            soak_line("e2", "s1", Some("2"), Some(true), Some("fish:shark"), None, Some(0.7)),
+            soak_line("e3", "s2", Some("2"), Some(false), Some("fish:golden"), None, Some(0.3)),
+            // No vision label: the normalized OCR id still names an entity.
+            soak_line("e4", "s3", Some("2"), None, None, Some("fish:megalodon"), None),
+            // Neither: not attributable to any entity.
+            soak_line("e5", "s3", Some("2"), None, None, None, None),
+        ];
+        let dir = soak_dir("gpo-reg-soak-diversity", &lines);
+        let s = soak_stats_for(&dir, "fish_v1", Some("2"), 500);
+        assert_eq!(s.events, 5);
+        assert_eq!(s.sessions, 3, "repeated session ids count once");
+        assert_eq!(s.distinct_entities, 3);
+        assert_eq!(s.uniques, 4, "4 of 5 events carried an entity label");
+        assert_eq!(s.no_ocr_baseline, 2);
+        assert_eq!(s.agree, 2);
+        assert_eq!(s.disagree, 1);
+        // mean over the events that carried a confidence (3 of 5).
+        let mean = s.mean_confidence.unwrap();
+        assert!((mean - 1.9 / 3.0).abs() < 1e-5, "mean confidence drifted: {mean}");
+        assert!((s.agreement_rate.unwrap() - 2.0 / 3.0).abs() < 1e-5);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn soak_tail_limit_and_missing_log_behave() {
+        let dir = two_revision_log("gpo-reg-soak-rev-c");
+        // last_n still drains the TAIL (most recent) of the revision view.
+        let tail = soak_stats_for(&dir, "fish_v1", Some("1"), 2);
+        assert_eq!(tail.events, 2);
+        assert_eq!(tail.sessions, 1);
+        // No log at all: honest zeros, revision echoed, nothing invented.
+        let empty = std::env::temp_dir().join("gpo-reg-soak-none");
+        let _ = std::fs::remove_dir_all(&empty);
+        std::fs::create_dir_all(&empty).unwrap();
+        let s = soak_stats_for(&empty, "fish_v1", Some("3"), 100);
+        assert_eq!(s.events, 0);
+        assert_eq!(s.sessions, 0);
+        assert_eq!(s.revision, "3");
+        assert_eq!(s.agreement_rate, None);
+        assert_eq!(s.mean_confidence, None);
+        let _ = std::fs::remove_dir_all(&empty);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn soak_stats_serializes_new_fields_with_defaults() {
+        // Old consumers / persisted payloads without the new fields still
+        // parse; the new fields are additive.
+        let old = serde_json::json!({
+            "model": "fish_v1", "events": 4, "agree": 3, "disagree": 1,
+            "no_ocr_baseline": 0, "mean_confidence": 0.8, "agreement_rate": 0.75,
+        });
+        let s: SoakStats = serde_json::from_value(old).unwrap();
+        assert_eq!(s.events, 4);
+        assert_eq!(s.sessions, 0);
+        assert_eq!(s.distinct_entities, 0);
+        assert_eq!(s.uniques, 0);
+        assert_eq!(s.malformed_lines, 0);
+        assert_eq!(s.duplicates_skipped, 0);
+        assert_eq!(s.revision, "");
+        let round: SoakStats =
+            serde_json::from_str(&serde_json::to_string(&soak_stats_for(
+                &two_revision_log("gpo-reg-soak-rev-d"),
+                "fish_v1",
+                Some("2"),
+                10,
+            ))
+            .unwrap())
+            .unwrap();
+        assert_eq!(round.events, 3);
+        assert_eq!(round.revision, "2");
+        let _ = std::fs::remove_dir_all(std::env::temp_dir().join("gpo-reg-soak-rev-d"));
     }
 }
