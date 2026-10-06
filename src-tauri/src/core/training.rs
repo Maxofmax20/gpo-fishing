@@ -1638,4 +1638,146 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// THE VERDICT MATRIX. Every human outcome, and exactly what it does to the
+    /// training set. This is the contract a reviewer is implicitly relying on
+    /// when they press a key, so it is pinned here rather than in a comment.
+    /// `snapshot_dataset` reads `labels.jsonl` for its own fingerprint, so the
+    /// file must exist even when the rows are supplied directly.
+    fn touch_labels(root: &Path) {
+        let row = frow("placeholder", "s-train", 1, GameStateLabel::CatchResult);
+        let path = root
+            .join("datasets")
+            .join("gpo-vision")
+            .join("v1")
+            .join("labels.jsonl");
+        if let Some(p) = path.parent() {
+            std::fs::create_dir_all(p).unwrap();
+        }
+        std::fs::write(path, format!("{}\n", serde_json::to_string(&row).unwrap())).unwrap();
+    }
+
+    #[test]
+    fn every_review_verdict_has_an_explicit_effect_on_the_training_set() {
+        let dir = std::env::temp_dir().join("gpo-verdict-matrix");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // `snapshot_dataset` reads the dataset dir for its own fingerprint, so
+        // initialise it; the rows themselves are supplied directly.
+        MlDatasetStore::new(dir.clone()).init().unwrap();
+        touch_labels(&dir);
+        // CORRECT / CORRECTED / UNKNOWN / SKIPPED / CONFLICT / BAD_IMAGE, plus
+        // one row nobody ever looked at.
+        let cases: &[(&str, Option<&str>, bool)] = &[
+            ("mtx-correct", Some("CORRECT"), true),
+            ("mtx-corrected", Some("CORRECTED"), true),
+            ("mtx-unknown", Some("UNKNOWN"), false),
+            ("mtx-skipped", Some("SKIPPED"), false),
+            ("mtx-conflict", Some("CONFLICT"), false),
+            ("mtx-badimage", Some("BAD_IMAGE"), false),
+            ("mtx-unreviewed", None, true),
+        ];
+        let mut rows = Vec::new();
+        for (id, _, _) in cases {
+            rows.push(frow(id, "s-train", 1, GameStateLabel::CatchResult));
+        }
+        let reviews: Vec<serde_json::Value> = cases
+            .iter()
+            .filter_map(|(id, status, eligible)| {
+                status.map(|s| {
+                    review_line(
+                        id,
+                        s,
+                        *eligible,
+                        (*eligible).then_some("corrupt image"),
+                    )
+                })
+            })
+            .collect();
+        write_reviews(&dir.join("reviews.jsonl"), &reviews);
+
+        let snap = dir.join("snap");
+        let meta = snapshot_dataset(&dir, &snap, &rows, 1).unwrap();
+
+        let raw = std::fs::read_to_string(snap.join("labels.jsonl")).unwrap();
+        let present: Vec<String> = raw
+            .lines()
+            .map(|l| serde_json::from_str::<MlAnnotation>(l).unwrap().image_id)
+            .collect();
+        for (id, _, expected) in cases {
+            assert_eq!(
+                present.contains(&id.to_string()),
+                *expected,
+                "{id} must {} the frozen training set",
+                if *expected { "be IN" } else { "be ABSENT from" }
+            );
+        }
+        // UNKNOWN and CONFLICT must never look "reviewed and eligible" in the
+        // metadata, even though both are excluded.
+        assert_eq!(meta.rows_unreviewed, 1, "only the untouched row is unreviewed");
+        assert_eq!(meta.rows_excluded_by_review, 4);
+        assert_eq!(meta.exclusions.values().sum::<usize>(), 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_unreadable_review_file_is_never_read_as_zero_reviews() {
+        // THE CRITICAL v5.6.1 BUG, kept as a permanent regression. A partially
+        // written / corrupt reviews.jsonl must NOT degrade to "no review
+        // records", because that would put every skipped, unknown and disputed
+        // row straight back into training.
+        let dir = std::env::temp_dir().join("gpo-review-corrupt");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // `snapshot_dataset` reads the dataset dir for its own fingerprint, so
+        // initialise it; the rows themselves are supplied directly.
+        MlDatasetStore::new(dir.clone()).init().unwrap();
+        touch_labels(&dir);
+        std::fs::create_dir_all(dir.join("datasets").join("gpo-vision").join("v1")).unwrap();
+        let rows = vec![
+            frow("cr-keep", "s-train", 1, GameStateLabel::CatchResult),
+            frow("cr-drop", "s-train", 2, GameStateLabel::CatchResult),
+        ];
+        // One good line that excludes cr-drop, then a torn one.
+        let body = format!(
+            "{}\n{{ this line never finished\n",
+            review_line("cr-drop", "SKIPPED", false, Some("human skipped"))
+        );
+        std::fs::write(dir.join("reviews.jsonl"), body).unwrap();
+
+        let err = snapshot_dataset(&dir, &dir.join("snap"), &rows, 1)
+            .expect_err("a torn review file must NOT be treated as empty");
+        let msg = err.to_lowercase();
+        assert!(
+            msg.contains("unreadable") || msg.contains("review"),
+            "the error must name the review file: {err}"
+        );
+        // And it must not have written a training set on the way out.
+        assert!(
+            !dir.join("snap").join("labels.jsonl").exists(),
+            "a refused snapshot must leave no trainer input behind"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_missing_review_file_is_distinct_from_a_corrupt_one() {
+        // Absent means "nothing has been reviewed yet" and is allowed.
+        let dir = std::env::temp_dir().join("gpo-review-absent");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // `snapshot_dataset` reads the dataset dir for its own fingerprint, so
+        // initialise it; the rows themselves are supplied directly.
+        MlDatasetStore::new(dir.clone()).init().unwrap();
+        touch_labels(&dir);
+        std::fs::create_dir_all(dir.join("datasets").join("gpo-vision").join("v1")).unwrap();
+        let rows = vec![frow("ab-1", "s-train", 1, GameStateLabel::CatchResult)];
+        let meta = snapshot_dataset(&dir, &dir.join("snap"), &rows, 1)
+            .expect("no reviews.jsonl at all is legitimate");
+        assert_eq!(meta.rows_unreviewed, 1);
+        assert_eq!(meta.rows_excluded_by_review, 0);
+        assert_eq!(meta.review_fingerprint, "none");
+        assert!(meta.exclusions.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
