@@ -278,15 +278,54 @@ pub fn copy_atomic(src: &Path, dst: &Path) -> Result<(), String> {
 /// Has any shadow telemetry already been recorded for this family's slot?
 ///
 /// The join key for soak evidence is `(stem, revision)`. If nothing has ever
-/// been observed for the slot, version 2 provably has no prior events; if
-/// something has, we can no longer prove that and must not reuse a number.
-fn shadow_events_exist_for(data_dir: &Path, family: &str) -> bool {
-    let Ok(raw) = std::fs::read_to_string(super::ml_capability::shadow_log_path(data_dir)) else {
-        return false;
+/// been observed for the slot, the next version provably has no prior events;
+/// if something has, we can no longer prove that and must not reuse a number.
+///
+/// FAILS CLOSED on an unreadable log. The previous version used
+/// `filter_map(..ok())`, which silently dropped unparseable lines: a log with
+/// one torn line and no matching `model_version` reported "nothing observed",
+/// and that "nothing" is exactly the evidence a recycled revision needs. An
+/// unreadable log means the slot cannot be proven unobserved.
+fn slot_observation_state(data_dir: &Path, family: &str) -> SlotObservation {
+    let path = super::ml_capability::shadow_log_path(data_dir);
+    let Ok(raw) = std::fs::read_to_string(&path) else {
+        // Absent means never observed. That is the one case we can prove.
+        return SlotObservation::None;
     };
-    let Some(stem) = shadow_stem(family) else { return false };
-    raw.lines().filter_map(|l| serde_json::from_str::<super::ml_capability::ShadowEvent>(l).ok())
-        .any(|e| e.model_version.as_deref() == Some(stem))
+    let Some(stem) = shadow_stem(family) else {
+        return SlotObservation::Unknown;
+    };
+    let mut unreadable = 0usize;
+    let mut seen = false;
+    for line in raw.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<super::ml_capability::ShadowEvent>(line) {
+            Ok(e) => {
+                if e.model_version.as_deref() == Some(stem) {
+                    seen = true;
+                }
+            }
+            Err(_) => unreadable += 1,
+        }
+    }
+    match (seen, unreadable) {
+        (true, _) => SlotObservation::Some,
+        // A log we cannot fully read cannot prove absence.
+        (false, n) if n > 0 => SlotObservation::Unknown,
+        (false, _) => SlotObservation::None,
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SlotObservation {
+    /// Provably never observed for this slot.
+    None,
+    /// Observed. A recycled revision would inherit these events.
+    Some,
+    /// The log exists but cannot be fully read, so absence is unprovable.
+    Unknown,
 }
 
 /// Next version for a family.
@@ -329,17 +368,27 @@ pub fn next_version_checked(
             // No counter file (first run, or a wipe that took it too).
             //
             // The bundled manifests are version "1", so `from_records` yields 2
-            // for an empty registry: that is safe ONLY while no shadow
-            // telemetry exists for this slot. Once any event has been recorded,
-            // we cannot prove revision 2 has never been observed - and reusing
-            // it would merge a new model's soak with a dead model's. In that
-            // state we refuse rather than guess.
-            let slot_observed = shadow_events_exist_for(data_dir, family);
-            if registry_is_corrupt(data_dir) || slot_observed {
+            // for an empty registry: that is safe ONLY while this slot has
+            // provably never been observed. Once any event has been recorded -
+            // or the log exists but cannot be fully read, so absence is
+            // unprovable - we cannot show that revision 2 has never been
+            // observed, and reusing it would merge a new model's soak with a
+            // dead model's. In those states we refuse rather than guess.
+            match slot_observation_state(data_dir, family) {
+                SlotObservation::Some | SlotObservation::Unknown => {
+                    return Err(
+                        "no version counter, and this slot's shadow telemetry already exists \
+                         (or cannot be fully read); refusing to reuse a version number, because \
+                         a recycled revision would inherit a dead model's shadow events"
+                            .to_string(),
+                    );
+                }
+                SlotObservation::None => {}
+            }
+            if registry_is_corrupt(data_dir) {
                 return Err(
-                    "no version counter and shadow telemetry already exists for this slot; \
-                     refusing to reuse a version number (a recycled revision would inherit a \
-                     dead model's shadow events)"
+                    "registry is unreadable and no version counter exists; refusing to reuse a \
+                     version number (a recycled revision would inherit a dead model's soak)"
                         .to_string(),
                 );
             }
@@ -348,7 +397,11 @@ pub fn next_version_checked(
     };
     if let Some(parent) = counter_path.parent() {
         let _ = std::fs::create_dir_all(parent);
-        let _ = std::fs::write(&counter_path, next.to_string());
+        // Persist through the same atomic writer as everything else. A plain
+        // `write` here is a plain write: a crash mid-write leaves an empty or
+        // truncated counter, and an unparseable counter reads as "no counter" -
+        // which is the one state that could hand out a recycled version.
+        write_atomic(&counter_path, next.to_string().as_bytes())?;
     }
     Ok(next)
 }
@@ -1498,5 +1551,55 @@ mod tests {
             &["fish:shark".to_string()],
         );
         assert!(c.regressions.iter().any(|(cls, _, _)| cls == "fish:shark"));
+    }
+
+    #[test]
+    fn an_unreadable_shadow_log_cannot_prove_a_slot_was_never_observed() {
+        // `slot_observation_state` used to `filter_map(..ok())`, silently
+        // dropping unparseable lines. A log with one torn line and no matching
+        // stem reported "nothing observed" - and that "nothing" is exactly the
+        // evidence a recycled revision needs.
+        let dir = std::env::temp_dir().join("gpo-reg-torn-log");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // A log that is entirely unreadable proves nothing.
+        std::fs::write(dir.join("shadow_events.jsonl"), b"{ torn line\n").unwrap();
+        let err = next_version_checked(&dir, &[], "fish").unwrap_err();
+        assert!(err.contains("refusing to reuse"), "{err}");
+
+        // Unreadable lines for a DIFFERENT slot must not block this one: the
+        // per-slot question is still unprovable only if this slot's own events
+        // could be hiding in them, so an unparseable line is treated as
+        // unprovable regardless of stem - documented, and conservative.
+        let _ = std::fs::remove_file(dir.join("shadow_events.jsonl"));
+        std::fs::write(
+            dir.join("shadow_events.jsonl"),
+            b"{\"session_id\":\"s1\",\"event_id\":\"e1\",\"timestamp_ms\":1,\"model_version\":\"state_v1\",\"model_revision\":\"2\"}\n",
+        )
+        .unwrap();
+        // state telemetry exists but fish has none: fish can still number.
+        assert_eq!(next_version_checked(&dir, &[], "fish").unwrap(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_version_counter_is_written_atomically() {
+        // A plain write here left an empty or truncated counter on a crash, and
+        // an unparseable counter reads as "no counter" - the one state that can
+        // hand out a recycled version.
+        let dir = std::env::temp_dir().join("gpo-reg-counter-atomic");
+        let _ = std::fs::remove_dir_all(&dir);
+        let v = next_version_checked(&dir, &[], "fish").unwrap();
+        let counter = dir.join("training").join("versions").join("fish.version");
+        assert_eq!(std::fs::read_to_string(&counter).unwrap(), v.to_string());
+        // No staging file survives.
+        let leftovers: Vec<_> = std::fs::read_dir(counter.parent().unwrap())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "{leftovers:?}");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
