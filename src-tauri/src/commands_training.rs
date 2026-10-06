@@ -502,6 +502,22 @@ fn candidate_inputs_for(
     })
 }
 
+/// Per-class TEST support, used to floor the per-class regression gate.
+///
+/// A class with 2 test examples can single-handedly trigger a reject, or clear
+/// one with a lucky flip. `compare()` needs the support to make that judgement
+/// honestly, and the trainer now writes it (`test_support`).
+fn deployed_test_support(v: &serde_json::Value) -> std::collections::HashMap<String, usize> {
+    v.get("test_support")
+        .and_then(|m| m.as_object())
+        .map(|m| {
+            m.iter()
+                .filter_map(|(k, n)| n.as_u64().map(|n| (k.clone(), n as usize)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn current_metrics_for(store: &Store, family: &str) -> Result<(registry::ModelMetrics, Vec<String>), String> {
     let stem = registry::shadow_stem(family).ok_or("unknown family")?;
     let raw = std::fs::read_to_string(store.dir().join("models").join(format!("{stem}.json")))
@@ -529,6 +545,7 @@ fn current_metrics_for(store: &Store, family: &str) -> Result<(registry::ModelMe
                 v.get("per_class_f1")?.get(c)?.as_f64().map(|f| (c.clone(), f as f32))
             })
             .collect(),
+        per_class_test_support: deployed_test_support(&v),
         kept_accuracy: None,
     };
     Ok((m, if per.is_empty() { classes } else { per }))

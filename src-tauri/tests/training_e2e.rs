@@ -82,6 +82,7 @@ fn current_metrics(acc: f32, f1: f32) -> (ModelMetrics, Vec<String>) {
             test_sessions: 2,
             test_n: 20,
             per_class_f1: per,
+            per_class_test_support: Default::default(),
             kept_accuracy: None,
         },
         vec!["fish:shark".to_string(), "fish:golden".to_string()],

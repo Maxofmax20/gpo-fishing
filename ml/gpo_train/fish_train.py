@@ -152,6 +152,18 @@ def pick_rejection_threshold(val_logits, val_true):
     return best
 
 
+def _ort_version() -> str:
+    """Record the export runtime. An ONNX artifact is only reproducible with
+    a known exporter/runtime; without it 'reproducible' is not a claim anyone
+    can check."""
+    try:
+        import onnxruntime  # noqa: PLC0415
+
+        return onnxruntime.__version__
+    except Exception:
+        return "unknown"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--epochs", type=int, default=40)
@@ -200,13 +212,30 @@ def main() -> int:
         "vocab": FISH_VOCAB, "architecture": "GpoVisionNet backbone + single 8-class head",
         "input_size": INPUT_SIZE, "normalization": {"mean": list(mean), "std": list(std)},
         "loss": "class-weighted CE", "selection": "best validation macro-F1",
-        "framework": f"torch {torch.__version__}", "device": device,
+        "lr": args.lr, "weight_decay": 1e-4, "optimizer": "AdamW",
+        "augmentation": "brightness/contrast + shift", "batch": args.batch,
+        "early_stop_patience": args.patience,
+        "framework": f"torch {torch.__version__}",
+        "onnxruntime_version": _ort_version(),
+        "device": device,
     }
     with open(os.path.join(outdir, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
     with open(os.path.join(outdir, "dataset_snapshot.json"), "w", encoding="utf-8") as f:
         json.dump({"dataset_version": snap.version, "train": len(tr), "validation": len(va),
                    "test": len(te), "train_support": dict(ctr),
+                   # The authoritative output-index -> label order. The Rust
+                   # registry reads THIS, never a re-sorted guess: a sorted
+                   # key list would silently permute every label the moment
+                   # FISH_VOCAB stops being alphabetical.
+                   "entity_vocab": list(FISH_VOCAB),
+                   # Class support in each held-out split. `compare()` gates
+                   # per-class regression on these, and a 2-example class must
+                   # not be able to veto a promotion on its own.
+                   "val_support": {e: int(sum(1 for i in va if snap.rows[i].entity_id == e))
+                                   for e in FISH_VOCAB},
+                   "test_support": {e: int(sum(1 for i in te if snap.rows[i].entity_id == e))
+                                    for e in FISH_VOCAB},
                    "train_sessions": len({snap.rows[i].session_id for i in tr}),
                    "val_sessions": len({snap.rows[i].session_id for i in va}),
                    "test_sessions": len({snap.rows[i].session_id for i in te})}, f, indent=2)

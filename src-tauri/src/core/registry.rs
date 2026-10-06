@@ -41,6 +41,14 @@ pub struct ModelMetrics {
     pub test_sessions: usize,
     pub test_n: usize,
     pub per_class_f1: HashMap<String, f32>,
+    /// Test-set examples behind each per-class F1. Empty for older records.
+    ///
+    /// A class with two test examples can single-handedly trigger a
+    /// regression REJECT, or clear one with a lucky flip. With the count
+    /// available, [`compare`] can refuse to judge such a class instead of
+    /// pretending a two-sample F1 is evidence.
+    #[serde(default)]
+    pub per_class_test_support: HashMap<String, usize>,
     /// Kept-accuracy at the established rejection threshold, if any.
     pub kept_accuracy: Option<f32>,
 }
@@ -79,7 +87,30 @@ impl ModelMetrics {
         let kept_accuracy =
             rejection.and_then(|r| r.get("test_kept_accuracy")).and_then(|v| v.as_f64()).map(|v| v as f32);
         let test_n = evaluation_test.get("n").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-        Some(Self { accuracy, macro_f1, ece, test_sessions, test_n, per_class_f1, kept_accuracy })
+        // Test support per class, when the trainer recorded it. Absent is not
+        // zero: an unknown support must not be treated as "too thin to judge",
+        // so it stays out of the map and the floor does not apply.
+        let per_class_test_support: HashMap<String, usize> = evaluation_test
+            .get("per_entity")
+            .and_then(|m| m.as_object())
+            .map(|m| {
+                m.iter()
+                    .filter_map(|(k, v)| {
+                        v.get("support").and_then(|s| s.as_u64()).map(|n| (k.clone(), n as usize))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Self {
+            accuracy,
+            macro_f1,
+            ece,
+            test_sessions,
+            test_n,
+            per_class_f1,
+            per_class_test_support,
+            kept_accuracy,
+        })
     }
 }
 
@@ -375,6 +406,11 @@ pub enum ComparisonVerdict {
 
 /// Deterministic promotion comparison. Fail-closed by construction:
 /// anything unmeasurable is INCONCLUSIVE, anything worse is REJECT.
+/// Minimum test examples before a per-class F1 difference is treated as
+/// evidence. Below this, the class is reported but NOT allowed to move the
+/// verdict in either direction.
+pub const PER_CLASS_MIN_TEST_SUPPORT: usize = 10;
+
 pub fn compare(
     current: &ModelMetrics,
     candidate: &ModelMetrics,
@@ -392,12 +428,25 @@ pub fn compare(
     let cur_set: HashSet<&str> = current_classes.iter().map(|s| s.as_str()).collect();
     let mut regressions = Vec::new();
     let mut improvements = Vec::new();
+    let mut thin_support = Vec::new();
     for cls in candidate_classes {
         if let (Some(&a), Some(&b)) = (
             current.per_class_f1.get(cls.as_str()),
             candidate.per_class_f1.get(cls.as_str()),
         ) {
             if cur_set.contains(cls.as_str()) {
+                // A class measured on very few test examples cannot move the
+                // verdict. It is still REPORTED, so the thin evidence is
+                // visible rather than silently averaged in.
+                let support = candidate
+                    .per_class_test_support
+                    .get(cls.as_str())
+                    .copied()
+                    .unwrap_or(0);
+                if support > 0 && support < PER_CLASS_MIN_TEST_SUPPORT {
+                    thin_support.push(format!("{cls} ({support} test example(s))"));
+                    continue;
+                }
                 if a - b > 0.05 {
                     regressions.push((cls.clone(), a, b));
                 } else if b - a > 0.05 {
@@ -431,6 +480,12 @@ pub fn compare(
 
     if !unqualified.is_empty() {
         reject! {format!("candidate covers unqualified classes: {}", unqualified.join(","))};
+    }
+    if !thin_support.is_empty() {
+        inconclusive! {format!(
+            "per-class metrics too thin to judge (need >={PER_CLASS_MIN_TEST_SUPPORT} test examples each): {}",
+            thin_support.join(", ")
+        )};
     }
     if candidate.test_sessions < current.test_sessions {
         inconclusive! {format!(
@@ -764,6 +819,29 @@ mod tests {
             test_sessions: sessions,
             test_n: 100,
             per_class_f1: per.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
+            per_class_test_support: Default::default(),
+            kept_accuracy: None,
+        }
+    }
+
+    /// Same as `metrics`, but with real per-class test support.
+    fn metrics_with_support(
+        acc: f32,
+        f1: f32,
+        sessions: usize,
+        per: &[(&str, f32, usize)],
+    ) -> ModelMetrics {
+        ModelMetrics {
+            accuracy: acc,
+            macro_f1: f1,
+            ece: Some(0.1),
+            test_sessions: sessions,
+            test_n: 100,
+            per_class_f1: per.iter().map(|(k, v, _)| (k.to_string(), *v)).collect(),
+            per_class_test_support: per
+                .iter()
+                .map(|(k, _, n)| (k.to_string(), *n))
+                .collect(),
             kept_accuracy: None,
         }
     }
@@ -1237,5 +1315,56 @@ mod tests {
         assert!(registry_is_corrupt(&dir));
         assert!(!registry_is_corrupt(&dir.join("nonexistent")));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_class_on_two_test_examples_cannot_veto_or_clear_a_promotion() {
+        // Real numbers from the committed fish run: fish:swordfish had test
+        // support 2 (F1 0.50) and fish:pufferfish 4 (F1 0.22). A two-sample F1
+        // is noise; v5.6.x let it decide the verdict on its own.
+        let current = metrics(0.58, 0.54, 5, &[("fish:swordfish", 0.50)]);
+        let thin = metrics_with_support(
+            0.99,
+            0.99,
+            5,
+            &[("fish:swordfish", 0.00, 2)],
+        );
+        let c = compare(
+            &current,
+            &thin,
+            &["fish:swordfish".to_string()],
+            &["fish:swordfish".to_string()],
+            &["fish:swordfish".to_string()],
+        );
+        assert!(
+            !c.regressions.iter().any(|(cls, _, _)| cls == "fish:swordfish"),
+            "a 2-example class must not register as a regression: {:?}",
+            c.regressions
+        );
+        assert_ne!(
+            c.verdict,
+            ComparisonVerdict::Reject,
+            "thin evidence must not reject: {c:?}"
+        );
+        assert!(
+            c.reasons.iter().any(|r| r.contains("too thin")),
+            "and it must be reported: {:?}",
+            c.reasons
+        );
+    }
+
+    #[test]
+    fn a_well_measured_regression_still_rejects() {
+        // The support floor must not become a loophole.
+        let current = metrics(0.58, 0.54, 5, &[("fish:shark", 0.80)]);
+        let worse = metrics_with_support(0.90, 0.90, 5, &[("fish:shark", 0.40, 40)]);
+        let c = compare(
+            &current,
+            &worse,
+            &["fish:shark".to_string()],
+            &["fish:shark".to_string()],
+            &["fish:shark".to_string()],
+        );
+        assert!(c.regressions.iter().any(|(cls, _, _)| cls == "fish:shark"));
     }
 }

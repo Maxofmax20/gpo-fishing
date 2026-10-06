@@ -646,6 +646,7 @@ mod tests {
                 test_sessions: 6,
                 test_n: 100,
                 per_class_f1: per,
+                per_class_test_support: Default::default(),
                 kept_accuracy: None,
             },
             classes: vec!["fish:a".into(), "fish:worst".into()],
