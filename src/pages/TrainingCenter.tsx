@@ -195,6 +195,115 @@ function isReadyStatus(s: ReadinessStatus): boolean {
   return READY_STATUSES.includes(s);
 }
 
+/**
+ * The one screen that answers "where am I, and what do I do next?"
+ *
+ * Every value is derived from real backend state (readiness checks and the
+ * overview), never from a hardcoded or optimistic assumption. A stage with no
+ * evidence is shown as NOT STARTED, not as passed.
+ */
+function FinalStatus({
+  overview,
+  readiness,
+}: {
+  overview: TrainingOverview | null;
+  readiness: ModelReadiness[];
+}) {
+  const family = (name: string) => readiness.find((r) => r.family === name);
+
+  const row = (
+    label: string,
+    tone: "ok" | "warn" | "bad" | "mute",
+    value: string,
+    detail?: string,
+  ) => (
+    <div className="flex items-baseline gap-2 text-[12px]">
+      <span className="w-24 shrink-0 text-fg-dim uppercase tracking-wide">{label}</span>
+      <Pill tone={tone}>{value}</Pill>
+      {detail ? <span className="text-[11px] text-fg-mute break-words">{detail}</span> : null}
+    </div>
+  );
+
+  const fish = family("fish");
+  const fruit = family("fruit");
+  const classes = fish?.checks.find((c) => c.name === "qualified_classes");
+  const reviewChk = fish?.checks.find((c) => c.name === "human_review");
+  const trainChk = fish?.checks.find((c) => c.name === "training_job");
+  const shadowChk = fish?.checks.find((c) => c.name === "shadow_soak_events");
+  const hasCandidate = Boolean(trainChk?.passed);
+  const shadowStarted = Boolean(overview && overview.shadow_events > 0);
+
+  // The single next action, derived from the FIRST unmet stage. Never guess.
+  const nextAction = (() => {
+    if (!fish) return "Reading readiness...";
+    if (fish.status === "NOT_ENOUGH_DATA") return "Collect real gameplay data (Setup > Enable trace recording).";
+    if (fish.status === "NOT_ENOUGH_CLASSES") return `Collect and review more fish classes — ${classes?.next_action ?? ""}`;
+    if (fish.status === "NOT_ENOUGH_SESSIONS") return "Catch the remaining fish in more independent sessions.";
+    if (fish.status === "NOT_ENOUGH_TEST") return "Add held-out TEST-split sessions for the uncovered classes.";
+    if (fish.status === "NOT_ENOUGH_REVIEW") return `Review samples in Training > Review — ${reviewChk?.difference ?? ""}`;
+    if (fish.status === "DATA_READY") return "Start a training job (Training > Jobs > Train Fish).";
+    if (fish.status === "TRAINING") return "Training in progress — wait for it to finish.";
+    if (fish.status === "EVALUATING") return "Evaluating the candidate — wait for held-out results.";
+    if (fish.status === "CANDIDATE_READY") return "Candidate passed. Promote it to shadow to start its soak.";
+    if (fish.status === "SHADOW_READY")
+      return "Shadow soak is complete. Production control stays OFF by design.";
+    return "Read the Readiness tab for the exact blocker.";
+  })();
+
+  return (
+    <div className="rounded-lg border border-line/70 px-3 py-2.5 mb-2 flex flex-col gap-1.5">
+      <div className="text-[11px] font-semibold text-fg uppercase tracking-wide">Status</div>
+      {row(
+        "System",
+        overview?.backend_available ? "ok" : "warn",
+        overview ? "Healthy" : "Loading",
+        overview?.backend_available
+          ? overview.backend_detail
+          : overview?.backend_detail ?? undefined,
+      )}
+      {row(
+        "Data",
+        fish?.status === "NOT_ENOUGH_DATA" ? "bad" : "warn",
+        `Fish ${fish?.status === "NOT_ENOUGH_DATA" ? "0/10" : classes?.actual ?? "?"}`,
+        classes?.detail,
+      )}
+      {row(
+        "",
+        fruit?.status === "NOT_ENOUGH_DATA" ? "bad" : "warn",
+        `Fruit ${fruit ? fruit.evidence.qualified_classes ?? "?" : "?"}/10`,
+        fruit?.checks.find((c) => c.name === "qualified_classes")?.detail,
+      )}
+      {row(
+        "Review",
+        fish?.status === "NOT_ENOUGH_REVIEW" ? "bad" : fish?.status === "DATA_READY" ? "ok" : "warn",
+        reviewChk?.passed ? "OK" : reviewChk?.actual ?? "unknown",
+        reviewChk?.difference !== "none" ? reviewChk?.difference : undefined,
+      )}
+      {row("Training", hasCandidate ? "ok" : "mute", hasCandidate ? "Candidate exists" : "No candidate")}
+      {row(
+        "Evaluation",
+        hasCandidate ? "ok" : "mute",
+        hasCandidate ? "Registered" : "No candidate",
+      )}
+      {row(
+        "Shadow",
+        shadowStarted ? "warn" : "mute",
+        shadowStarted ? `${overview?.shadow_events ?? 0} events` : "Not started",
+        shadowChk?.passed === false && shadowStarted ? shadowChk?.required : undefined,
+      )}
+      {row("Production", "bad", "NOT READY", "by design — no production-control switch exists")}
+      <div className="mt-1 pt-1 border-t border-line/50 text-[11px] text-fg">
+        <span className="text-fg-dim">Next: </span>
+        {nextAction}
+      </div>
+      <div className="text-[10px] text-fg-mute">
+        Reviewed is not trained. Trained is not evaluated. Evaluated is not shadow-validated. Shadow-validated is
+        not production-enabled.
+      </div>
+    </div>
+  );
+}
+
 /** Distinct tone per status - the v5.6.0 UI painted every non-production
  *  status the same amber, which told the reviewer nothing. */
 function statusTone(s: ReadinessStatus): "ok" | "warn" | "bad" | "accent" | "mute" | "fruit" {
@@ -820,6 +929,7 @@ export default function TrainingCenter() {
 
       {tab === "overview" && (
         <Section title="Learning status">
+          <FinalStatus overview={overview} readiness={readiness} />
           {!overview ? (
             <div className="text-[11px] text-fg-mute">Loading…</div>
           ) : (

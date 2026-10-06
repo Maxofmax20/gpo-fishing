@@ -1146,4 +1146,96 @@ mod tests {
         assert_eq!(round.revision, "2");
         let _ = std::fs::remove_dir_all(std::env::temp_dir().join("gpo-reg-soak-rev-d"));
     }
+
+
+    fn record_for(family: &str, version: u32) -> CandidateRecord {
+        CandidateRecord {
+            candidate_id: format!("{family}-v{version}-t"),
+            model_family: family.to_string(),
+            model_version: version,
+            parent_name: format!("{family}_v1"),
+            parent_sha: None,
+            dataset_fingerprint: "fp".into(),
+            dataset_version: 1,
+            training_config_hash: "c".into(),
+            code_version: "t".into(),
+            job_id: "j".into(),
+            created_at: 1,
+            artifact_sha: "a".into(),
+            manifest_sha: None,
+            eval_sha: "e".into(),
+            metrics: metrics(0.9, 0.9, 5, &[("fish:shark", 0.9)]),
+            classes: vec!["fish:shark".into()],
+            vocab_sha: String::new(),
+            temperature: 1.0,
+            mean: [0.0; 3],
+            std: [1.0; 3],
+            status: Lifecycle::Evaluated,
+            decision_reason: None,
+        }
+    }
+
+    #[test]
+    fn a_new_candidate_never_inherits_a_dead_revisions_soak() {
+        // The v5.6.x failure: `next_version` derived purely from the record
+        // list, so a lost registry restarted at 2 and the new candidate joined
+        // the DEAD revision 2's shadow events.
+        let dir = std::env::temp_dir().join("gpo-reg-version-mono");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let recs = vec![record_for("fish", 1), record_for("fish", 2), record_for("fish", 3)];
+        let v4 = next_version_checked(&dir, &recs, "fish").unwrap();
+        assert_eq!(v4, 4);
+
+        // Registry destroyed, counter survives.
+        let _ = std::fs::remove_file(registry_path(&dir));
+        let after_loss = next_version_checked(&dir, &[], "fish").unwrap();
+        assert!(
+            after_loss > v4,
+            "a lost registry must not recycle a version: {after_loss} <= {v4}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn version_numbering_is_refused_when_the_registry_is_corrupt_and_no_counter_exists() {
+        let dir = std::env::temp_dir().join("gpo-reg-corrupt");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(registry_dir(&dir)).unwrap();
+        std::fs::write(registry_path(&dir), b"{ truncated json").unwrap();
+
+        assert!(registry_is_corrupt(&dir));
+        let err = next_version_checked(&dir, &[], "fish").unwrap_err();
+        assert!(err.contains("refusing to reuse"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn registry_writes_are_atomic_and_survive_a_reload() {
+        let dir = std::env::temp_dir().join("gpo-reg-atomic");
+        let _ = std::fs::remove_dir_all(&dir);
+        let recs = vec![record_for("fish", 1), record_for("state", 1)];
+        save_registry(&dir, &recs).unwrap();
+        assert_eq!(load_registry(&dir).len(), 2);
+        // No temp files left behind.
+        let leftovers: Vec<_> = std::fs::read_dir(registry_dir(&dir))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "no staging file may survive: {leftovers:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_corrupt_registry_is_reported_not_silently_treated_as_empty() {
+        let dir = std::env::temp_dir().join("gpo-reg-report");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(registry_dir(&dir)).unwrap();
+        std::fs::write(registry_path(&dir), "not json at all").unwrap();
+        assert!(registry_is_corrupt(&dir));
+        assert!(!registry_is_corrupt(&dir.join("nonexistent")));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

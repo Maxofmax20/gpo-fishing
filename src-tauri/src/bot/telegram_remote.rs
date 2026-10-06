@@ -1328,9 +1328,7 @@ pub fn check_and_apply_update(
         .and_then(|w| w.get("url"))
         .and_then(|u| u.as_str())
     {
-        if let Err(e) = validated_download_url(raw) {
-            return Err(e);
-        }
+        validated_download_url(raw)?;
     }
 
     let notes = resp

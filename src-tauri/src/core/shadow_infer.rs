@@ -549,4 +549,99 @@ mod tests {
         let v_spelled = revision_from_manifest(&serde_json::json!({"version": "v2"}));
         assert_eq!(format!("{}@{}", "fish_v1", v_spelled), "fish_v1@v2");
     }
+
+    /// A real, loadable bundled manifest with `name` rewritten.
+    fn slot_manifest(name: &str, version: &str) -> serde_json::Value {
+        let raw = std::fs::read_to_string(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models/state_v1.json"),
+        )
+        .unwrap();
+        let mut v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        v["name"] = serde_json::Value::String(name.to_string());
+        v["version"] = serde_json::Value::String(version.to_string());
+        v
+    }
+
+    /// Copy the real bundled state model into `dir` under the fish names, with
+    /// the manifest's declared `name` left as the STATE stem. That is exactly
+    /// the substitution that used to go unnoticed.
+    fn plant_cross_family(dir: &Path, declared_name: &str) {
+        let models = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
+        std::fs::create_dir_all(dir).unwrap();
+        for (from, to) in [
+            ("state_v1.onnx", "state_v1.onnx"),
+            ("fish_v1.onnx", "fish_v1.onnx"),
+        ] {
+            let _ = std::fs::copy(models.join(from), dir.join(to));
+        }
+        // state_v1.json declares "fish_v1": a family/name mismatch.
+        std::fs::write(
+            dir.join("state_v1.json"),
+            serde_json::to_string_pretty(&slot_manifest(declared_name, "9")).unwrap(),
+        )
+        .unwrap();
+        // fish_v1.json is left absent, so `fish_v1` itself never loads.
+    }
+
+    #[test]
+    fn a_manifest_may_not_occupy_another_familys_slot() {
+        // The v5.6.x bug: the engine map was keyed by the manifest's
+        // self-declared name, so this manifest inserted under "fish_v1" and
+        // EVICTED the real fish entry - state shadow observation then stopped
+        // permanently with no error, while readiness kept reading a perfectly
+        // valid state_v1.json off disk.
+        let dir = std::env::temp_dir().join("gpo-shadow-slot-mix");
+        let _ = std::fs::remove_dir_all(&dir);
+        plant_cross_family(&dir, "fish_v1");
+
+        match ShadowEngine::load(&dir) {
+            Ok(_) => panic!("a manifest occupying another family's slot must be refused"),
+            Err(e) => {
+                assert!(
+                    e.contains("cannot cross slots") || e.contains("no shadow models"),
+                    "must name the slot problem: {e}"
+                );
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn revision_identity_is_stable_and_distinct_per_version() {
+        // The identity must be derivable from the manifest alone: it is the
+        // join key between "which weights" and "which soak events".
+        let v1 = serde_json::json!({"version": "1"});
+        let v2 = serde_json::json!({"version": 2});
+        let legacy = serde_json::json!({});
+        let blank = serde_json::json!({"version": ""});
+        assert_eq!(revision_from_manifest(&v1), "1");
+        assert_eq!(revision_from_manifest(&v2), "2");
+        // Pre-revision manifests get a defined identity instead of colliding
+        // with a numbered one.
+        assert_eq!(revision_from_manifest(&legacy), "0");
+        assert_eq!(revision_from_manifest(&blank), "0");
+        // Distinct revisions must never join the same soak.
+        assert_ne!(revision_from_manifest(&v1), revision_from_manifest(&v2));
+    }
+
+    #[test]
+    fn seeding_never_downgrades_a_newer_deployed_model() {
+        let dir = std::env::temp_dir().join("gpo-shadow-seed-guard");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // A deployed manifest at a HIGHER version than bundled.
+        std::fs::write(
+            dir.join("fish_v1.json"),
+            serde_json::to_string_pretty(&slot_manifest("fish_v1", "7")).unwrap(),
+        )
+        .unwrap();
+        let before = std::fs::read_to_string(dir.join("fish_v1.json")).unwrap();
+
+        let candidates = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models")];
+        let _ = seed_shadow_models(&candidates, &dir);
+
+        let after = std::fs::read_to_string(dir.join("fish_v1.json")).unwrap();
+        assert_eq!(before, after, "a promoted model must survive an app restart");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

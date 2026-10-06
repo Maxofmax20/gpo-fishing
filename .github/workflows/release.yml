@@ -85,7 +85,10 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
 
-      - name: Build Tauri app & create release
+      # Build as a DRAFT. Publishing is a separate, later step, so a missing
+      # signature or manifest fails the job BEFORE anything is public. v5.6.x
+      # created a public release and only then verified the artifacts.
+      - name: Build Tauri app (draft release)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -95,8 +98,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: 'GPO Autofish ${{ github.ref_name }}'
           releaseBody: 'See release notes below. Auto-update verifies the minisign signature before installing.'
-          releaseDraft: false
-          # Beta tags (vX.Y.Z-beta.N) publish as prerelease; stable tags publish as full releases.
+          releaseDraft: true
           prerelease: ${{ contains(github.ref_name, '-beta.') }}
 
       - name: Verify updater artifacts exist
@@ -108,4 +110,31 @@ jobs:
           if (-not (Test-Path "$dir/$($exe.BaseName).exe.sig")) { Write-Error 'updater signature missing'; exit 1 }
           & "$env:GITHUB_WORKSPACE/src-tauri/latest-json.ps1" -Out $dir
           if (-not (Test-Path "$dir/latest.json")) { Write-Error 'latest.json not generated'; exit 1 }
+          # Independent checksums: minisign covers integrity of the update
+          # itself, but a published SHA-256 lets a human verify the download
+          # without trusting our tooling.
+          Write-Output '### SHA-256' >> "$env:GITHUB_STEP_SUMMARY"
+          Get-ChildItem $dir -File | ForEach-Object {
+            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "``$h  $($_.Name)``" | Tee-Object -FilePath "$dir/SHA256SUMS.txt" -Append | Out-Null
+            "``$h  $($_.Name)``"
+          } | Out-String | Add-Content "$env:GITHUB_STEP_SUMMARY"
           Write-Output "updater artifacts verified for $($exe.Name)"
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $dir = 'src-tauri/target/release/bundle/nsis'
+          $files = Get-ChildItem $dir -File |
+            Where-Object { $_.Name -match '\.exe$|\.exe\.sig$|^latest\.json$|^SHA256SUMS\.txt$' }
+          if (-not $files) { Write-Error 'no artifacts to publish'; exit 1 }
+          foreach ($f in $files) {
+            gh release upload '${{ github.ref_name }}' $f.FullName --clobber
+            if ($LASTEXITCODE -ne 0) { Write-Error "upload failed: $($f.Name)"; exit 1 }
+          }
+          # Draft -> published only after every artifact is on the release.
+          gh release edit '${{ github.ref_name }}' --draft=false
+          if ($LASTEXITCODE -ne 0) { Write-Error 'failed to publish release'; exit 1 }
+          Write-Output 'release published'

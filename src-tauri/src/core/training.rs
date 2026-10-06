@@ -826,9 +826,20 @@ static BACKEND_PROBE: Mutex<Option<(String, String, BackendStatus)>> = Mutex::ne
 /// is left behind. stdout/stderr are piped and read on the helper threads, so
 /// a chatty interpreter cannot deadlock us by filling a pipe buffer.
 fn probe_python(python_path: &str, code: &str, timeout: Duration) -> Result<std::process::Output, String> {
-    let mut child = std::process::Command::new(python_path)
-        .arg("-c")
-        .arg(code)
+    probe_program(python_path, &["-c", code], timeout)
+}
+
+/// Bounded subprocess run: spawn, poll until `timeout`, kill + reap on expiry.
+///
+/// Split from [`probe_python`] so the timeout/reap behaviour is testable
+/// without needing a Python interpreter present.
+fn probe_program(
+    program: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<std::process::Output, String> {
+    let mut child = std::process::Command::new(program)
+        .args(args)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -1409,6 +1420,80 @@ mod tests {
         let h = read_history(&dir, 10);
         assert_eq!(h.len(), 2);
         assert_eq!(read_history(&dir, 1).len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn backend_probe_timeout_kills_the_interpreter() {
+        // A probe that hangs must be terminated, not waited on forever.
+        let t0 = std::time::Instant::now();
+        let r = probe_program(
+            "cmd",
+            &["/c", "ping -n 30 127.0.0.1 > nul"],
+            Duration::from_millis(400),
+        );
+        let err = match r {
+            Err(e) => e,
+            Ok(o) => panic!("a hanging probe must fail, got success: {o:?}"),
+        };
+        assert!(err.contains("timed out"), "must say it timed out: {err}");
+        assert!(t0.elapsed() < Duration::from_secs(10), "must not wait for the process");
+    }
+
+    #[test]
+    fn backend_probe_reports_a_missing_interpreter_distinctly() {
+        let r = probe_program(
+            "definitely-not-a-real-python-binary-xyz",
+            &["-c", "print(1)"],
+            Duration::from_secs(5),
+        );
+        let err = r.unwrap_err();
+        assert!(!err.contains("timed out"), "a missing binary is not a hang: {err}");
+    }
+
+    #[test]
+    fn backend_probe_runs_a_real_process() {
+        // cmd is always present on Windows and returns promptly.
+        let out = probe_program("cmd", &["/c", "echo ready"], Duration::from_secs(10)).unwrap();
+        assert!(out.status.success());
+        assert!(String::from_utf8_lossy(&out.stdout).contains("ready"));
+    }
+
+    #[test]
+    fn backend_probe_cache_is_invalidated_and_bounded() {
+        invalidate_backend_probe();
+        // A cache miss must not report a stale result.
+        let a = check_backend_with_timeout("", "", Duration::from_millis(100));
+        assert!(a.detail.contains("not configured"));
+        invalidate_backend_probe();
+        let b = check_backend_with_timeout("", "", Duration::from_millis(100));
+        assert_eq!(a.python_path, b.python_path);
+    }
+
+    #[test]
+    fn snapshot_metadata_describes_what_actually_trains() {
+        // Reproducibility contract: identical input -> identical fingerprint.
+        let (dir, rows) = seeded_review_dir("repro");
+        let s1 = snapshot_dataset(&dir, &dir.join("s1"), &rows, 1).unwrap();
+        let s2 = snapshot_dataset(&dir, &dir.join("s2"), &rows, 1).unwrap();
+        assert_eq!(s1.fingerprint, s2.fingerprint, "same input must fingerprint identically");
+        assert_eq!(s1.rows, s2.rows);
+        assert_eq!(s1.rows_excluded_by_review, s2.rows_excluded_by_review);
+        // The frozen trainer input must be byte-identical too.
+        let a = std::fs::read(dir.join("s1").join("labels.jsonl")).unwrap();
+        let b = std::fs::read(dir.join("s2").join("labels.jsonl")).unwrap();
+        assert_eq!(a, b, "snapshots must be reproducible byte-for-byte");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn job_id_rejects_path_traversal() {
+        let dir = std::env::temp_dir().join("gpo-jobid-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for bad in ["../escape", "..\\escape", "a/b", "a\\b", "", "NUL", &"x".repeat(80)] {
+            assert!(load_job(&dir, bad).is_err(), "must reject {bad:?}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
