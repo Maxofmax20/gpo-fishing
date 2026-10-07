@@ -135,7 +135,25 @@ fn jget(path: &str) -> serde_json::Value {
 // the first call. A single test owns that, and it runs the whole matrix itself.
 #[test]
 fn the_review_server_answers_real_http() {
-    std::env::set_var("GPO_ONTOLOGY_REVIEW_DIR", sandbox());
+    let sandbox_dir = sandbox();
+    std::env::set_var("GPO_ONTOLOGY_REVIEW_DIR", &sandbox_dir);
+
+    // ASSERT ISOLATION BEFORE ANY WRITE.
+    //
+    // `find_report_dir` falls back to walking up for `workstation/index.json`, so a
+    // sandbox that fails to materialise does not error - it silently resolves to the
+    // REAL report directory. That is how four `notes: "http sandbox test"` records
+    // reached the production decision log. Every write below goes through the server,
+    // so this check has to come first and has to fail loudly.
+    let resolved = gpo_autofish_lib::commands_ontology_workstation::find_report_dir()
+        .expect("report dir must resolve");
+    assert_eq!(
+        resolved, sandbox_dir,
+        "the server resolved {:?} instead of the sandbox {:?}. Refusing to run: a \
+         decision written now would land in the real log.",
+        resolved, sandbox_dir
+    );
+
     gpo_autofish_lib::ontology_web::spawn();
     // Give the listener thread a moment; binding happens synchronously in `spawn`,
     // but the accept loop is a thread.

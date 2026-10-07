@@ -62,6 +62,11 @@ reports/ontology_review/workstation/
 # so the committed metadata (counts, per-class coverage, content hash) is what the
 # tests and reports read.
 reports/training_candidates/
+# The human decision log. Never committed: a record here is a claim that a person
+# made a judgement, and a fabricated one would be indistinguishable from a real one
+# in the repository history. It lives on the reviewer's machine only.
+reports/ontology_review/ontology_decisions.jsonl
+
 reports/ocr_audit/.cache/
 reports/ocr_audit/evidence.jsonl
 reports/ocr_audit/contact_sheets/

@@ -136,11 +136,20 @@ fn read_json(p: &Path) -> Option<serde_json::Value> {
 
 /// Locate `reports/ontology_review/`.
 pub fn find_report_dir() -> Option<PathBuf> {
+    // An explicit override is a REQUEST, and is honoured unconditionally.
+    //
+    // It used to be honoured only if `workstation/index.json` happened to exist
+    // there, and otherwise fall through to the walk-up below. That fall-through is
+    // how a sandboxed caller - the ontology web HTTP tests - silently resolved to
+    // the REAL report directory and wrote four `notes: "http sandbox test"`
+    // decision records into the production human decision log.
+    //
+    // A caller that names a directory and gets a different one is not isolated, and
+    // cannot tell. So if the override is set, that directory is the answer: either it
+    // works, or the caller gets `None` and sees a visible failure instead of a
+    // invisible write to the wrong place.
     if let Ok(p) = std::env::var("GPO_ONTOLOGY_REVIEW_DIR") {
-        let p = PathBuf::from(p);
-        if p.join("workstation").join("index.json").is_file() {
-            return Some(p);
-        }
+        return Some(PathBuf::from(p));
     }
     if let Ok(root) = std::env::var("GPO_REPO_ROOT") {
         let c = PathBuf::from(root).join("reports").join("ontology_review");
@@ -1022,6 +1031,45 @@ pub fn undo_human_decision(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The sandbox leak, pinned.
+    ///
+    /// `find_report_dir` used to honour `GPO_ONTOLOGY_REVIEW_DIR` only when
+    /// `workstation/index.json` happened to exist there, and otherwise fell through to
+    /// the walk-up that finds the real repository directory. The ontology web HTTP
+    /// tests set that variable to a temp sandbox; when the sandbox failed to
+    /// materialise, four `notes: "http sandbox test"` records were written to the
+    /// production human decision log and committed.
+    ///
+    /// The test builds a directory with NO files in it - precisely the shape that used
+    /// to trigger the fall-through - and requires the override to be returned anyway.
+    #[test]
+    fn an_explicit_override_is_never_silently_replaced_by_the_real_directory() {
+        let empty = std::env::temp_dir().join("gpo_review_dir_override_probe");
+        let _ = std::fs::remove_dir_all(&empty);
+        std::fs::create_dir_all(&empty).expect("probe dir");
+
+        // Safety: single-threaded within this test's own process region, and the
+        // variable is restored immediately afterwards.
+        let prior = std::env::var("GPO_ONTOLOGY_REVIEW_DIR").ok();
+        std::env::set_var("GPO_ONTOLOGY_REVIEW_DIR", &empty);
+
+        let resolved = super::find_report_dir();
+
+        match prior {
+            Some(v) => std::env::set_var("GPO_ONTOLOGY_REVIEW_DIR", v),
+            None => std::env::remove_var("GPO_ONTOLOGY_REVIEW_DIR"),
+        }
+        let _ = std::fs::remove_dir_all(&empty);
+
+        assert_eq!(
+            resolved.as_deref(),
+            Some(empty.as_path()),
+            "an empty override directory must be returned as-is, not replaced by a walk-up \
+             that finds the real report dir. Silently substituting the real directory is \
+             what put fabricated human decisions into the production log."
+        );
+    }
 
     fn fixtures() -> serde_json::Value {
         let raw = include_str!("../../ml/gpo_ontology_review/validation_fixtures.json");
