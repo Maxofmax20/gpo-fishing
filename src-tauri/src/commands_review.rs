@@ -936,6 +936,39 @@ fn review_priority_sync(
                 .total_cmp(&a.model_confidence.unwrap_or(-1.0))
         }),
         "rarest" => items.sort_by_key(|i| (i.entity_id.is_none(), i.ocr_text.len())),
+        // EVIDENCE-FUSION ORDER (Phase 11). The teacher's whole value is
+        // surfacing rows where the cheap label is most likely WRONG, then
+        // getting out of the way: OCR disagreeing with the stored label first,
+        // then RAM disagreeing, then a name with no KB entity, then OCR and RAM
+        // disagreeing with each other, and full agreement LAST because it is
+        // cheap to confirm.
+        //
+        // This ORDERS the queue. It never labels, never excludes, and never
+        // touches `training_eligible`: priority is not evidence.
+        "evidence" => {
+            let kb = kb_entity_set(crate::core::knowledge::KnowledgeBase::bundled());
+            let ram = ram_results(dir);
+            let mut keyed: Vec<(crate::core::semantic::ReviewPriority, PriorityItem)> = items
+                .drain(..)
+                .map(|i| {
+                    let f = crate::core::semantic::fuse(
+                        &i.image_id,
+                        Some(i.ocr_text.as_str()),
+                        i.entity_id.as_deref(),
+                        ram.get(&i.image_id),
+                        false,
+                        &kb,
+                    );
+                    (f.priority, i)
+                })
+                .collect();
+            keyed.sort_by(|a, b| {
+                a.0.cmp(&b.0)
+                    .then_with(|| b.1.timestamp_ms.cmp(&a.1.timestamp_ms))
+                    .then_with(|| a.1.image_id.cmp(&b.1.image_id))
+            });
+            items = keyed.into_iter().map(|(_, i)| i).collect();
+        }
         _ => items.sort_by(|a, b| {
             b.score
                 .cmp(&a.score)
@@ -1366,4 +1399,128 @@ pub fn hermes_tasks(st: State<'_, AppState>) -> HermesTasks {
         readiness: readiness_status_inner(st.store.dir(), &settings),
         history_tail: training::read_history(st.store.dir(), 20),
     }
+}
+
+
+// ---------------------------------------------------------------------------
+// Semantic-teacher evidence fusion
+// ---------------------------------------------------------------------------
+
+/// Canonical KB entity ids, for evidence fusion.
+///
+/// Read from the ONTOLOGY, never from the dataset. The fusion logic has to judge
+/// a name against what the KB actually claims, not against whatever the
+/// collector happened to write onto the row.
+pub fn kb_entity_set(kb: &crate::core::knowledge::KnowledgeBase) -> std::collections::BTreeSet<String> {
+    kb.entities().iter().map(|e| e.id.clone()).collect()
+}
+
+/// Semantic-teacher results, keyed by image id.
+///
+/// A missing file means "the teacher has not been run" - a real state, which the
+/// fusion treats as *no teacher evidence* rather than as agreement. Only
+/// successful rows are returned: an errored or malformed row is not evidence,
+/// and silently counting it as agreement is how a broken teacher becomes an
+/// authority.
+pub fn ram_results(
+    store_dir: &std::path::Path,
+) -> std::collections::HashMap<String, crate::core::semantic::RamResult> {
+    let path = store_dir.join("semantic_teacher").join("ram_results.jsonl");
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return std::collections::HashMap::new();
+    };
+    raw.lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str::<crate::core::semantic::RamResult>(l).ok())
+        .filter(|r| r.is_ok())
+        .map(|r| (r.image_id.clone(), r))
+        .collect()
+}
+
+/// Status of the OFFLINE semantic teacher (RAM++ / RAM).
+///
+/// Reported honestly: NOT_INSTALLED when no results file exists, ERROR when one
+/// exists but yields nothing usable. It is labelled a TEACHER and never "ground
+/// truth": it supplies evidence, and a human decides.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticTeacherStatus {
+    pub state: String,
+    pub model: Option<String>,
+    pub checkpoint_sha256: Option<String>,
+    pub preprocessing: Option<String>,
+    pub images_analysed: usize,
+    pub last_analysis_ms: Option<u64>,
+    pub human_reviewed_assisted: usize,
+    pub unresolved_concepts: usize,
+    pub detail: String,
+}
+
+pub fn semantic_teacher_status_sync(dir: &std::path::Path) -> SemanticTeacherStatus {
+    let mut st = SemanticTeacherStatus {
+        state: "NOT_INSTALLED".to_string(),
+        model: None,
+        checkpoint_sha256: None,
+        preprocessing: None,
+        images_analysed: 0,
+        last_analysis_ms: None,
+        human_reviewed_assisted: 0,
+        unresolved_concepts: 0,
+        detail: "Semantic teacher has not been run on this install. Review still works without it.".to_string(),
+    };
+    let path = dir.join("semantic_teacher").join("ram_results.jsonl");
+    let Ok(raw) = std::fs::read_to_string(&path) else { return st };
+
+    let kb = kb_entity_set(crate::core::knowledge::KnowledgeBase::bundled());
+    let reviewed: std::collections::HashSet<String> =
+        review_store(dir).list().into_iter().map(|r| r.image_id).collect();
+
+    let (mut ok_count, mut errors) = (0usize, 0usize);
+    for line in raw.lines().filter(|l| !l.trim().is_empty()) {
+        let Ok(r) = serde_json::from_str::<crate::core::semantic::RamResult>(line) else {
+            errors += 1;
+            continue;
+        };
+        if !r.is_ok() {
+            errors += 1;
+            continue;
+        }
+        ok_count += 1;
+        st.model.get_or_insert_with(|| r.ram_model.clone());
+        st.checkpoint_sha256
+            .get_or_insert_with(|| r.checkpoint_sha256.clone());
+        st.preprocessing.get_or_insert_with(|| r.preprocessing.clone());
+        st.last_analysis_ms = Some(st.last_analysis_ms.unwrap_or(0).max(r.timestamp_ms));
+        if let Some((top, _)) = r.top_category() {
+            if !kb.contains(top) {
+                st.unresolved_concepts += 1;
+            }
+        }
+        // "Assisted" means evidence was shown AND a human then reviewed it.
+        if reviewed.contains(&r.image_id) {
+            st.human_reviewed_assisted += 1;
+        }
+    }
+    st.images_analysed = ok_count;
+    st.state = if ok_count == 0 { "ERROR" } else { "AVAILABLE" }.to_string();
+    st.detail = if ok_count == 0 {
+        format!(
+            "Semantic teacher produced no usable results ({errors} errored row(s)). \
+             It is evidence only and never a label source."
+        )
+    } else {
+        format!(
+            "{ok_count} image(s) analysed, {errors} errored row(s). Evidence only: \
+             every label still requires a human verdict."
+        )
+    };
+    st
+}
+
+#[tauri::command]
+pub async fn semantic_teacher_status(
+    st: State<'_, AppState>,
+) -> Result<SemanticTeacherStatus, String> {
+    let dir = st.store.dir().to_path_buf();
+    blocking(move || Ok(semantic_teacher_status_sync(&dir))).await
 }

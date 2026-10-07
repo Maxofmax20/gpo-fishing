@@ -61,6 +61,7 @@ import type {
   ReviewApplyResult,
   ReviewIntegrity,
   ReviewStatus,
+  SemanticTeacherStatus,
   HermesTasks,
 } from "./types";
 
@@ -241,6 +242,9 @@ export const api = {
   reviewSearch: (query: string) => invoke<EntityHit[]>("review_search", { query }),
   dropsExplorer: () => invoke<DropEntry[]>("drops_explorer"),
   readinessStatus: () => invoke<ModelReadiness[]>("readiness_status"),
+  /** Status of the OFFLINE semantic teacher (RAM++). Evidence only - it never
+   *  supplies a label. NOT_INSTALLED is a normal state. */
+  semanticTeacherStatus: () => invoke<SemanticTeacherStatus>("semantic_teacher_status"),
   hermesTasks: () => invoke<HermesTasks>("hermes_tasks"),
 };
 

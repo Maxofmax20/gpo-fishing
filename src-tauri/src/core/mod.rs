@@ -2,6 +2,7 @@ pub mod bait;
 pub mod boss_tracker;
 pub mod canon;
 pub mod class_vocab;
+pub mod semantic;
 pub mod clipboard;
 pub mod controller;
 pub mod digit_model;

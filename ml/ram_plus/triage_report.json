@@ -1,0 +1,533 @@
+{
+  "source": "real dataset triage (no teacher required)",
+  "dataset_rows_with_entity": 1914,
+  "rows_no_ocr_text": 0,
+  "ocr_agrees_with_label": 884,
+  "ocr_conflicts_with_label": 223,
+  "ocr_ambiguous_multi_kb": 621,
+  "ocr_outside_kb": 186,
+  "unresolved_concepts": [
+    {
+      "concept": "crimson + snapper",
+      "rows": 225
+    },
+    {
+      "concept": "crimson + pufferfish",
+      "rows": 216
+    },
+    {
+      "concept": "golden + pufferfish",
+      "rows": 93
+    },
+    {
+      "concept": "angelfish + golden",
+      "rows": 87
+    },
+    {
+      "concept": "nev item",
+      "rows": 45
+    },
+    {
+      "concept": "nev item exotic tiserfin",
+      "rows": 29
+    },
+    {
+      "concept": "nev item aack o bite",
+      "rows": 8
+    },
+    {
+      "concept": "item",
+      "rows": 4
+    },
+    {
+      "concept": "nev item cue lip grouper",
+      "rows": 4
+    },
+    {
+      "concept": "ribbon anqelfish",
+      "rows": 3
+    },
+    {
+      "concept": "uevltem",
+      "rows": 2
+    },
+    {
+      "concept": "item qfansfish",
+      "rows": 2
+    },
+    {
+      "concept": "nev item tiserfin",
+      "rows": 2
+    },
+    {
+      "concept": "nev item czebra ribbon anselfisk",
+      "rows": 2
+    },
+    {
+      "concept": "a kilo has spavned at trading hub",
+      "rows": 2
+    },
+    {
+      "concept": "n ev4tem3ansfish",
+      "rows": 1
+    },
+    {
+      "concept": "nev",
+      "rows": 1
+    },
+    {
+      "concept": "n e v item ansetfish",
+      "rows": 1
+    },
+    {
+      "concept": "t polka puffe6",
+      "rows": 1
+    },
+    {
+      "concept": "nev itemsdark skeletal shsrk",
+      "rows": 1
+    },
+    {
+      "concept": "nev ancelfish",
+      "rows": 1
+    },
+    {
+      "concept": "ncv itemgblden tiqerfin",
+      "rows": 1
+    },
+    {
+      "concept": "a horo has spavned at trading hub",
+      "rows": 1
+    },
+    {
+      "concept": "nev itemg61deniribb0n ancelfish",
+      "rows": 1
+    },
+    {
+      "concept": "item candy com sq\u00fcid",
+      "rows": 1
+    },
+    {
+      "concept": "goldempolka putter",
+      "rows": 1
+    },
+    {
+      "concept": "euev item",
+      "rows": 1
+    },
+    {
+      "concept": "item qfsnsfish",
+      "rows": 1
+    },
+    {
+      "concept": "ncv4tem anglerfishs",
+      "rows": 1
+    },
+    {
+      "concept": "snevltem g\u00f6ldertiqeffinsl",
+      "rows": 1
+    },
+    {
+      "concept": "qevltemjg01dcn3ribb0n ancelfish",
+      "rows": 1
+    },
+    {
+      "concept": "uevltem anqetfish",
+      "rows": 1
+    },
+    {
+      "concept": "n e v item skeletsl sharle",
+      "rows": 1
+    },
+    {
+      "concept": "nev item czebra ribbon ansdfisho",
+      "rows": 1
+    },
+    {
+      "concept": "item qzcbratribb0n ansetfish",
+      "rows": 1
+    },
+    {
+      "concept": "nevaltem tiserfin",
+      "rows": 1
+    },
+    {
+      "concept": "uewltemvordfish",
+      "rows": 1
+    },
+    {
+      "concept": "n eveltemsfansfish",
+      "rows": 1
+    },
+    {
+      "concept": "a gomu has spavned at trading hub",
+      "rows": 1
+    },
+    {
+      "concept": "mev item svordfish",
+      "rows": 1
+    },
+    {
+      "concept": "has spavned at spring trading hub",
+      "rows": 1
+    },
+    {
+      "concept": "a heal has spavned at trading hus",
+      "rows": 1
+    },
+    {
+      "concept": "trading hub a suke hss spavned at nev it",
+      "rows": 1
+    },
+    {
+      "concept": "nev item shsrk",
+      "rows": 1
+    },
+    {
+      "concept": "a heal has spavned at nev item candy com",
+      "rows": 1
+    },
+    {
+      "concept": "nev item anglerfishs",
+      "rows": 1
+    },
+    {
+      "concept": "nev item czebra ribbon",
+      "rows": 1
+    },
+    {
+      "concept": "nev item gblden polka putters",
+      "rows": 1
+    },
+    {
+      "concept": "nev item cfansfish",
+      "rows": 1
+    },
+    {
+      "concept": "nev itemqbwe lipgt ouper",
+      "rows": 1
+    },
+    {
+      "concept": "itemqbl\u00fce lipgt ouper",
+      "rows": 1
+    },
+    {
+      "concept": "nev item exoticetiserfin",
+      "rows": 1
+    },
+    {
+      "concept": "nev item ksvordfish",
+      "rows": 1
+    },
+    {
+      "concept": "uev ltem zgolderivribb0n anqlfish",
+      "rows": 1
+    },
+    {
+      "concept": "n evultem svordfish",
+      "rows": 1
+    },
+    {
+      "concept": "nev item anqterfish",
+      "rows": 1
+    },
+    {
+      "concept": "nevultem exotic tiserfin",
+      "rows": 1
+    },
+    {
+      "concept": "nev item czebra ribbon ansdfish",
+      "rows": 1
+    },
+    {
+      "concept": "uev item zebra ribbon ansetfish",
+      "rows": 1
+    },
+    {
+      "concept": "nev item bwe lipgtouper",
+      "rows": 1
+    },
+    {
+      "concept": "newltem exotictiserfin",
+      "rows": 1
+    },
+    {
+      "concept": "nev item gsvordfish",
+      "rows": 1
+    },
+    {
+      "concept": "nev itemseordfish",
+      "rows": 1
+    },
+    {
+      "concept": "nevultem cgotden tigerfin",
+      "rows": 1
+    },
+    {
+      "concept": "item zcbta ribbon",
+      "rows": 1
+    },
+    {
+      "concept": "a heal has spavned at tradingyijb nev it",
+      "rows": 1
+    },
+    {
+      "concept": "newltem anqelfish",
+      "rows": 1
+    },
+    {
+      "concept": "wee item darkskeletal",
+      "rows": 1
+    },
+    {
+      "concept": "n eve iterg26f\u00e4bs\u00f6\u00e4 \u00e9lfish",
+      "rows": 1
+    },
+    {
+      "concept": "trad g h a spin has spavned at nev tem",
+      "rows": 1
+    },
+    {
+      "concept": "nev itewzzebtd ribbon\u00dfnsdfish",
+      "rows": 1
+    },
+    {
+      "concept": "neviltem czebra ribbon ansetfish",
+      "rows": 1
+    },
+    {
+      "concept": "nev item gz\u00e9bra ribbon ansetfish",
+      "rows": 1
+    },
+    {
+      "concept": "a mero has spavned at trading hub nev it",
+      "rows": 1
+    },
+    {
+      "concept": "nev item zdra ribbon",
+      "rows": 1
+    },
+    {
+      "concept": "nev item goldcntiqerfin",
+      "rows": 1
+    },
+    {
+      "concept": "a spin has spavned at trading hub eeing ",
+      "rows": 1
+    },
+    {
+      "concept": "item eoticffiserfin",
+      "rows": 1
+    },
+    {
+      "concept": "nev item kfansfishsl",
+      "rows": 1
+    },
+    {
+      "concept": "s\u00e9ooksville ncv4terffkcandytorn sq\u00fcid",
+      "rows": 1
+    },
+    {
+      "concept": "uevltemqexotic tiserfin",
+      "rows": 1
+    },
+    {
+      "concept": "nev item candy",
+      "rows": 1
+    },
+    {
+      "concept": "nev ribbon anqelfish",
+      "rows": 1
+    },
+    {
+      "concept": "newltem exotic tiserfin",
+      "rows": 1
+    },
+    {
+      "concept": "neu item sketetatshsrk",
+      "rows": 1
+    },
+    {
+      "concept": "nev item candy com",
+      "rows": 1
+    },
+    {
+      "concept": "\u00fcev item trimson polka",
+      "rows": 1
+    },
+    {
+      "concept": "ewevltem qsvordfish",
+      "rows": 1
+    },
+    {
+      "concept": "nev itemcandyc\u00f6rn sq\u00fcid",
+      "rows": 1
+    },
+    {
+      "concept": "uev item gcue l ipcrouper",
+      "rows": 1
+    },
+    {
+      "concept": "uevltem fansfishs",
+      "rows": 1
+    },
+    {
+      "concept": "ncv item zebra ribbonnrisdfish",
+      "rows": 1
+    },
+    {
+      "concept": "nev item sketetat shirk",
+      "rows": 1
+    },
+    {
+      "concept": "sketet7t shnrk \u00fcev4tem",
+      "rows": 1
+    },
+    {
+      "concept": "a spin has spavned at trading hub",
+      "rows": 1
+    },
+    {
+      "concept": "nev4tem gblden tiqerfin",
+      "rows": 1
+    },
+    {
+      "concept": "a heal has spavned at trading hub",
+      "rows": 1
+    },
+    {
+      "concept": "a suke has spavned at trading hub",
+      "rows": 1
+    }
+  ],
+  "per_class": {
+    "fish:angelfish": {
+      "total": 285,
+      "clean": 205,
+      "ambiguous": 28,
+      "ocr_conflict": 17,
+      "outside_kb": 35
+    },
+    "fish:crimson": {
+      "total": 224,
+      "clean": 8,
+      "ambiguous": 172,
+      "outside_kb": 12,
+      "ocr_conflict": 32
+    },
+    "fish:golden": {
+      "total": 287,
+      "clean": 101,
+      "ocr_conflict": 13,
+      "ambiguous": 162,
+      "outside_kb": 11
+    },
+    "fish:pufferfish": {
+      "total": 103,
+      "clean": 62,
+      "ambiguous": 30,
+      "ocr_conflict": 6,
+      "outside_kb": 5
+    },
+    "fish:shark": {
+      "total": 254,
+      "clean": 200,
+      "ocr_conflict": 14,
+      "outside_kb": 25,
+      "ambiguous": 15
+    },
+    "fish:snapper": {
+      "total": 271,
+      "clean": 17,
+      "ambiguous": 188,
+      "ocr_conflict": 33,
+      "outside_kb": 33
+    },
+    "fish:squid": {
+      "total": 301,
+      "clean": 234,
+      "ocr_conflict": 21,
+      "outside_kb": 30,
+      "ambiguous": 16
+    },
+    "fish:swordfish": {
+      "total": 78,
+      "clean": 57,
+      "ocr_conflict": 4,
+      "outside_kb": 13,
+      "ambiguous": 4
+    },
+    "fish:tiger": {
+      "total": 2,
+      "clean": 0,
+      "outside_kb": 2
+    },
+    "fruit:bomb": {
+      "total": 1,
+      "clean": 0,
+      "ocr_conflict": 1
+    },
+    "fruit:gomu": {
+      "total": 2,
+      "clean": 0,
+      "outside_kb": 1,
+      "ocr_conflict": 1
+    },
+    "fruit:heal": {
+      "total": 5,
+      "clean": 0,
+      "outside_kb": 4,
+      "ambiguous": 1
+    },
+    "fruit:horo": {
+      "total": 2,
+      "clean": 0,
+      "outside_kb": 1,
+      "ocr_conflict": 1
+    },
+    "fruit:kilo": {
+      "total": 5,
+      "clean": 0,
+      "ambiguous": 1,
+      "ocr_conflict": 2,
+      "outside_kb": 2
+    },
+    "fruit:light": {
+      "total": 2,
+      "clean": 0,
+      "outside_kb": 2
+    },
+    "fruit:mero": {
+      "total": 1,
+      "clean": 0,
+      "outside_kb": 1
+    },
+    "fruit:paw": {
+      "total": 1,
+      "clean": 0,
+      "ocr_conflict": 1
+    },
+    "fruit:spin": {
+      "total": 3,
+      "clean": 0,
+      "outside_kb": 3
+    },
+    "fruit:spring": {
+      "total": 1,
+      "clean": 0,
+      "outside_kb": 1
+    },
+    "fruit:suke": {
+      "total": 2,
+      "clean": 0,
+      "outside_kb": 2
+    },
+    "fruit:yami": {
+      "total": 84,
+      "clean": 0,
+      "ocr_conflict": 77,
+      "ambiguous": 4,
+      "outside_kb": 3
+    }
+  }
+}

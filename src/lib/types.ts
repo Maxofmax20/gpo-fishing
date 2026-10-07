@@ -979,7 +979,24 @@ export type PriorityItem = {
 /** Sort orders accepted by `review_priority`. */
 export type PrioritySort =
   | "priority" | "newest" | "oldest"
-  | "least_confidence" | "most_confidence" | "rarest";
+  | "least_confidence" | "most_confidence" | "rarest"
+  /** Evidence-fusion order: OCR/RAM/teacher disagreement first, full
+   *  agreement last. ORDERS the queue only - it never labels or excludes. */
+  | "evidence";
+
+/** Status of the offline semantic teacher (RAM++). Never ground truth. */
+export type SemanticTeacherStatus = {
+  /** NOT_INSTALLED | AVAILABLE | ERROR */
+  state: "NOT_INSTALLED" | "AVAILABLE" | "ERROR";
+  model: string | null;
+  checkpoint_sha256: string | null;
+  preprocessing: string | null;
+  images_analysed: number;
+  last_analysis_ms: number | null;
+  human_reviewed_assisted: number;
+  unresolved_concepts: number;
+  detail: string;
+};
 
 export type EntityHit = {
   entity_id: string;

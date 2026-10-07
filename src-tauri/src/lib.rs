@@ -144,6 +144,7 @@ pub fn run() {
             commands_review::review_integrity,
             commands_review::review_rebuild,
             commands_review::review_priority,
+            commands_review::semantic_teacher_status,
             commands_review::review_search,
             commands_review::drops_explorer,
             commands_review::readiness_status,

@@ -22,6 +22,7 @@ import type {
   ReviewImage,
   ReviewIntegrity,
   ReviewRecord,
+  SemanticTeacherStatus,
   TrainingJob,
   TrainingOverview,
   TrainingSettings,
@@ -79,6 +80,9 @@ const SORT_OPTIONS: { value: PrioritySort; label: string }[] = [
   { value: "least_confidence", label: "Lowest model confidence" },
   { value: "most_confidence", label: "Highest model confidence" },
   { value: "rarest", label: "Rarest / no OCR text" },
+  // Orders the queue by evidence disagreement. It never labels, never excludes
+  // and never sets training_eligible: priority is not evidence.
+  { value: "evidence", label: "Evidence disagreement first (OCR / RAM / KB)" },
 ];
 
 /** `review_priority` has no status parameter, so a status filter switches the
@@ -202,6 +206,43 @@ function isReadyStatus(s: ReadinessStatus): boolean {
  * overview), never from a hardcoded or optimistic assumption. A stage with no
  * evidence is shown as NOT STARTED, not as passed.
  */
+/**
+ * Status of the OFFLINE semantic teacher (RAM++).
+ *
+ * Deliberately named "teacher", never "ground truth". It is a second opinion
+ * that helps a human decide faster; it is not a label source, it cannot create
+ * a KB entity, and it cannot promote anything.
+ */
+function SemanticTeacherPanel({ status }: { status: SemanticTeacherStatus | null }) {
+  if (!status) return null;
+  const tone =
+    status.state === "AVAILABLE" ? "ok" : status.state === "ERROR" ? "bad" : "mute";
+  return (
+    <div className="rounded-lg border border-line/70 px-3 py-2 mb-2 flex flex-col gap-1">
+      <div className="flex items-baseline gap-2 text-[12px]">
+        <span className="w-32 shrink-0 text-fg-dim uppercase tracking-wide">Semantic teacher</span>
+        <Pill tone={tone}>{status.state}</Pill>
+      </div>
+      {status.model && (
+        <div className="font-mono text-[10px] text-fg-mute break-words">
+          {status.model} · checkpoint {status.checkpoint_sha256?.slice(0, 16)}…
+          {status.preprocessing ? ` · ${status.preprocessing}` : ""}
+        </div>
+      )}
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-fg-dim">
+        <span>images analysed: {status.images_analysed}</span>
+        <span>human-reviewed assisted: {status.human_reviewed_assisted}</span>
+        <span>unresolved concepts: {status.unresolved_concepts}</span>
+      </div>
+      <div className="text-[10px] text-fg-mute">{status.detail}</div>
+      <div className="text-[10px] text-fg-mute">
+        RAM++ recognises things. It does not decide what the GPO ontology contains. Every label
+        below still needs a human verdict.
+      </div>
+    </div>
+  );
+}
+
 function FinalStatus({
   overview,
   readiness,
@@ -387,6 +428,7 @@ export default function TrainingCenter() {
   const [integrity, setIntegrity] = useState<ReviewIntegrity | null>(null);
   const [drops, setDrops] = useState<DropEntry[]>([]);
   const [readiness, setReadiness] = useState<ModelReadiness[]>([]);
+  const [teacher, setTeacher] = useState<SemanticTeacherStatus | null>(null);
   const [cursor, setCursor] = useState(0);
   const [selPng, setSelPng] = useState<ReviewImage | null>(null);
   const [imgError, setImgError] = useState<string | null>(null);
@@ -507,7 +549,7 @@ export default function TrainingCenter() {
 
   const refreshSlow = useCallback(async () => {
     try {
-      const [e, s, b, cov, dr, rd, ig] = await Promise.all([
+      const [e, s, b, cov, dr, rd, ig, ts] = await Promise.all([
         api.datasetExplorer(),
         api.trainingSettingsGet(),
         api.trainingBackend(),
@@ -515,6 +557,9 @@ export default function TrainingCenter() {
         api.dropsExplorer(),
         api.readinessStatus(),
         api.reviewIntegrity(10),
+        // The semantic teacher is OPTIONAL. A missing install must never make
+        // the Training Center look broken, so it resolves to null on failure.
+        api.semanticTeacherStatus().catch(() => null),
       ]);
       setExplorer(e);
       setSettings(s);
@@ -523,6 +568,7 @@ export default function TrainingCenter() {
       setDrops(dr);
       setReadiness(rd);
       setIntegrity(ig);
+      setTeacher(ts);
     } catch (e) {
       showToast("error", "Training Center details" + ": " + String(e));
     }
@@ -1213,6 +1259,7 @@ export default function TrainingCenter() {
 
       {tab === "review" && (
         <>
+          <SemanticTeacherPanel status={teacher} />
           {/* Filters live in the Section `action` slot so they sit beside the
               queue title and apply to the backend query below them. */}
           <Section
