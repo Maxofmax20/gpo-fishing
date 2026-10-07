@@ -74,8 +74,8 @@ export function OntologyReviewBrowser() {
   }, [goHome]);
 
   return (
-    <div className="min-h-screen bg-bg text-fg">
-      <header className="border-b border-line/70 px-5 py-2.5 flex items-center gap-3 flex-wrap">
+    <div className="h-screen bg-bg text-fg flex flex-col overflow-hidden">
+      <header className="shrink-0 border-b border-line/70 px-5 py-2.5 flex items-center gap-3 flex-wrap">
         <div className="flex items-baseline gap-2.5">
           <span className="text-[15px] font-semibold">Ontology Review Workstation</span>
           <span className="text-[10px] text-fg-mute">
@@ -114,11 +114,11 @@ export function OntologyReviewBrowser() {
         </button>
       </header>
 
-      <main className="px-5 py-4">
+      <main className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
         <OntologyReview />
       </main>
 
-      <footer className="px-5 py-3 text-[10px] text-fg-mute border-t border-line/70">
+      <footer className="shrink-0 px-5 py-3 text-[10px] text-fg-mute border-t border-line/70">
         Recording a decision appends a <span className="font-mono">human proposal</span> to{" "}
         <span className="font-mono">ontology_decisions.jsonl</span>. It does not modify the knowledge
         base, the vocabulary file, any dataset label, any split, or any model. Applying it is a

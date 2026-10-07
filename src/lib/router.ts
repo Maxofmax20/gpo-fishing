@@ -33,8 +33,10 @@
 
 /** The routes this app serves over HTTP. */
 export const ROUTES = {
-  /** The ontology review workstation. The one real browser route. */
+  /** The ontology review workstation. */
   ontologyReview: "/ontology-review",
+  /** The fish label review: proposals -> human reviews. */
+  labelReview: "/label-review",
   /** The desktop panel, at the site root. */
   root: "/",
 } as const;
@@ -59,6 +61,7 @@ export function resolveRoute(pathname: string): Route | null {
   if (p.endsWith(".html")) p = p.slice(0, -5) || "/";
 
   if (p === ROUTES.ontologyReview) return ROUTES.ontologyReview;
+  if (p === ROUTES.labelReview) return ROUTES.labelReview;
   if (p === "/" || p === "") return ROUTES.root;
   return null;
 }

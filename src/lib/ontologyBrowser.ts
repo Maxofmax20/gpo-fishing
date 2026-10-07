@@ -37,6 +37,15 @@ import { invoke } from "@tauri-apps/api/core";
 export const ONTOLOGY_API_BASE = "/api/ontology";
 
 /**
+ * Fish label review API.
+ *
+ * Its own constant rather than a `/api/ontology/../labels/` trick: the `..` form
+ * has to be normalised by the browser and by the server's own path matcher, and
+ * getting that wrong is a silently empty image grid rather than an error.
+ */
+export const LABELS_API_BASE = "/api/labels";
+
+/**
  * True when running inside the Tauri shell.
  *
  * Checks for the internal object Tauri injects, rather than a user agent or a

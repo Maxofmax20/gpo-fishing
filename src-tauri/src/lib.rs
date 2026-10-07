@@ -4,6 +4,7 @@ pub mod commands;
 pub mod commands_review;
 mod commands_ontology;
 pub mod commands_ontology_workstation;
+pub mod label_review;
 pub mod ontology_web;
 pub mod ontology_web_refresh;
 pub mod commands_training;
@@ -169,6 +170,7 @@ pub fn run() {
             commands_ontology_workstation::ontology_undo,
             ontology_web::ontology_review_url,
             ontology_web_refresh::ontology_wiki_refresh,
+            label_review::label_review_url,
             commands_review::review_search,
             commands_review::drops_explorer,
             commands_review::readiness_status,

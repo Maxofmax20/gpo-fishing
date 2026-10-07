@@ -76,8 +76,21 @@ describe("route resolution", () => {
     expect(resolveRoute("/ontology-review-foo")).toBeNull();
   });
 
-  it("only knows the two routes it declares", () => {
-    expect(Object.values(ROUTES).sort()).toEqual(["/", "/ontology-review"]);
+  it("declares exactly the routes it serves", () => {
+    // Both review routes and the app root, and nothing else. A fifth path would
+    // need a screen behind it.
+    expect(Object.values(ROUTES).sort()).toEqual([
+      "/",
+      "/label-review",
+      "/ontology-review",
+    ]);
+  });
+
+  it("resolves the label review route", () => {
+    expect(resolveRoute("/label-review")).toBe("/label-review");
+    expect(resolveRoute("/label-review/")).toBe("/label-review");
+    // Must not be reachable by prefix, like the other two.
+    expect(resolveRoute("/label-reviewing")).toBeNull();
   });
 });
 

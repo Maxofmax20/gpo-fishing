@@ -294,8 +294,71 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
         return route_api(&mut stream, &req, rest);
     }
 
+    // The fish label review lives beside the ontology review and shares its
+    // security posture exactly: loopback only, no CORS, validated ids, no
+    // filesystem paths in a request.
+    if let Some(rest) = req.path.strip_prefix("/api/labels") {
+        return route_labels(&mut stream, &req, rest);
+    }
+
     // Everything else is the static frontend, with SPA fallback.
     route_static(&mut stream, &req)
+}
+
+fn route_labels(stream: &mut TcpStream, req: &Request, rest: &str) -> std::io::Result<()> {
+    use crate::label_review as lr;
+    let rest = rest.trim_start_matches('/');
+    let get = req.method == "GET" || req.method == "HEAD";
+    let post = req.method == "POST";
+
+    match (get, post, rest) {
+        (true, _, "batches") => json(
+            stream,
+            "200 OK",
+            &serde_json::to_value(lr::batch_index()).unwrap_or_default(),
+        ),
+        (true, _, p) if p.starts_with("batch/") => {
+            let id = url_decode(&p["batch/".len()..]);
+            match lr::batch_rows(&id) {
+                Some(v) => json(stream, "200 OK", &v),
+                None => json(stream, "404 Not Found", &serde_json::json!({
+                    "ok": false, "error": format!("unknown batch {id:?}")
+                })),
+            }
+        }
+        (true, _, p) if p.starts_with("thumb/") => {
+            let id = url_decode(&p["thumb/".len()..]);
+            match lr::thumbnail_bytes(&id) {
+                Some(bytes) => respond(
+                    stream,
+                    "200 OK",
+                    "image/jpeg",
+                    &bytes,
+                    &[("Cache-Control", "private, max-age=86400")],
+                ),
+                None => json(stream, "404 Not Found", &serde_json::json!({
+                    "ok": false, "error": "not a label-review image"
+                })),
+            }
+        }
+        (_, true, "confirm") => {
+            let input: lr::ConfirmInput = match serde_json::from_str(&req.body) {
+                Ok(v) => v,
+                Err(e) => {
+                    bad_request(stream, &format!("invalid JSON body: {e}"));
+                    return Ok(());
+                }
+            };
+            // Same data directory the desktop app uses, so the reviews land in the
+            // real store rather than a browser-only file.
+            let data_dir = crate::app::data_dir();
+            let r = lr::confirm_batch(input, &data_dir);
+            json(stream, "200 OK", &serde_json::to_value(r).unwrap_or_default())
+        }
+        (true, _, "confirm") => bad_request(stream, "use POST"),
+        (_, _, _) => not_found(stream),
+    }
+    Ok(())
 }
 
 fn route_api(stream: &mut TcpStream, req: &Request, rest: &str) -> std::io::Result<()> {
@@ -777,9 +840,10 @@ mod tests {
             .map(str::trim)
             .filter(|l| l.starts_with("(_, true,"))
             .collect();
-        // Three POST routes: two record human decisions, one refreshes the wiki
-        // reference. All three are human-initiated; none runs on a page load.
-        assert_eq!(posts.len(), 3, "exactly three write routes: {posts:?}");
+        // Four POST routes, every one of them a human action that happens only when
+        // someone asks: two record human decisions, one refreshes the wiki
+        // reference, one confirms a batch of fish labels. None runs on a page load.
+        assert_eq!(posts.len(), 4, "exactly four write routes: {posts:?}");
         assert!(code.contains("core::record_human_decision"));
         assert!(code.contains("core::undo_human_decision"));
         // No filesystem mutation of its own: the HTTP layer delegates every write to

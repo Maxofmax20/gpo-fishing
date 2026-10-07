@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
 import OntologyReviewBrowser from "./pages/OntologyReviewBrowser";
+import LabelReview from "./pages/LabelReview";
 import { ROUTES, resolveRoute } from "./lib/router";
 
 /**
@@ -54,6 +55,35 @@ const view = viewParam ?? "panel";
  * route other than `/ontology-review` renders the desktop windows exactly as
  * before: this adds a branch, it does not restructure the app.
  */
+/**
+ * Minimal chrome for a browser route.
+ *
+ * Deliberately not `Panel`: that starts the bot connection, calls
+ * `api.panelShow()` and gates content behind a setup check. A review page must
+ * drag none of that in.
+ */
+function BrowserShell({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="h-screen bg-bg text-fg flex flex-col overflow-hidden">
+      <header className="shrink-0 border-b border-line/70 px-5 py-2.5 flex items-center gap-3">
+        <span className="text-[15px] font-semibold">{title}</span>
+        <span className="text-[10px] text-fg-mute">
+          standalone · no game, macro, or updater involved
+        </span>
+        <span className="flex-1" />
+        <code className="text-[10px] font-mono text-fg-dim border border-line/70 rounded px-1.5 py-0.5">
+          {window.location.pathname}
+        </code>
+      </header>
+      {/* The app stylesheet pins the document's overflow to `hidden` because the
+          desktop panel is a fixed-size window. A browser page has to scroll, so the
+          scrolling container is this element: a child with `overflow-y: auto`
+          scrolls even when the document cannot. */}
+      <main className="flex-1 min-h-0 overflow-y-auto px-5 py-4">{children}</main>
+    </div>
+  );
+}
+
 function Root() {
   const [route, setRoute] = useState(() => resolveRoute(window.location.pathname));
 
@@ -66,8 +96,14 @@ function Root() {
   // The browser route wins over `?view=`: an explicit path is more specific than a
   // query parameter, and this page is only ever reached deliberately. Tested against
   // the RAW parameter, so the `panel` default does not mask the route.
-  if (route === ROUTES.ontologyReview && viewParam === null) {
-    return <OntologyReviewBrowser />;
+  if (viewParam === null) {
+    if (route === ROUTES.ontologyReview) return <OntologyReviewBrowser />;
+    if (route === ROUTES.labelReview)
+      return (
+        <BrowserShell title="Fish Label Review">
+          <LabelReview />
+        </BrowserShell>
+      );
   }
 
   const Window =

@@ -287,6 +287,11 @@ def main(argv: list[str] | None = None) -> int:
                     default=Path("reports/ontology_review/wiki_fish.json"))
     ap.add_argument("--out", type=Path,
                     default=Path("reports/training_candidates/candidates.jsonl"))
+    ap.add_argument("--batches", type=Path,
+                    default=Path("reports/ontology_review/workstation/label_batches.json"))
+    ap.add_argument("--thumbs", type=Path,
+                    default=Path("reports/ontology_review/workstation/label_thumbs"))
+    ap.add_argument("--kb", type=Path, default=Path("kb_export.json"))
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv)
 
@@ -330,8 +335,129 @@ def main(argv: list[str] | None = None) -> int:
         print()
         print("  These are PROPOSALS. No row is training-eligible until a human")
         print("  confirms it through the review store.")
+        print()
+
+    # Review batches + thumbnails, for the confirmation screen.
+    # kb_export.json is produced by `cargo run --example kb_export` and may be
+    # absent on a fresh checkout, which would make EVERY entity look missing and
+    # produce a confidently wrong screen. Fall back to the workstation's copy, and
+    # say so rather than quietly reporting an empty knowledge base.
+    kb_ids: set[str] = set()
+    kb_source = args.kb
+    if not kb_source.is_file():
+        alt = Path("reports/ontology_review/workstation/kb_entities.json")
+        if alt.is_file():
+            kb_source = alt
+    if kb_source.is_file():
+        kb_ids = {e["id"] for e in json.loads(kb_source.read_text(encoding="utf-8")).get("entities", [])}
+    else:
+        print("  WARNING: no knowledge-base export found; every entity will be reported",
+              file=sys.stderr)
+        print("  as missing from the KB. Run: cargo run --example kb_export", file=sys.stderr)
+    batches = build_batches(cands, kb_ids, labels.parent / "images", args.thumbs)
+    args.batches.parent.mkdir(parents=True, exist_ok=True)
+    args.batches.write_text(json.dumps(batches, indent=1, sort_keys=True), encoding="utf-8")
+    if not args.quiet:
+        thumbs = sum(b["thumbsRendered"] for b in batches["batches"])
+        print(f"  wrote {batches['batchCount']} review batches covering "
+              f"{batches['totalRows']} rows -> {args.batches}")
+        print(f"  rendered {thumbs} thumbnails -> {args.thumbs}")
+        if batches["rowsMissingFromKb"]:
+            print()
+            print(f"  {len(batches['rowsMissingFromKb'])} proposed entities do NOT exist in")
+            print("  the knowledge base yet:")
+            print("   ", ", ".join(e.split(':')[1] for e in batches["rowsMissingFromKb"]))
+            print("  Confirming those rows still records a human judgement, but the rows")
+            print("  stay ineligible until the proposed KB patch is applied by hand.")
     return 0
 
+
+
+# ===========================================================================
+# Review batches
+# ===========================================================================
+
+def build_batches(
+    candidates: list[Candidate],
+    kb_entity_ids: set[str],
+    images_dir: Path,
+    thumb_dir: Path,
+    *,
+    thumb_width: int = 320,
+) -> dict[str, Any]:
+    """Group the confident proposals into one review batch per fish.
+
+    Batching by fish, rather than by row, is what makes the review fast: the
+    question a human answers is "are these all Crimson Snapper?", and showing
+    those 261 images together is one judgement instead of 261.
+
+    Thumbnails are rendered here for the same reason the ontology workstation
+    pre-renders its own: resizing per request puts image work in the request
+    path, and a grid of 20 full-size crops is several megabytes.
+    """
+    confident = [c for c in candidates if c.tier == "confident"]
+    confident.sort(key=lambda c: (-c.confidence, c.image_id))
+
+    groups: dict[str, list[Candidate]] = {}
+    for c in confident:
+        groups.setdefault(c.proposed_name, []).append(c)
+
+    batches = []
+    for name in sorted(groups, key=lambda n: (-len(groups[n]), n)):
+        rows = groups[name]
+        entity_id = rows[0].proposed_entity_id
+        rendered = 0
+        for c in rows:
+            src = images_dir / f"{c.image_id}.png"
+            dest = thumb_dir / f"{c.image_id}.jpg"
+            if dest.is_file() or not src.is_file():
+                continue
+            try:
+                from PIL import Image
+                with Image.open(src) as im:
+                    im = im.convert("RGB")
+                    if im.width > thumb_width:
+                        h = max(1, round(im.height * thumb_width / im.width))
+                        im = im.resize((thumb_width, h), Image.LANCZOS)
+                    thumb_dir.mkdir(parents=True, exist_ok=True)
+                    im.save(dest, "JPEG", quality=82, optimize=True)
+                rendered += 1
+            except Exception:
+                pass
+        batches.append({
+            "entityId": entity_id,
+            "name": name,
+            "rowCount": len(rows),
+            "sessionCount": len({c.session_id for c in rows}),
+            "avgConfidence": round(sum(c.confidence for c in rows) / max(len(rows), 1), 4),
+            "minConfidence": round(min(c.confidence for c in rows), 4),
+            # The single most important fact about a batch, stated up front.
+            "inKnowledgeBase": entity_id in kb_entity_ids,
+            "storedLabelConflicts": sum(1 for c in rows if c.stored_conflicts),
+            "thumbsRendered": rendered,
+            "rows": [
+                {
+                    "imageId": c.image_id,
+                    "confidence": round(c.confidence, 4),
+                    "sessionId": c.session_id,
+                    "ocrText": c.ocr_text,
+                    "storedEntityId": c.stored_entity_id,
+                    "storedConflicts": c.stored_conflicts,
+                }
+                for c in rows
+            ],
+        })
+
+    return {
+        "kind": "training_label_review_batches",
+        "version": 1,
+        "batchCount": len(batches),
+        "totalRows": sum(b["rowCount"] for b in batches),
+        "rowsMissingFromKb": sorted({
+            b["entityId"] for b in batches if not b["inKnowledgeBase"]
+        }),
+        "batches": batches,
+    }
 
 if __name__ == "__main__":
     raise SystemExit(main())

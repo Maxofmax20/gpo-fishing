@@ -233,11 +233,29 @@ fn build_known_image_ids() -> Option<std::collections::HashSet<String>> {
     Some(out)
 }
 
-/// An image id is a fixed 16-char lowercase hex string in this dataset. Anything
-/// else cannot have come from the index, and rejecting it is what makes a
-/// `..`-laden id impossible to turn into a path.
+/// Is this shaped like a dataset image id?
+///
+/// Measured across all 14,805 rows, ids come in exactly two shapes:
+/// `16 lowercase hex` (9,940) and `16 lowercase hex` + `-N` (4,865), where N
+/// distinguishes a repeated sighting. An earlier hex-only check rejected that
+/// second form, so a third of the evidence images 404'd and rendered as blank tiles.
+///
+/// The suffix is accepted ONLY as `-` followed by digits. `..`, `/` and `\\` remain
+/// impossible, which is the property this function exists for: an id must never be
+/// able to become a path. Membership in the batch index is checked separately and is
+/// the actual gate; this only rejects shapes that cannot have come from the dataset.
 pub fn is_plausible_image_id(id: &str) -> bool {
-    id.len() == 16 && id.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    let (hex, suffix) = match id.split_once('-') {
+        Some((h, s)) => (h, Some(s)),
+        None => (id, None),
+    };
+    if hex.len() != 16 || !hex.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
+        return false;
+    }
+    match suffix {
+        None => true,
+        Some(s) => !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()),
+    }
 }
 
 // ===========================================================================
@@ -1059,10 +1077,17 @@ mod tests {
         // The traversal defence: a hostile id must be refused by shape, so it
         // never becomes a path at all.
         for bad in ["../secrets", "..", "a/../../b", "", "ZZZZZZZZZZZZZZZZ",
-                    "0123456789abcde", "0123456789abcdefg"] {
+                    "0123456789abcde", "0123456789abcdefg", "-1", "0123456789abcdef-",
+                    "0123456789abcdef-x", "0123456789ABCDEF", "0123456789abcdef-1a",
+                    "0123456789abcdef-1/2", "0123456789abcdef-1\\..", "0123456789abcdef-1\n"] {
             assert!(!is_plausible_image_id(bad), "{bad:?} must be refused");
         }
+        // Both real shapes, measured from the dataset: 4,865 of 14,805 ids carry
+        // the `-N` suffix, and rejecting them left a third of the evidence blank.
         assert!(is_plausible_image_id("606020203e34beb6"));
+        assert!(is_plausible_image_id("000000003cffffff"));
+        assert!(is_plausible_image_id("602020303ebe80ff-1"));
+        assert!(is_plausible_image_id("01000033ffffffff-12"));
     }
 
     #[test]

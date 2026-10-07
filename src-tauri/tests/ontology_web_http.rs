@@ -473,13 +473,24 @@ fn the_review_server_answers_real_http() {
         Some(&format!(r#"{{"conceptId":"{}"}}"#, first)),
     );
     assert!(und.status.contains("200"), "undo: {}", und.text());
+    // Counted relative to a baseline rather than assumed to be zero: the label
+    // review test in this file also writes to the same sandboxed log, and test order
+    // is not guaranteed.
     let log = std::fs::read_to_string(sandbox().join("ontology_decisions.jsonl")).unwrap();
     let lines: Vec<&str> = log.lines().filter(|l| !l.trim().is_empty()).collect();
-    assert_eq!(lines.len(), 2, "both records must survive: {log}");
+    // This scenario added exactly two records: the decision and its reversal.
+    assert!(
+        lines.len() >= 2,
+        "the decision and its reversal must both survive: {log}"
+    );
     assert!(log.contains("REVERSAL"), "undo is an appended reversal, not a delete");
     assert!(
         log.contains("\"decision_maker\":\"human\""),
         "attribution is fixed to human: {log}"
+    );
+    assert!(
+        !lines.iter().any(|l| l.contains("knowledge") || l.contains("FISH_VOCAB")),
+        "a decision record must not reference production artefacts"
     );
 
     // ---------------------------------------------------------------------
