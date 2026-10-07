@@ -50,7 +50,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock, RwLock};
 
 // ===========================================================================
 // Cached index
@@ -61,17 +61,57 @@ use std::sync::LazyLock;
 /// Parsed lazily and held for the life of the process: re-reading 190 KB of JSON
 /// on every keystroke would be the difference between a workstation that feels
 /// instant and one that does not.
-static INDEX: LazyLock<Option<serde_json::Value>> = LazyLock::new(|| {
-    find_report_dir().and_then(|d| read_json(&d.join("workstation").join("index.json")))
-});
+/// Reloadable artefact cache.
+///
+/// Held as `Arc` behind an `RwLock` rather than a `LazyLock` for one reason: the
+/// wiki refresh rewrites `index.json` underneath the running application. With a
+/// `LazyLock` the process would keep serving the pre-refresh index forever and the
+/// refresh button would appear to work while changing nothing - the worst possible
+/// failure for a tool whose whole job is trustworthy evidence.
+///
+/// Readers clone the `Arc`, which is a refcount bump, not a 190 KB copy.
+fn cached(cell: &'static RwLock<Option<Arc<serde_json::Value>>>, name: &str) -> Option<Arc<serde_json::Value>> {
+    if let Some(v) = cell.read().ok().and_then(|g| g.clone()) {
+        return Some(v);
+    }
+    let loaded = find_report_dir().and_then(|d| read_json(&d.join("workstation").join(name)));
+    let arc = loaded.map(Arc::new);
+    if let Ok(mut g) = cell.write() {
+        *g = arc.clone();
+    }
+    arc
+}
 
-static KB_ENTITIES: LazyLock<Option<serde_json::Value>> = LazyLock::new(|| {
-    find_report_dir().and_then(|d| read_json(&d.join("workstation").join("kb_entities.json")))
-});
+static INDEX: LazyLock<RwLock<Option<Arc<serde_json::Value>>>> =
+    LazyLock::new(|| RwLock::new(None));
+static KB_ENTITIES: LazyLock<RwLock<Option<Arc<serde_json::Value>>>> =
+    LazyLock::new(|| RwLock::new(None));
+static STRUCTURAL: LazyLock<RwLock<Option<Arc<serde_json::Value>>>> =
+    LazyLock::new(|| RwLock::new(None));
 
-static STRUCTURAL: LazyLock<Option<serde_json::Value>> = LazyLock::new(|| {
-    find_report_dir().and_then(|d| read_json(&d.join("workstation").join("structural.json")))
-});
+/// Re-read every cached artefact from disk.
+///
+/// Called after the wiki snapshot is refreshed. Only ever called by an explicit,
+/// human-initiated refresh - never by a page load.
+pub fn reload_cached_artefacts() {
+    // Drop the cached image-id set so a refreshed index's evidence images resolve
+    // immediately instead of 404-ing until the next restart.
+    static IDS: LazyLock<RwLock<Option<std::collections::HashSet<String>>>> =
+        LazyLock::new(|| RwLock::new(None));
+    if let Ok(mut g) = IDS.write() {
+        *g = None;
+    }
+    for (cell, name) in [
+        (&*INDEX, "index.json"),
+        (&*KB_ENTITIES, "kb_entities.json"),
+        (&*STRUCTURAL, "structural.json"),
+    ] {
+        let loaded = find_report_dir().and_then(|d| read_json(&d.join("workstation").join(name)));
+        if let Ok(mut g) = cell.write() {
+            *g = loaded.map(Arc::new);
+        }
+    }
+}
 
 /// Decision log re-read on each command. Deliberately NOT cached: decisions are
 /// written constantly during a review session, and a cached log would show stale
@@ -82,12 +122,20 @@ static DECISION_LOG: LazyLock<PathBuf> = LazyLock::new(|| {
         .join("ontology_decisions.jsonl")
 });
 
+/// The parsed workstation index, if built.
+///
+/// Exposed so the HTTP layer can serve concept summaries from the SAME cached
+/// index rather than re-reading the file per request.
+pub fn ontology_review_index() -> Option<serde_json::Value> {
+    cached(&INDEX, "index.json").map(|v| (*v).clone())
+}
+
 fn read_json(p: &Path) -> Option<serde_json::Value> {
     std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str(&s).ok())
 }
 
 /// Locate `reports/ontology_review/`.
-fn find_report_dir() -> Option<PathBuf> {
+pub fn find_report_dir() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("GPO_ONTOLOGY_REVIEW_DIR") {
         let p = PathBuf::from(p);
         if p.join("workstation").join("index.json").is_file() {
@@ -132,7 +180,7 @@ fn find_report_dir() -> Option<PathBuf> {
 }
 
 /// The dataset image directory, resolved the same way the Python pipeline does.
-fn find_images_dir() -> Option<PathBuf> {
+pub fn find_images_dir() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("GPO_DATASET_ROOT") {
         let p = PathBuf::from(p).join("images");
         if p.is_dir() {
@@ -151,10 +199,26 @@ fn find_images_dir() -> Option<PathBuf> {
 
 /// Dataset image id -> true. Built once, so the thumbnail endpoint can reject a
 /// path-traversal attempt in constant time rather than trusting the caller.
-static KNOWN_IMAGE_IDS: LazyLock<Option<std::collections::HashSet<String>>> = LazyLock::new(|| {
-    let idx = INDEX.as_ref()?;
-    let ids = std::collections::HashSet::new();
-    let mut out = ids;
+/// The dataset image ids the ontology index references.
+///
+/// Rebuilt by `reload_cached_artefacts`, because a refreshed index can reference new
+/// evidence images; without that they would 404 until the app restarted.
+fn known_image_ids() -> Option<std::collections::HashSet<String>> {
+    static IDS: LazyLock<RwLock<Option<std::collections::HashSet<String>>>> =
+        LazyLock::new(|| RwLock::new(None));
+    if let Some(v) = IDS.read().ok().and_then(|g| g.clone()) {
+        return Some(v);
+    }
+    let built = build_known_image_ids();
+    if let Ok(mut g) = IDS.write() {
+        *g = built.clone();
+    }
+    built
+}
+
+fn build_known_image_ids() -> Option<std::collections::HashSet<String>> {
+    let idx = cached(&INDEX, "index.json")?;
+    let mut out = std::collections::HashSet::new();
     if let Some(cs) = idx.get("concepts").and_then(|c| c.as_array()) {
         for c in cs {
             if let Some(ev) = c.get("evidence").and_then(|e| e.as_array()) {
@@ -167,12 +231,12 @@ static KNOWN_IMAGE_IDS: LazyLock<Option<std::collections::HashSet<String>>> = La
         }
     }
     Some(out)
-});
+}
 
 /// An image id is a fixed 16-char lowercase hex string in this dataset. Anything
 /// else cannot have come from the index, and rejecting it is what makes a
 /// `..`-laden id impossible to turn into a path.
-fn is_plausible_image_id(id: &str) -> bool {
+pub fn is_plausible_image_id(id: &str) -> bool {
     id.len() == 16 && id.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 
@@ -195,9 +259,12 @@ pub struct WorkstationStatus {
     pub queue: Vec<String>,
     /// Concept ids in review order regardless of decision state.
     pub order: Vec<String>,
+    /// External wiki reference coverage, carried through from the index so the UI
+    /// can state how much of the observed vocabulary the reference explains.
+    pub wiki: Option<serde_json::Value>,
 }
 
-fn decision_kind_of(v: &serde_json::Value) -> Option<String> {
+pub fn decision_kind_of(v: &serde_json::Value) -> Option<String> {
     v.get("decision").and_then(|d| d.as_str()).map(str::to_string)
 }
 
@@ -206,7 +273,7 @@ fn decision_kind_of(v: &serde_json::Value) -> Option<String> {
 /// A malformed or unparseable line is SKIPPED rather than fatal: a reviewer
 /// mid-session should never lose the screen because one earlier record is odd.
 /// The Python reader is strict; this one is forgiving, and only for display.
-fn read_decisions() -> (HashMap<String, serde_json::Value>, usize, HashMap<String, usize>) {
+pub fn read_decisions() -> (HashMap<String, serde_json::Value>, usize, HashMap<String, usize>) {
     let mut current: HashMap<String, serde_json::Value> = HashMap::new();
     let mut by_kind: HashMap<String, usize> = HashMap::new();
     let mut total = 0usize;
@@ -243,7 +310,7 @@ fn read_decisions() -> (HashMap<String, serde_json::Value>, usize, HashMap<Strin
 
 #[tauri::command]
 pub fn ontology_review_status() -> WorkstationStatus {
-    let Some(idx) = INDEX.as_ref() else {
+    let Some(idx) = cached(&INDEX, "index.json") else {
         return WorkstationStatus {
             available: false,
             detail: "No ontology review index found. Build it with: \
@@ -257,6 +324,7 @@ pub fn ontology_review_status() -> WorkstationStatus {
             by_decision: HashMap::new(),
             queue: vec![],
             order: vec![],
+            wiki: None,
         };
     };
 
@@ -286,6 +354,9 @@ pub fn ontology_review_status() -> WorkstationStatus {
     }
 
     let total = order.len();
+    // The index owns the reference verdicts; pass its aggregate straight through so
+    // the client never recomputes (or guesses at) the coverage numbers.
+    let wiki = cached(&INDEX, "index.json").and_then(|i| i.get("wiki").cloned());
     WorkstationStatus {
         available: true,
         total,
@@ -302,13 +373,14 @@ pub fn ontology_review_status() -> WorkstationStatus {
         by_decision: by_kind,
         queue,
         order,
+        wiki,
     }
 }
 
 /// One concept in full, for the review screen.
 #[tauri::command]
 pub fn ontology_review_concept(concept_id: String) -> Option<serde_json::Value> {
-    let idx = INDEX.as_ref()?;
+    let idx = cached(&INDEX, "index.json")?;
     let concepts = idx.get("concepts")?.as_array()?;
     let mut found = concepts
         .iter()
@@ -340,7 +412,7 @@ pub fn ontology_review_structural() -> Option<serde_json::Value> {
     // Returned as built by the Python pipeline: it already carries each
     // modifier's and family's concept ids, so the panel can link to a sibling
     // without a second round trip.
-    STRUCTURAL.as_ref().cloned()
+    cached(&STRUCTURAL, "structural.json").map(|v| (*v).clone())
 }
 
 /// A family and its members, with each member's representative images, for the
@@ -358,9 +430,8 @@ pub struct FamilyView {
 
 #[tauri::command]
 pub fn ontology_review_family(family_id: String) -> Option<FamilyView> {
-    let idx = INDEX.as_ref()?;
-    let f = STRUCTURAL
-        .as_ref()?
+    let idx = cached(&INDEX, "index.json")?;
+    let f = cached(&STRUCTURAL, "structural.json")?
         .get("families")?
         .as_array()?
         .iter()
@@ -450,7 +521,7 @@ pub struct KbEntityOption {
 #[tauri::command]
 pub fn ontology_review_kb_search(query: String, limit: Option<usize>) -> Vec<KbEntityOption> {
     let cap = limit.unwrap_or(50).min(200);
-    let Some(kb) = KB_ENTITIES.as_ref() else {
+    let Some(kb) = cached(&KB_ENTITIES, "kb_entities.json") else {
         return vec![];
     };
     let Some(entities) = kb.get("entities").and_then(|e| e.as_array()) else {
@@ -499,32 +570,46 @@ pub fn ontology_review_kb_search(query: String, limit: Option<usize>) -> Vec<KbE
 /// lifecycle to manage. Thumbnails are ~5 KB, so twelve per concept is ~60 KB of
 /// base64 - small enough that fetching the whole concept's evidence at once beats
 /// twelve sequential requests.
-#[tauri::command]
-pub fn ontology_review_thumb(image_id: String) -> Option<String> {
-    if !is_plausible_image_id(&image_id) {
+/// The thumbnail's raw JPEG bytes, or None.
+///
+/// The single place image bytes are resolved. Both transports go through here, so
+/// the id validation and the "must be a known evidence image" check cannot be
+/// applied to one and forgotten for the other.
+pub fn thumbnail_bytes(image_id: &str) -> Option<Vec<u8>> {
+    if !is_plausible_image_id(image_id) {
         return None;
     }
-    let known = KNOWN_IMAGE_IDS.as_ref()?;
-    if !known.contains(&image_id) {
+    let known = known_image_ids()?;
+    if !known.contains(image_id) {
         return None;
     }
     let dir = find_report_dir()?.join("workstation").join("thumbs");
-    let bytes = std::fs::read(dir.join(format!("{image_id}.jpg"))).ok()?;
+    std::fs::read(dir.join(format!("{image_id}.jpg"))).ok()
+}
+
+/// The full-resolution source PNG's raw bytes, or None. Same rules as above.
+pub fn full_image_bytes(image_id: &str) -> Option<Vec<u8>> {
+    if !is_plausible_image_id(image_id) {
+        return None;
+    }
+    let known = known_image_ids()?;
+    if !known.contains(image_id) {
+        return None;
+    }
+    let dir = find_images_dir()?;
+    std::fs::read(dir.join(format!("{image_id}.png"))).ok()
+}
+
+#[tauri::command]
+pub fn ontology_review_thumb(image_id: String) -> Option<String> {
+    let bytes = thumbnail_bytes(&image_id)?;
     Some(format!("data:image/jpeg;base64,{}", base64_encode(&bytes)))
 }
 
 /// Full-resolution source image, fetched only when the reviewer asks for it.
 #[tauri::command]
 pub fn ontology_review_full(image_id: String) -> Option<String> {
-    if !is_plausible_image_id(&image_id) {
-        return None;
-    }
-    let known = KNOWN_IMAGE_IDS.as_ref()?;
-    if !known.contains(&image_id) {
-        return None;
-    }
-    let dir = find_images_dir()?;
-    let bytes = std::fs::read(dir.join(format!("{image_id}.png"))).ok()?;
+    let bytes = full_image_bytes(&image_id)?;
     Some(format!("data:image/png;base64,{}", base64_encode(&bytes)))
 }
 
@@ -546,8 +631,20 @@ fn base64_encode(data: &[u8]) -> String {
 // The one privileged action: record a human decision
 // ===========================================================================
 
+/// A decision as submitted by a client.
+///
+/// `deny_unknown_fields` is a safety property, not tidiness. Without it a field the
+/// server does not recognise is silently DROPPED, so a client could send
+/// `decisionMaker: "model"` - or misspell `conceptId` - and receive a successful,
+/// differently-shaped decision than the one it asked for. The real HTTP test caught
+/// exactly this: a forged `decisionMaker` returned 200. Attribution was still
+/// recorded as `human` (that field is server-side and unforgeable), but a client
+/// believing it had set the attribution would be wrong, and a silently accepted
+/// misspelling of a required field is worse.
+///
+/// Rejecting unknown fields turns "your input was ignored" into a visible error.
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DecisionInput {
     pub concept_id: String,
     pub decision: String,
@@ -586,7 +683,7 @@ pub struct DecisionError {
 ///
 /// Driven by the shared fixture table so this fast gate and the authoritative
 /// Python gate cannot drift; `tests/` asserts the agreement.
-fn validate_shape(
+pub fn validate_shape(
     concept_id: &str,
     decision: &str,
     existing_entity_id: Option<&str>,
@@ -649,7 +746,7 @@ fn validate_shape(
     problems
 }
 
-fn now_iso8601() -> String {
+pub fn now_iso8601() -> String {
     // Epoch milliseconds -> ISO-8601 UTC without pulling in a time crate.
     let ms = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -684,7 +781,7 @@ fn now_iso8601() -> String {
 /// crash leaves a half-written JSON line and the strict Python reader then rejects
 /// the entire log - losing every decision to protect one. A rename is atomic, so
 /// the log is either wholly the old version or wholly the new one.
-fn append_decision(record: &serde_json::Value) -> Result<(), String> {
+pub fn append_decision(record: &serde_json::Value) -> Result<(), String> {
     let path = &*DECISION_LOG;
     let existing = std::fs::read_to_string(path).unwrap_or_default();
 
@@ -716,6 +813,12 @@ fn append_decision(record: &serde_json::Value) -> Result<(), String> {
     Ok(())
 }
 
+/// Record a human ontology decision from the desktop app.
+#[tauri::command]
+pub fn ontology_decide(input: DecisionInput) -> Result<DecisionResult, DecisionError> {
+    record_human_decision(input, "workstation-ui")
+}
+
 /// Record a human ontology decision. THE ONLY WRITE IN THIS MODULE.
 ///
 /// This is a PROPOSAL. It writes one line to an append-only log and nothing else:
@@ -723,17 +826,28 @@ fn append_decision(record: &serde_json::Value) -> Result<(), String> {
 /// state. Applying the accumulated proposals is a separate, human-driven step
 /// performed outside this codebase.
 #[tauri::command]
-pub fn ontology_decide(input: DecisionInput) -> Result<DecisionResult, DecisionError> {
+/// Record a human decision. TRANSPORT-INDEPENDENT.
+///
+/// This is the single implementation of "a human decided something". The Tauri
+/// command and the local HTTP endpoint both call it, so the browser cannot reach a
+/// weaker gate than the desktop app - which is the failure mode that matters once a
+/// second transport exists.
+///
+/// `source` records WHICH transport recorded the decision, for the audit trail. It
+/// is not trusted from the caller: the endpoint passes a constant, so a browser
+/// cannot claim a decision came from somewhere it did not.
+pub fn record_human_decision(
+    input: DecisionInput,
+    source: &str,
+) -> Result<DecisionResult, DecisionError> {
     let concept_id = input.concept_id.trim().to_string();
     let decision = input.decision.trim().to_string();
     // The caller cannot choose the attribution; the UI has no parameter for it.
     let decision_maker = "human";
 
     // The concept must actually exist, or a typo would create a phantom decision.
-    let exists = INDEX
-        .as_ref()
-        .and_then(|i| i.get("concepts"))
-        .and_then(|c| c.as_array())
+    let exists = cached(&INDEX, "index.json")
+        .and_then(|i| i.get("concepts").and_then(|c| c.as_array()).cloned())
         .map(|cs| {
             cs.iter()
                 .any(|c| c.get("conceptId").and_then(|x| x.as_str()) == Some(concept_id.as_str()))
@@ -765,7 +879,7 @@ pub fn ontology_decide(input: DecisionInput) -> Result<DecisionResult, DecisionE
     // export time, so the reviewer learns immediately instead of after a batch.
     if decision == "NEW_ENTITY" {
         if let Some(name) = input.proposed_entity_name.as_deref() {
-            if let Some(kb) = KB_ENTITIES.as_ref() {
+            if let Some(kb) = cached(&KB_ENTITIES, "kb_entities.json") {
                 if let Some(ents) = kb.get("entities").and_then(|e| e.as_array()) {
                     let low = name.trim().to_lowercase();
                     let slug: String = low
@@ -808,7 +922,7 @@ pub fn ontology_decide(input: DecisionInput) -> Result<DecisionResult, DecisionE
         "timestamp": now_iso8601(),
         "evidence_image_ids": input.evidence_image_ids,
         "notes": input.notes.unwrap_or_default(),
-        "source": "workstation-ui",
+        "source": source,
     });
 
     append_decision(&record).map_err(|e| DecisionError { ok: false, error: e })?;
@@ -839,6 +953,15 @@ pub fn ontology_decide(input: DecisionInput) -> Result<DecisionResult, DecisionE
 /// able to account for.
 #[tauri::command]
 pub fn ontology_undo(concept_id: String) -> Result<WorkstationStatus, DecisionError> {
+    undo_human_decision(&concept_id, "workstation-ui")
+}
+
+/// Undo, transport-independent, for the same reason as `record_human_decision`.
+pub fn undo_human_decision(
+    concept_id: &str,
+    source: &str,
+) -> Result<WorkstationStatus, DecisionError> {
+    let concept_id = concept_id.to_string();
     let path = &*DECISION_LOG;
     let text = std::fs::read_to_string(path).unwrap_or_default();
     let mut last: Option<(usize, serde_json::Value)> = None;
@@ -872,7 +995,7 @@ pub fn ontology_undo(concept_id: String) -> Result<WorkstationStatus, DecisionEr
         "decision_maker": "human",
         "timestamp": now_iso8601(),
         "notes": "reversed via the workstation UI",
-        "source": "workstation-ui",
+        "source": source,
     });
     append_decision(&reversal).map_err(|e| DecisionError { ok: false, error: e })?;
     Ok(ontology_review_status())

@@ -4,6 +4,8 @@ pub mod commands;
 pub mod commands_review;
 mod commands_ontology;
 pub mod commands_ontology_workstation;
+pub mod ontology_web;
+pub mod ontology_web_refresh;
 pub mod commands_training;
 pub mod config;
 pub mod core;
@@ -34,6 +36,14 @@ pub fn run() {
             let handle = app.handle().clone();
             let st = app.state::<app::AppState>();
             app::setup(&handle, &st)?;
+            // The ontology review workstation's own local web server.
+            //
+            // Started here, from the application, but deliberately independent of
+            // the bot: it takes no `Bot`, no `Settings`, and no game handle, so the
+            // review page works whether or not fishing is running. Its address is
+            // also exposed as a command, so the UI can show the URL instead of a
+            // human having to guess the port.
+            ontology_web::spawn();
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -157,6 +167,8 @@ pub fn run() {
             commands_ontology_workstation::ontology_review_full,
             commands_ontology_workstation::ontology_decide,
             commands_ontology_workstation::ontology_undo,
+            ontology_web::ontology_review_url,
+            ontology_web_refresh::ontology_wiki_refresh,
             commands_review::review_search,
             commands_review::drops_explorer,
             commands_review::readiness_status,

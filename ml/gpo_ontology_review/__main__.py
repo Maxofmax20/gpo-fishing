@@ -43,6 +43,28 @@ def _dataset_root() -> Path | None:
     return p if (p / "labels.jsonl").is_file() else None
 
 
+def cmd_wiki_refresh(args) -> int:
+    """Fetch the wiki bestiary and rewrite the committed snapshot.
+
+    The ONLY command in this tool that touches the network, and it is never invoked
+    by `build`: a page load or a rebuild must not depend on the wiki being reachable.
+    """
+    from . import wiki as wiki_mod
+
+    path = args.out / "wiki_fish.json"
+    try:
+        snap = wiki_mod.refresh_snapshot(path)
+    except Exception as e:  # noqa: BLE001 - report, never half-write
+        print(f"  wiki refresh FAILED: {e}", file=sys.stderr)
+        print(f"  {path} left untouched; the previous snapshot is still valid.",
+              file=sys.stderr)
+        return 1
+    print(f"  fetched {snap['entryCount']} fish from {snap['sourceHost']}")
+    print(f"  sha256 {snap['contentSha256']}")
+    print(f"  written to {path}")
+    return 0
+
+
 def cmd_build(args) -> int:
     if not args.evidence.is_file():
         print(f"ERROR: no audit evidence at {args.evidence}", file=sys.stderr)
@@ -183,6 +205,13 @@ def main(argv: list[str] | None = None) -> int:
     common(b)
     b.add_argument("--no-contact-sheets", action="store_true")
     b.set_defaults(fn=cmd_build)
+
+    w = sub.add_parser(
+        "wiki-refresh",
+        help="fetch the GPO wiki fish bestiary and update the committed snapshot",
+    )
+    common(w)
+    w.set_defaults(fn=cmd_wiki_refresh)
 
     d = sub.add_parser("decide", help="record ONE human decision (a proposal)")
     common(d)

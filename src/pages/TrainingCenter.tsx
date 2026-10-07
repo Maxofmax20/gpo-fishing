@@ -1259,7 +1259,42 @@ export default function TrainingCenter() {
         </Section>
       )}
 
-      {tab === "ontology" && <OntologyReview />}
+      {/*
+        Training -> Ontology Review.
+
+        Two ways in, ONE implementation: this renders the same `OntologyReview`
+        component the browser route renders, so there is exactly one page to keep
+        correct. The "Open in browser" action below navigates to the standalone URL
+        rather than duplicating any review logic.
+      */}
+      {tab === "ontology" && (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              kind="ghost"
+              onClick={async () => {
+                // Resolve the URL from the server that actually bound the port,
+                // never from a constant duplicated in TypeScript.
+                try {
+                  const info = await api.ontologyReviewUrl();
+                  await api.openUrl(info.reviewUrl);
+                } catch {
+                  await api.openUrl("http://127.0.0.1:17890/ontology-review");
+                }
+              }}
+              title="Open the review workstation as a standalone web page"
+            >
+              Open in browser
+            </Button>
+            <span className="text-[10px] text-fg-mute">
+              Standalone page, independent of the macro, the game, and the updater. The same
+              component renders either way.
+            </span>
+          </div>
+          <OntologyReview />
+        </div>
+      )}
 
       {tab === "review" && (
         <>

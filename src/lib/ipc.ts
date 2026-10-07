@@ -1,4 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
+import {
+  browserOrInvoke,
+  browserOrInvokeImage,
+  browserOrInvokePost,
+  imageUrl,
+} from "./ontologyBrowser";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   BaitStock,
@@ -69,6 +75,8 @@ import type {
   FamilyView,
   KbEntityOption,
   DecisionInput,
+  OntologyReviewUrl,
+  WikiRefreshResult,
   DecisionResult,
   HermesTasks,
 } from "./types";
@@ -260,6 +268,9 @@ export const api = {
 
   /* --- ONTOLOGY REVIEW WORKSTATION ---
    *
+   * The paths below are RELATIVE to `/api/ontology`. `browserOrInvoke` prepends the
+   * base, so writing a full `/api/ontology/...` path here would double it.
+   *
    * `ontologyDecide` is the ONLY write. It appends to the append-only
    * `ontology_decisions.jsonl` and records a human PROPOSAL. It does not create a
    * KB entity, does not touch FISH_VOCAB.txt, does not set training_eligible, does
@@ -267,25 +278,66 @@ export const api = {
    *
    * `ontologyUndo` writes a REVERSAL record; it never deletes history.
    */
-  ontologyReviewStatus: () => invoke<WorkstationStatus>("ontology_review_status"),
+  ontologyReviewStatus: () =>
+    browserOrInvoke<WorkstationStatus>("/status", "ontology_review_status"),
   ontologyReviewConcept: (conceptId: string) =>
-    invoke<WorkstationConcept>("ontology_review_concept", { conceptId }),
+    browserOrInvoke<WorkstationConcept>(
+      `/concepts/${encodeURIComponent(conceptId)}`,
+      "ontology_review_concept",
+      { conceptId },
+    ),
   ontologyReviewStructural: () =>
-    invoke<StructuralSignals>("ontology_review_structural"),
+    browserOrInvoke<StructuralSignals>("/structural", "ontology_review_structural"),
   ontologyReviewFamily: (familyId: string) =>
-    invoke<FamilyView>("ontology_review_family", { familyId }),
+    browserOrInvoke<FamilyView>(
+      `/families/${encodeURIComponent(familyId)}`,
+      "ontology_review_family",
+      { familyId },
+    ),
   ontologyReviewKbSearch: (query: string, limit?: number) =>
-    invoke<KbEntityOption[]>("ontology_review_kb_search", { query, limit }),
+    browserOrInvoke<KbEntityOption[]>(
+      `/kb/search?q=${encodeURIComponent(query)}${
+        limit != null ? `&limit=${limit}` : ""
+      }`,
+      "ontology_review_kb_search",
+      { query, limit },
+    ),
   /** Inline data URL, so an <img src> needs no extra round trip per image. */
   ontologyReviewThumb: (imageId: string) =>
-    invoke<string | null>("ontology_review_thumb", { imageId }),
+    browserOrInvokeImage(imageUrl(imageId), "ontology_review_thumb", { imageId }),
   /** Full resolution, fetched only when the reviewer asks. */
   ontologyReviewFull: (imageId: string) =>
-    invoke<string | null>("ontology_review_full", { imageId }),
+    browserOrInvokeImage(imageUrl(imageId, true), "ontology_review_full", { imageId }),
   ontologyDecide: (input: DecisionInput) =>
-    invoke<DecisionResult>("ontology_decide", { input }),
+    browserOrInvokePost<DecisionResult>(
+      "/decision",
+      "ontology_decide",
+      { input },
+      input,
+    ),
+  /** Where the standalone review server actually bound. Loopback only. */
+  ontologyReviewUrl: () => invoke<OntologyReviewUrl>("ontology_review_url"),
+  /**
+   * Refresh the game's wiki reference snapshot.
+   *
+   * The only outbound network call in the review path, and never triggered by a page
+   * load - only by an explicit human action. It rewrites one reference file and
+   * nothing else.
+   */
+  ontologyWikiRefresh: () =>
+    browserOrInvokePost<WikiRefreshResult>(
+      "/wiki/refresh",
+      "ontology_wiki_refresh",
+      {},
+      {},
+    ),
   ontologyUndo: (conceptId: string) =>
-    invoke<WorkstationStatus>("ontology_undo", { conceptId }),
+    browserOrInvokePost<WorkstationStatus>(
+      "/undo",
+      "ontology_undo",
+      { conceptId },
+      { conceptId },
+    ),
   hermesTasks: () => invoke<HermesTasks>("hermes_tasks"),
 };
 

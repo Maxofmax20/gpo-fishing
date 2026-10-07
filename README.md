@@ -191,7 +191,15 @@ Auto-update checks GitHub Releases on launch and can be turned off in Settings.
 
 ## 🔒 Security & data
 
-- **Web dashboard**: binds to `127.0.0.1:3888` by default and requires a per-install token for every API/stream route. Open it from the Panel's **Web UI** button (token attached automatically). LAN access is opt-in via Settings → Web dashboard (restart required) and still requires the token.
+- **Web dashboard**: binds to `127.0.0.1:3888` by default and requires a per-install token for
+- **Ontology Review Workstation**: a standalone web page at `http://127.0.0.1:17890/ontology-review`.
+  Bound to loopback only, with no LAN option and no CORS header. It needs no game, no macro, and no
+  updater: opening it starts nothing. It shows the 77 observed game names the OCR audit found, the
+  evidence screenshots behind each, and a reference to the game's own wiki bestiary, and it records
+  a human decision as an append-only proposal. It does **not** modify the knowledge base, the
+  vocabulary file, any dataset label, any split, or any model - applying those proposals is a
+  separate step a person performs by hand. Reach it either by opening that URL directly or from
+  `Training -> Ontology Review` inside the app; both render the same component. every API/stream route. Open it from the Panel's **Web UI** button (token attached automatically). LAN access is opt-in via Settings → Web dashboard (restart required) and still requires the token.
 - **Secrets at rest**: Telegram tokens, Discord webhook URLs, Gemini keys, Roblox cookies and the dashboard token are encrypted with Windows DPAPI (current user scope). Old plaintext configs migrate automatically on first launch.
 - **Backups, not deletions**: settings reset and journal clear keep timestamped backups (`settings.backup-*.json`, `catches.backup-*.csv`) in the data folder (`%AppData%\gpo-autofish`). A corrupt `settings.json` is quarantined (`settings.backup-*.json`) instead of silently reset — the app shows the recovery note in Settings.
 - **Diagnostics**: Setup → Diagnostics → **Run check** probes the live Roblox window (bar/drop/bait-menu/server-time capture, vision confidence, OCR samples, calibration points) with per-item pass/warn/fail. Nothing is simulated.

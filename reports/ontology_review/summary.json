@@ -6,8 +6,8 @@
     "pending": 77,
     "recorded": 0
   },
-  "elapsed_seconds": 4.6,
-  "generated_at_unix": 1791399992,
+  "elapsed_seconds": 4.2,
+  "generated_at_unix": 1791403447,
   "pipeline_version": "ontology-review/1.0.0",
   "production_status": "MODEL_NOT_READY",
   "review_queue": {
@@ -369,10 +369,18 @@
     "pending_concepts": 77,
     "warnings": []
   },
+  "wiki_reference": {
+    "available": true,
+    "concepts": 77,
+    "content_sha256": "9c457a9e6828801489ba22a3a1c9e9b2412a283b5a92feb37cbe84293f13ee3a",
+    "exact_matches": 15,
+    "fish_in_reference": 16,
+    "near_misses": 42
+  },
   "workstation": {
-    "index_bytes": 197461,
+    "index_bytes": 229748,
     "index_path": "reports/ontology_review/workstation/index.json",
-    "index_sha256": "80a935d4d2945f90832145bb179a2ebe25cd9b752115581ecfc1dbef0003ae50",
+    "index_sha256": "0b661bf0d5542a441eb3c9ddad66f203f8c94839bb3c8d8b2fc0665198d96368",
     "kb_entities": 141,
     "structural_families": 48,
     "structural_modifiers": 52,
@@ -382,6 +390,14 @@
       "referenced": 369,
       "rendered": 369,
       "width": 320
+    },
+    "wiki": {
+      "available": true,
+      "concepts": 77,
+      "content_sha256": "9c457a9e6828801489ba22a3a1c9e9b2412a283b5a92feb37cbe84293f13ee3a",
+      "exact_matches": 15,
+      "fish_in_reference": 16,
+      "near_misses": 42
     }
   }
 }

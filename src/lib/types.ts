@@ -1230,6 +1230,8 @@ export type WorkstationConcept = {
   humanDecision: string | null;
   decisionNote?: string | null;
   decidedAt?: string | null;
+  /** External reference evidence. Absent only if the index predates it. */
+  wiki?: WikiMatch;
 };
 
 export type WorkstationStatus = {
@@ -1244,6 +1246,52 @@ export type WorkstationStatus = {
   /** Unresolved concept ids, already in review order. */
   queue: string[];
   order: string[];
+  /** External wiki reference coverage, when the index carries it. */
+  wiki?: WikiCoverage;
+};
+
+/**
+ * How an observed game name relates to the game's own wiki bestiary.
+ *
+ * EVIDENCE, NOT TRUTH. The Grand Piece Online wiki is community-editable, so a match
+ * shows the name is documented; NO match shows only that this list omits it, because
+ * the wiki can lag the game. Neither is a decision, and the UI never turns one into a
+ * selected answer.
+ */
+export type WikiMatch = {
+  matched: boolean;
+  canonicalName: string | null;
+  rarity: string | null;
+  seasonal: boolean | null;
+  description: string | null;
+  url: string | null;
+  /** Populated when there is no exact match but a reference is clearly close. */
+  suggestion: string | null;
+  suggestionRarity: string | null;
+  suggestionDistance: number | null;
+  /** Why the match happened, so the panel can show it rather than assert it. */
+  basis: string;
+};
+
+export type WikiCoverage = {
+  available: boolean;
+  caveat: string;
+  sourceUrl: string | null;
+  entryCount: number;
+  retrievedAtUnix: number | null;
+  contentSha256: string | null;
+  exactMatches: number;
+  nearMisses: number;
+};
+
+export type WikiRefreshResult = {
+  ok: boolean;
+  entryCount: number;
+  contentSha256: string;
+  exactMatches: number;
+  nearMisses: number;
+  unchanged: boolean;
+  message: string;
 };
 
 export type KbEntityOption = {
@@ -1320,6 +1368,16 @@ export type DecisionInput = {
   variantDescriptor?: string;
   notes?: string;
   evidenceImageIds?: string[];
+};
+
+/** Reported by the server that bound the port, so the UI never guesses it. */
+export type OntologyReviewUrl = {
+  baseUrl: string;
+  reviewUrl: string;
+  port: number;
+  bindAddress: string;
+  loopbackOnly: boolean;
+  cors: boolean;
 };
 
 export type DecisionResult = {

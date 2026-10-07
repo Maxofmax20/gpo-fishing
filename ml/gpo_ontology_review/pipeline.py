@@ -28,6 +28,7 @@ from .concept_extract import (
 from .decisions import DecisionStore, decision_counts, training_ready_counts
 from .evidence_select import Candidate, select_representative
 from .patch import export_patch, validate
+from . import wiki as wiki_mod
 from .workstation import (
     build_index,
     build_kb_entities,
@@ -184,7 +185,11 @@ def run(evidence_path: Path, kb_path: Path, out_dir: Path,
     # --- workstation artefacts (compact index + thumbnails) -------------
     ws_dir = out_dir / "workstation"
     ws_dir.mkdir(parents=True, exist_ok=True)
-    index = build_index(concepts, kb_payload, modifiers, families, bases)
+    # The wiki snapshot is optional. Without it the index records "reference
+    # unavailable" per concept rather than pretending nothing matched, so a missing
+    # snapshot can never be read as evidence that a fish does not exist.
+    wiki_snapshot = wiki_mod.load_snapshot(out_dir / "wiki_fish.json")
+    index = build_index(concepts, kb_payload, modifiers, families, bases, wiki_snapshot)
     kb_entities = build_kb_entities(kb_payload)
     structural = build_structural(modifiers, families, bases)
     (ws_dir / "index.json").write_text(
@@ -204,6 +209,14 @@ def run(evidence_path: Path, kb_path: Path, out_dir: Path,
 
     ws_summary = {
         "index_sha256": index_digest(index),
+        "wiki": {
+            "available": index["wiki"]["available"],
+            "fish_in_reference": index["wiki"]["entryCount"],
+            "exact_matches": index["wiki"]["exactMatches"],
+            "near_misses": index["wiki"]["nearMisses"],
+            "concepts": index["counts"]["total"],
+            "content_sha256": index["wiki"]["contentSha256"],
+        },
         "index_path": "reports/ontology_review/workstation/index.json",
         "index_bytes": (ws_dir / "index.json").stat().st_size,
         "kb_entities": kb_entities["entityCount"],
@@ -286,6 +299,7 @@ def _summary(concepts, families, modifiers, bases, stats, store, report,
         "validation": report.to_dict(),
         "contact_sheets": len(sheets),
         "workstation": ws_summary,
+        "wiki_reference": ws_summary["wiki"],
         "top_concepts": [
             {
                 "concept_id": c.concept_id,

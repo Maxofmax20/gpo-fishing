@@ -26,8 +26,14 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/ipc";
-import type { OntologyReviewPayload } from "../lib/types";
+import type {
+  KbEntityOption,
+  OntologyReviewPayload,
+  WorkstationConcept,
+  WorkstationStatus,
+} from "../lib/types";
 import { Button, Kbd, Pill, Section } from "../components/primitives";
+import { WikiReferencePanel } from "./WikiReferencePanel";
 import {
   DECISIONS,
   EMPTY_DRAFT,
@@ -59,52 +65,6 @@ type Evidence = {
   ocrConfidence: number | null;
   timestampMs: number;
   selectedBecause: string;
-};
-
-type WorkstationConcept = {
-  rank: number;
-  conceptId: string;
-  displayName: string;
-  normalizedName: string;
-  occurrences: number;
-  sessionCount: number;
-  dayCount: number;
-  priority: string;
-  priorityReasons: string[];
-  ontologyStatus: string;
-  currentKbCandidates: string[];
-  baseName: string | null;
-  modifiers: string[];
-  familyId: string | null;
-  storedLabels: [string, number][];
-  storedAgreesWithCandidate: number;
-  ocrVariants: string[];
-  evidence: Evidence[];
-  humanDecision: string | null;
-  decisionNote?: string | null;
-  decidedAt?: string | null;
-};
-
-type WorkstationStatus = {
-  available: boolean;
-  detail: string;
-  total: number;
-  counts: Record<string, number>;
-  remaining: Record<string, number>;
-  decided: number;
-  pending: number;
-  byDecision: Record<string, number>;
-  queue: string[];
-  order: string[];
-};
-
-type KbOption = {
-  id: string;
-  canonicalName: string;
-  aliases: string[];
-  category: string;
-  rarity: string | null;
-  inFishVocab: boolean;
 };
 
 type Structural = {
@@ -472,7 +432,7 @@ export function OntologyReview() {
   const proposedName = draft.proposedEntityName;
   const variantName = draft.variantDescriptor;
   const [kbQuery, setKbQuery] = useState("");
-  const [kbOptions, setKbOptions] = useState<KbOption[]>([]);
+  const [kbOptions, setKbOptions] = useState<KbEntityOption[]>([]);
 
   // --- ui state --------------------------------------------------------
   const [viewer, setViewer] = useState<number | null>(null);
@@ -594,6 +554,7 @@ export function OntologyReview() {
   }, [kbQuery, decision]);
 
   // --- save -------------------------------------------------------------
+  const wikiAvailable = Boolean(status?.wiki?.available);
   const problems = useMemo(() => missingRequirements(draft), [draft]);
   const canSave = useMemo(() => problems.length === 0 && concept !== null, [problems, concept]);
 
@@ -761,6 +722,25 @@ export function OntologyReview() {
               </button>
             ))}
           </div>
+
+          {status.wiki?.available && (
+            <div className="text-[10px] text-fg-mute border border-line/60 rounded px-2 py-1.5">
+              <span className="text-fg-dim">Game wiki reference:</span>{" "}
+              {status.wiki.entryCount} documented fish;{" "}
+              {status.wiki.exactMatches} of the {status.total} observed names match
+              exactly, {status.wiki.nearMisses} are near matches.{" "}
+              {status.wiki.sourceUrl && (
+                <a
+                  href={status.wiki.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-accent underline"
+                >
+                  Source
+                </a>
+              )}
+            </div>
+          )}
 
           <div className="flex items-center gap-3 text-[11px]">
             <span className="text-fg-dim">Overall</span>
@@ -1185,6 +1165,15 @@ export function OntologyReview() {
 
           {/* ---------------- side column ---------------- */}
           <div className="flex flex-col gap-2 min-w-0">
+            <WikiReferencePanel
+              match={concept.wiki}
+              referenceAvailable={wikiAvailable}
+              retrievedAtUnix={status.wiki?.retrievedAtUnix ?? null}
+              entryCount={status.wiki?.entryCount ?? 0}
+              exactMatches={status.wiki?.exactMatches ?? 0}
+              nearMisses={status.wiki?.nearMisses ?? 0}
+              onRefreshed={refreshStatus}
+            />
             <StructuralPanel
               structural={structural}
               concept={concept}

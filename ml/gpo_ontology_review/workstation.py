@@ -43,6 +43,7 @@ from typing import Any
 
 from .concept_extract import build_base_report, build_families, build_modifier_report
 from .schemas import OntologyConcept
+from .wiki import match_name
 
 #: Thumbnail width in pixels. Chosen to stay legible at the workstation's grid
 #: cell size on a 1366-wide window while remaining small on disk.
@@ -64,6 +65,7 @@ def build_index(
     modifiers: list[dict[str, Any]],
     families: dict[str, dict[str, Any]],
     bases: list[dict[str, Any]],
+    wiki_snapshot: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compact per-concept index plus the deterministic review order.
 
@@ -126,6 +128,13 @@ def build_index(
             ],
             "humanDecision": c.human_decision,
             "decisionNote": c.decision_note,
+            # External reference evidence. Never a decision, and never populated
+            # from anything but the committed snapshot.
+            "wiki": (
+                match_name(c.display_name, wiki_snapshot).to_json()
+                if wiki_snapshot
+                else {"matched": False, "basis": "reference unavailable"}
+            ),
         })
 
     return {
@@ -138,6 +147,23 @@ def build_index(
             "p1": sum(1 for c in concepts if c.priority == "P1"),
             "p2": sum(1 for c in concepts if c.priority == "P2"),
             "p3": sum(1 for c in concepts if c.priority == "P3"),
+        },
+        # Aggregate reference coverage, so the dashboard can state how much of the
+        # observed vocabulary the external list actually explains - and, just as
+        # importantly, how much it does not.
+        "wiki": {
+            "available": bool(wiki_snapshot),
+            "caveat": (wiki_snapshot or {}).get("caveat", ""),
+            "sourceUrl": (wiki_snapshot or {}).get("sourceUrl"),
+            "entryCount": (wiki_snapshot or {}).get("entryCount", 0),
+            "retrievedAtUnix": (wiki_snapshot or {}).get("retrievedAtUnix"),
+            "contentSha256": (wiki_snapshot or {}).get("contentSha256"),
+            "exactMatches": sum(1 for c in out_concepts if c["wiki"]["matched"]),
+            "nearMisses": sum(
+                1
+                for c in out_concepts
+                if not c["wiki"]["matched"] and c["wiki"].get("suggestion")
+            ),
         },
         "concepts": out_concepts,
     }

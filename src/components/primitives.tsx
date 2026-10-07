@@ -157,6 +157,7 @@ export function Button({
   disabled,
   className,
   icon,
+  title,
 }: {
   children?: ReactNode;
   onClick?: () => void;
@@ -165,6 +166,8 @@ export function Button({
   disabled?: boolean;
   className?: string;
   icon?: ReactNode;
+  /** Hover tooltip. Also the accessible description, so it is not decoration. */
+  title?: string;
 }) {
   const base =
     "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium select-none whitespace-nowrap transition-[background-color,border-color,box-shadow,transform,color,filter] duration-150 outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-elev hover:-translate-y-px active:translate-y-0 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none";
@@ -176,7 +179,13 @@ export function Button({
     ghost: "hover:bg-white/[0.06] text-fg-dim hover:text-fg",
   }[kind];
   return (
-    <button type="button" disabled={disabled} onClick={onClick} className={cx(base, sizes, kinds, className)}>
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      title={title}
+      className={cx(base, sizes, kinds, className)}
+    >
       {icon}
       {children}
     </button>
