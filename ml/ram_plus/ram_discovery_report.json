@@ -1,0 +1,130 @@
+{
+  "generated_by": "semantic-teacher discovery pass (no teacher installed; no RAM++ output exists)",
+  "dataset": {
+    "rows": 14805,
+    "images": 14805,
+    "human_reviews": 1,
+    "human_reviews_eligible": 0,
+    "sessions": 71,
+    "calendar_days": 4,
+    "register_candidates": 0
+  },
+  "ram_model": null,
+  "ram_checkpoint": null,
+  "checkpoint_sha256": null,
+  "inference_runtime": null,
+  "images_analysed": 0,
+  "fish_images": 1803,
+  "questionable_images": 223,
+  "ram_ocr_agreement": null,
+  "ram_gpo_agreement": null,
+  "ram_human_agreement": null,
+  "visual_signal_analysis": {
+    "crop_size": "589x199",
+    "crop_kind": "drop-message text panel",
+    "bright_glyph_fraction": 0.0433,
+    "dark_background_fraction": 0.4339,
+    "mean_distance_same_label": 0.1626,
+    "mean_distance_different_label": 0.1719,
+    "separation": 0.0093,
+    "relative_separation": 0.0541,
+    "nearest_centroid_accuracy": 0.192,
+    "chance": 0.125,
+    "conclusion": "Species identity is carried by rendered TEXT, not sprite artwork. A semantic image tagger cannot improve species discrimination."
+  },
+  "ocr_triage": {
+    "dataset_rows_with_entity": 1914,
+    "ocr_agrees_with_label": 884,
+    "ocr_conflicts_with_label": 223,
+    "ocr_ambiguous_multi_kb": 621,
+    "ocr_outside_kb": 186
+  },
+  "unresolved_concepts": [
+    {
+      "concept": "Crimson Snapper",
+      "rows": 225,
+      "kb_match": null,
+      "status": "ambiguous: fish:crimson | fish:snapper",
+      "recommendation": "HUMAN REVIEW"
+    },
+    {
+      "concept": "Crimson Puffer",
+      "rows": 216,
+      "kb_match": null,
+      "status": "ambiguous: fish:crimson | fish:pufferfish",
+      "recommendation": "HUMAN REVIEW"
+    },
+    {
+      "concept": "Golden / Golden Polka Puffer",
+      "rows": 93,
+      "kb_match": null,
+      "status": "ambiguous: fish:golden | fish:pufferfish",
+      "recommendation": "HUMAN REVIEW"
+    },
+    {
+      "concept": "Golden / Golden Ribbon Angelfish",
+      "rows": 87,
+      "kb_match": null,
+      "status": "ambiguous: fish:golden | fish:angelfish",
+      "recommendation": "HUMAN REVIEW"
+    },
+    {
+      "concept": "Exotic / Golden Tigerfin",
+      "rows": 31,
+      "kb_match": null,
+      "status": "no KB entity",
+      "recommendation": "HUMAN REVIEW"
+    },
+    {
+      "concept": "Candy Corn Squid",
+      "rows": 130,
+      "kb_match": null,
+      "status": "no KB entity",
+      "recommendation": "HUMAN REVIEW"
+    },
+    {
+      "concept": "Dark Skeletal Shark",
+      "rows": 15,
+      "kb_match": null,
+      "status": "no KB entity",
+      "recommendation": "HUMAN REVIEW"
+    },
+    {
+      "concept": "Zebra Ribbon Angelfish",
+      "rows": 3,
+      "kb_match": null,
+      "status": "no KB entity",
+      "recommendation": "HUMAN REVIEW"
+    },
+    {
+      "concept": "Blue-Lip Grouper",
+      "rows": 4,
+      "kb_match": null,
+      "status": "no KB entity",
+      "recommendation": "HUMAN REVIEW"
+    },
+    {
+      "concept": "Jack-O'-Bite",
+      "rows": 8,
+      "kb_match": null,
+      "status": "no KB entity",
+      "recommendation": "HUMAN REVIEW"
+    }
+  ],
+  "crimson_snapper": "UNRESOLVED - ambiguous between fish:crimson and fish:snapper; human decision required",
+  "candy_corn_squid": "UNRESOLVED - not in KB; human decision required",
+  "tigerfin": "UNRESOLVED - not in KB; human decision required",
+  "exotic_tigerfin": "UNRESOLVED - not in KB; human decision required",
+  "dark_skeletal_shark": "UNRESOLVED - not in KB; human decision required",
+  "baseline_gpo_model": {
+    "name": "fish_v1",
+    "accuracy": 0.6743,
+    "macro_f1": 0.6439,
+    "worst_class_f1": 0.452,
+    "worst_class": "fish:pufferfish",
+    "ece": 0.3796,
+    "note": "measured on 565 real held-out rows; labels are collector-derived, not human truth"
+  },
+  "ram_assisted_gpo_model": null,
+  "final_status": "MODEL_NOT_READY"
+}
