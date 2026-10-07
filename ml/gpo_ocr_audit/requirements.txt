@@ -1,0 +1,20 @@
+# GPO OCR audit pipeline — dependencies
+#
+# CPU-only by design. No CUDA, no torch, no GPU runtime: the audit must be
+# reproducible on any machine that can run the rest of the repo's tooling.
+#
+# rapidocr-onnxruntime bundles its own ONNX detection/recognition models inside
+# the wheel, so `pip install -r requirements.txt` is the whole install. No model
+# download happens at audit time, and no network access is required once
+# installed.
+
+# OCR engine. ONNX Runtime based; runs on CPU. Models ship inside the wheel.
+rapidocr-onnxruntime==1.2.3
+
+# Already required by the repo's other tooling; listed so this pipeline is
+# installable on its own.
+numpy>=2.0
+Pillow>=10.0
+
+# Optional: contact-sheet rendering. The audit runs and reports without it.
+# Pillow (above) is the only hard requirement for sheets.

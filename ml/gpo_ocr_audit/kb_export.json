@@ -1,0 +1,1221 @@
+{
+  "schema": 1,
+  "kb_version": 1,
+  "fish_vocab": [
+    "fish:angelfish",
+    "fish:crimson",
+    "fish:golden",
+    "fish:pufferfish",
+    "fish:shark",
+    "fish:snapper",
+    "fish:squid",
+    "fish:swordfish"
+  ],
+  "fish_vocab_sha256": "256508a6e89ed593832e2d79ebc48e423b2fa3bc531d6ec8ca56facccef0ef10",
+  "entity_count": 141,
+  "entities": [
+    {
+      "id": "bait:common",
+      "canonical_name": "Common Bait",
+      "aliases": [
+        "common"
+      ],
+      "ocr_aliases": [],
+      "category": "bait",
+      "rarity": "Common"
+    },
+    {
+      "id": "bait:legendary",
+      "canonical_name": "Legendary Bait",
+      "aliases": [
+        "legendary"
+      ],
+      "ocr_aliases": [],
+      "category": "bait",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "bait:rare",
+      "canonical_name": "Rare Bait",
+      "aliases": [
+        "rare"
+      ],
+      "ocr_aliases": [],
+      "category": "bait",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fish:angelfish",
+      "canonical_name": "Angelfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:barracuda",
+      "canonical_name": "Barracuda",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:bass",
+      "canonical_name": "Bass",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:beast",
+      "canonical_name": "Beast",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:bluefin",
+      "canonical_name": "Bluefin",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:boot",
+      "canonical_name": "Boot",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:carp",
+      "canonical_name": "Carp",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:catfish",
+      "canonical_name": "Catfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:clownfish",
+      "canonical_name": "Clownfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:cod",
+      "canonical_name": "Cod",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:colossal",
+      "canonical_name": "Colossal",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:crab",
+      "canonical_name": "Crab",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:crimson",
+      "canonical_name": "Crimson",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:eel",
+      "canonical_name": "Eel",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:flying",
+      "canonical_name": "Flying",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:golden",
+      "canonical_name": "Golden",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:halibut",
+      "canonical_name": "Halibut",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:jellyfish",
+      "canonical_name": "Jellyfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:kraken",
+      "canonical_name": "Kraken",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:lobster",
+      "canonical_name": "Lobster",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:manta",
+      "canonical_name": "Manta",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:marlin",
+      "canonical_name": "Marlin",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:megalodon",
+      "canonical_name": "Megalodon",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:octopus",
+      "canonical_name": "Octopus",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:piranha",
+      "canonical_name": "Piranha",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:pufferfish",
+      "canonical_name": "Pufferfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:ray",
+      "canonical_name": "Ray",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:sailfish",
+      "canonical_name": "Sailfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:salmon",
+      "canonical_name": "Salmon",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:seaweed",
+      "canonical_name": "Seaweed",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:shark",
+      "canonical_name": "Shark",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:shrimp",
+      "canonical_name": "Shrimp",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:snapper",
+      "canonical_name": "Snapper",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:squid",
+      "canonical_name": "Squid",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:sunfish",
+      "canonical_name": "Sunfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:swordfish",
+      "canonical_name": "Swordfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:tiger",
+      "canonical_name": "Tiger",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:trash",
+      "canonical_name": "Trash",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:trout",
+      "canonical_name": "Trout",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:tuna",
+      "canonical_name": "Tuna",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fish:turtle",
+      "canonical_name": "Turtle",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": null
+    },
+    {
+      "id": "fruit:bane",
+      "canonical_name": "Bane",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Epic"
+    },
+    {
+      "id": "fruit:bari",
+      "canonical_name": "Bari",
+      "aliases": [
+        "Barrier"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fruit:barrier",
+      "canonical_name": "Barrier",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fruit:biscuit",
+      "canonical_name": "Biscuit",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:bisu",
+      "canonical_name": "Bisu",
+      "aliases": [
+        "Biscuit"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:bomb",
+      "canonical_name": "Bomb",
+      "aliases": [
+        "Bomu"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fruit:bomu",
+      "canonical_name": "Bomu",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fruit:buddha",
+      "canonical_name": "Buddha",
+      "aliases": [
+        "Daibutsu"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:chiyu",
+      "canonical_name": "Chiyu",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Common"
+    },
+    {
+      "id": "fruit:clear",
+      "canonical_name": "Clear",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Common"
+    },
+    {
+      "id": "fruit:daibutsu",
+      "canonical_name": "Daibutsu",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:dark",
+      "canonical_name": "Dark",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:doku",
+      "canonical_name": "Doku",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:dragon",
+      "canonical_name": "Dragon",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:flame",
+      "canonical_name": "Flame",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:gas",
+      "canonical_name": "Gas",
+      "aliases": [
+        "Gasu"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:gasu",
+      "canonical_name": "Gasu",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:glint",
+      "canonical_name": "Glint",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:gomu",
+      "canonical_name": "Gomu",
+      "aliases": [
+        "Rubber"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fruit:goro",
+      "canonical_name": "Goro",
+      "aliases": [
+        "Rumble"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:goru",
+      "canonical_name": "Goru",
+      "aliases": [
+        "Gold"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:gravity",
+      "canonical_name": "Gravity",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:gura",
+      "canonical_name": "Gura",
+      "aliases": [
+        "Tremor",
+        "Quake"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:guru",
+      "canonical_name": "Guru",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Common"
+    },
+    {
+      "id": "fruit:heal",
+      "canonical_name": "Heal",
+      "aliases": [
+        "Chiyu"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Common"
+    },
+    {
+      "id": "fruit:hie",
+      "canonical_name": "Hie",
+      "aliases": [
+        "Ice"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:hito",
+      "canonical_name": "Hito",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:horo",
+      "canonical_name": "Horo",
+      "aliases": [
+        "Hollow"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fruit:ice",
+      "canonical_name": "Ice",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:ito",
+      "canonical_name": "Ito",
+      "aliases": [
+        "String"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:kage",
+      "canonical_name": "Kage",
+      "aliases": [
+        "Shadow"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:kaido",
+      "canonical_name": "Kaido",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:kilo",
+      "canonical_name": "Kilo",
+      "aliases": [
+        "Weight"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Common"
+    },
+    {
+      "id": "fruit:kira",
+      "canonical_name": "Kira",
+      "aliases": [
+        "Diamond"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Epic"
+    },
+    {
+      "id": "fruit:leopard",
+      "canonical_name": "Leopard",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:light",
+      "canonical_name": "Light",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Unknown"
+    },
+    {
+      "id": "fruit:love",
+      "canonical_name": "Love",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fruit:lucci",
+      "canonical_name": "Lucci",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:magma",
+      "canonical_name": "Magma",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:magu",
+      "canonical_name": "Magu",
+      "aliases": [
+        "Magma"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:mammoth",
+      "canonical_name": "Mammoth",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:mera",
+      "canonical_name": "Mera",
+      "aliases": [
+        "Flame",
+        "Fire"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:mero",
+      "canonical_name": "Mero",
+      "aliases": [
+        "Love"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fruit:mochi",
+      "canonical_name": "Mochi",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:moku",
+      "canonical_name": "Moku",
+      "aliases": [
+        "Smoke"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:neko",
+      "canonical_name": "Neko",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:nikyu",
+      "canonical_name": "Nikyu",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:ope",
+      "canonical_name": "Ope",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:paw",
+      "canonical_name": "Paw",
+      "aliases": [
+        "Nikyu"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:phoenix",
+      "canonical_name": "Phoenix",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:pika",
+      "canonical_name": "Pika",
+      "aliases": [
+        "Glint"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:plume",
+      "canonical_name": "Plume",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:pteranodon",
+      "canonical_name": "Pteranodon",
+      "aliases": [
+        "Ptera"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:revive",
+      "canonical_name": "Revive",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Epic"
+    },
+    {
+      "id": "fruit:rubber",
+      "canonical_name": "Rubber",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fruit:rumble",
+      "canonical_name": "Rumble",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:sand",
+      "canonical_name": "Sand",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:seiryu",
+      "canonical_name": "Seiryu",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:shadow",
+      "canonical_name": "Shadow",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:smoke",
+      "canonical_name": "Smoke",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:soru",
+      "canonical_name": "Soru",
+      "aliases": [
+        "Soul"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:soul",
+      "canonical_name": "Soul",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:spin",
+      "canonical_name": "Spin",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Common"
+    },
+    {
+      "id": "fruit:spring",
+      "canonical_name": "Spring",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Epic"
+    },
+    {
+      "id": "fruit:string",
+      "canonical_name": "String",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:suke",
+      "canonical_name": "Suke",
+      "aliases": [
+        "Clear"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Common"
+    },
+    {
+      "id": "fruit:suna",
+      "canonical_name": "Suna",
+      "aliases": [
+        "Sand"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:t-rex",
+      "canonical_name": "T-Rex",
+      "aliases": [
+        "Trex"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:tori",
+      "canonical_name": "Tori",
+      "aliases": [
+        "Phoenix"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:tremor",
+      "canonical_name": "Tremor",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:trex",
+      "canonical_name": "Trex",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:uo",
+      "canonical_name": "Uo",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:venom",
+      "canonical_name": "Venom",
+      "aliases": [
+        "Doku"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Mythical"
+    },
+    {
+      "id": "fruit:yami",
+      "canonical_name": "Yami",
+      "aliases": [
+        "Dark",
+        "Darkness"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:yomi",
+      "canonical_name": "Yomi",
+      "aliases": [
+        "Revive"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Epic"
+    },
+    {
+      "id": "fruit:yuki",
+      "canonical_name": "Yuki",
+      "aliases": [
+        "Snow"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fruit:zushi",
+      "canonical_name": "Zushi",
+      "aliases": [
+        "Gravity"
+      ],
+      "ocr_aliases": [],
+      "category": "fruit",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "ui:caught-a",
+      "canonical_name": "caught a",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:check-your-backpack",
+      "canonical_name": "check your backpack",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:devil-fruit",
+      "canonical_name": "devil fruit",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:devil-fruit-drop",
+      "canonical_name": "devil fruit drop",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:escaped",
+      "canonical_name": "escaped",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:fished-up",
+      "canonical_name": "fished up",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:fished-up-a-devil",
+      "canonical_name": "fished up a devil",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:got-a-devil-fruit",
+      "canonical_name": "got a devil fruit",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:got-away",
+      "canonical_name": "got away",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:line-broke",
+      "canonical_name": "line broke",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:line-snapped",
+      "canonical_name": "line snapped",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:lost-the",
+      "canonical_name": "lost the",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:new-item",
+      "canonical_name": "new item",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:spawn",
+      "canonical_name": "spawn",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:spawned",
+      "canonical_name": "spawned",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:too-slow",
+      "canonical_name": "too slow",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:you-caught",
+      "canonical_name": "you caught",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:you-fished",
+      "canonical_name": "you fished",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:you-found",
+      "canonical_name": "you found",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    },
+    {
+      "id": "ui:you-got",
+      "canonical_name": "you got",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "ui_term",
+      "rarity": null
+    }
+  ]
+}
