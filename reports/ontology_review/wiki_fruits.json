@@ -1,0 +1,713 @@
+{
+ "byRarity": {
+  "Common": 4,
+  "Epic": 3,
+  "Legendary": 16,
+  "Mythical": 9,
+  "Rare": 5
+ },
+ "caveat": "Community-editable reference, not an authority. A match shows the name is a documented fruit; NO match shows only that this list omits it. Never a decision.",
+ "contentSha256": "2ada2db770ea409a5f04e2839681baeebea0ebb1a2e69848729d0f2c81bb9ca5",
+ "entries": [
+  {
+   "fullName": "Chiyu Chiyu no Mi",
+   "keys": [
+    {
+     "matchKey": "chiyuchiyunomi",
+     "text": "Chiyu Chiyu no Mi"
+    },
+    {
+     "matchKey": "heal",
+     "text": "Heal"
+    },
+    {
+     "matchKey": "chiyu",
+     "text": "Chiyu"
+    }
+   ],
+   "label": "Heal",
+   "rarity": "Common",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Kilo Kilo no Mi",
+   "keys": [
+    {
+     "matchKey": "kilokilonomi",
+     "text": "Kilo Kilo no Mi"
+    },
+    {
+     "matchKey": "kilo",
+     "text": "Kilo"
+    }
+   ],
+   "label": "Kilo",
+   "rarity": "Common",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Spin Spin no Mi",
+   "keys": [
+    {
+     "matchKey": "spinspinnomi",
+     "text": "Spin Spin no Mi"
+    },
+    {
+     "matchKey": "spin",
+     "text": "Spin"
+    }
+   ],
+   "label": "Spin",
+   "rarity": "Common",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Suke Suke no Mi",
+   "keys": [
+    {
+     "matchKey": "sukesukenomi",
+     "text": "Suke Suke no Mi"
+    },
+    {
+     "matchKey": "suke",
+     "text": "Suke"
+    }
+   ],
+   "label": "Suke",
+   "rarity": "Common",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Kira Kira no Mi",
+   "keys": [
+    {
+     "matchKey": "kirakiranomi",
+     "text": "Kira Kira no Mi"
+    },
+    {
+     "matchKey": "kira",
+     "text": "Kira"
+    }
+   ],
+   "label": "Kira",
+   "rarity": "Epic",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Bane Bane no Mi",
+   "keys": [
+    {
+     "matchKey": "banebanenomi",
+     "text": "Bane Bane no Mi"
+    },
+    {
+     "matchKey": "spring",
+     "text": "Spring"
+    },
+    {
+     "matchKey": "bane",
+     "text": "Bane"
+    }
+   ],
+   "label": "Spring",
+   "rarity": "Epic",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Yomi Yomi no Mi",
+   "keys": [
+    {
+     "matchKey": "yomiyominomi",
+     "text": "Yomi Yomi no Mi"
+    },
+    {
+     "matchKey": "yomi",
+     "text": "Yomi"
+    }
+   ],
+   "label": "Yomi",
+   "rarity": "Epic",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Bisu Bisu no Mi",
+   "keys": [
+    {
+     "matchKey": "bisubisunomi",
+     "text": "Bisu Bisu no Mi"
+    },
+    {
+     "matchKey": "biscuit",
+     "text": "Biscuit"
+    },
+    {
+     "matchKey": "bisu",
+     "text": "Bisu"
+    }
+   ],
+   "label": "Biscuit",
+   "rarity": "Legendary",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Goro Goro no Mi",
+   "keys": [
+    {
+     "matchKey": "gorogoronomi",
+     "text": "Goro Goro no Mi"
+    },
+    {
+     "matchKey": "goro",
+     "text": "Goro"
+    }
+   ],
+   "label": "Goro",
+   "rarity": "Legendary",
+   "type": "Logia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Goru Goru no Mi",
+   "keys": [
+    {
+     "matchKey": "gorugorunomi",
+     "text": "Goru Goru no Mi"
+    },
+    {
+     "matchKey": "goru",
+     "text": "Goru"
+    }
+   ],
+   "label": "Goru",
+   "rarity": "Legendary",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Gura Gura no Mi",
+   "keys": [
+    {
+     "matchKey": "guraguranomi",
+     "text": "Gura Gura no Mi"
+    },
+    {
+     "matchKey": "gura",
+     "text": "Gura"
+    }
+   ],
+   "label": "Gura",
+   "rarity": "Legendary",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Hie Hie no Mi",
+   "keys": [
+    {
+     "matchKey": "hiehienomi",
+     "text": "Hie Hie no Mi"
+    },
+    {
+     "matchKey": "hie",
+     "text": "Hie"
+    }
+   ],
+   "label": "Hie",
+   "rarity": "Legendary",
+   "type": "Logia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Ito Ito no Mi",
+   "keys": [
+    {
+     "matchKey": "itoitonomi",
+     "text": "Ito Ito no Mi"
+    },
+    {
+     "matchKey": "ito",
+     "text": "Ito"
+    }
+   ],
+   "label": "Ito",
+   "rarity": "Legendary",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Kage Kage no Mi",
+   "keys": [
+    {
+     "matchKey": "kagekagenomi",
+     "text": "Kage Kage no Mi"
+    },
+    {
+     "matchKey": "kage",
+     "text": "Kage"
+    }
+   ],
+   "label": "Kage",
+   "rarity": "Legendary",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Magu Magu no Mi",
+   "keys": [
+    {
+     "matchKey": "magumagunomi",
+     "text": "Magu Magu no Mi"
+    },
+    {
+     "matchKey": "magu",
+     "text": "Magu"
+    }
+   ],
+   "label": "Magu",
+   "rarity": "Legendary",
+   "type": "Logia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Mera Mera no Mi",
+   "keys": [
+    {
+     "matchKey": "merameranomi",
+     "text": "Mera Mera no Mi"
+    },
+    {
+     "matchKey": "mera",
+     "text": "Mera"
+    }
+   ],
+   "label": "Mera",
+   "rarity": "Legendary",
+   "type": "Logia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Nikyu Nikyu no Mi",
+   "keys": [
+    {
+     "matchKey": "nikyunikyunomi",
+     "text": "Nikyu Nikyu no Mi"
+    },
+    {
+     "matchKey": "paw",
+     "text": "Paw"
+    },
+    {
+     "matchKey": "nikyu",
+     "text": "Nikyu"
+    }
+   ],
+   "label": "Paw",
+   "rarity": "Legendary",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Pika Pika no Mi",
+   "keys": [
+    {
+     "matchKey": "pikapikanomi",
+     "text": "Pika Pika no Mi"
+    },
+    {
+     "matchKey": "pika",
+     "text": "Pika"
+    }
+   ],
+   "label": "Pika",
+   "rarity": "Legendary",
+   "type": "Logia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Moku Moku no Mi",
+   "keys": [
+    {
+     "matchKey": "mokumokunomi",
+     "text": "Moku Moku no Mi"
+    },
+    {
+     "matchKey": "smoke",
+     "text": "Smoke"
+    },
+    {
+     "matchKey": "moku",
+     "text": "Moku"
+    }
+   ],
+   "label": "Smoke",
+   "rarity": "Legendary",
+   "type": "Logia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Suna Suna no Mi",
+   "keys": [
+    {
+     "matchKey": "sunasunanomi",
+     "text": "Suna Suna no Mi"
+    },
+    {
+     "matchKey": "suna",
+     "text": "Suna"
+    }
+   ],
+   "label": "Suna",
+   "rarity": "Legendary",
+   "type": "Logia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Yami Yami no Mi",
+   "keys": [
+    {
+     "matchKey": "yamiyaminomi",
+     "text": "Yami Yami no Mi"
+    },
+    {
+     "matchKey": "yami",
+     "text": "Yami"
+    }
+   ],
+   "label": "Yami",
+   "rarity": "Legendary",
+   "type": "Logia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Yuki Yuki no Mi",
+   "keys": [
+    {
+     "matchKey": "yukiyukinomi",
+     "text": "Yuki Yuki no Mi"
+    },
+    {
+     "matchKey": "yuki",
+     "text": "Yuki"
+    }
+   ],
+   "label": "Yuki",
+   "rarity": "Legendary",
+   "type": "Logia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Zushi Zushi no Mi",
+   "keys": [
+    {
+     "matchKey": "zushizushinomi",
+     "text": "Zushi Zushi no Mi"
+    },
+    {
+     "matchKey": "zushi",
+     "text": "Zushi"
+    }
+   ],
+   "label": "Zushi",
+   "rarity": "Legendary",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Hito Hito no Mi, Model: Daibutsu",
+   "keys": [
+    {
+     "matchKey": "hitohitonomimodeldaibutsu",
+     "text": "Hito Hito no Mi, Model: Daibutsu"
+    },
+    {
+     "matchKey": "hitohitonomi",
+     "text": "Hito Hito no Mi"
+    },
+    {
+     "matchKey": "buddha",
+     "text": "Buddha"
+    },
+    {
+     "matchKey": "hito",
+     "text": "Hito"
+    }
+   ],
+   "label": "Buddha",
+   "rarity": "Mythical",
+   "type": "Mythical Zoan",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Uo Uo no Mi, Model: Seiryu",
+   "keys": [
+    {
+     "matchKey": "uouonomimodelseiryu",
+     "text": "Uo Uo no Mi, Model: Seiryu"
+    },
+    {
+     "matchKey": "uouonomi",
+     "text": "Uo Uo no Mi"
+    },
+    {
+     "matchKey": "dragon",
+     "text": "Dragon"
+    },
+    {
+     "matchKey": "uo",
+     "text": "Uo"
+    }
+   ],
+   "label": "Dragon",
+   "rarity": "Mythical",
+   "type": "Mythical Zoan",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Neko Neko no Mi, model: Leopard",
+   "keys": [
+    {
+     "matchKey": "nekonekonomimodelleopard",
+     "text": "Neko Neko no Mi, model: Leopard"
+    },
+    {
+     "matchKey": "nekonekonomi",
+     "text": "Neko Neko no Mi"
+    },
+    {
+     "matchKey": "leopard",
+     "text": "Leopard"
+    },
+    {
+     "matchKey": "neko",
+     "text": "Neko"
+    }
+   ],
+   "label": "Leopard",
+   "rarity": "Mythical",
+   "type": "Zoan",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Mochi Mochi no Mi",
+   "keys": [
+    {
+     "matchKey": "mochimochinomi",
+     "text": "Mochi Mochi no Mi"
+    },
+    {
+     "matchKey": "mochi",
+     "text": "Mochi"
+    }
+   ],
+   "label": "Mochi",
+   "rarity": "Mythical",
+   "type": "Special Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Ope Ope no Mi",
+   "keys": [
+    {
+     "matchKey": "opeopenomi",
+     "text": "Ope Ope no Mi"
+    },
+    {
+     "matchKey": "ope",
+     "text": "Ope"
+    }
+   ],
+   "label": "Ope",
+   "rarity": "Mythical",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Ryu Ryu no Mi, Model: Pteranodon",
+   "keys": [
+    {
+     "matchKey": "ryuryunomimodelpteranodon",
+     "text": "Ryu Ryu no Mi, Model: Pteranodon"
+    },
+    {
+     "matchKey": "ryuryunomi",
+     "text": "Ryu Ryu no Mi"
+    },
+    {
+     "matchKey": "ptero",
+     "text": "Ptero"
+    },
+    {
+     "matchKey": "ryu",
+     "text": "Ryu"
+    }
+   ],
+   "label": "Ptero",
+   "rarity": "Mythical",
+   "type": "Ancient Zoan",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Soru Soru no Mi",
+   "keys": [
+    {
+     "matchKey": "sorusorunomi",
+     "text": "Soru Soru no Mi"
+    },
+    {
+     "matchKey": "soul",
+     "text": "Soul"
+    },
+    {
+     "matchKey": "soru",
+     "text": "Soru"
+    }
+   ],
+   "label": "Soul",
+   "rarity": "Mythical",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Tori Tori no Mi, Model: Phoenix",
+   "keys": [
+    {
+     "matchKey": "toritorinomimodelphoenix",
+     "text": "Tori Tori no Mi, Model: Phoenix"
+    },
+    {
+     "matchKey": "toritorinomi",
+     "text": "Tori Tori no Mi"
+    },
+    {
+     "matchKey": "tori",
+     "text": "Tori"
+    }
+   ],
+   "label": "Tori",
+   "rarity": "Mythical",
+   "type": "Mythical Zoan",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Doku Doku no Mi",
+   "keys": [
+    {
+     "matchKey": "dokudokunomi",
+     "text": "Doku Doku no Mi"
+    },
+    {
+     "matchKey": "venom",
+     "text": "Venom"
+    },
+    {
+     "matchKey": "doku",
+     "text": "Doku"
+    }
+   ],
+   "label": "Venom",
+   "rarity": "Mythical",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Bari Bari no Mi",
+   "keys": [
+    {
+     "matchKey": "baribarinomi",
+     "text": "Bari Bari no Mi"
+    },
+    {
+     "matchKey": "bari",
+     "text": "Bari"
+    }
+   ],
+   "label": "Bari",
+   "rarity": "Rare",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Bomu Bomu no Mi",
+   "keys": [
+    {
+     "matchKey": "bomubomunomi",
+     "text": "Bomu Bomu no Mi"
+    },
+    {
+     "matchKey": "bomu",
+     "text": "Bomu"
+    }
+   ],
+   "label": "Bomu",
+   "rarity": "Rare",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Gomu Gomu no Mi",
+   "keys": [
+    {
+     "matchKey": "gomugomunomi",
+     "text": "Gomu Gomu no Mi"
+    },
+    {
+     "matchKey": "gomu",
+     "text": "Gomu"
+    }
+   ],
+   "label": "Gomu",
+   "rarity": "Rare",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Horo Horo no Mi",
+   "keys": [
+    {
+     "matchKey": "horohoronomi",
+     "text": "Horo Horo no Mi"
+    },
+    {
+     "matchKey": "horo",
+     "text": "Horo"
+    }
+   ],
+   "label": "Horo",
+   "rarity": "Rare",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  },
+  {
+   "fullName": "Mero Mero no Mi",
+   "keys": [
+    {
+     "matchKey": "meromeronomi",
+     "text": "Mero Mero no Mi"
+    },
+    {
+     "matchKey": "mero",
+     "text": "Mero"
+    }
+   ],
+   "label": "Mero",
+   "rarity": "Rare",
+   "type": "Paramecia",
+   "url": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits"
+  }
+ ],
+ "entryCount": 37,
+ "kind": "ontology_wiki_devil_fruits",
+ "retrievedAtUnix": 1791409089,
+ "sourceHost": "grand-piece-online.fandom.com",
+ "sourceTemplate": "Template:DevilFruit/List",
+ "sourceUrl": "https://grand-piece-online.fandom.com/wiki/Devil_Fruits",
+ "version": 1
+}

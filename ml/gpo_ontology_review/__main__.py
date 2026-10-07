@@ -65,6 +65,25 @@ def cmd_wiki_refresh(args) -> int:
     return 0
 
 
+def cmd_wiki_fruits_refresh(args) -> int:
+    """Fetch the devil-fruit list and rewrite the committed snapshot."""
+    from . import wiki_fruits as wf
+
+    path = args.out / "wiki_fruits.json"
+    try:
+        snap = wf.refresh_snapshot(path)
+    except Exception as e:  # noqa: BLE001 - report, never half-write
+        print(f"  fruit refresh FAILED: {e}", file=sys.stderr)
+        print(f"  {path} left untouched; the previous snapshot is still valid.",
+              file=sys.stderr)
+        return 1
+    print(f"  fetched {snap['entryCount']} fruits from {snap['sourceHost']}")
+    print(f"  by rarity: {snap['byRarity']}")
+    print(f"  sha256 {snap['contentSha256']}")
+    print(f"  written to {path}")
+    return 0
+
+
 def cmd_build(args) -> int:
     if not args.evidence.is_file():
         print(f"ERROR: no audit evidence at {args.evidence}", file=sys.stderr)
@@ -212,6 +231,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     common(w)
     w.set_defaults(fn=cmd_wiki_refresh)
+
+    wf = sub.add_parser(
+        "wiki-fruits-refresh",
+        help="fetch the GPO wiki devil-fruit list and update the committed snapshot",
+    )
+    common(wf)
+    wf.set_defaults(fn=cmd_wiki_fruits_refresh)
 
     d = sub.add_parser("decide", help="record ONE human decision (a proposal)")
     common(d)
