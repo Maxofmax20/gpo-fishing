@@ -1,0 +1,103 @@
+{
+  "cuda_used": false,
+  "dataset": {
+    "calendar_days": 5,
+    "dataset_version": 1,
+    "day_range": [
+      "2026-10-02",
+      "2026-10-06"
+    ],
+    "eligible_reviews": 0,
+    "human_reviews": 1,
+    "in_latest_snapshot": 0,
+    "root_name": "v1",
+    "rows": 14805,
+    "sessions": 74,
+    "sessions_spanning_multiple_splits": [],
+    "splits": {
+      "test": 677,
+      "train": 13331,
+      "validation": 797
+    },
+    "warnings": []
+  },
+  "dataset_manifest_sha256": "1582530baaa92de7ae1797a3c9ee54a808a6bd47627b23539d4c4077b1c5374b",
+  "elapsed_seconds": 115.8,
+  "evidence_records": 14805,
+  "evidence_sha256": "24df6a4b40d5d6fdad45dc0828123dbf58933f91641a3ffc98ed2e9334fa4ef9",
+  "fish_vocab_sha256": "256508a6e89ed593832e2d79ebc48e423b2fa3bc531d6ec8ca56facccef0ef10",
+  "generated_at_unix": 1791392972,
+  "kb": {
+    "by_category": {
+      "bait": 3,
+      "fish": 41,
+      "fruit": 77,
+      "ui_term": 20
+    },
+    "entities": 141,
+    "entities_with_aliases": 36,
+    "fish_vocab": [
+      "fish:angelfish",
+      "fish:crimson",
+      "fish:golden",
+      "fish:pufferfish",
+      "fish:shark",
+      "fish:snapper",
+      "fish:squid",
+      "fish:swordfish"
+    ],
+    "fish_vocab_sha256": "256508a6e89ed593832e2d79ebc48e423b2fa3bc531d6ec8ca56facccef0ef10",
+    "kb_version": 1
+  },
+  "kb_export_sha256": "03898ad877d0f459cf4f330a86fc104c618095d18375bb2ad60317333a92523c",
+  "labels_jsonl_sha256": "a6fac80bd41202fae0352a1c1c6e03265233c4ba26e9dc8ccb69e6cbdbfb82de",
+  "model": {
+    "available": true,
+    "classes": [
+      "fish:angelfish",
+      "fish:crimson",
+      "fish:golden",
+      "fish:pufferfish",
+      "fish:shark",
+      "fish:snapper",
+      "fish:squid",
+      "fish:swordfish"
+    ],
+    "last_prediction_error": "",
+    "load_error": "",
+    "manifest_self_reported": {
+      "ece": 0.20725460603190227,
+      "macro_f1": 0.5405698755573588,
+      "test_accuracy": 0.5824175824175825,
+      "test_n": 91
+    },
+    "name": "fish_v1",
+    "prediction_failures": 0,
+    "preprocess": {
+      "mean": [
+        0.05271091430067188,
+        0.11570198624633397,
+        0.1936517829171868
+      ],
+      "pad": "square-black",
+      "resize": "bilinear",
+      "size": 96,
+      "std": [
+        0.12389305103404322,
+        0.19019146653331148,
+        0.2934129469778255
+      ]
+    },
+    "sha256": "6a155906ed9b7bcc4b9830148c8b214bf7d566192fa8bd876f6da7eb9b0656e9",
+    "temperature": 0.75,
+    "version": "1",
+    "vocab_sha": "256508a6e89ed593832e2d79ebc48e423b2fa3bc531d6ec8ca56facccef0ef10"
+  },
+  "normalization_rules_version": "ocr-rules/1.0.0",
+  "ocr_engine": "rapidocr-onnxruntime",
+  "ocr_engine_fingerprint": "12de598070fe22db0be7ca012f85a5ef26930d9bebddcc786bfaa1511f002e06",
+  "ocr_engine_version": "1.2.3",
+  "pipeline_version": "ocr-audit/1.0.0",
+  "training_snapshot_used": "dataset_snapshot.json",
+  "workers": 8
+}

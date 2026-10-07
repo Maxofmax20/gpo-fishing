@@ -269,6 +269,12 @@ class ModelRunner:
     _mean: Any = None
     _std: Any = None
     load_error: str = ""
+    #: Prediction failures are COUNTED, not silently swallowed. A run in which
+    #: every prediction failed must not be indistinguishable from a run in which
+    #: the model had nothing to say - that is precisely the silent-degradation
+    #: failure this project has been guarding against everywhere else.
+    prediction_failures: int = 0
+    last_prediction_error: str = ""
 
     @classmethod
     def load(cls, models_dir: Path, name: str = "fish_v1") -> "ModelRunner | None":
@@ -294,10 +300,13 @@ class ModelRunner:
             pre = manifest.get("preprocess") or {}
             size = int(pre.get("size") or manifest.get("input_width") or 96)
             self._size = size
+            # (1, 3, 1, 1) to match the NCHW batch. Shaping these (1,1,1,3) is the
+            # NHWC convention and raises a broadcast error the moment the layout is
+            # corrected - which the failure counter reported rather than hiding.
             self._mean = np.asarray(pre.get("mean") or [0.0, 0.0, 0.0],
-                                    dtype=np.float32).reshape(1, 1, 1, 3)
+                                    dtype=np.float32).reshape(1, 3, 1, 1)
             self._std = np.asarray(pre.get("std") or [1.0, 1.0, 1.0],
-                                   dtype=np.float32).reshape(1, 1, 1, 3)
+                                   dtype=np.float32).reshape(1, 3, 1, 1)
         except Exception as exc:  # noqa: BLE001
             self.load_error = f"{type(exc).__name__}: {exc}"
         return self
@@ -307,7 +316,13 @@ class ModelRunner:
         return self._session is not None
 
     def _preprocess(self, path: Path):
-        """square-black pad -> bilinear resize -> normalise, per the manifest."""
+        """square-black pad -> bilinear resize -> normalise -> NCHW.
+
+        The layout is NCHW because that is what the exported graph declares
+        (`pixels: [batch, 3, 96, 96]`). Feeding NHWC raised an InvalidArgument
+        that an earlier bare `except` swallowed, so the audit reported "0 rows
+        carry a model prediction" instead of saying why.
+        """
         from PIL import Image
 
         np = self._np
@@ -320,11 +335,17 @@ class ModelRunner:
             canvas.paste(im, ((side - w) // 2, (side - h) // 2))
             canvas = canvas.resize((size, size), Image.BILINEAR)
             arr = np.asarray(canvas, dtype=np.float32) / 255.0
-        arr = arr[None, ...]
+        arr = arr[None, ...]                       # (1, H, W, 3)
+        arr = np.transpose(arr, (0, 3, 1, 2))      # (1, 3, H, W)
         return (arr - self._mean) / self._std
 
     def predict(self, path: Path) -> tuple[str | None, float | None]:
-        """Return ``(top_class, confidence)``; ``(None, None)`` on any failure."""
+        """Return ``(top_class, confidence)``; ``(None, None)`` on any failure.
+
+        A failure is recorded in :attr:`prediction_failures` and
+        :attr:`last_prediction_error` so it shows up in the provenance rather
+        than vanishing.
+        """
         if not self.available:
             return None, None
         try:
@@ -339,10 +360,16 @@ class ModelRunner:
             probs /= probs.sum()
             idx = int(probs.argmax())
             if idx >= len(self.classes):
+                self.prediction_failures += 1
+                self.last_prediction_error = (
+                    f"argmax index {idx} outside the {len(self.classes)} declared classes"
+                )
                 return None, None
             return self.classes[idx], float(probs[idx])
-        except Exception:
-            # A prediction failure is reported as "no prediction", never guessed.
+        except Exception as exc:  # noqa: BLE001
+            # Recorded, not guessed and not hidden.
+            self.prediction_failures += 1
+            self.last_prediction_error = f"{type(exc).__name__}: {exc}"
             return None, None
 
     def provenance(self) -> dict[str, Any]:
@@ -356,6 +383,15 @@ class ModelRunner:
             "preprocess": self.manifest.get("preprocess"),
             "available": self.available,
             "load_error": self.load_error,
+            # Never let a fully-failing model column pass as "no opinion".
+            "prediction_failures": self.prediction_failures,
+            "last_prediction_error": self.last_prediction_error,
+            "manifest_self_reported": {
+                "test_accuracy": self.manifest.get("test_accuracy"),
+                "macro_f1": self.manifest.get("macro_f1"),
+                "ece": self.manifest.get("ece"),
+                "test_n": self.manifest.get("test_n"),
+            },
         }
 
 

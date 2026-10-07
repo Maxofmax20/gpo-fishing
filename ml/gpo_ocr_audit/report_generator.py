@@ -78,11 +78,26 @@ def summarise(evs: list[EntityEvidence]) -> dict[str, Any]:
 
     # Fresh OCR vs the collector's stored OCR: a direct measure of how much the
     # collector's own text can be trusted.
+    #
+    # BOTH sides go through the SAME normalisation chain. Comparing a normalised
+    # string against a merely lowercased one reported 0% agreement, which looked
+    # like a finding and was actually a comparison bug: `New Item <Shark>` and
+    # `Nev Item<Shark>` are the same reading once punctuation and the banner
+    # glyphs are handled, and the audit must say so rather than inflate the
+    # disagreement.
+    from .text_normalizer import normalize_pipeline
+
     stored_nonempty = sum(1 for e in evs if (e.stored_ocr_text or "").strip())
     both = [e for e in evs
             if (e.stored_ocr_text or "").strip() and e.normalized_ocr.strip()]
-    agree = sum(1 for e in both if e.normalized_ocr == " ".join(
-        e.stored_ocr_text.lower().split()))
+    agree = 0
+    agree_raw = 0
+    for e in both:
+        stored_norm = normalize_pipeline(e.stored_ocr_text)[0]
+        if e.normalized_ocr == stored_norm:
+            agree += 1
+        if e.normalized_ocr == e.raw_ocr.lower().strip():
+            agree_raw += 1
 
     return {
         "total": n,
@@ -108,6 +123,8 @@ def summarise(evs: list[EntityEvidence]) -> dict[str, Any]:
             "comparable": len(both),
             "identical_after_normalisation": agree,
             "agreement_rate": _pct(agree, len(both)) if both else "n/a",
+            "identical_case_insensitive": agree_raw,
+            "case_insensitive_rate": _pct(agree_raw, len(both)) if both else "n/a",
         },
         "human_reviews": sum(1 for e in evs if e.human_reviewed),
         "requires_human_review": sum(1 for e in evs if e.requires_human_review),
@@ -336,12 +353,17 @@ def write_summary(path: Path, s: dict, classes: dict, index_stats: dict,
         "",
         "The dataset's own `ocr_text` was written by the app's recogniser. Comparing",
         "it with this audit's independent re-read measures how far it can be trusted.",
+        "Both sides go through the same normalisation chain.",
         "",
         _table(["metric", "value"], [
             ["rows with stored OCR text", s["stored_vs_fresh"]["stored_nonempty"]],
             ["rows comparable (both sides non-empty)", s["stored_vs_fresh"]["comparable"]],
-            ["identical after normalisation", s["stored_vs_fresh"]["identical_after_normalisation"]],
-            ["agreement", s["stored_vs_fresh"]["agreement_rate"]],
+            ["identical after normalisation",
+             f"{s['stored_vs_fresh']['identical_after_normalisation']} "
+             f"({s['stored_vs_fresh']['agreement_rate']})"],
+            ["identical ignoring case only",
+             f"{s['stored_vs_fresh']['identical_case_insensitive']} "
+             f"({s['stored_vs_fresh']['case_insensitive_rate']})"],
         ]),
         "",
         "## OCR correction rules applied",

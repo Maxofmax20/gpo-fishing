@@ -192,10 +192,12 @@ class OcrCorrection:
 OCR_CORRECTION_RULES: tuple[OcrCorrection, ...] = (
     OcrCorrection(
         name="banner_ne",
-        pattern=r"\bn[e3]v\b",
+        pattern=r"\b(?:n|u)[e3]v\b",
         replacement="new",
-        reason="'Nev' is a glyph rendering of 'New'; the drop banner always opens "
-               "'New Item'. 'new' is not an entity, so this cannot relabel a fish.",
+        reason="'Nev' / 'Uev' are glyph renderings of 'New'; the drop banner always "
+               "opens 'New Item'. 'new' is not an entity, so this cannot relabel a "
+               "fish - it only recovers the banner noun so the template can be "
+               "stripped before any entity lookup.",
     ),
     OcrCorrection(
         name="rn_as_m",

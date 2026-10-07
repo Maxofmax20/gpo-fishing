@@ -27,5 +27,24 @@ ml/ram_plus/checkpoints/
 
 # OCR audit: the OCR cache is derived from image bytes and is regenerable, and it
 # can reach tens of MB. The reports themselves ARE committed; the cache is not.
+# OCR audit derived artefacts.
+#
+# The readable answers (every .md report, provenance.json, search_index.sqlite)
+# ARE committed. Two large binary products are not, because they are fully
+# regenerable from the same command and would otherwise add ~64 MB to every
+# clone:
+#
+#   evidence.jsonl    ~26 MB  one record per image
+#   contact_sheets/   ~38 MB  130 rendered image grids
+#
+# They stay on disk after a run. `provenance.json` records the SHA-256 of
+# evidence.jsonl, so a regenerated file can be verified byte-for-byte against a
+# committed report's numbers:
+#
+#   python -m ml.gpo_ocr_audit
+#   (Get-FileHash reports/ocr_audit/evidence.jsonl -Algorithm SHA256)
+#
 reports/ocr_audit/.cache/
+reports/ocr_audit/evidence.jsonl
+reports/ocr_audit/contact_sheets/
 reports/_smoke/

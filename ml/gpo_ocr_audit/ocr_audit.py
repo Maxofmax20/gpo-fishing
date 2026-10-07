@@ -318,6 +318,8 @@ def run(cfg: RunConfig) -> dict[str, Any]:
         model_pred, model_conf = (None, None)
         if runner is not None and runner.available:
             model_pred, model_conf = runner.predict(index.image_path(row.image_id))
+            if model_pred is None:
+                _log(cfg, f"      model produced no prediction for {row.image_id}")
 
         category = categorise(row, match, ont)
         status = classify(row, match, row.entity_id, lambda: False)
@@ -379,6 +381,12 @@ def run(cfg: RunConfig) -> dict[str, Any]:
         days = {s.split("_")[1] for s in sessions if len(s.split("_")) > 1}
         ev.review_priority = score_priority(ev, len(sessions), len(days))
         ev.priority_reasons = _reasons(ev, len(sessions), len(days))
+
+    if runner is not None and runner.prediction_failures:
+        # Loud, because "the model column is empty" and "the model refused every
+        # image" are completely different findings.
+        _log(cfg, f"      MODEL COLUMN INCOMPLETE: {runner.prediction_failures} "
+                  f"prediction failure(s); last error: {runner.last_prediction_error}")
 
     evidence_path = out_dir / "evidence.jsonl"
     with evidence_path.open("w", encoding="utf-8", newline="\n") as fh:
