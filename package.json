@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "review": "node scripts/ontology-review-server.mjs",
     "app:dev": "tauri dev",
     "app:build": "tauri build",
     "test": "vitest run",

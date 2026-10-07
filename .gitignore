@@ -57,6 +57,11 @@ reports/ontology_review/contact_sheets/
 # gitignored for the same reason the contact sheets are: large, regenerable, and
 # verified by the `index_sha256` recorded in the committed summary.json.
 reports/ontology_review/workstation/
+# Machine candidate labels. Regenerable in ~8s from the dataset and the wiki
+# snapshot by `python -m ml.gpo_train.candidates`, and derived rather than authored,
+# so the committed metadata (counts, per-class coverage, content hash) is what the
+# tests and reports read.
+reports/training_candidates/
 reports/ocr_audit/.cache/
 reports/ocr_audit/evidence.jsonl
 reports/ocr_audit/contact_sheets/
