@@ -1,13 +1,13 @@
 {
-  "contact_sheets": 0,
+  "contact_sheets": 40,
   "decisions": {
     "by_type": {},
     "path": "reports/ontology_review/ontology_decisions.jsonl",
     "pending": 77,
     "recorded": 0
   },
-  "elapsed_seconds": 0.5,
-  "generated_at_unix": 1791398698,
+  "elapsed_seconds": 4.6,
+  "generated_at_unix": 1791399992,
   "pipeline_version": "ontology-review/1.0.0",
   "production_status": "MODEL_NOT_READY",
   "review_queue": {
@@ -368,5 +368,20 @@
     "ok": true,
     "pending_concepts": 77,
     "warnings": []
+  },
+  "workstation": {
+    "index_bytes": 197461,
+    "index_path": "reports/ontology_review/workstation/index.json",
+    "index_sha256": "80a935d4d2945f90832145bb179a2ebe25cd9b752115581ecfc1dbef0003ae50",
+    "kb_entities": 141,
+    "structural_families": 48,
+    "structural_modifiers": 52,
+    "thumbnails": {
+      "missing": 0,
+      "quality": 82,
+      "referenced": 369,
+      "rendered": 369,
+      "width": 320
+    }
   }
 }

@@ -93,13 +93,19 @@ exactly the thing in question, so it must not bias the answer.
 |---|---|---|---|---|---|---|---|
 | 1 | `606020203e34beb6` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.913 | highest OCR confidence |
 | 2 | `602020203e3ebe9e` | 2026-10-02 | 2026-10-02_230043_e51ff1a7 | `New Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.911 | different session |
-| 3 | `30301010be80ffff` | 2026-10-03 | 2026-10-03_104057_39d5add1 | `New Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.911 | different calendar day |
-| 4 | `3b373f3e3e3e007f` | 2026-10-06 | 2026-10-06_175729_f925385b | `Ne Item <zebra RibbonAngelfish>` | - | 0.873 | different OCR variant |
-| 5 | `202020203e3ebe9e` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item <Zebra Ribbon Angelfish>` | `fruit:paw` | 0.913 | different stored label |
-| 6 | `606020203e303eb0` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.913 | additional coverage |
+| 3 | `30301010be80ffff` | 2026-10-03 | 2026-10-03_104057_39d5add1 | `New Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.911 | different session |
+| 4 | `e06060203ee0f0f0` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.910 | different session |
+| 5 | `606020203e3e80de` | 2026-10-05 | 2026-10-05_172103_e2d1971c | `New Item <Zebra Ribbon Angelfish>` | `fish:crimson` | 0.909 | different session |
+| 6 | `30301090be90ffff` | 2026-10-02 | 2026-10-02_215405_f5d40eba | `New Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.908 | different session |
+| 7 | `602020243e01ffff` | 2026-10-04 | 2026-10-04_220833_0f8210ed | `Ne Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.907 | different session |
+| 8 | `30303030be9680df` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.907 | different session |
+| 9 | `e06060607e20343e` | 2026-10-05 | 2026-10-05_190403_c9429492 | `Nev Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.904 | different session |
+| 10 | `e06020303e3032b0` | 2026-10-05 | 2026-10-05_211733_183ded9a | `New Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.904 | different session |
+| 11 | `fe7c60607ee0e0e0` | 2026-10-05 | 2026-10-05_234514_efb8fcc9 | `New Item <Zebra Ribbon Angelfish>` | `fish:angelfish` | 0.903 | different session |
+| 12 | `30303010be90ffeb` | 2026-10-03 | 2026-10-03_115211_8fa9d196 | `Ne Item <Zebra Ribbon Angelfish>` | `fish:crimson` | 0.902 | different session |
 
 
-_6 image(s) spanning 4 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)_
+_12 image(s) spanning 12 session(s), 5 day(s), 1 OCR variant(s), 2 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -152,13 +158,19 @@ _6 image(s) spanning 4 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `6020a0e0fcf0f0f0` | 2026-10-05 | 2026-10-05_172944_49fd118f | `New Item <skeletal Shark` | `fish:shark` | 0.882 | highest OCR confidence |
 | 2 | `606030303c34beb0` | 2026-10-05 | 2026-10-05_211733_183ded9a | `New Item skeletal Shark-` | `fish:shark` | 0.882 | different session |
-| 3 | `606030303f3e3ebe` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item skeletal Shark-` | `fish:squid` | 0.881 | different calendar day |
-| 4 | `e0606060643e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `NewItemskeletalShark` | - | 0.872 | different OCR variant |
-| 5 | `677e3e3e06017f07` | 2026-10-04 | 2026-10-04_220833_0f8210ed | `NewItemskeletalShark` | `fish:angelfish` | 0.868 | different stored label |
-| 6 | `606020203e3ebeb6` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item skeletal Shark-` | `fish:shark` | 0.879 | additional coverage |
+| 3 | `606030303f3e3ebe` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item skeletal Shark-` | `fish:squid` | 0.881 | different session |
+| 4 | `e0606060643e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `NewItemskeletalShark` | - | 0.872 | different session |
+| 5 | `677e3e3e06017f07` | 2026-10-04 | 2026-10-04_220833_0f8210ed | `NewItemskeletalShark` | `fish:angelfish` | 0.868 | different session |
+| 6 | `f03030303c30341e-1` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <skeletalShark>` | `fish:shark` | 0.866 | different session |
+| 7 | `30809ee7ffc24242` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item Skeletal Shark>` | `fish:shark` | 0.864 | different session |
+| 8 | `30333f329e9f809f-2` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `NewItemskeletalShark` | `fish:shark` | 0.859 | different session |
+| 9 | `303010969c9effff` | 2026-10-03 | 2026-10-03_115211_8fa9d196 | `NewItemskeletalShark>` | `fish:shark` | 0.858 | different session |
+| 10 | `606020203c303ebe` | 2026-10-03 | 2026-10-03_091319_6fbb96f4 | `New Item <skeletal Shark>` | `fish:shark` | 0.858 | different session |
+| 11 | `606020303c303e90` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `New Item <skeletal Shark>` | `fish:shark` | 0.856 | different session |
+| 12 | `e06024203f3f3e3e` | 2026-10-03 | 2026-10-03_110949_15b78581 | `New Item <skeletal Shark>` | `fish:shark` | 0.855 | different session |
 
 
-_6 image(s) spanning 5 session(s), 4 day(s), 2 OCR variant(s), 4 stored label(s)_
+_12 image(s) spanning 12 session(s), 5 day(s), 2 OCR variant(s), 4 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -213,13 +225,19 @@ _6 image(s) spanning 5 session(s), 4 day(s), 2 OCR variant(s), 4 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `e02020203e3034be` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <crimson Polka Puffer>` | `fish:golden` | 0.914 | highest OCR confidence |
 | 2 | `30101090be9effff` | 2026-10-02 | 2026-10-02_215405_f5d40eba | `New Item <Crimson Polka Puffer>` | `fish:angelfish` | 0.914 | different session |
-| 3 | `e1303c333f3f1f9f` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `Nev Item <crimson Polka Puffer>` | `fish:crimson` | 0.914 | different calendar day |
-| 4 | `606060603e303e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item <crimson PolkaPuffer>` | `fish:crimson` | 0.893 | different OCR variant |
-| 5 | `e02020203e3a3cbe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <crimson Polka Puffer>` | `fish:pufferfish` | 0.914 | different stored label |
-| 6 | `20301090be80ffff` | 2026-10-03 | 2026-10-03_115211_8fa9d196 | `New Item <Crimson Polka Puffer>` | `fish:angelfish` | 0.914 | additional coverage |
+| 3 | `e1303c333f3f1f9f` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `Nev Item <crimson Polka Puffer>` | `fish:crimson` | 0.914 | different session |
+| 4 | `20301090be80ffff` | 2026-10-03 | 2026-10-03_115211_8fa9d196 | `New Item <Crimson Polka Puffer>` | `fish:angelfish` | 0.914 | different session |
+| 5 | `e06060203e203c3e` | 2026-10-05 | 2026-10-05_132601_bb362a56 | `New Item <Crimson Polka Puffer>` | `fish:crimson` | 0.913 | different session |
+| 6 | `606060607e6401ff` | 2026-10-03 | 2026-10-03_084835_be6e8c8b | `Nev Item <crimson Polka Puffer>` | `fish:crimson` | 0.913 | different session |
+| 7 | `602020203f3e3ebe` | 2026-10-02 | 2026-10-02_230043_e51ff1a7 | `New Item <Crimson Polka Puffer>` | `fruit:kilo` | 0.907 | different session |
+| 8 | `30301090beffe3e3` | 2026-10-03 | 2026-10-03_164415_39a04dc5 | `New Item <Crimson Polka Puffer>` | `fish:crimson` | 0.906 | different session |
+| 9 | `606020203e3e3ebe` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item <Crimson Polka Puffer>` | `ui:spawned` | 0.903 | different session |
+| 10 | `30301090beffffef` | 2026-10-03 | 2026-10-03_161417_bb4b5817 | `New Item <Crimson Polka Puffer>` | `fish:crimson` | 0.901 | different session |
+| 11 | `606020213e3ebe90` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `New Item <crimson Polka Puffer>` | `fish:crimson` | 0.898 | different session |
+| 12 | `e06060607ee0e0e0` | 2026-10-05 | 2026-10-05_234514_efb8fcc9 | `New Item <Crimson Polka Puffer>` | `fish:crimson` | 0.898 | different session |
 
 
-_6 image(s) spanning 5 session(s), 3 day(s), 2 OCR variant(s), 4 stored label(s)_
+_12 image(s) spanning 12 session(s), 4 day(s), 1 OCR variant(s), 5 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -279,13 +297,19 @@ _210 of 276 rows have a stored label equal to one KB candidate. That means the l
 |---|---|---|---|---|---|---|---|
 | 1 | `30301016bc9fffff` | 2026-10-03 | 2026-10-03_115211_8fa9d196 | `New Item <crimson Snapper>` | `fish:snapper` | 0.887 | highest OCR confidence |
 | 2 | `6066262b3e3ebe90` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `New Item <Crimson SnaPper>` | `fish:snapper` | 0.881 | different session |
-| 3 | `30303b123e9f80df-1` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Crimson SnaPper>` | `fish:snapper` | 0.880 | different calendar day |
-| 4 | `60603337363e3e10` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `Nev Item<crimsonSnapper>` | `fish:squid` | 0.849 | different OCR variant |
-| 5 | `008080d7ffdede46` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item <crimson Snapper>` | `fish:shark` | 0.871 | different stored label |
-| 6 | `30303810be9e80df` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Crimson SnaPper>` | `fish:snapper` | 0.880 | additional coverage |
+| 3 | `30303b123e9f80df-1` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Crimson SnaPper>` | `fish:snapper` | 0.880 | different session |
+| 4 | `e02036223d3f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Crimson Snapper>` | `fish:snapper` | 0.878 | different session |
+| 5 | `20203080bcffdfdf` | 2026-10-04 | 2026-10-04_145954_42e87519 | `New Item <Crimson Snapper>` | `fish:snapper` | 0.876 | different session |
+| 6 | `60602021263e3ebe` | 2026-10-03 | 2026-10-03_091319_6fbb96f4 | `Nev Item <crimson Snapper>` | `fish:snapper` | 0.873 | different session |
+| 7 | `e06020203c3b3e3e` | 2026-10-03 | 2026-10-03_110949_15b78581 | `New Item <crimson Snapper>` | `fish:snapper` | 0.871 | different session |
+| 8 | `606020303c36be80` | 2026-10-03 | 2026-10-03_220117_1e7efb16 | `New Item <crimson Snapper>` | `fish:snapper` | 0.871 | different session |
+| 9 | `008080d7ffdede46` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item <crimson Snapper>` | `fish:shark` | 0.871 | different session |
+| 10 | `606020203c00ffff` | 2026-10-04 | 2026-10-04_220833_0f8210ed | `New Item <Crimson SnaPper>` | `fish:snapper` | 0.868 | different session |
+| 11 | `606033273f3e3ebe` | 2026-10-02 | 2026-10-02_230043_e51ff1a7 | `Nev Item <crimson Snapper>` | `fish:angelfish` | 0.866 | different session |
+| 12 | `f03030303c303030-1` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <Crimson Snapper>` | `fish:snapper` | 0.866 | different session |
 
 
-_6 image(s) spanning 5 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)_
+_12 image(s) spanning 12 session(s), 4 day(s), 1 OCR variant(s), 3 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -339,13 +363,19 @@ _6 image(s) spanning 5 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `e0e060203c3b3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item <Exotic Tigerfin>` | `fish:shark` | 0.920 | highest OCR confidence |
 | 2 | `606023233f3f3ebf` | 2026-10-02 | 2026-10-02_230043_e51ff1a7 | `New Item <Exotic Tigerfin>` | - | 0.916 | different session |
-| 3 | `30303010bc94ffff` | 2026-10-03 | 2026-10-03_115211_8fa9d196 | `New Item <Exotic Tigerfin>` | `fish:snapper` | 0.910 | different calendar day |
-| 4 | `e1303f33073f1f9f` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <ExoticTigerfin` | - | 0.869 | different OCR variant |
-| 5 | `30303010bc94ffeb` | 2026-10-03 | 2026-10-03_115211_8fa9d196 | `New Item <Exotic Tigerfin>` | `fish:pufferfish` | 0.909 | different stored label |
-| 6 | `33311f1f3f9fd9c0` | 2026-10-04 | 2026-10-04_225639_0180cb9d | `New Item <Exotic Tigerfin>` | - | 0.910 | additional coverage |
+| 3 | `30303010bc94ffff` | 2026-10-03 | 2026-10-03_115211_8fa9d196 | `New Item <Exotic Tigerfin>` | `fish:snapper` | 0.910 | different session |
+| 4 | `33311f1f3f9fd9c0` | 2026-10-04 | 2026-10-04_225639_0180cb9d | `New Item <Exotic Tigerfin>` | - | 0.910 | different session |
+| 5 | `602020303c303ebe` | 2026-10-03 | 2026-10-03_091319_6fbb96f4 | `New Item <Exotic Tigerfin>` | - | 0.902 | different session |
+| 6 | `3c2020323ebe80ff` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Exotic Tigerfin>` | - | 0.902 | different session |
+| 7 | `e06060233c3e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item <Exotic Tigerfin>` | - | 0.896 | different session |
+| 8 | `202000ffffc7c6c2` | 2026-10-02 | 2026-10-02_221654_5ef6f5f9 | `New Item <Exotic Tigerfin>` | `fish:shark` | 0.894 | different session |
+| 9 | `30301090bc9fffe2` | 2026-10-03 | 2026-10-03_132921_cfb209d0 | `New Item <Exotic Tigerfin>` | `fish:swordfish` | 0.892 | different session |
+| 10 | `e06060203c3036be` | 2026-10-03 | 2026-10-03_110949_15b78581 | `New Item <Exotic Tigerfin>` | - | 0.892 | different session |
+| 11 | `e06063232e3e3eb2` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `Nev Item <Exotic Tigerfin>` | - | 0.891 | different session |
+| 12 | `606020303c3e809f` | 2026-10-05 | 2026-10-05_172944_49fd118f | `New Item <Exotic Tigerfin>` | - | 0.890 | different session |
 
 
-_6 image(s) spanning 5 session(s), 4 day(s), 2 OCR variant(s), 4 stored label(s)_
+_12 image(s) spanning 12 session(s), 5 day(s), 1 OCR variant(s), 4 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -398,13 +428,19 @@ _6 image(s) spanning 5 session(s), 4 day(s), 2 OCR variant(s), 4 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `303030103c9fd8c8` | 2026-10-04 | 2026-10-04_225639_0180cb9d | `New Item <Candy Corn Squid>` | `fish:squid` | 0.899 | highest OCR confidence |
 | 2 | `00e0f0f0fcfeffff` | 2026-10-03 | 2026-10-03_132921_cfb209d0 | `New Item <Candy Corn Squid>` | `fish:squid` | 0.891 | different session |
-| 3 | `303030303e9e809f-9` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Candy Com Squid>` | `fish:squid` | 0.883 | different calendar day |
-| 4 | `333c3a3e96809fff` | 2026-10-04 | 2026-10-04_073807_04bff67c | `Nev Item<CandyCorn Squid` | `fish:squid` | 0.869 | different OCR variant |
-| 5 | `e06060603c22343e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item <Candy Corn Squid>` | `fish:shark` | 0.880 | different stored label |
-| 6 | `6066223b3e3ebe80` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `New Item <Candy Corn Squid>` | `fish:squid` | 0.883 | additional coverage |
+| 3 | `303030303e9e809f-9` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Candy Com Squid>` | `fish:squid` | 0.883 | different session |
+| 4 | `6066223b3e3ebe80` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `New Item <Candy Corn Squid>` | `fish:squid` | 0.883 | different session |
+| 5 | `e06020233c3e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item <Candy Corn Squid>` | `fish:squid` | 0.881 | different session |
+| 6 | `782030303f3e3e96` | 2026-10-05 | 2026-10-05_211733_183ded9a | `Ne Item <Candy Corn Squid>` | `fish:squid` | 0.878 | different session |
+| 7 | `f03030303c3b3f9f` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <Candy Corn Squid>` | `fish:squid` | 0.878 | different session |
+| 8 | `e06060607c60383e` | 2026-10-05 | 2026-10-05_234514_efb8fcc9 | `New Item <Candy Corn Squid>` | `fish:squid` | 0.876 | different session |
+| 9 | `20303010bcffdfc7` | 2026-10-04 | 2026-10-04_145954_42e87519 | `New Item <Candy Corn Squid>` | `fish:squid` | 0.875 | different session |
+| 10 | `e02026303d3f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Candy Corn Squid>` | `fish:squid` | 0.875 | different session |
+| 11 | `30303010bc9effff` | 2026-10-03 | 2026-10-03_115211_8fa9d196 | `New Item <Candy Corn Squid>` | `fish:snapper` | 0.873 | different session |
+| 12 | `e06060607d7e7e7e` | 2026-10-05 | 2026-10-05_201952_14b664e4 | `New Item <Candy Corn Squid>` | `fish:squid` | 0.870 | different session |
 
 
-_6 image(s) spanning 6 session(s), 3 day(s), 2 OCR variant(s), 2 stored label(s)_
+_12 image(s) spanning 12 session(s), 4 day(s), 1 OCR variant(s), 2 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -458,13 +494,19 @@ _51 of 114 rows have a stored label equal to one KB candidate. That means the la
 |---|---|---|---|---|---|---|---|
 | 1 | `e86060607c602034` | 2026-10-04 | 2026-10-04_201848_52e11685 | `New Item <Swordfish>` | `fish:swordfish` | 0.877 | highest OCR confidence |
 | 2 | `f03030303c3030b0-6` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <Swordfish>` | - | 0.877 | different session |
-| 3 | `e06030303c3030b0` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item <Swordfish>` | `fish:swordfish` | 0.874 | different calendar day |
-| 4 | `606060603c343e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item <Swordfish>` | `fish:snapper` | 0.856 | different stored label |
-| 5 | `f03030303c3030b0-7` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <Swordfish>` | - | 0.875 | additional coverage |
-| 6 | `f03030303c3030b0-4` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <Swordfish>` | - | 0.875 | additional coverage |
+| 3 | `e06030303c3030b0` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item <Swordfish>` | `fish:swordfish` | 0.874 | different session |
+| 4 | `3034101a9c80ffff` | 2026-10-03 | 2026-10-03_104057_39d5add1 | `New Item <Swordfish>` | `fish:swordfish` | 0.865 | different session |
+| 5 | `30303030bc80deff` | 2026-10-04 | 2026-10-04_073807_04bff67c | `New Item <Svordfish-` | `fish:swordfish` | 0.865 | different session |
+| 6 | `706070607c7c01ff` | 2026-10-03 | 2026-10-03_084835_be6e8c8b | `New Item <Svordfish>` | `fish:swordfish` | 0.865 | different session |
+| 7 | `e46420303c3034b0` | 2026-10-05 | 2026-10-05_211733_183ded9a | `New Item Svordfish-` | - | 0.864 | different session |
+| 8 | `e66662607c202020` | 2026-10-03 | 2026-10-03_051036_cf6004f2 | `New Item <Swordfish>` | `fish:swordfish` | 0.862 | different session |
+| 9 | `606020203c30b6be` | 2026-10-03 | 2026-10-03_091319_6fbb96f4 | `New Item Svordfish-` | `fish:swordfish` | 0.861 | different session |
+| 10 | `606020203cb280ff-1` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Svordfish-` | `fish:swordfish` | 0.860 | different session |
+| 11 | `606060603c343e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item <Swordfish>` | `fish:snapper` | 0.856 | different session |
+| 12 | `e06060203c303030` | 2026-10-03 | 2026-10-03_110949_15b78581 | `New Item <Svordfish-` | `fish:squid` | 0.856 | different session |
 
 
-_6 image(s) spanning 4 session(s), 4 day(s), 1 OCR variant(s), 3 stored label(s)_
+_12 image(s) spanning 12 session(s), 5 day(s), 1 OCR variant(s), 4 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -519,13 +561,19 @@ _87 of 114 rows have a stored label equal to one KB candidate. That means the la
 |---|---|---|---|---|---|---|---|
 | 1 | `30809ac7ffc24242` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item <Golden Ribbon Angelfish-` | `fish:golden` | 0.915 | highest OCR confidence |
 | 2 | `e06060203e30303e` | 2026-10-03 | 2026-10-03_110949_15b78581 | `New Item <Golden Ribbon Angelfish-` | `fish:crimson` | 0.915 | different session |
-| 3 | `606020203e32007f-3` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Golden Ribbon Angelfish>` | `fish:golden` | 0.911 | different calendar day |
-| 4 | `30303030be9eb1e1` | 2026-10-03 | 2026-10-03_161417_bb4b5817 | `New Item <Golden RibbonAngelfish-` | `fish:golden` | 0.907 | different OCR variant |
-| 5 | `30303090beffe3e3` | 2026-10-03 | 2026-10-03_161417_bb4b5817 | `New Item <Golden Ribbon Angelfish-` | `fish:angelfish` | 0.906 | different stored label |
-| 6 | `308094c7ffc24242` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item <Golden Ribbon Angelfish-` | `fish:golden` | 0.914 | additional coverage |
+| 3 | `606020203e32007f-3` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Golden Ribbon Angelfish>` | `fish:golden` | 0.911 | different session |
+| 4 | `30303030be9eb1e1` | 2026-10-03 | 2026-10-03_161417_bb4b5817 | `New Item <Golden RibbonAngelfish-` | `fish:golden` | 0.907 | different session |
+| 5 | `fe3c38383e303010` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <Golden Ribbon Angelfish-` | `fish:golden` | 0.906 | different session |
+| 6 | `20301090feffffff` | 2026-10-03 | 2026-10-03_164415_39a04dc5 | `New Item <Golden Ribbon Angelfish-` | `fish:golden` | 0.902 | different session |
+| 7 | `ec6464647e202020` | 2026-10-03 | 2026-10-03_051036_cf6004f2 | `New Item <Golden Ribbon Angelfish-` | `fish:golden` | 0.899 | different session |
+| 8 | `e0e060607e3d3e3e` | 2026-10-04 | 2026-10-04_141428_4c6bc299 | `New Item <Golden Ribbon Angelfish-` | `fish:golden` | 0.898 | different session |
+| 9 | `e62226263e223030` | 2026-10-05 | 2026-10-05_161430_f023a515 | `New Item <Golden Ribbon Angelfish-` | `fish:golden` | 0.894 | different session |
+| 10 | `30383c1c3e849fa3` | 2026-10-03 | 2026-10-03_104057_39d5add1 | `New Item <Golden Ribbon Angelfish-` | `fish:golden` | 0.892 | different session |
+| 11 | `e26060203e3f3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item <Golden Ribbon Angelfish-` | `fish:golden` | 0.892 | different session |
+| 12 | `2020a000feffdfdf` | 2026-10-04 | 2026-10-04_145954_42e87519 | `New Item <Golden Ribbon Angelfish-` | `fish:golden` | 0.891 | different session |
 
 
-_6 image(s) spanning 4 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)_
+_12 image(s) spanning 12 session(s), 4 day(s), 2 OCR variant(s), 2 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -576,13 +624,19 @@ _6 image(s) spanning 4 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `38383030be809eff` | 2026-10-04 | 2026-10-04_073807_04bff67c | `Nev Item <Golden Polka Puffer-` | `fish:golden` | 0.916 | highest OCR confidence |
 | 2 | `30303030be9e80df-7` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Golden Polka Puffer>` | `fish:golden` | 0.912 | different session |
-| 3 | `f06020203e3e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item <Golden Polka Puffer>` | `fish:golden` | 0.904 | different calendar day |
-| 4 | `e0607833173f3e3e` | 2026-10-05 | 2026-10-05_132601_bb362a56 | `New Item <Golden PolkaPuffer?` | `fish:golden` | 0.812 | different OCR variant |
-| 5 | `e46420203e3036b0` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `Ne Item Golden Polka Puffer-` | `fish:pufferfish` | 0.903 | different stored label |
-| 6 | `38181090bc9fffe2` | 2026-10-03 | 2026-10-03_132921_cfb209d0 | `New Item <Golden Polka Puffer?` | `fish:golden` | 0.904 | additional coverage |
+| 3 | `f06020203e3e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item <Golden Polka Puffer>` | `fish:golden` | 0.904 | different session |
+| 4 | `38181090bc9fffe2` | 2026-10-03 | 2026-10-03_132921_cfb209d0 | `New Item <Golden Polka Puffer?` | `fish:golden` | 0.904 | different session |
+| 5 | `e46420203e3036b0` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `Ne Item Golden Polka Puffer-` | `fish:pufferfish` | 0.903 | different session |
+| 6 | `e06060203c343030` | 2026-10-03 | 2026-10-03_110949_15b78581 | `Ne Item <Golden Polka Puffer>` | `fish:golden` | 0.900 | different session |
+| 7 | `f13036313e3f1f9f-6` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <Golden Polka Puffer-` | `fish:golden` | 0.898 | different session |
+| 8 | `606020203e303ebe` | 2026-10-03 | 2026-10-03_091319_6fbb96f4 | `New Item <Golden Polka Puffer?` | `fish:golden` | 0.895 | different session |
+| 9 | `606020203eb280ff-1` | 2026-10-06 | 2026-10-06_175729_f925385b | `Ne Item Golden Polka Puffer-` | `fish:golden` | 0.894 | different session |
+| 10 | `606060203e303a90` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `New Item <Golden Polka Puffer>` | `fruit:yami` | 0.893 | different session |
+| 11 | `383a3890bebfe3e1` | 2026-10-03 | 2026-10-03_161417_bb4b5817 | `New Item <Golden Polka Puffer-` | `fish:golden` | 0.892 | different session |
+| 12 | `e0202c2c3e2c3434` | 2026-10-05 | 2026-10-05_161430_f023a515 | `Ne Item <Golden Polka Puffer-` | `fish:golden` | 0.892 | different session |
 
 
-_6 image(s) spanning 6 session(s), 5 day(s), 2 OCR variant(s), 2 stored label(s)_
+_12 image(s) spanning 12 session(s), 5 day(s), 1 OCR variant(s), 3 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -642,13 +696,19 @@ _17 of 102 rows have a stored label equal to one KB candidate. That means the la
 |---|---|---|---|---|---|---|---|
 | 1 | `f07060607ce0e0e0` | 2026-10-05 | 2026-10-05_190403_c9429492 | `New Item <Dark Skeletal Shark-` | `fruit:yami` | 0.915 | highest OCR confidence |
 | 2 | `e06060203e30343e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item <Dark Skeletal Shark-` | `fish:crimson` | 0.911 | different session |
-| 3 | `606060203e3e3e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item <Dark Skeletal Shark-` | `fish:crimson` | 0.902 | different calendar day |
-| 4 | `32323010be809fff` | 2026-10-03 | 2026-10-03_104057_39d5add1 | `New Item <DarkSkeletal Shark-` | `fruit:yami` | 0.894 | different OCR variant |
-| 5 | `30303010be80ffff` | 2026-10-03 | 2026-10-03_104057_39d5add1 | `New Item <Dark Skeletal Shark-` | `fish:golden` | 0.889 | different stored label |
-| 6 | `e6686c603e202034` | 2026-10-05 | 2026-10-05_190403_c9429492 | `New Item <Dark Skeletal Shark-` | `fruit:yami` | 0.913 | additional coverage |
+| 3 | `606060203e3e3e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item <Dark Skeletal Shark-` | `fish:crimson` | 0.902 | different session |
+| 4 | `796160203e3e3200` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `New Item <Dark Skeletal Shark-` | `fruit:yami` | 0.896 | different session |
+| 5 | `30301090beffffff` | 2026-10-03 | 2026-10-03_164415_39a04dc5 | `New Item <Dark Skeletal Shark-` | `fruit:yami` | 0.894 | different session |
+| 6 | `32323010be809fff` | 2026-10-03 | 2026-10-03_104057_39d5add1 | `New Item <DarkSkeletal Shark-` | `fruit:yami` | 0.894 | different session |
+| 7 | `7e3c38103400303f` | 2026-10-04 | 2026-10-04_145954_42e87519 | `New Item <Dark SkeletalShark-` | `fruit:yami` | 0.894 | different session |
+| 8 | `b03030303f3c9e9f` | 2026-10-04 | 2026-10-04_070602_b6f12619 | `New Item <Dark Skeletal Shark-` | `fruit:yami` | 0.893 | different session |
+| 9 | `e8e8ecc83c002000` | 2026-10-03 | 2026-10-03_051036_cf6004f2 | `New Item <Dark Skeletal Shark-` | `fruit:yami` | 0.893 | different session |
+| 10 | `e03030313f3f3f9f-1` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <Dark skeletal Shark-` | `fruit:yami` | 0.891 | different session |
+| 11 | `606021213e3ebebe` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item <Dark skeletal Shark-` | `fruit:yami` | 0.890 | different session |
+| 12 | `e2602021273e3e3e` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Darkskeletal Shark-` | `fish:shark` | 0.888 | different session |
 
 
-_6 image(s) spanning 4 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)_
+_12 image(s) spanning 12 session(s), 5 day(s), 3 OCR variant(s), 3 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -704,13 +764,19 @@ _3 of 102 rows have a stored label equal to one KB candidate. That means the lab
 |---|---|---|---|---|---|---|---|
 | 1 | `7b7b272f2f3e1e00` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `Nev Item <Golden Tigerfin` | - | 0.928 | highest OCR confidence |
 | 2 | `e2e262223c203030` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item <Golden Tigerfin` | `fish:golden` | 0.905 | different session |
-| 3 | `e06060223c303030` | 2026-10-03 | 2026-10-03_110949_15b78581 | `New Item <Golden Tigerfinz` | `fish:golden` | 0.896 | different calendar day |
-| 4 | `e0303033373f3f1f-16` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <GoldenTigerfin` | `fish:golden` | 0.869 | different OCR variant |
-| 5 | `e0e060203c303030` | 2026-10-04 | 2026-10-04_112359_6e9b9aa5 | `New Item <Golden Tigerfin?` | `fish:snapper` | 0.898 | different stored label |
-| 6 | `e0e060607c202034` | 2026-10-04 | 2026-10-04_141428_4c6bc299 | `New Item <Golden Tigerfin-` | `fish:golden` | 0.903 | additional coverage |
+| 3 | `e0e060607c202034` | 2026-10-04 | 2026-10-04_141428_4c6bc299 | `New Item <Golden Tigerfin-` | `fish:golden` | 0.903 | different session |
+| 4 | `318096c7ffc64242` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item <Golden Tigerfin` | `fish:golden` | 0.901 | different session |
+| 5 | `e0e060203c303030` | 2026-10-04 | 2026-10-04_112359_6e9b9aa5 | `New Item <Golden Tigerfin?` | `fish:snapper` | 0.898 | different session |
+| 6 | `e06060223c303030` | 2026-10-03 | 2026-10-03_110949_15b78581 | `New Item <Golden Tigerfinz` | `fish:golden` | 0.896 | different session |
+| 7 | `e06860603c203030` | 2026-10-05 | 2026-10-05_132601_bb362a56 | `New Item <Golden Tigerfin?` | `fish:golden` | 0.896 | different session |
+| 8 | `f03030303c3030b0-8` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item <Golden Tigerfin-` | `fish:golden` | 0.896 | different session |
+| 9 | `213133272f3f3e1e` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item Golden Tigerfin` | - | 0.893 | different session |
+| 10 | `2b3a3e1a9c808080` | 2026-10-03 | 2026-10-03_115211_8fa9d196 | `New Item <Golden Tigerfin>` | `fish:golden` | 0.890 | different session |
+| 11 | `606060683c3c3e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item <Golden Tigerfin-` | `fish:golden` | 0.889 | different session |
+| 12 | `203b3f3f0e3e3e3e` | 2026-10-03 | 2026-10-03_212521_a4b5946a | `Nev Item <Golden Tigerfin?` | - | 0.888 | different session |
 
 
-_6 image(s) spanning 6 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)_
+_12 image(s) spanning 12 session(s), 5 day(s), 1 OCR variant(s), 3 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -762,13 +828,19 @@ _6 image(s) spanning 6 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `e06060607c60783e` | 2026-10-05 | 2026-10-05_234514_efb8fcc9 | `Nev Item <fangfish>` | `fish:shark` | 0.855 | highest OCR confidence |
 | 2 | `303030101e9fd8c8` | 2026-10-04 | 2026-10-04_225639_0180cb9d | `Ne Item <Fangfish>` | - | 0.851 | different session |
-| 3 | `606020303e3ebe80` | 2026-10-03 | 2026-10-03_220117_1e7efb16 | `Nev Item <Fangfish` | `fish:angelfish` | 0.843 | different calendar day |
-| 4 | `e06060607c60687c` | 2026-10-05 | 2026-10-05_204832_5353f44f | `Ne Item <fangfish>` | `fish:squid` | 0.843 | different stored label |
-| 5 | `e06060607ce0e0e0` | 2026-10-05 | 2026-10-05_201952_14b664e4 | `Ne Item <fangfish>` | `fish:shark` | 0.845 | additional coverage |
-| 6 | `606030303e3ebe80` | 2026-10-03 | 2026-10-03_220117_1e7efb16 | `Ne Item <fangfish>` | - | 0.833 | additional coverage |
+| 3 | `e06060607ce0e0e0` | 2026-10-05 | 2026-10-05_201952_14b664e4 | `Ne Item <fangfish>` | `fish:shark` | 0.845 | different session |
+| 4 | `e06060607c60687c` | 2026-10-05 | 2026-10-05_204832_5353f44f | `Ne Item <fangfish>` | `fish:squid` | 0.843 | different session |
+| 5 | `606020303e3ebe80` | 2026-10-03 | 2026-10-03_220117_1e7efb16 | `Nev Item <Fangfish` | `fish:angelfish` | 0.843 | different session |
+| 6 | `e0606863273e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `Nev Item<fangfish-` | `fish:angelfish` | 0.833 | different session |
+| 7 | `301010909cdffffe` | 2026-10-03 | 2026-10-03_131603_72bb9ad3 | `New Item <Fangfish>` | `fish:swordfish` | 0.831 | different session |
+| 8 | `6079773f2e3e3e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `Ne Item<fangfish-` | - | 0.829 | different session |
+| 9 | `7f7e3e3c04001f03` | 2026-10-04 | 2026-10-04_220833_0f8210ed | `NevItem<fangfish` | - | 0.828 | different session |
+| 10 | `202000103e7f7fff` | 2026-10-04 | 2026-10-04_145954_42e87519 | `Ne Item <fangfish-` | - | 0.827 | different session |
+| 11 | `e06060203c303036` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item <fangfish>` | `fish:squid` | 0.826 | different session |
+| 12 | `6078333f2e3e3e00` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `Ne Item<fangfish-` | - | 0.825 | different session |
 
 
-_6 image(s) spanning 5 session(s), 3 day(s), 1 OCR variant(s), 4 stored label(s)_
+_12 image(s) spanning 12 session(s), 3 day(s), 1 OCR variant(s), 5 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -813,13 +885,19 @@ _6 image(s) spanning 5 session(s), 3 day(s), 1 OCR variant(s), 4 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `7c6424303c30007f` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Tigerfin>` | - | 0.898 | highest OCR confidence |
 | 2 | `e0e060203c383c3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item <Tigerfin>` | - | 0.897 | different session |
-| 3 | `e02036333f3f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Tigerfin>` | `fish:snapper` | 0.896 | different calendar day |
-| 4 | `e12036333f3f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Tigerfin>` | `fish:shark` | 0.873 | different stored label |
-| 5 | `e2e060203c3b3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item <Tigerfin>` | - | 0.897 | additional coverage |
-| 6 | `606020303ebe80ff-2` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Tigerfin>` | - | 0.896 | additional coverage |
+| 3 | `e02036333f3f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Tigerfin>` | `fish:snapper` | 0.896 | different session |
+| 4 | `ff7e78607ce0e0e0` | 2026-10-05 | 2026-10-05_234514_efb8fcc9 | `New Item <Tigerfin>` | - | 0.880 | different session |
+| 5 | `606020303c30be80` | 2026-10-03 | 2026-10-03_220117_1e7efb16 | `New Item <Tigerfin>` | - | 0.870 | different session |
+| 6 | `e12036333f3f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Tigerfin>` | `fish:shark` | 0.873 | different stored label |
+| 7 | `e0e07833273f3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item<Tigerfin>` | `ui:new-item` | 0.817 | different stored label |
+| 8 | `7f373f3e2e3e003f` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item<Tigerfin>` | - | 0.801 | different OCR confidence band |
+| 9 | `ff7f3f3f233f3f3f` | 2026-10-06 | 2026-10-06_175729_f925385b | `NevItem<Tigerfin>` | - | 0.706 | different OCR confidence band |
+| 10 | `e2e060203c3b3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item <Tigerfin>` | - | 0.897 | additional coverage |
+| 11 | `606020303ebe80ff-2` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Tigerfin>` | - | 0.896 | additional coverage |
+| 12 | `e02036323f3f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Tigerfin>` | - | 0.895 | additional coverage |
 
 
-_6 image(s) spanning 3 session(s), 3 day(s), 1 OCR variant(s), 3 stored label(s)_
+_12 image(s) spanning 5 session(s), 4 day(s), 1 OCR variant(s), 4 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -871,13 +949,19 @@ _20 of 33 rows have a stored label equal to one KB candidate. That means the lab
 |---|---|---|---|---|---|---|---|
 | 1 | `303030303fbe9e9f` | 2026-10-04 | 2026-10-04_070602_b6f12619 | `New Item sGolden Tigerfin` | `fish:golden` | 0.907 | highest OCR confidence |
 | 2 | `f03030303c303092-1` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item sGolden Tigerfin` | `fish:golden` | 0.906 | different session |
-| 3 | `e86060203c303030` | 2026-10-05 | 2026-10-05_161430_f023a515 | `New Item sGolden Tigerfin` | `fish:golden` | 0.905 | different calendar day |
-| 4 | `607077777e3e3e3e` | 2026-10-03 | 2026-10-03_051036_cf6004f2 | `New Item sGolden Tigerfin?` | - | 0.860 | different stored label |
-| 5 | `f83030303c30309a` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item sGolden Tigerfin` | `fish:golden` | 0.906 | additional coverage |
-| 6 | `e26266233c203030` | 2026-10-05 | 2026-10-05_161430_f023a515 | `New Item sGolden Tigerfin` | `fish:golden` | 0.905 | additional coverage |
+| 3 | `e86060203c303030` | 2026-10-05 | 2026-10-05_161430_f023a515 | `New Item sGolden Tigerfin` | `fish:golden` | 0.905 | different session |
+| 4 | `f06060203c3e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item sGolden Tigerfin?` | `fish:golden` | 0.889 | different session |
+| 5 | `e16060607c202420` | 2026-10-03 | 2026-10-03_051036_cf6004f2 | `New Item sGolden Tigerfin-` | `fish:golden` | 0.887 | different session |
+| 6 | `2020007f7fc7c2c2` | 2026-10-02 | 2026-10-02_221654_5ef6f5f9 | `New Item sGolden Tigerfinz` | `fish:golden` | 0.882 | different session |
+| 7 | `2030f0f0fcf0f0ff` | 2026-10-03 | 2026-10-03_104057_39d5add1 | `New Item sGolden Tigerfin` | `fish:golden` | 0.872 | different session |
+| 8 | `30109090bcdfffee` | 2026-10-03 | 2026-10-03_132921_cfb209d0 | `New Item sGolden Tigerfin>` | `fish:golden` | 0.860 | different session |
+| 9 | `373d17171f1f9980` | 2026-10-04 | 2026-10-04_225639_0180cb9d | `New Item sGolden Tigerfin` | `fish:golden` | 0.860 | different session |
+| 10 | `30333f3a1e9f809f-7` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item sGolden Tigerfin` | - | 0.855 | different session |
+| 11 | `7f7e7e7c6c3c017f` | 2026-10-03 | 2026-10-03_084835_be6e8c8b | `New Item sGolden Tigerfin` | `fish:angelfish` | 0.853 | different session |
+| 12 | `7e3c3f3f2f3e3e00` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `Nev Item sGolden Tigerfin` | - | 0.849 | different session |
 
 
-_6 image(s) spanning 4 session(s), 4 day(s), 1 OCR variant(s), 2 stored label(s)_
+_12 image(s) spanning 12 session(s), 5 day(s), 1 OCR variant(s), 3 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -931,13 +1015,19 @@ _1 of 19 rows have a stored label equal to one KB candidate. That means the labe
 |---|---|---|---|---|---|---|---|
 | 1 | `606060203e363200` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `New Item sGolden Ribbon Angelfish-` | `fish:golden` | 0.897 | highest OCR confidence |
 | 2 | `e22020203e30303e` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item sGolden Ribbon Angelfish-` | `fish:golden` | 0.886 | different session |
-| 3 | `f06020203e303eb0` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item sGolden Ribbon Angelfish-` | `fish:golden` | 0.881 | different calendar day |
-| 4 | `602021a0c0fefefe` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `New Item sGolden RibbonAngelfish-` | `fish:angelfish` | 0.845 | different OCR variant |
-| 5 | `6060303c267f7f7f` | 2026-10-04 | 2026-10-04_220833_0f8210ed | `New Item sGolden Ribbon Angelfish-` | - | 0.834 | different stored label |
-| 6 | `e06060607e60787c` | 2026-10-05 | 2026-10-05_204832_5353f44f | `New Item sGolden Ribbon Angelfish>` | `fish:golden` | 0.879 | additional coverage |
+| 3 | `f06020203e303eb0` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item sGolden Ribbon Angelfish-` | `fish:golden` | 0.881 | different session |
+| 4 | `e06060607e60787c` | 2026-10-05 | 2026-10-05_204832_5353f44f | `New Item sGolden Ribbon Angelfish>` | `fish:golden` | 0.879 | different session |
+| 5 | `602030203e3e80de` | 2026-10-05 | 2026-10-05_172944_49fd118f | `New Item sGolden Ribbon Angelfish-` | `fish:golden` | 0.878 | different session |
+| 6 | `3e1a9f0f43424242` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item sGolden Ribbon Angelfish-` | `fish:golden` | 0.870 | different session |
+| 7 | `f03030303e303030-6` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item sGolden Ribbon Angelfish=` | `fish:golden` | 0.853 | different session |
+| 8 | `f0b096d0c2fefffe` | 2026-10-03 | 2026-10-03_132921_cfb209d0 | `New Item sGolden Ribbon Angelfish>` | `fish:angelfish` | 0.843 | different session |
+| 9 | `6060303c267f7f7f` | 2026-10-04 | 2026-10-04_220833_0f8210ed | `New Item sGolden Ribbon Angelfish-` | - | 0.834 | different session |
+| 10 | `e0e03c33073f3e3e` | 2026-10-05 | 2026-10-05_161430_f023a515 | `New Item sGolden Ribbon Angelfish-` | `fish:angelfish` | 0.831 | different session |
+| 11 | `333c3ebe9680dfff` | 2026-10-04 | 2026-10-04_073807_04bff67c | `Nev Item sGolden Ribbon Angelfish-` | - | 0.829 | different session |
+| 12 | `602021a0c0fefefe` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `New Item sGolden RibbonAngelfish-` | `fish:angelfish` | 0.845 | different OCR variant |
 
 
-_6 image(s) spanning 5 session(s), 4 day(s), 2 OCR variant(s), 3 stored label(s)_
+_12 image(s) spanning 11 session(s), 5 day(s), 2 OCR variant(s), 3 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -987,13 +1077,19 @@ _AMBIGUOUS: contains more than one canonical entity, so today's KB has no single
 |---|---|---|---|---|---|---|---|
 | 1 | `f8e060603e203030` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item sDark Skeletal Shark-` | `fruit:yami` | 0.905 | highest OCR confidence |
 | 2 | `f03030303e3030b0` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item sDark Skeletal Shark-` | `fruit:yami` | 0.900 | different session |
-| 3 | `786c6c283c202000` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item sDark Skeletal Shark-` | `fruit:yami` | 0.900 | different calendar day |
-| 4 | `3e989edf47464242` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item sDarkskeletalshark-` | `fruit:yami` | 0.833 | different OCR variant |
-| 5 | `606020203e343ebe` | 2026-10-03 | 2026-10-03_091319_6fbb96f4 | `New Item sDark Skeletal Shark-` | `fish:swordfish` | 0.886 | different stored label |
-| 6 | `e06060607e203422` | 2026-10-03 | 2026-10-03_051036_cf6004f2 | `New Item sDark Skeletal Shark-` | `fruit:yami` | 0.896 | additional coverage |
+| 3 | `786c6c283c202000` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item sDark Skeletal Shark-` | `fruit:yami` | 0.900 | different session |
+| 4 | `e06060607e203422` | 2026-10-03 | 2026-10-03_051036_cf6004f2 | `New Item sDark Skeletal Shark-` | `fruit:yami` | 0.896 | different session |
+| 5 | `f07064243c203030` | 2026-10-05 | 2026-10-05_161430_f023a515 | `Nev Item sDark Skeletal Shark-` | `fruit:yami` | 0.896 | different session |
+| 6 | `e26220203e303eb0` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item sDark Skeletal Shark-` | `fruit:yami` | 0.895 | different session |
+| 7 | `f03030303e303030` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item sDark Skeletal Shark-` | `fruit:yami` | 0.893 | different session |
+| 8 | `606020203e00ffff` | 2026-10-04 | 2026-10-04_220833_0f8210ed | `Ne Item sDark Skeletal Shark=` | `fruit:yami` | 0.887 | different session |
+| 9 | `606020203e343ebe` | 2026-10-03 | 2026-10-03_091319_6fbb96f4 | `New Item sDark Skeletal Shark-` | `fish:swordfish` | 0.886 | different session |
+| 10 | `202c00ffffe7c6c6` | 2026-10-02 | 2026-10-02_221654_5ef6f5f9 | `New Item sDark Skeletal Shark-` | `fruit:yami` | 0.884 | different session |
+| 11 | `3e989edf47464242` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item sDarkskeletalshark-` | `fruit:yami` | 0.833 | different session |
+| 12 | `f13036313e3f1f9f-4` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item sDark Skeletal Shark-` | `fruit:yami` | 0.896 | additional coverage |
 
 
-_6 image(s) spanning 6 session(s), 3 day(s), 2 OCR variant(s), 2 stored label(s)_
+_12 image(s) spanning 11 session(s), 5 day(s), 2 OCR variant(s), 2 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1042,13 +1138,19 @@ _6 image(s) spanning 6 session(s), 3 day(s), 2 OCR variant(s), 2 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `e0e060203c303c3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item <Blve-Lip Grouper>` | `fish:shark` | 0.903 | highest OCR confidence |
 | 2 | `606020303c34be80` | 2026-10-03 | 2026-10-03_220117_1e7efb16 | `Nev Item <Blve-Lip GroUper>` | `fish:snapper` | 0.884 | different session |
-| 3 | `70673e3e3e3e003f-1` | 2026-10-06 | 2026-10-06_175729_f925385b | `NevItem<Blve-LipGrouper>` | - | 0.857 | different calendar day |
-| 4 | `e02020203c3034be` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Blve-Lip Grouper>` | `fish:swordfish` | 0.873 | different stored label |
-| 5 | `e0607073677e3e3e` | 2026-10-05 | 2026-10-05_234514_efb8fcc9 | `Nev Item<Blve-LipGrouper>` | `fish:golden` | 0.851 | additional coverage |
-| 6 | `7f3f3f3e3e3e003f` | 2026-10-06 | 2026-10-06_175729_f925385b | `NevItem <Blve-LipGrouper>` | - | 0.850 | additional coverage |
+| 3 | `e02020203c3034be` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Blve-Lip Grouper>` | `fish:swordfish` | 0.873 | different session |
+| 4 | `70673e3e3e3e003f-1` | 2026-10-06 | 2026-10-06_175729_f925385b | `NevItem<Blve-LipGrouper>` | - | 0.857 | different session |
+| 5 | `e0607073677e3e3e` | 2026-10-05 | 2026-10-05_234514_efb8fcc9 | `Nev Item<Blve-LipGrouper>` | `fish:golden` | 0.851 | different session |
+| 6 | `e0203833273f3e3e` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `Nev Item<Blve-LipGrouper>` | `fruit:light` | 0.843 | different stored label |
+| 7 | `e06070233f3f3f3f` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `Nev Item <Blve-Lip Grouper>` | `fish:angelfish` | 0.836 | different stored label |
+| 8 | `7f3f3f3e3e3e003f` | 2026-10-06 | 2026-10-06_175729_f925385b | `NevItem <Blve-LipGrouper>` | - | 0.850 | additional coverage |
+| 9 | `60633f3a3e3e003f-1` | 2026-10-06 | 2026-10-06_175729_f925385b | `NevItem <Blve-LipGrouperz` | - | 0.848 | additional coverage |
+| 10 | `7d3f3f3e3e3e003f` | 2026-10-06 | 2026-10-06_175729_f925385b | `NevItem <Blve-LipGrouper>` | - | 0.846 | additional coverage |
+| 11 | `7f3f3f362636001e` | 2026-10-06 | 2026-10-06_175729_f925385b | `NevItem <Blve-LipGrouperz` | - | 0.845 | additional coverage |
+| 12 | `70673e3a3e3e003f` | 2026-10-06 | 2026-10-06_175729_f925385b | `NevItem <Blve-LipGrouper>` | - | 0.844 | additional coverage |
 
 
-_6 image(s) spanning 5 session(s), 4 day(s), 2 OCR variant(s), 5 stored label(s)_
+_12 image(s) spanning 5 session(s), 4 day(s), 2 OCR variant(s), 7 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1084,13 +1186,19 @@ _6 image(s) spanning 5 session(s), 4 day(s), 2 OCR variant(s), 5 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `60203e3e3ebe80ff` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Tigerfinz` | - | 0.895 | highest OCR confidence |
 | 2 | `e02030232f3f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `Ne Item <Tigerfinz` | - | 0.850 | different session |
-| 3 | `e0607433273f3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `Nev Item<Tigerfinz` | - | 0.798 | different calendar day |
-| 4 | `602020303ebe80ff-4` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Tigerfinz` | - | 0.863 | additional coverage |
-| 5 | `20203e363ebe80ff-5` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Tigerfinz` | - | 0.860 | additional coverage |
-| 6 | `202038363ebe80ff` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Tigerfinz` | - | 0.859 | additional coverage |
+| 3 | `e0607433273f3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `Nev Item<Tigerfinz` | - | 0.798 | different session |
+| 4 | `31373f3e3e3e003f` | 2026-10-06 | 2026-10-06_175729_f925385b | `Nev Item<Tigerfinz` | - | 0.828 | different OCR confidence band |
+| 5 | `602020303ebe80ff-4` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Tigerfinz` | - | 0.863 | additional coverage |
+| 6 | `20203e363ebe80ff-5` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Tigerfinz` | - | 0.860 | additional coverage |
+| 7 | `202038363ebe80ff` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Tigerfinz` | - | 0.859 | additional coverage |
+| 8 | `60203e363ebe80ff-2` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Tigerfinz` | - | 0.856 | additional coverage |
+| 9 | `79373f3e3e3e003f` | 2026-10-06 | 2026-10-06_175729_f925385b | `Nev Item<Tigerfinz` | - | 0.825 | additional coverage |
+| 10 | `e06034332f3f3f3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `Nev Item<Tigerfinz` | - | 0.798 | additional coverage |
+| 11 | `31373f3e3e3e007f-1` | 2026-10-06 | 2026-10-06_175729_f925385b | `Nev Item<Tigerfinz` | - | 0.787 | additional coverage |
+| 12 | `3f3f3f3e2e1e003f` | 2026-10-06 | 2026-10-06_175729_f925385b | `Nev Item<Tigerfinz` | - | 0.777 | additional coverage |
 
 
-_6 image(s) spanning 3 session(s), 3 day(s), 1 OCR variant(s), 1 stored label(s)_
+_12 image(s) spanning 3 session(s), 3 day(s), 1 OCR variant(s), 1 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1135,13 +1243,19 @@ _6 image(s) spanning 3 session(s), 3 day(s), 1 OCR variant(s), 1 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `e0e060603c202030` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item sGolden Polka Puffer?` | `fish:golden` | 0.900 | highest OCR confidence |
 | 2 | `7c7878783c302020` | 2026-10-03 | 2026-10-03_051036_cf6004f2 | `New Item sGolden Polka Puffer?` | `fish:golden` | 0.877 | different session |
-| 3 | `e0783327273e3e1e` | 2026-10-02 | 2026-10-02_230043_e51ff1a7 | `Nev Item sGolden Polka Puffer-` | `fish:pufferfish` | 0.857 | different calendar day |
-| 4 | `203927272f3e3e3e` | 2026-10-03 | 2026-10-03_091319_6fbb96f4 | `Nev Item sGolden Polka Puffer?` | - | 0.860 | different stored label |
-| 5 | `e0607f23273e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `Nev Item sGolden Polka Puffer?` | `fish:pufferfish` | 0.869 | additional coverage |
-| 6 | `706060203e303000` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `New Item sGolden Polka Puffer` | `fish:golden` | 0.850 | additional coverage |
+| 3 | `e0607f23273e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `Nev Item sGolden Polka Puffer?` | `fish:pufferfish` | 0.869 | different session |
+| 4 | `203927272f3e3e3e` | 2026-10-03 | 2026-10-03_091319_6fbb96f4 | `Nev Item sGolden Polka Puffer?` | - | 0.860 | different session |
+| 5 | `e0783327273e3e1e` | 2026-10-02 | 2026-10-02_230043_e51ff1a7 | `Nev Item sGolden Polka Puffer-` | `fish:pufferfish` | 0.857 | different session |
+| 6 | `706060203e303000` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `New Item sGolden Polka Puffer` | `fish:golden` | 0.850 | different session |
+| 7 | `088080d7ffc64646` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item sGolden Polka Puffer` | `fish:golden` | 0.845 | different session |
+| 8 | `fcfcf87040e0c0c0` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `Nev Item sGolden Polka Puffer?` | `fish:pufferfish` | 0.817 | different session |
+| 9 | `e0606061273e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `Nev Item sGolden Polka Puffer?` | `fish:shark` | 0.845 | different stored label |
+| 10 | `308090c7ff424242` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item sGolden Polka Puffer>` | `fish:golden` | 0.843 | additional coverage |
+| 11 | `349092e7ffc24242` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item sGolden Polka Puffer>` | `fish:golden` | 0.840 | additional coverage |
+| 12 | `e66060607e202020` | 2026-10-03 | 2026-10-03_051036_cf6004f2 | `New Item sGolden Polka Puffer>` | `fish:golden` | 0.824 | additional coverage |
 
 
-_6 image(s) spanning 6 session(s), 3 day(s), 1 OCR variant(s), 3 stored label(s)_
+_12 image(s) spanning 8 session(s), 3 day(s), 1 OCR variant(s), 4 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1184,13 +1298,17 @@ _6 image(s) spanning 6 session(s), 3 day(s), 1 OCR variant(s), 3 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `303038303e9e80df-8` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.859 | highest OCR confidence |
 | 2 | `202030303ebe80ff` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.834 | different session |
-| 3 | `606020303c3036be` | 2026-10-03 | 2026-10-03_091319_6fbb96f4 | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.829 | different calendar day |
-| 4 | `303038303e9e80df` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.850 | additional coverage |
-| 5 | `303030303c9e809f-4` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.848 | additional coverage |
-| 6 | `303030303e9e809f-2` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.847 | additional coverage |
+| 3 | `606020303c3036be` | 2026-10-03 | 2026-10-03_091319_6fbb96f4 | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.829 | different session |
+| 4 | `e060606065fefefe` | 2026-10-05 | 2026-10-05_234514_efb8fcc9 | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.801 | different session |
+| 5 | `e02034232f3f3f3f` | 2026-10-05 | 2026-10-05_145058_e7760590 | `Nev Item<Candy Cormn Squid-` | `fish:squid` | 0.799 | different session |
+| 6 | `7f7f7f2f023e0200` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `Nev Item<Candy Cormn Squid-` | `fish:squid` | 0.787 | different session |
+| 7 | `303038303e9e80df` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.850 | additional coverage |
+| 8 | `303030303c9e809f-4` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.848 | additional coverage |
+| 9 | `303030303e9e809f-2` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.847 | additional coverage |
+| 10 | `602020303ebe80ff-11` | 2026-10-06 | 2026-10-06_175729_f925385b | `New Item <Candy Cormn Squid>` | `fish:squid` | 0.834 | additional coverage |
 
 
-_6 image(s) spanning 3 session(s), 2 day(s), 1 OCR variant(s), 1 stored label(s)_
+_10 image(s) spanning 6 session(s), 4 day(s), 1 OCR variant(s), 1 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1237,13 +1355,15 @@ _6 image(s) spanning 3 session(s), 2 day(s), 1 OCR variant(s), 1 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `e06060603c22303e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item <Anglerfish-` | `fish:squid` | 0.893 | highest OCR confidence |
 | 2 | `e0e060203c30343e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item <Anglerfish-` | `fish:shark` | 0.889 | different session |
-| 3 | `e0e060607c202030` | 2026-10-04 | 2026-10-04_141428_4c6bc299 | `New Item <Anglerfish-` | `fish:snapper` | 0.870 | different stored label |
-| 4 | `e06060203c3a3e3e` | 2026-10-03 | 2026-10-03_110949_15b78581 | `New Item <Anglerfish-` | `fish:squid` | 0.871 | additional coverage |
-| 5 | `3f3e3e00085f4b4f` | 2026-10-04 | 2026-10-04_145954_42e87519 | `Ne Item<Anglerfish-` | - | 0.828 | additional coverage |
-| 6 | `e0606063643e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item <Anglerfish-` | `fish:snapper` | 0.818 | additional coverage |
+| 3 | `e06060203c3a3e3e` | 2026-10-03 | 2026-10-03_110949_15b78581 | `New Item <Anglerfish-` | `fish:squid` | 0.871 | different session |
+| 4 | `e0e060607c202030` | 2026-10-04 | 2026-10-04_141428_4c6bc299 | `New Item <Anglerfish-` | `fish:snapper` | 0.870 | different session |
+| 5 | `3f3e3e00085f4b4f` | 2026-10-04 | 2026-10-04_145954_42e87519 | `Ne Item<Anglerfish-` | - | 0.828 | different session |
+| 6 | `333e3ebe9e80dfff` | 2026-10-04 | 2026-10-04_073807_04bff67c | `New Item<Anglerfish-` | `fish:swordfish` | 0.774 | different session |
+| 7 | `7c3f3f3f2f3e3e00` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `Nev Item <Anglerfish` | `fish:angelfish` | 0.763 | different session |
+| 8 | `e0606063643e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item <Anglerfish-` | `fish:snapper` | 0.818 | additional coverage |
 
 
-_6 image(s) spanning 5 session(s), 2 day(s), 1 OCR variant(s), 4 stored label(s)_
+_8 image(s) spanning 7 session(s), 2 day(s), 1 OCR variant(s), 6 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1290,13 +1410,15 @@ _6 image(s) spanning 5 session(s), 2 day(s), 1 OCR variant(s), 4 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `633e3e3e3e01ffff` | 2026-10-04 | 2026-10-04_220833_0f8210ed | `Ne Item<Candy ComSquid>` | `fish:squid` | 0.826 | highest OCR confidence |
 | 2 | `e0e06061633f3f3e` | 2026-10-04 | 2026-10-04_141428_4c6bc299 | `Ne Item<CandyCom Squid-` | `fish:swordfish` | 0.821 | different session |
-| 3 | `c0606063677e7e7e` | 2026-10-05 | 2026-10-05_201952_14b664e4 | `Nev Item<Candy ComSquid>` | `fish:snapper` | 0.808 | different calendar day |
-| 4 | `2020a0e0c0f6fefe` | 2026-10-05 | 2026-10-05_172944_49fd118f | `Nev Item<CandyComSquid>` | `fish:squid` | 0.807 | different OCR variant |
-| 5 | `2020e0f0c2fefeff` | 2026-10-05 | 2026-10-05_185058_8e07ab89 | `Nev Item<CandyComSquid>` | - | 0.769 | different stored label |
+| 3 | `c0606063677e7e7e` | 2026-10-05 | 2026-10-05_201952_14b664e4 | `Nev Item<Candy ComSquid>` | `fish:snapper` | 0.808 | different session |
+| 4 | `2020a0e0c0f6fefe` | 2026-10-05 | 2026-10-05_172944_49fd118f | `Nev Item<CandyComSquid>` | `fish:squid` | 0.807 | different session |
+| 5 | `2020e0f0c2fefeff` | 2026-10-05 | 2026-10-05_185058_8e07ab89 | `Nev Item<CandyComSquid>` | - | 0.769 | different session |
 | 6 | `777e3e3e06013f07` | 2026-10-04 | 2026-10-04_220833_0f8210ed | `Ne Item<Candy ComSquid>` | `fish:squid` | 0.802 | additional coverage |
+| 7 | `78733f3a363e001f` | 2026-10-05 | 2026-10-05_172944_49fd118f | `Nev Item<CandyComSquid>` | `fish:squid` | 0.801 | additional coverage |
+| 8 | `60632f3a363e809f` | 2026-10-05 | 2026-10-05_172944_49fd118f | `Nev Item<CandyCom Squid>` | `fish:squid` | 0.800 | additional coverage |
 
 
-_6 image(s) spanning 5 session(s), 2 day(s), 3 OCR variant(s), 4 stored label(s)_
+_8 image(s) spanning 5 session(s), 2 day(s), 3 OCR variant(s), 4 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1343,13 +1465,14 @@ _6 image(s) spanning 5 session(s), 2 day(s), 3 OCR variant(s), 4 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `30303010bc90ffff` | 2026-10-03 | 2026-10-03_115211_8fa9d196 | `New Item Jack-O'-Bite-` | `fish:snapper` | 0.879 | highest OCR confidence |
 | 2 | `e06060203c3f3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item -Jack-O'-Bite-` | `fish:shark` | 0.871 | different session |
-| 3 | `606060603e3e3e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item -Jack-o'-Bite-` | `fish:crimson` | 0.870 | different stored label |
-| 4 | `e06060603c202030` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item -Jack-O'-Bite-` | `fish:snapper` | 0.866 | additional coverage |
-| 5 | `406060607c6401ff` | 2026-10-03 | 2026-10-03_084835_be6e8c8b | `New Item -Jack-O'-Bite-` | `fish:golden` | 0.860 | additional coverage |
-| 6 | `606060203c3e3210` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `New Item <Jack-O'-Bite-` | `fish:snapper` | 0.842 | additional coverage |
+| 3 | `606060603e3e3e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item -Jack-o'-Bite-` | `fish:crimson` | 0.870 | different session |
+| 4 | `e06060603c202030` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item -Jack-O'-Bite-` | `fish:snapper` | 0.866 | different session |
+| 5 | `406060607c6401ff` | 2026-10-03 | 2026-10-03_084835_be6e8c8b | `New Item -Jack-O'-Bite-` | `fish:golden` | 0.860 | different session |
+| 6 | `606060203c3e3210` | 2026-10-04 | 2026-10-04_202745_08b4b13a | `New Item <Jack-O'-Bite-` | `fish:snapper` | 0.842 | different session |
+| 7 | `e0e06061233f3f3e` | 2026-10-04 | 2026-10-04_141428_4c6bc299 | `Nev Item Jack-o'-Bite-` | `fish:pufferfish` | 0.837 | different session |
 
 
-_6 image(s) spanning 6 session(s), 2 day(s), 1 OCR variant(s), 4 stored label(s)_
+_7 image(s) spanning 7 session(s), 2 day(s), 1 OCR variant(s), 5 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1393,13 +1516,14 @@ _6 image(s) spanning 6 session(s), 2 day(s), 1 OCR variant(s), 4 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `0000a000befefefe` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item <Candy Con Squid>` | `fish:squid` | 0.835 | highest OCR confidence |
 | 2 | `e0606060652e3e3e` | 2026-10-05 | 2026-10-05_190403_c9429492 | `Ne Item<Candy ConSquid>` | `fish:squid` | 0.828 | different session |
-| 3 | `e1303f33073f1f9f-1` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item<Candy Con Squid>` | `fish:squid` | 0.814 | different calendar day |
-| 4 | `20a0f4f2c2fefeff` | 2026-10-04 | 2026-10-04_145954_42e87519 | `Nev Item<Candy Con Squid` | - | 0.803 | different stored label |
-| 5 | `e060606064e0e0fe` | 2026-10-05 | 2026-10-05_190403_c9429492 | `Ne Item<Candy ConSquid>` | `fish:squid` | 0.825 | additional coverage |
-| 6 | `36383e9ac2feffff` | 2026-10-04 | 2026-10-04_145954_42e87519 | `Nev Item<Candy Con Squid` | `fish:squid` | 0.808 | additional coverage |
+| 3 | `e1303f33073f1f9f-1` | 2026-10-06 | 2026-10-06_225424_a78e14f2 | `New Item<Candy Con Squid>` | `fish:squid` | 0.814 | different session |
+| 4 | `36383e9ac2feffff` | 2026-10-04 | 2026-10-04_145954_42e87519 | `Nev Item<Candy Con Squid` | `fish:squid` | 0.808 | different session |
+| 5 | `7d3f3f3e3e3e809f` | 2026-10-05 | 2026-10-05_172944_49fd118f | `Nev Item<Candy Con Squid>` | `fish:squid` | 0.792 | different session |
+| 6 | `20a0f4f2c2fefeff` | 2026-10-04 | 2026-10-04_145954_42e87519 | `Nev Item<Candy Con Squid` | - | 0.803 | different stored label |
+| 7 | `e060606064e0e0fe` | 2026-10-05 | 2026-10-05_190403_c9429492 | `Ne Item<Candy ConSquid>` | `fish:squid` | 0.825 | additional coverage |
 
 
-_6 image(s) spanning 4 session(s), 3 day(s), 2 OCR variant(s), 2 stored label(s)_
+_7 image(s) spanning 5 session(s), 3 day(s), 2 OCR variant(s), 2 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1442,13 +1566,14 @@ _6 image(s) spanning 4 session(s), 3 day(s), 2 OCR variant(s), 2 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `2020e0f0c0fefefe` | 2026-10-05 | 2026-10-05_185058_8e07ab89 | `Nev Item<ExoticTigerfinz` | `fish:crimson` | 0.859 | highest OCR confidence |
 | 2 | `3f3e1e020c3f7f7f` | 2026-10-04 | 2026-10-04_145954_42e87519 | `Nev Item<ExoticTigerfinz` | - | 0.850 | different session |
-| 3 | `787c7f3f2e3e3e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `Nev Item<ExoticTigerfinz` | - | 0.843 | different calendar day |
-| 4 | `333f3f3e1e003f47` | 2026-10-05 | 2026-10-05_185058_8e07ab89 | `New Item<ExoticTigerfinz` | - | 0.851 | additional coverage |
-| 5 | `0008dee2c27fffff` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item<ExoticTigerfinz` | - | 0.835 | additional coverage |
-| 6 | `fefefec20002ffff` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item <ExoticTigerfinz` | - | 0.822 | additional coverage |
+| 3 | `787c7f3f2e3e3e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `Nev Item<ExoticTigerfinz` | - | 0.843 | different session |
+| 4 | `0008dee2c27fffff` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item<ExoticTigerfinz` | - | 0.835 | different session |
+| 5 | `333f3e3e97809f2f` | 2026-10-02 | 2026-10-02_213549_50e36db2 | `New Item <ExoticTigerfinz` | - | 0.799 | different session |
+| 6 | `fefefec20002ffff` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `New Item <ExoticTigerfinz` | - | 0.822 | different OCR confidence band |
+| 7 | `333f3f3e1e003f47` | 2026-10-05 | 2026-10-05_185058_8e07ab89 | `New Item<ExoticTigerfinz` | - | 0.851 | additional coverage |
 
 
-_6 image(s) spanning 4 session(s), 3 day(s), 1 OCR variant(s), 2 stored label(s)_
+_7 image(s) spanning 5 session(s), 4 day(s), 1 OCR variant(s), 2 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1493,13 +1618,14 @@ _6 image(s) spanning 4 session(s), 3 day(s), 1 OCR variant(s), 2 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `e0606433273f3f3e` | 2026-10-05 | 2026-10-05_190403_c9429492 | `Nev Item ccrimson PolkaPuffer>` | - | 0.828 | highest OCR confidence |
 | 2 | `7f3f3f3e163e003f-1` | 2026-10-06 | 2026-10-06_175729_f925385b | `Nev Item ccrimson Polka Puffer>` | `fish:pufferfish` | 0.816 | different session |
-| 3 | `3f3f1e9086bf0140` | 2026-10-03 | 2026-10-03_164415_39a04dc5 | `NewItem cCrimson Polka Puffer>` | `fish:crimson` | 0.815 | different calendar day |
-| 4 | `7f3f3f3e063e003f` | 2026-10-06 | 2026-10-06_175729_f925385b | `Nev Item ccrimson Polka Puffer>` | `fish:pufferfish` | 0.814 | additional coverage |
-| 5 | `ffbebe90801f0100` | 2026-10-03 | 2026-10-03_164415_39a04dc5 | `NewItem ccrimson Polka Puffer>` | `fish:crimson` | 0.805 | additional coverage |
-| 6 | `79273f3e3ebe80ff` | 2026-10-06 | 2026-10-06_175729_f925385b | `Nev Item ccrimson Polka Puffer>` | - | 0.797 | additional coverage |
+| 3 | `3f3f1e9086bf0140` | 2026-10-03 | 2026-10-03_164415_39a04dc5 | `NewItem cCrimson Polka Puffer>` | `fish:crimson` | 0.815 | different session |
+| 4 | `60602420363e3e7f` | 2026-10-05 | 2026-10-05_172944_49fd118f | `Nev Item ccrimson Polka Puffer?` | `fish:crimson` | 0.790 | different session |
+| 5 | `ffbebe90801f0100` | 2026-10-03 | 2026-10-03_164415_39a04dc5 | `NewItem ccrimson Polka Puffer>` | `fish:crimson` | 0.805 | different OCR confidence band |
+| 6 | `7f3f3f3e063e003f` | 2026-10-06 | 2026-10-06_175729_f925385b | `Nev Item ccrimson Polka Puffer>` | `fish:pufferfish` | 0.814 | additional coverage |
+| 7 | `79273f3e3ebe80ff` | 2026-10-06 | 2026-10-06_175729_f925385b | `Nev Item ccrimson Polka Puffer>` | - | 0.797 | additional coverage |
 
 
-_6 image(s) spanning 3 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)_
+_7 image(s) spanning 4 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1547,9 +1673,10 @@ _6 image(s) spanning 3 session(s), 3 day(s), 2 OCR variant(s), 3 stored label(s)
 | 4 | `606030303c3e80de` | 2026-10-05 | 2026-10-05_172944_49fd118f | `New Item sCandy Corn Squid>` | `fish:squid` | 0.841 | additional coverage |
 | 5 | `60632f3e363e001f` | 2026-10-05 | 2026-10-05_172944_49fd118f | `Nev ItemsCandy Corn Squid>` | `fish:squid` | 0.781 | additional coverage |
 | 6 | `3e109f6f47424242` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `Nev Item sCandy Corn Squid>` | `fish:squid` | 0.755 | additional coverage |
+| 7 | `3e129f6f47424242` | 2026-10-04 | 2026-10-04_160014_94aaa3c9 | `Nev Item sCandy Corn Squid>` | `fish:squid` | 0.751 | additional coverage |
 
 
-_6 image(s) spanning 2 session(s), 2 day(s), 1 OCR variant(s), 2 stored label(s)_
+_7 image(s) spanning 2 session(s), 2 day(s), 1 OCR variant(s), 2 stored label(s)_
 
 **Decision:** **PENDING**
 
@@ -1592,10 +1719,10 @@ _6 image(s) spanning 2 session(s), 2 day(s), 1 OCR variant(s), 2 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `e0e060603e3f3f3e` | 2026-10-04 | 2026-10-04_141428_4c6bc299 | `New Item sSwordfish>` | `fish:swordfish` | 0.853 | highest OCR confidence |
 | 2 | `f03020303e323c3e` | 2026-10-05 | 2026-10-05_161430_f023a515 | `New Item sSwordfish-` | `fish:swordfish` | 0.848 | different session |
-| 3 | `303030303c9e809f-10` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item sSwordfish=` | `fish:swordfish` | 0.844 | different calendar day |
-| 4 | `e02036233f3f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item sSwordfish>` | - | 0.831 | different stored label |
-| 5 | `303030303d3c9e9f` | 2026-10-04 | 2026-10-04_070602_b6f12619 | `New Item sSwordfish>` | `fish:swordfish` | 0.846 | additional coverage |
-| 6 | `787870203c303e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item sSwordfish>` | `fish:swordfish` | 0.831 | additional coverage |
+| 3 | `303030303d3c9e9f` | 2026-10-04 | 2026-10-04_070602_b6f12619 | `New Item sSwordfish>` | `fish:swordfish` | 0.846 | different session |
+| 4 | `303030303c9e809f-10` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item sSwordfish=` | `fish:swordfish` | 0.844 | different session |
+| 5 | `e02036233f3f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item sSwordfish>` | - | 0.831 | different session |
+| 6 | `787870203c303e00` | 2026-10-03 | 2026-10-03_095208_9aa2f3b7 | `New Item sSwordfish>` | `fish:swordfish` | 0.831 | different session |
 
 
 _6 image(s) spanning 6 session(s), 4 day(s), 1 OCR variant(s), 2 stored label(s)_
@@ -1641,10 +1768,10 @@ _6 image(s) spanning 6 session(s), 4 day(s), 1 OCR variant(s), 2 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `303030303c9e909f-2` | 2026-10-06 | 2026-10-06_212246_fe47a4fa | `New Item <Candy Corm Squid>` | `fish:squid` | 0.872 | highest OCR confidence |
 | 2 | `e0606060647e7e7e` | 2026-10-05 | 2026-10-05_210511_66017b30 | `New Item<Candy Corm Squid>` | `fish:squid` | 0.807 | different session |
-| 3 | `e0203023273f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Candy Corm Squid>` | - | 0.799 | different calendar day |
-| 4 | `607033273f3ebe9e` | 2026-10-02 | 2026-10-02_230043_e51ff1a7 | `New Item<Candy Corm Squid>` | `fish:squid` | 0.782 | additional coverage |
-| 5 | `e0603020253e3c3e` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item<Candy Corm Squid>` | `fish:squid` | 0.772 | additional coverage |
-| 6 | `607033373f3e3e9e` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item<Candy Corm Squid-` | - | 0.739 | additional coverage |
+| 3 | `e0203023273f3ebe` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item <Candy Corm Squid>` | - | 0.799 | different session |
+| 4 | `607033273f3ebe9e` | 2026-10-02 | 2026-10-02_230043_e51ff1a7 | `New Item<Candy Corm Squid>` | `fish:squid` | 0.782 | different session |
+| 5 | `607033373f3e3e9e` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item<Candy Corm Squid-` | - | 0.739 | different session |
+| 6 | `e0603020253e3c3e` | 2026-10-03 | 2026-10-03_223708_0ca663cf | `New Item<Candy Corm Squid>` | `fish:squid` | 0.772 | additional coverage |
 
 
 _6 image(s) spanning 5 session(s), 4 day(s), 1 OCR variant(s), 2 stored label(s)_
@@ -1691,9 +1818,9 @@ _6 image(s) spanning 5 session(s), 4 day(s), 1 OCR variant(s), 2 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `e0607863263e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `Nev Item <ExotieTigerfin>` | - | 0.828 | highest OCR confidence |
 | 2 | `606033372e3ebe90` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `New Item <Exotie Tigerfin>` | - | 0.820 | different session |
-| 3 | `e07033372e3e3e3e` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item <Exotie Tigerfin>` | - | 0.807 | different calendar day |
-| 4 | `e0707c33273f3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item<ExotieTigerfin` | `fish:squid` | 0.794 | different stored label |
-| 5 | `e0607b23273e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `Nev Item <ExotieTigerfin>` | - | 0.755 | additional coverage |
+| 3 | `e07033372e3e3e3e` | 2026-10-02 | 2026-10-02_232819_2c7e6408 | `New Item <Exotie Tigerfin>` | - | 0.807 | different session |
+| 4 | `e0707c33273f3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `New Item<ExotieTigerfin` | `fish:squid` | 0.794 | different session |
+| 5 | `e0607b23273e3e3e` | 2026-10-03 | 2026-10-03_052246_57c522fe | `Nev Item <ExotieTigerfin>` | - | 0.755 | different OCR confidence band |
 
 
 _5 image(s) spanning 4 session(s), 3 day(s), 2 OCR variant(s), 2 stored label(s)_
@@ -1734,7 +1861,7 @@ _5 image(s) spanning 4 session(s), 3 day(s), 2 OCR variant(s), 2 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `6079333f273e3e00` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `NeItemskeletalShark` | - | 0.815 | highest OCR confidence |
 | 2 | `e060606343fefefe` | 2026-10-05 | 2026-10-05_234514_efb8fcc9 | `NeItemskeletalShark` | - | 0.806 | different session |
-| 3 | `e0606433273f3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `NeItemskeletalShark` | - | 0.796 | different calendar day |
+| 3 | `e0606433273f3e3e` | 2026-10-04 | 2026-10-04_120009_b970ca36 | `NeItemskeletalShark` | - | 0.796 | different session |
 
 
 _3 image(s) spanning 3 session(s), 3 day(s), 1 OCR variant(s), 1 stored label(s)_
@@ -1782,7 +1909,7 @@ _3 image(s) spanning 3 session(s), 3 day(s), 1 OCR variant(s), 1 stored label(s)
 |---|---|---|---|---|---|---|---|
 | 1 | `e06060603e202036` | 2026-10-03 | 2026-10-03_052246_57c522fe | `New Item sCrimson PolkaPuffer>` | `fruit:yami` | 0.863 | highest OCR confidence |
 | 2 | `e0f0f0f0fee0feff` | 2026-10-03 | 2026-10-03_131603_72bb9ad3 | `New Item sCrimson Polka Puffer>` | `fish:crimson` | 0.831 | different session |
-| 3 | `e0606323363e3e3e` | 2026-10-02 | 2026-10-02_230043_e51ff1a7 | `Nev Item scrimson Polka Puffer>` | `fish:crimson` | 0.807 | different calendar day |
+| 3 | `e0606323363e3e3e` | 2026-10-02 | 2026-10-02_230043_e51ff1a7 | `Nev Item scrimson Polka Puffer>` | `fish:crimson` | 0.807 | different session |
 
 
 _3 image(s) spanning 3 session(s), 2 day(s), 2 OCR variant(s), 2 stored label(s)_
@@ -1867,8 +1994,8 @@ _3 image(s) spanning 2 session(s), 2 day(s), 1 OCR variant(s), 3 stored label(s)
 | # | image id | day | session | OCR text | stored label | conf | chosen because |
 |---|---|---|---|---|---|---|---|
 | 1 | `0100000337efffff` | 2026-10-05 | 2026-10-05_183847_8c2f390c | `SPOOKSVILLE STUeS` | - | 0.593 | highest OCR confidence |
-| 2 | `01000003ffefffff` | 2026-10-05 | 2026-10-05_183847_8c2f390c | `SPOOKSVILLE STUeS` | - | 0.591 | additional coverage |
-| 3 | `010000033fefffff` | 2026-10-05 | 2026-10-05_183847_8c2f390c | `SPOOKSVILLE STUeS` | - | 0.586 | additional coverage |
+| 2 | `010000033fefffff` | 2026-10-05 | 2026-10-05_183847_8c2f390c | `SPOOKSVILLE STUeS` | - | 0.586 | different OCR confidence band |
+| 3 | `01000003ffefffff` | 2026-10-05 | 2026-10-05_183847_8c2f390c | `SPOOKSVILLE STUeS` | - | 0.591 | additional coverage |
 
 
 _3 image(s) spanning 1 session(s), 1 day(s), 1 OCR variant(s), 1 stored label(s)_
@@ -2082,7 +2209,7 @@ _2 image(s) spanning 2 session(s), 2 day(s), 1 OCR variant(s), 1 stored label(s)
 | # | image id | day | session | OCR text | stored label | conf | chosen because |
 |---|---|---|---|---|---|---|---|
 | 1 | `6070333f2e3e3e10` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `New Item<ExotiTigerfin>` | - | 0.810 | highest OCR confidence |
-| 2 | `606123272f3e3e00` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `New Item<ExotiTigerfin>` | - | 0.806 | additional coverage |
+| 2 | `606123272f3e3e00` | 2026-10-03 | 2026-10-03_171113_094bcfa0 | `New Item<ExotiTigerfin>` | - | 0.806 | different OCR confidence band |
 
 
 _2 image(s) spanning 1 session(s), 1 day(s), 1 OCR variant(s), 1 stored label(s)_
@@ -2120,7 +2247,7 @@ _2 image(s) spanning 1 session(s), 1 day(s), 1 OCR variant(s), 1 stored label(s)
 | # | image id | day | session | OCR text | stored label | conf | chosen because |
 |---|---|---|---|---|---|---|---|
 | 1 | `7b3f3f3e2e3e003f` | 2026-10-06 | 2026-10-06_175729_f925385b | `NeyItemskeletalShark` | - | 0.815 | highest OCR confidence |
-| 2 | `7b373f3e2e3e003f-1` | 2026-10-06 | 2026-10-06_175729_f925385b | `NeyItemskeletalShark` | - | 0.813 | additional coverage |
+| 2 | `7b373f3e2e3e003f-1` | 2026-10-06 | 2026-10-06_175729_f925385b | `NeyItemskeletalShark` | - | 0.813 | different OCR confidence band |
 
 
 _2 image(s) spanning 1 session(s), 1 day(s), 1 OCR variant(s), 1 stored label(s)_
@@ -2165,7 +2292,7 @@ _2 image(s) spanning 1 session(s), 1 day(s), 1 OCR variant(s), 1 stored label(s)
 | # | image id | day | session | OCR text | stored label | conf | chosen because |
 |---|---|---|---|---|---|---|---|
 | 1 | `3f3f1e9684bfc3c1` | 2026-10-03 | 2026-10-03_164415_39a04dc5 | `Nev Item <rimson Polka Puffer>` | `fish:crimson` | 0.822 | highest OCR confidence |
-| 2 | `3f3f1e8284bfcbcb` | 2026-10-03 | 2026-10-03_164415_39a04dc5 | `Nev Item <rimson Polka Puffer>` | `fish:crimson` | 0.821 | additional coverage |
+| 2 | `3f3f1e8284bfcbcb` | 2026-10-03 | 2026-10-03_164415_39a04dc5 | `Nev Item <rimson Polka Puffer>` | `fish:crimson` | 0.821 | different OCR confidence band |
 
 
 _2 image(s) spanning 1 session(s), 1 day(s), 1 OCR variant(s), 1 stored label(s)_
@@ -2203,7 +2330,7 @@ _2 image(s) spanning 1 session(s), 1 day(s), 1 OCR variant(s), 1 stored label(s)
 | # | image id | day | session | OCR text | stored label | conf | chosen because |
 |---|---|---|---|---|---|---|---|
 | 1 | `2878ffffffffe700` | 2026-10-05 | 2026-10-05_184251_41c96424 | `TOWN OF BEGINNINGS SAFEZONE PROTECTED` | - | 0.855 | highest OCR confidence |
-| 2 | `0030ffffffffe700` | 2026-10-05 | 2026-10-05_184251_41c96424 | `TOWN OF BEGINNINGS SAFEZONE PROTECTED` | - | 0.854 | additional coverage |
+| 2 | `0030ffffffffe700` | 2026-10-05 | 2026-10-05_184251_41c96424 | `TOWN OF BEGINNINGS SAFEZONE PROTECTED` | - | 0.854 | different OCR confidence band |
 
 
 _2 image(s) spanning 1 session(s), 1 day(s), 1 OCR variant(s), 1 stored label(s)_

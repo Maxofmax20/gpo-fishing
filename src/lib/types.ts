@@ -1188,3 +1188,144 @@ export type OntologyReviewPayload = {
   queueP3: string[];
   concepts: OntologyConcept[];
 };
+
+/* ------------------------------------------------------------------ *
+ * ONTOLOGY REVIEW WORKSTATION
+ *
+ * Server-built index, camelCase. Served from
+ * `reports/ontology_review/workstation/` by the commands in
+ * `commands_ontology_workstation.rs`.
+ * ------------------------------------------------------------------ */
+
+export type WorkstationEvidence = {
+  imageId: string;
+  sessionId: string;
+  day: string;
+  rawOcr: string;
+  storedEntityId: string | null;
+  ocrConfidence: number | null;
+  timestampMs: number;
+  selectedBecause: string;
+};
+
+export type WorkstationConcept = {
+  rank: number;
+  conceptId: string;
+  displayName: string;
+  normalizedName: string;
+  occurrences: number;
+  sessionCount: number;
+  dayCount: number;
+  priority: string;
+  priorityReasons: string[];
+  ontologyStatus: string;
+  currentKbCandidates: string[];
+  baseName: string | null;
+  modifiers: string[];
+  familyId: string | null;
+  storedLabels: [string, number][];
+  storedAgreesWithCandidate: number;
+  ocrVariants: string[];
+  evidence: WorkstationEvidence[];
+  humanDecision: string | null;
+  decisionNote?: string | null;
+  decidedAt?: string | null;
+};
+
+export type WorkstationStatus = {
+  available: boolean;
+  detail: string;
+  total: number;
+  counts: Record<string, number>;
+  remaining: Record<string, number>;
+  decided: number;
+  pending: number;
+  byDecision: Record<string, number>;
+  /** Unresolved concept ids, already in review order. */
+  queue: string[];
+  order: string[];
+};
+
+export type KbEntityOption = {
+  id: string;
+  canonicalName: string;
+  aliases: string[];
+  category: string;
+  rarity: string | null;
+  inFishVocab: boolean;
+};
+
+export type FamilyView = {
+  familyId: string;
+  baseName: string | null;
+  memberCount: number;
+  occurrences: number;
+  decisionRequired: string;
+  members: WorkstationConcept[];
+};
+
+export type StructuralSignals = {
+  disclaimer: string;
+  modifiers: {
+    modifier: string;
+    occurrences: number;
+    conceptCount: number;
+    sessionCount: number;
+    dayCount: number;
+    bases: string[];
+    concepts: { conceptId: string; displayName: string; occurrences: number }[];
+  }[];
+  families: {
+    familyId: string;
+    baseName: string | null;
+    memberCount: number;
+    isSingleton: boolean;
+    occurrences: number;
+    sessionCount: number;
+    dayCount: number;
+    members: {
+      conceptId: string;
+      displayName: string;
+      modifiers: string[];
+      occurrences: number;
+      evidence: WorkstationEvidence[];
+      humanDecision: string | null;
+    }[];
+  }[];
+  bases: {
+    baseName: string;
+    occurrences: number;
+    conceptCount: number;
+    sessionCount: number;
+    dayCount: number;
+    occursBare: boolean;
+    bareConcept: string | null;
+    kbCandidates: string[];
+    modifierTotals: Record<string, number>;
+    concepts: {
+      conceptId: string;
+      displayName: string;
+      occurrences: number;
+      modifiers: string[];
+    }[];
+  }[];
+};
+
+/** A human ontology decision. RECORDS A PROPOSAL - it never mutates the KB. */
+export type DecisionInput = {
+  conceptId: string;
+  decision: "UNKNOWN" | "EXISTING_ENTITY" | "VARIANT_OF_EXISTING" | "NEW_ENTITY";
+  existingEntityId?: string;
+  proposedEntityName?: string;
+  variantDescriptor?: string;
+  notes?: string;
+  evidenceImageIds?: string[];
+};
+
+export type DecisionResult = {
+  ok: boolean;
+  nextConceptId: string | null;
+  decidedTotal: number;
+  pendingTotal: number;
+  message: string;
+};

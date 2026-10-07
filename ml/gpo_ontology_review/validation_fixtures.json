@@ -1,0 +1,149 @@
+{
+  "_comment": [
+    "SHARED VALIDATION FIXTURES.",
+    "",
+    "This file is the single source of truth for DECISION SHAPE validation, read by",
+    "BOTH the Rust workstation command and the Python decision store. Both test",
+    "suites assert they agree with every case here.",
+    "",
+    "Why a shared table rather than one implementation: the workstation has to",
+    "reject a malformed decision in milliseconds, while Python holds the",
+    "authoritative rules and the cross-concept/KB checks. Two hand-written copies",
+    "would drift, and the safe one to drift is the fast one. A shared fixture table",
+    "makes drift a failing test instead of a silently weaker gate.",
+    "",
+    "This covers SHAPE only: which fields a decision kind requires, and that the",
+    "decision maker is human. Cross-decision and knowledge-base checks (duplicate",
+    "names, alias collisions, unknown concepts) stay in Python's `validate`, which",
+    "remains the authoritative gate before any patch is exported."
+  ],
+  "version": 1,
+  "allowedDecisionMakers": ["human"],
+  "decisionKinds": [
+    "EXISTING_ENTITY",
+    "NEW_ENTITY",
+    "VARIANT_OF_EXISTING",
+    "UNKNOWN"
+  ],
+  "cases": [
+    {
+      "name": "unknown_needs_nothing",
+      "fields": {
+        "concept_id": "concept:x",
+        "decision": "UNKNOWN",
+        "decision_maker": "human"
+      },
+      "valid": true
+    },
+    {
+      "name": "existing_entity_requires_an_id",
+      "fields": {
+        "concept_id": "concept:x",
+        "decision": "EXISTING_ENTITY",
+        "decision_maker": "human"
+      },
+      "valid": false,
+      "mustMention": "existing_entity_id"
+    },
+    {
+      "name": "existing_entity_with_id_is_valid",
+      "fields": {
+        "concept_id": "concept:x",
+        "decision": "EXISTING_ENTITY",
+        "existing_entity_id": "fish:shark",
+        "decision_maker": "human"
+      },
+      "valid": true
+    },
+    {
+      "name": "new_entity_requires_a_name",
+      "fields": {
+        "concept_id": "concept:x",
+        "decision": "NEW_ENTITY",
+        "decision_maker": "human"
+      },
+      "valid": false,
+      "mustMention": "proposed_entity_name"
+    },
+    {
+      "name": "new_entity_with_name_is_valid",
+      "fields": {
+        "concept_id": "concept:x",
+        "decision": "NEW_ENTITY",
+        "proposed_entity_name": "Tigerfin",
+        "decision_maker": "human"
+      },
+      "valid": true
+    },
+    {
+      "name": "variant_requires_an_id",
+      "fields": {
+        "concept_id": "concept:x",
+        "decision": "VARIANT_OF_EXISTING",
+        "decision_maker": "human"
+      },
+      "valid": false,
+      "mustMention": "existing_entity_id"
+    },
+    {
+      "name": "variant_requires_a_descriptor",
+      "fields": {
+        "concept_id": "concept:x",
+        "decision": "VARIANT_OF_EXISTING",
+        "existing_entity_id": "fish:swordfish",
+        "decision_maker": "human"
+      },
+      "valid": false,
+      "mustMention": "variant_descriptor"
+    },
+    {
+      "name": "variant_with_id_and_descriptor_is_valid",
+      "fields": {
+        "concept_id": "concept:x",
+        "decision": "VARIANT_OF_EXISTING",
+        "existing_entity_id": "fish:swordfish",
+        "variant_descriptor": "golden colour",
+        "decision_maker": "human"
+      },
+      "valid": true
+    },
+    {
+      "name": "machine_decision_maker_is_rejected",
+      "fields": {
+        "concept_id": "concept:x",
+        "decision": "UNKNOWN",
+        "decision_maker": "collector"
+      },
+      "valid": false,
+      "mustMention": "human"
+    },
+    {
+      "name": "model_decision_maker_is_rejected",
+      "fields": {
+        "concept_id": "concept:x",
+        "decision": "UNKNOWN",
+        "decision_maker": "model"
+      },
+      "valid": false,
+      "mustMention": "human"
+    },
+    {
+      "name": "an_unknown_decision_kind_is_rejected",
+      "fields": {
+        "concept_id": "concept:x",
+        "decision": "PROBABLY_A_FISH",
+        "decision_maker": "human"
+      },
+      "valid": false
+    },
+    {
+      "name": "a_missing_concept_id_is_rejected",
+      "fields": {
+        "concept_id": "",
+        "decision": "UNKNOWN",
+        "decision_maker": "human"
+      },
+      "valid": false
+    }
+  ]
+}

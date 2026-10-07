@@ -28,6 +28,13 @@ from .concept_extract import (
 from .decisions import DecisionStore, decision_counts, training_ready_counts
 from .evidence_select import Candidate, select_representative
 from .patch import export_patch, validate
+from .workstation import (
+    build_index,
+    build_kb_entities,
+    build_structural,
+    index_digest,
+    render_thumbs,
+)
 from .reporting import (
     build_graph,
     write_ascii_graph,
@@ -174,6 +181,37 @@ def run(evidence_path: Path, kb_path: Path, out_dir: Path,
         json.dumps(concepts_payload, indent=2, sort_keys=True), encoding="utf-8"
     )
 
+    # --- workstation artefacts (compact index + thumbnails) -------------
+    ws_dir = out_dir / "workstation"
+    ws_dir.mkdir(parents=True, exist_ok=True)
+    index = build_index(concepts, kb_payload, modifiers, families, bases)
+    kb_entities = build_kb_entities(kb_payload)
+    structural = build_structural(modifiers, families, bases)
+    (ws_dir / "index.json").write_text(
+        json.dumps(index, indent=1, sort_keys=True), encoding="utf-8")
+    (ws_dir / "kb_entities.json").write_text(
+        json.dumps(kb_entities, indent=1, sort_keys=True), encoding="utf-8")
+    (ws_dir / "structural.json").write_text(
+        json.dumps(structural, indent=1, sort_keys=True), encoding="utf-8")
+
+    thumb_stats = {"rendered": 0, "missing": 0, "error": "dataset root unavailable"}
+    if dataset_root is not None and (dataset_root / "images").is_dir():
+        thumb_stats = render_thumbs(concepts, dataset_root / "images", ws_dir / "thumbs")
+    if not quiet:
+        print(f"      workstation index: {index['counts']}  "
+              f"thumbs: {thumb_stats.get('rendered')} rendered, "
+              f"{thumb_stats.get('missing')} missing", flush=True)
+
+    ws_summary = {
+        "index_sha256": index_digest(index),
+        "index_path": "reports/ontology_review/workstation/index.json",
+        "index_bytes": (ws_dir / "index.json").stat().st_size,
+        "kb_entities": kb_entities["entityCount"],
+        "structural_modifiers": len(structural["modifiers"]),
+        "structural_families": len(structural["families"]),
+        "thumbnails": thumb_stats,
+    }
+
     training = training_ready_counts(concepts, store.current())
     (out_dir / "training_consequences.json").write_text(
         json.dumps(training, indent=2, sort_keys=True), encoding="utf-8"
@@ -184,7 +222,7 @@ def run(evidence_path: Path, kb_path: Path, out_dir: Path,
         sheets = write_contact_sheets(out_dir, concepts, dataset_root)
 
     summary = _summary(concepts, families, modifiers, bases, stats, store,
-                       report, sheets, t0)
+                       report, sheets, t0, ws_summary)
     (out_dir / "summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8"
     )
@@ -198,7 +236,7 @@ def run(evidence_path: Path, kb_path: Path, out_dir: Path,
 
 
 def _summary(concepts, families, modifiers, bases, stats, store, report,
-             sheets, t0) -> dict[str, Any]:
+             sheets, t0, ws_summary) -> dict[str, Any]:
     decided = [c for c in concepts if c.human_decision]
     pending = [c for c in concepts if not c.human_decision]
     by_priority = {}
@@ -247,6 +285,7 @@ def _summary(concepts, families, modifiers, bases, stats, store, report,
         },
         "validation": report.to_dict(),
         "contact_sheets": len(sheets),
+        "workstation": ws_summary,
         "top_concepts": [
             {
                 "concept_id": c.concept_id,

@@ -63,6 +63,13 @@ import type {
   ReviewStatus,
   SemanticTeacherStatus,
   OntologyReviewPayload,
+  WorkstationStatus,
+  WorkstationConcept,
+  StructuralSignals,
+  FamilyView,
+  KbEntityOption,
+  DecisionInput,
+  DecisionResult,
   HermesTasks,
 } from "./types";
 
@@ -250,6 +257,35 @@ export const api = {
    *  human ruling. There is intentionally no corresponding write: a decision must
    *  be stated by a person, not attributed to an anonymous click. */
   ontologyReviewRead: () => invoke<OntologyReviewPayload>("ontology_review_read"),
+
+  /* --- ONTOLOGY REVIEW WORKSTATION ---
+   *
+   * `ontologyDecide` is the ONLY write. It appends to the append-only
+   * `ontology_decisions.jsonl` and records a human PROPOSAL. It does not create a
+   * KB entity, does not touch FISH_VOCAB.txt, does not set training_eligible, does
+   * not change a split, and does not touch a model or readiness state.
+   *
+   * `ontologyUndo` writes a REVERSAL record; it never deletes history.
+   */
+  ontologyReviewStatus: () => invoke<WorkstationStatus>("ontology_review_status"),
+  ontologyReviewConcept: (conceptId: string) =>
+    invoke<WorkstationConcept>("ontology_review_concept", { conceptId }),
+  ontologyReviewStructural: () =>
+    invoke<StructuralSignals>("ontology_review_structural"),
+  ontologyReviewFamily: (familyId: string) =>
+    invoke<FamilyView>("ontology_review_family", { familyId }),
+  ontologyReviewKbSearch: (query: string, limit?: number) =>
+    invoke<KbEntityOption[]>("ontology_review_kb_search", { query, limit }),
+  /** Inline data URL, so an <img src> needs no extra round trip per image. */
+  ontologyReviewThumb: (imageId: string) =>
+    invoke<string | null>("ontology_review_thumb", { imageId }),
+  /** Full resolution, fetched only when the reviewer asks. */
+  ontologyReviewFull: (imageId: string) =>
+    invoke<string | null>("ontology_review_full", { imageId }),
+  ontologyDecide: (input: DecisionInput) =>
+    invoke<DecisionResult>("ontology_decide", { input }),
+  ontologyUndo: (conceptId: string) =>
+    invoke<WorkstationStatus>("ontology_undo", { conceptId }),
   hermesTasks: () => invoke<HermesTasks>("hermes_tasks"),
 };
 

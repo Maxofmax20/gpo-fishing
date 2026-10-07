@@ -3,6 +3,7 @@ pub mod bot;
 pub mod commands;
 pub mod commands_review;
 mod commands_ontology;
+pub mod commands_ontology_workstation;
 pub mod commands_training;
 pub mod config;
 pub mod core;
@@ -147,6 +148,15 @@ pub fn run() {
             commands_review::review_priority,
             commands_review::semantic_teacher_status,
             commands_ontology::ontology_review_read,
+            commands_ontology_workstation::ontology_review_status,
+            commands_ontology_workstation::ontology_review_concept,
+            commands_ontology_workstation::ontology_review_structural,
+            commands_ontology_workstation::ontology_review_family,
+            commands_ontology_workstation::ontology_review_kb_search,
+            commands_ontology_workstation::ontology_review_thumb,
+            commands_ontology_workstation::ontology_review_full,
+            commands_ontology_workstation::ontology_decide,
+            commands_ontology_workstation::ontology_undo,
             commands_review::review_search,
             commands_review::drops_explorer,
             commands_review::readiness_status,
