@@ -2,6 +2,7 @@ pub mod app;
 pub mod bot;
 pub mod commands;
 pub mod commands_review;
+mod commands_ontology;
 pub mod commands_training;
 pub mod config;
 pub mod core;
@@ -145,6 +146,7 @@ pub fn run() {
             commands_review::review_rebuild,
             commands_review::review_priority,
             commands_review::semantic_teacher_status,
+            commands_ontology::ontology_review_read,
             commands_review::review_search,
             commands_review::drops_explorer,
             commands_review::readiness_status,

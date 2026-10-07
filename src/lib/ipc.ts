@@ -62,6 +62,7 @@ import type {
   ReviewIntegrity,
   ReviewStatus,
   SemanticTeacherStatus,
+  OntologyReviewPayload,
   HermesTasks,
 } from "./types";
 
@@ -245,6 +246,10 @@ export const api = {
   /** Status of the OFFLINE semantic teacher (RAM++). Evidence only - it never
    *  supplies a label. NOT_INSTALLED is a normal state. */
   semanticTeacherStatus: () => invoke<SemanticTeacherStatus>("semantic_teacher_status"),
+  /** ONTOLOGY REVIEW - read-only. Returns the observed in-game names awaiting a
+   *  human ruling. There is intentionally no corresponding write: a decision must
+   *  be stated by a person, not attributed to an anonymous click. */
+  ontologyReviewRead: () => invoke<OntologyReviewPayload>("ontology_review_read"),
   hermesTasks: () => invoke<HermesTasks>("hermes_tasks"),
 };
 

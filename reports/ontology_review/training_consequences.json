@@ -1,0 +1,4 @@
+{
+  "entities": [],
+  "note": "Counts HUMAN-CONFIRMED rows only. Stored collector labels are excluded by design: they were produced under the ontology now in question, so counting them would count the contamination."
+}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/ipc";
 import { showToast } from "../lib/store";
 import { useVisiblePoll } from "../lib/useVisiblePoll";
+import { OntologyReview } from "./OntologyReview";
 import { Button, CustomSelect, Kbd, Pill, Section, Toggle } from "../components/primitives";
 import ConfirmModal from "../components/ConfirmModal";
 import type {
@@ -31,7 +32,7 @@ import type {
 type SubTab =
   | "overview" | "dataset" | "fish" | "fruits" | "jobs"
   | "candidates" | "models" | "compare" | "review" | "coverage"
-  | "drops" | "readiness" | "history" | "settings";
+  | "drops" | "readiness" | "history" | "settings" | "ontology";
 
 const TABS: { id: SubTab; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -43,6 +44,7 @@ const TABS: { id: SubTab; label: string }[] = [
   { id: "models", label: "Models" },
   { id: "compare", label: "Compare" },
   { id: "review", label: "Review" },
+  { id: "ontology", label: "Ontology review" },
   { id: "coverage", label: "Coverage" },
   { id: "drops", label: "Drops" },
   { id: "readiness", label: "Readiness" },
@@ -1256,6 +1258,8 @@ export default function TrainingCenter() {
           )}
         </Section>
       )}
+
+      {tab === "ontology" && <OntologyReview />}
 
       {tab === "review" && (
         <>

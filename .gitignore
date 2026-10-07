@@ -44,6 +44,10 @@ ml/ram_plus/checkpoints/
 #   python -m ml.gpo_ocr_audit
 #   (Get-FileHash reports/ocr_audit/evidence.jsonl -Algorithm SHA256)
 #
+# Ontology review: contact sheets are rendered images, large and regenerable.
+# The reports, concepts.json and the decision log ARE committed - the decision log
+# especially, because it is the human audit trail.
+reports/ontology_review/contact_sheets/
 reports/ocr_audit/.cache/
 reports/ocr_audit/evidence.jsonl
 reports/ocr_audit/contact_sheets/

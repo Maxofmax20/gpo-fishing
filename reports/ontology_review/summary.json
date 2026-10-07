@@ -1,0 +1,372 @@
+{
+  "contact_sheets": 0,
+  "decisions": {
+    "by_type": {},
+    "path": "reports/ontology_review/ontology_decisions.jsonl",
+    "pending": 77,
+    "recorded": 0
+  },
+  "elapsed_seconds": 0.5,
+  "generated_at_unix": 1791398698,
+  "pipeline_version": "ontology-review/1.0.0",
+  "production_status": "MODEL_NOT_READY",
+  "review_queue": {
+    "P0": [
+      "concept:zebra-ribbon-angelfish",
+      "concept:skeletalshark",
+      "concept:crimson-polka-puffer",
+      "concept:crimson-snapper",
+      "concept:exotic-tigerfin",
+      "concept:candy-corn-squid",
+      "concept:swordfish",
+      "concept:golden-ribbon-angelfish",
+      "concept:golden-polka-puffer",
+      "concept:dark-skeletal-shark",
+      "concept:golden-tigerfin"
+    ],
+    "P1": [
+      "concept:fangfish",
+      "concept:tigerfin",
+      "concept:sgolden-tigerfin"
+    ],
+    "P2": [
+      "concept:sgolden-ribbon-angelfish",
+      "concept:sdark-skeletal-shark",
+      "concept:blve-lipgrouper",
+      "concept:tigerfinz",
+      "concept:sgolden-polka-puffer",
+      "concept:candy-cormn-squid",
+      "concept:anglerfish",
+      "concept:candy-comsquid",
+      "concept:jack-o-bite",
+      "concept:candy-con-squid",
+      "concept:exotictigerfinz",
+      "concept:ccrimson-polka-puffer",
+      "concept:scandy-corn-squid",
+      "concept:sswordfish",
+      "concept:candy-corm-squid",
+      "concept:exotietigerfin"
+    ],
+    "P3": [
+      "concept:neitemskeletalshark",
+      "concept:scrimson-polka-puffer",
+      "concept:blve-lip-grovper",
+      "concept:spooksville-stues",
+      "concept:blve-lip-groper",
+      "concept:jack-0-bite",
+      "concept:rimson-snapper",
+      "concept:zzebra-ribbon-angelfish",
+      "concept:exotitigerfin",
+      "concept:neyitemskeletalshark",
+      "concept:rimson-polka-puffer",
+      "concept:town-of-beginnings-safezone-protected",
+      "concept:agomu-has-spavned-at-tradinghub",
+      "concept:andy-con-squid",
+      "concept:andycorn-squid",
+      "concept:crimson-polka-pyffer",
+      "concept:czebra-ribbon-angelfish",
+      "concept:darkskeletalsharkmaskblveprint",
+      "concept:darksketetalshark",
+      "concept:droppedbomb-vill-despavnin10-minutes",
+      "concept:exotietigerfinz",
+      "concept:exotistigerfin",
+      "concept:golden-polko-puffer",
+      "concept:golden-tigerfinz-newitem",
+      "concept:goldentigerfinz",
+      "concept:keletal-shark",
+      "concept:neitem-fangfish",
+      "concept:nevltem-exotictigerfin",
+      "concept:neyitem-crimsonpolkapuffer",
+      "concept:neylitem-crimson-snapper",
+      "concept:nw-ne",
+      "concept:sanglerfish",
+      "concept:scandyconsquid",
+      "concept:sdarksketetalshark",
+      "concept:sgolden-ribbonangetfish",
+      "concept:spooksville-astuo-candy-cornsquid",
+      "concept:spooksville-astuo-crimson-snapper",
+      "concept:spooksville-astuo-zebra-ribbon-angelfish",
+      "concept:spooksville-stucs",
+      "concept:spooksville-stucs-nevitemskeletalshark",
+      "concept:spooksville-stues-skeletalshark",
+      "concept:spooksville-stues-zebra-ribbon-angelfish",
+      "concept:ssvordfish",
+      "concept:stigerfin",
+      "concept:svordfish",
+      "concept:szebra-ribbonangelfish",
+      "concept:zebra-ribbon-angelfisha"
+    ]
+  },
+  "top_concepts": [
+    {
+      "concept_id": "concept:zebra-ribbon-angelfish",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "zebra ribbon angelfish",
+      "kb_candidates": [],
+      "occurrences": 308,
+      "ontology_status": "UNKNOWN",
+      "priority": "P0",
+      "sessions": 46
+    },
+    {
+      "concept_id": "concept:skeletalshark",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "skeletalshark",
+      "kb_candidates": [],
+      "occurrences": 293,
+      "ontology_status": "UNKNOWN",
+      "priority": "P0",
+      "sessions": 43
+    },
+    {
+      "concept_id": "concept:crimson-polka-puffer",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "crimson polka puffer",
+      "kb_candidates": [],
+      "occurrences": 280,
+      "ontology_status": "UNKNOWN",
+      "priority": "P0",
+      "sessions": 39
+    },
+    {
+      "concept_id": "concept:crimson-snapper",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "crimson snapper",
+      "kb_candidates": [
+        "fish:crimson",
+        "fish:snapper"
+      ],
+      "occurrences": 276,
+      "ontology_status": "AMBIGUOUS",
+      "priority": "P0",
+      "sessions": 41
+    },
+    {
+      "concept_id": "concept:exotic-tigerfin",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "exotic tigerfin",
+      "kb_candidates": [],
+      "occurrences": 262,
+      "ontology_status": "UNKNOWN",
+      "priority": "P0",
+      "sessions": 36
+    },
+    {
+      "concept_id": "concept:candy-corn-squid",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "candy corn squid",
+      "kb_candidates": [],
+      "occurrences": 241,
+      "ontology_status": "UNKNOWN",
+      "priority": "P0",
+      "sessions": 44
+    },
+    {
+      "concept_id": "concept:golden-ribbon-angelfish",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "golden ribbon angelfish",
+      "kb_candidates": [
+        "fish:angelfish",
+        "fish:golden"
+      ],
+      "occurrences": 114,
+      "ontology_status": "AMBIGUOUS",
+      "priority": "P0",
+      "sessions": 36
+    },
+    {
+      "concept_id": "concept:swordfish",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "swordfish",
+      "kb_candidates": [
+        "fish:swordfish"
+      ],
+      "occurrences": 114,
+      "ontology_status": "EXACT_ENTITY",
+      "priority": "P0",
+      "sessions": 39
+    },
+    {
+      "concept_id": "concept:golden-polka-puffer",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "golden polka puffer",
+      "kb_candidates": [],
+      "occurrences": 111,
+      "ontology_status": "UNKNOWN",
+      "priority": "P0",
+      "sessions": 30
+    },
+    {
+      "concept_id": "concept:dark-skeletal-shark",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "dark skeletal shark",
+      "kb_candidates": [
+        "fish:shark",
+        "fruit:dark"
+      ],
+      "occurrences": 102,
+      "ontology_status": "AMBIGUOUS",
+      "priority": "P0",
+      "sessions": 35
+    },
+    {
+      "concept_id": "concept:golden-tigerfin",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "golden tigerfin",
+      "kb_candidates": [
+        "fish:golden",
+        "fish:tiger"
+      ],
+      "occurrences": 102,
+      "ontology_status": "AMBIGUOUS",
+      "priority": "P0",
+      "sessions": 30
+    },
+    {
+      "concept_id": "concept:fangfish",
+      "days": 4,
+      "decision": "PENDING",
+      "display_name": "fangfish",
+      "kb_candidates": [],
+      "occurrences": 59,
+      "ontology_status": "UNKNOWN",
+      "priority": "P1",
+      "sessions": 27
+    },
+    {
+      "concept_id": "concept:tigerfin",
+      "days": 4,
+      "decision": "PENDING",
+      "display_name": "tigerfin",
+      "kb_candidates": [],
+      "occurrences": 52,
+      "ontology_status": "UNKNOWN",
+      "priority": "P1",
+      "sessions": 5
+    },
+    {
+      "concept_id": "concept:sgolden-tigerfin",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "sgolden tigerfin",
+      "kb_candidates": [
+        "fish:golden",
+        "fish:tiger"
+      ],
+      "occurrences": 33,
+      "ontology_status": "AMBIGUOUS",
+      "priority": "P1",
+      "sessions": 18
+    },
+    {
+      "concept_id": "concept:sgolden-ribbon-angelfish",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "sgolden ribbon angelfish",
+      "kb_candidates": [
+        "fish:angelfish",
+        "fish:golden"
+      ],
+      "occurrences": 19,
+      "ontology_status": "AMBIGUOUS",
+      "priority": "P2",
+      "sessions": 11
+    },
+    {
+      "concept_id": "concept:sdark-skeletal-shark",
+      "days": 5,
+      "decision": "PENDING",
+      "display_name": "sdark skeletal shark",
+      "kb_candidates": [
+        "fish:shark",
+        "fruit:dark"
+      ],
+      "occurrences": 16,
+      "ontology_status": "AMBIGUOUS",
+      "priority": "P2",
+      "sessions": 11
+    },
+    {
+      "concept_id": "concept:blve-lipgrouper",
+      "days": 4,
+      "decision": "PENDING",
+      "display_name": "blve lipgrouper",
+      "kb_candidates": [],
+      "occurrences": 14,
+      "ontology_status": "UNKNOWN",
+      "priority": "P2",
+      "sessions": 5
+    },
+    {
+      "concept_id": "concept:tigerfinz",
+      "days": 3,
+      "decision": "PENDING",
+      "display_name": "tigerfinz",
+      "kb_candidates": [],
+      "occurrences": 13,
+      "ontology_status": "UNKNOWN",
+      "priority": "P2",
+      "sessions": 3
+    },
+    {
+      "concept_id": "concept:sgolden-polka-puffer",
+      "days": 3,
+      "decision": "PENDING",
+      "display_name": "sgolden polka puffer",
+      "kb_candidates": [],
+      "occurrences": 12,
+      "ontology_status": "UNKNOWN",
+      "priority": "P2",
+      "sessions": 8
+    },
+    {
+      "concept_id": "concept:candy-cormn-squid",
+      "days": 4,
+      "decision": "PENDING",
+      "display_name": "candy cormn squid",
+      "kb_candidates": [],
+      "occurrences": 10,
+      "ontology_status": "UNKNOWN",
+      "priority": "P2",
+      "sessions": 6
+    }
+  ],
+  "totals": {
+    "ambiguous_concepts": 14,
+    "compound_concepts": 54,
+    "concept_families": 48,
+    "concepts": 77,
+    "exact_entity_concepts": 1,
+    "multi_member_families": 9,
+    "raw_distinct_ocr_strings": 157,
+    "rows_considered": 2866,
+    "rows_skipped_non_entity_frame": 11939,
+    "rows_skipped_system_text": 304,
+    "unknown_concepts": 62
+  },
+  "training_started": false,
+  "validation": {
+    "counts": {
+      "concepts_decided": 0,
+      "concepts_pending": 77,
+      "concepts_total": 77,
+      "kb_entities": 141,
+      "proposed_new_entities": 0
+    },
+    "errors": [],
+    "ok": true,
+    "pending_concepts": 77,
+    "warnings": []
+  }
+}

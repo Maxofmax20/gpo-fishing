@@ -1,0 +1,852 @@
+# Ontology relationship graph (ASCII)
+
+Each concept shown as the tree a reviewer reasons about: which KB entities
+it could be, which stored labels it produced, and how much evidence backs it.
+
+Investigation only - this graph asserts nothing.
+
+zebra ribbon angelfish
+ |
+ +-- ocr variant:   "zebra ribbon angelfish" x262
+ +-- ocr variant:   "zebra ribbonangelfish" x44
+ +-- ocr variant:   "zebraribbon angelfish" x2
+ +-- stored label:  fish:angelfish x205
+ +-- stored label:  fish:crimson x21
+ +-- stored label:  fish:golden x5
+ +-- stored label:  ui:new-item x5
+ +-- stored label:  fish:shark x4
+ +-- stored label:  fish:squid x3
+ +-- stored label:  fruit:yami x3
+ +-- stored label:  fish:snapper x2
+ +-- stored label:  fish:pufferfish x1
+ +-- stored label:  fruit:paw x1
+ +-- images:        308
+ +-- sessions:      46
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+skeletalshark
+ |
+ +-- ocr variant:   "skeletal shark" x88
+ +-- ocr variant:   "skeletalshark" x205
+ +-- stored label:  fish:shark x170
+ +-- stored label:  fish:snapper x10
+ +-- stored label:  fish:squid x10
+ +-- stored label:  fish:angelfish x4
+ +-- stored label:  fish:crimson x1
+ +-- stored label:  fish:golden x1
+ +-- stored label:  fish:pufferfish x1
+ +-- stored label:  fish:swordfish x1
+ +-- stored label:  fruit:yami x1
+ +-- stored label:  ui:new-item x1
+ +-- images:        293
+ +-- sessions:      43
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+crimson polka puffer
+ |
+ +-- ocr variant:   "crimson polka puffer" x247
+ +-- ocr variant:   "crimson polkapuffer" x24
+ +-- ocr variant:   "crimsonpolka puffer" x9
+ +-- stored label:  fish:crimson x161
+ +-- stored label:  fish:pufferfish x60
+ +-- stored label:  fish:angelfish x23
+ +-- stored label:  fish:golden x10
+ +-- stored label:  fish:shark x5
+ +-- stored label:  fish:squid x4
+ +-- stored label:  fish:snapper x2
+ +-- stored label:  ui:new-item x2
+ +-- stored label:  fish:swordfish x1
+ +-- stored label:  fruit:kilo x1
+ +-- stored label:  ui:spawned x1
+ +-- images:        280
+ +-- sessions:      39
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+crimson snapper
+ |
+ +-- kb candidate: fish:crimson
+ +-- kb candidate: fish:snapper
+ +-- ocr variant:   "crimson snapper" x249
+ +-- ocr variant:   "crimsonsnapper" x27
+ +-- stored label:  fish:snapper x199
+ +-- stored label:  fish:squid x13
+ +-- stored label:  fish:crimson x12
+ +-- stored label:  fish:shark x9
+ +-- stored label:  fish:angelfish x6
+ +-- stored label:  fish:golden x2
+ +-- stored label:  fish:pufferfish x2
+ +-- stored label:  fish:swordfish x2
+ +-- stored label:  fruit:yami x2
+ +-- stored label:  ui:new-item x2
+ +-- images:        276
+ +-- sessions:      41
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+exotic tigerfin
+ |
+ +-- ocr variant:   "exotic tigerfin" x245
+ +-- ocr variant:   "exotictigerfin" x17
+ +-- stored label:  fish:snapper x10
+ +-- stored label:  fish:shark x8
+ +-- stored label:  fish:squid x8
+ +-- stored label:  fish:angelfish x2
+ +-- stored label:  fish:golden x2
+ +-- stored label:  ui:new-item x2
+ +-- stored label:  fish:crimson x1
+ +-- stored label:  fish:pufferfish x1
+ +-- stored label:  fish:swordfish x1
+ +-- stored label:  fish:tiger x1
+ +-- stored label:  fruit:yami x1
+ +-- images:        262
+ +-- sessions:      36
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+candy corn squid
+ |
+ +-- ocr variant:   "candy corn squid" x210
+ +-- ocr variant:   "candy cornsquid" x3
+ +-- ocr variant:   "candycorn squid" x20
+ +-- ocr variant:   "candycornsquid" x8
+ +-- stored label:  fish:squid x195
+ +-- stored label:  fish:snapper x12
+ +-- stored label:  fish:shark x5
+ +-- stored label:  fish:crimson x4
+ +-- stored label:  fish:angelfish x2
+ +-- stored label:  fish:golden x1
+ +-- stored label:  fish:pufferfish x1
+ +-- stored label:  fish:swordfish x1
+ +-- images:        241
+ +-- sessions:      44
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+swordfish
+ |
+ +-- kb candidate: fish:swordfish
+ +-- ocr variant:   "swordfish" x114
+ +-- stored label:  fish:swordfish x51
+ +-- stored label:  fish:snapper x4
+ +-- stored label:  fish:golden x2
+ +-- stored label:  fish:squid x2
+ +-- stored label:  ui:new-item x2
+ +-- stored label:  fish:shark x1
+ +-- images:        114
+ +-- sessions:      39
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+golden ribbon angelfish
+ |
+ +-- kb candidate: fish:angelfish
+ +-- kb candidate: fish:golden
+ +-- ocr variant:   "golden ribbon angelfish" x109
+ +-- ocr variant:   "golden ribbonangelfish" x5
+ +-- stored label:  fish:golden x76
+ +-- stored label:  fish:angelfish x14
+ +-- stored label:  fish:crimson x1
+ +-- stored label:  fish:snapper x1
+ +-- stored label:  fruit:yami x1
+ +-- images:        114
+ +-- sessions:      36
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+golden polka puffer
+ |
+ +-- ocr variant:   "golden polka puffer" x110
+ +-- ocr variant:   "golden polkapuffer" x1
+ +-- stored label:  fish:golden x68
+ +-- stored label:  fish:pufferfish x25
+ +-- stored label:  fish:crimson x2
+ +-- stored label:  fish:squid x2
+ +-- stored label:  fish:angelfish x1
+ +-- stored label:  fish:shark x1
+ +-- stored label:  fish:swordfish x1
+ +-- stored label:  fruit:yami x1
+ +-- images:        111
+ +-- sessions:      30
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+dark skeletal shark
+ |
+ +-- kb candidate: fish:shark
+ +-- kb candidate: fruit:dark
+ +-- ocr variant:   "dark skeletal shark" x48
+ +-- ocr variant:   "dark skeletalshark" x3
+ +-- ocr variant:   "darkskeletal shark" x26
+ +-- ocr variant:   "darkskeletalshark" x25
+ +-- stored label:  fruit:yami x57
+ +-- stored label:  fish:shark x30
+ +-- stored label:  fish:crimson x4
+ +-- stored label:  fish:snapper x2
+ +-- stored label:  fish:angelfish x1
+ +-- stored label:  fish:golden x1
+ +-- stored label:  fish:pufferfish x1
+ +-- stored label:  fish:squid x1
+ +-- images:        102
+ +-- sessions:      35
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+golden tigerfin
+ |
+ +-- kb candidate: fish:golden
+ +-- kb candidate: fish:tiger
+ +-- ocr variant:   "golden tigerfin" x96
+ +-- ocr variant:   "goldentigerfin" x6
+ +-- stored label:  fish:golden x72
+ +-- stored label:  fish:squid x3
+ +-- stored label:  fish:shark x2
+ +-- stored label:  fish:snapper x2
+ +-- stored label:  fish:tiger x1
+ +-- stored label:  ui:new-item x1
+ +-- images:        102
+ +-- sessions:      30
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+fangfish
+ |
+ +-- ocr variant:   "fangfish" x59
+ +-- stored label:  fish:squid x11
+ +-- stored label:  fish:angelfish x9
+ +-- stored label:  fish:snapper x9
+ +-- stored label:  fish:shark x4
+ +-- stored label:  fish:crimson x3
+ +-- stored label:  fish:swordfish x3
+ +-- stored label:  fish:pufferfish x2
+ +-- stored label:  fish:golden x1
+ +-- images:        59
+ +-- sessions:      27
+ +-- days:          4
+ +-- DECISION:      PENDING
+
+tigerfin
+ |
+ +-- ocr variant:   "tigerfin" x52
+ +-- stored label:  fish:snapper x2
+ +-- stored label:  fish:shark x1
+ +-- stored label:  ui:new-item x1
+ +-- images:        52
+ +-- sessions:      5
+ +-- days:          4
+ +-- DECISION:      PENDING
+
+sgolden tigerfin
+ |
+ +-- kb candidate: fish:golden
+ +-- kb candidate: fish:tiger
+ +-- ocr variant:   "sgolden tigerfin" x33
+ +-- stored label:  fish:golden x20
+ +-- stored label:  fish:shark x2
+ +-- stored label:  fish:angelfish x1
+ +-- images:        33
+ +-- sessions:      18
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+sgolden ribbon angelfish
+ |
+ +-- kb candidate: fish:angelfish
+ +-- kb candidate: fish:golden
+ +-- ocr variant:   "sgolden ribbon angelfish" x18
+ +-- ocr variant:   "sgolden ribbonangelfish" x1
+ +-- stored label:  fish:golden x13
+ +-- stored label:  fish:angelfish x4
+ +-- images:        19
+ +-- sessions:      11
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+sdark skeletal shark
+ |
+ +-- kb candidate: fish:shark
+ +-- kb candidate: fruit:dark
+ +-- ocr variant:   "sdark skeletal shark" x15
+ +-- ocr variant:   "sdarkskeletalshark" x1
+ +-- stored label:  fruit:yami x15
+ +-- stored label:  fish:swordfish x1
+ +-- images:        16
+ +-- sessions:      11
+ +-- days:          5
+ +-- DECISION:      PENDING
+
+blve lipgrouper
+ |
+ +-- ocr variant:   "blve lip grouper" x4
+ +-- ocr variant:   "blve lipgrouper" x10
+ +-- stored label:  fish:angelfish x1
+ +-- stored label:  fish:golden x1
+ +-- stored label:  fish:shark x1
+ +-- stored label:  fish:snapper x1
+ +-- stored label:  fish:swordfish x1
+ +-- stored label:  fruit:light x1
+ +-- images:        14
+ +-- sessions:      5
+ +-- days:          4
+ +-- DECISION:      PENDING
+
+tigerfinz
+ |
+ +-- ocr variant:   "tigerfinz" x13
+ +-- images:        13
+ +-- sessions:      3
+ +-- days:          3
+ +-- DECISION:      PENDING
+
+sgolden polka puffer
+ |
+ +-- ocr variant:   "sgolden polka puffer" x12
+ +-- stored label:  fish:golden x7
+ +-- stored label:  fish:pufferfish x3
+ +-- stored label:  fish:shark x1
+ +-- images:        12
+ +-- sessions:      8
+ +-- days:          3
+ +-- DECISION:      PENDING
+
+candy cormn squid
+ |
+ +-- ocr variant:   "candy cormn squid" x10
+ +-- stored label:  fish:squid x10
+ +-- images:        10
+ +-- sessions:      6
+ +-- days:          4
+ +-- DECISION:      PENDING
+
+anglerfish
+ |
+ +-- ocr variant:   "anglerfish" x8
+ +-- stored label:  fish:snapper x2
+ +-- stored label:  fish:squid x2
+ +-- stored label:  fish:angelfish x1
+ +-- stored label:  fish:shark x1
+ +-- stored label:  fish:swordfish x1
+ +-- images:        8
+ +-- sessions:      7
+ +-- days:          2
+ +-- DECISION:      PENDING
+
+candy comsquid
+ |
+ +-- ocr variant:   "candy comsquid" x3
+ +-- ocr variant:   "candycom squid" x2
+ +-- ocr variant:   "candycomsquid" x3
+ +-- stored label:  fish:squid x5
+ +-- stored label:  fish:snapper x1
+ +-- stored label:  fish:swordfish x1
+ +-- images:        8
+ +-- sessions:      5
+ +-- days:          2
+ +-- DECISION:      PENDING
+
+jack o bite
+ |
+ +-- ocr variant:   "jack o bite" x7
+ +-- stored label:  fish:snapper x3
+ +-- stored label:  fish:crimson x1
+ +-- stored label:  fish:golden x1
+ +-- stored label:  fish:pufferfish x1
+ +-- stored label:  fish:shark x1
+ +-- images:        7
+ +-- sessions:      7
+ +-- days:          2
+ +-- DECISION:      PENDING
+
+candy con squid
+ |
+ +-- ocr variant:   "candy con squid" x5
+ +-- ocr variant:   "candy consquid" x2
+ +-- stored label:  fish:squid x6
+ +-- images:        7
+ +-- sessions:      5
+ +-- days:          3
+ +-- DECISION:      PENDING
+
+exotictigerfinz
+ |
+ +-- ocr variant:   "exotictigerfinz" x7
+ +-- stored label:  fish:crimson x1
+ +-- images:        7
+ +-- sessions:      5
+ +-- days:          4
+ +-- DECISION:      PENDING
+
+ccrimson polka puffer
+ |
+ +-- ocr variant:   "ccrimson polka puffer" x6
+ +-- ocr variant:   "ccrimson polkapuffer" x1
+ +-- stored label:  fish:crimson x3
+ +-- stored label:  fish:pufferfish x2
+ +-- images:        7
+ +-- sessions:      4
+ +-- days:          3
+ +-- DECISION:      PENDING
+
+scandy corn squid
+ |
+ +-- ocr variant:   "scandy corn squid" x7
+ +-- stored label:  fish:squid x6
+ +-- stored label:  fish:golden x1
+ +-- images:        7
+ +-- sessions:      2
+ +-- days:          2
+ +-- DECISION:      PENDING
+
+sswordfish
+ |
+ +-- ocr variant:   "sswordfish" x6
+ +-- stored label:  fish:swordfish x5
+ +-- images:        6
+ +-- sessions:      6
+ +-- days:          4
+ +-- DECISION:      PENDING
+
+candy corm squid
+ |
+ +-- ocr variant:   "candy corm squid" x6
+ +-- stored label:  fish:squid x4
+ +-- images:        6
+ +-- sessions:      5
+ +-- days:          4
+ +-- DECISION:      PENDING
+
+exotietigerfin
+ |
+ +-- ocr variant:   "exotie tigerfin" x2
+ +-- ocr variant:   "exotietigerfin" x3
+ +-- stored label:  fish:squid x1
+ +-- images:        5
+ +-- sessions:      4
+ +-- days:          3
+ +-- DECISION:      PENDING
+
+neitemskeletalshark
+ |
+ +-- ocr variant:   "neitemskeletalshark" x3
+ +-- images:        3
+ +-- sessions:      3
+ +-- days:          3
+ +-- DECISION:      PENDING
+
+scrimson polka puffer
+ |
+ +-- ocr variant:   "scrimson polka puffer" x2
+ +-- ocr variant:   "scrimson polkapuffer" x1
+ +-- stored label:  fish:crimson x2
+ +-- stored label:  fruit:yami x1
+ +-- images:        3
+ +-- sessions:      3
+ +-- days:          2
+ +-- DECISION:      PENDING
+
+blve lip grovper
+ |
+ +-- ocr variant:   "blve lip grovper" x3
+ +-- stored label:  fish:golden x1
+ +-- stored label:  fruit:light x1
+ +-- images:        3
+ +-- sessions:      2
+ +-- days:          2
+ +-- DECISION:      PENDING
+
+spooksville stues
+ |
+ +-- ocr variant:   "spooksville stues" x3
+ +-- images:        3
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+blve lip groper
+ |
+ +-- ocr variant:   "blve lip groper" x1
+ +-- ocr variant:   "blve lipgroper" x1
+ +-- images:        2
+ +-- sessions:      2
+ +-- days:          2
+ +-- DECISION:      PENDING
+
+jack 0 bite
+ |
+ +-- ocr variant:   "jack 0 bite" x2
+ +-- stored label:  fish:shark x1
+ +-- stored label:  fish:squid x1
+ +-- images:        2
+ +-- sessions:      2
+ +-- days:          2
+ +-- DECISION:      PENDING
+
+rimson snapper
+ |
+ +-- ocr variant:   "rimson snapper" x1
+ +-- ocr variant:   "rimsonsnapper" x1
+ +-- stored label:  fish:snapper x2
+ +-- images:        2
+ +-- sessions:      2
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+zzebra ribbon angelfish
+ |
+ +-- ocr variant:   "zzebra ribbon angelfish" x2
+ +-- stored label:  fish:angelfish x2
+ +-- images:        2
+ +-- sessions:      2
+ +-- days:          2
+ +-- DECISION:      PENDING
+
+exotitigerfin
+ |
+ +-- ocr variant:   "exotitigerfin" x2
+ +-- images:        2
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+neyitemskeletalshark
+ |
+ +-- ocr variant:   "neyitemskeletalshark" x2
+ +-- images:        2
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+rimson polka puffer
+ |
+ +-- ocr variant:   "rimson polka puffer" x2
+ +-- stored label:  fish:crimson x2
+ +-- images:        2
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+town of beginnings safezone protected
+ |
+ +-- ocr variant:   "town of beginnings safezone protected" x2
+ +-- images:        2
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+agomu has spavned at tradinghub
+ |
+ +-- ocr variant:   "agomu has spavned at tradinghub" x1
+ +-- stored label:  fruit:gomu x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+andy con squid
+ |
+ +-- ocr variant:   "andy con squid" x1
+ +-- stored label:  fish:squid x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+andycorn squid
+ |
+ +-- ocr variant:   "andycorn squid" x1
+ +-- stored label:  fish:squid x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+crimson polka pyffer
+ |
+ +-- ocr variant:   "crimson polka pyffer" x1
+ +-- stored label:  fish:pufferfish x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+czebra ribbon angelfish
+ |
+ +-- ocr variant:   "czebra ribbon angelfish" x1
+ +-- stored label:  fish:angelfish x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+darkskeletalsharkmaskblveprint
+ |
+ +-- kb candidate: fish:shark
+ +-- kb candidate: fruit:dark
+ +-- ocr variant:   "darkskeletalsharkmaskblveprint" x1
+ +-- stored label:  fish:shark x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+darksketetalshark
+ |
+ +-- kb candidate: fish:shark
+ +-- kb candidate: fruit:dark
+ +-- ocr variant:   "darksketetalshark" x1
+ +-- stored label:  fish:shark x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+droppedbomb vill despavnin10 minutes
+ |
+ +-- ocr variant:   "droppedbomb vill despavnin10 minutes" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+exotietigerfinz
+ |
+ +-- ocr variant:   "exotietigerfinz" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+exotistigerfin
+ |
+ +-- ocr variant:   "exotistigerfin" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+golden polko puffer
+ |
+ +-- ocr variant:   "golden polko puffer" x1
+ +-- stored label:  fish:pufferfish x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+golden tigerfinz newitem
+ |
+ +-- ocr variant:   "golden tigerfinz newitem" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+goldentigerfinz
+ |
+ +-- kb candidate: fish:golden
+ +-- kb candidate: fish:tiger
+ +-- ocr variant:   "goldentigerfinz" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+keletal shark
+ |
+ +-- ocr variant:   "keletal shark" x1
+ +-- stored label:  fish:shark x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+neitem fangfish
+ |
+ +-- ocr variant:   "neitem fangfish" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+nevltem exotictigerfin
+ |
+ +-- ocr variant:   "nevltem exotictigerfin" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+neyitem crimsonpolkapuffer
+ |
+ +-- ocr variant:   "neyitem crimsonpolkapuffer" x1
+ +-- stored label:  fish:crimson x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+neylitem crimson snapper
+ |
+ +-- kb candidate: fish:crimson
+ +-- kb candidate: fish:snapper
+ +-- ocr variant:   "neylitem crimson snapper" x1
+ +-- stored label:  fish:snapper x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+nw ne
+ |
+ +-- ocr variant:   "nw ne" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+sanglerfish
+ |
+ +-- ocr variant:   "sanglerfish" x1
+ +-- stored label:  fish:angelfish x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+scandyconsquid
+ |
+ +-- ocr variant:   "scandyconsquid" x1
+ +-- stored label:  fish:squid x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+sdarksketetalshark
+ |
+ +-- kb candidate: fish:shark
+ +-- kb candidate: fruit:dark
+ +-- ocr variant:   "sdarksketetalshark" x1
+ +-- stored label:  fruit:yami x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+sgolden ribbonangetfish
+ |
+ +-- ocr variant:   "sgolden ribbonangetfish" x1
+ +-- stored label:  fish:angelfish x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+spooksville astuo candy cornsquid
+ |
+ +-- kb candidate: fish:squid
+ +-- kb candidate: fruit:uo
+ +-- ocr variant:   "spooksville astuo candy cornsquid" x1
+ +-- stored label:  fish:squid x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+spooksville astuo crimson snapper
+ |
+ +-- kb candidate: fish:crimson
+ +-- kb candidate: fish:snapper
+ +-- ocr variant:   "spooksville astuo crimson snapper" x1
+ +-- stored label:  fish:crimson x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+spooksville astuo zebra ribbon angelfish
+ |
+ +-- ocr variant:   "spooksville astuo zebra ribbon angelfish" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+spooksville stucs
+ |
+ +-- ocr variant:   "spooksville stucs" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+spooksville stucs nevitemskeletalshark
+ |
+ +-- ocr variant:   "spooksville stucs nevitemskeletalshark" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+spooksville stues skeletalshark
+ |
+ +-- ocr variant:   "spooksville stues skeletalshark" x1
+ +-- stored label:  fish:shark x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+spooksville stues zebra ribbon angelfish
+ |
+ +-- ocr variant:   "spooksville stues zebra ribbon angelfish" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+ssvordfish
+ |
+ +-- ocr variant:   "ssvordfish" x1
+ +-- stored label:  fish:swordfish x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+stigerfin
+ |
+ +-- ocr variant:   "stigerfin" x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+svordfish
+ |
+ +-- ocr variant:   "svordfish" x1
+ +-- stored label:  fish:swordfish x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+szebra ribbonangelfish
+ |
+ +-- ocr variant:   "szebra ribbonangelfish" x1
+ +-- stored label:  fish:angelfish x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING
+
+zebra ribbon angelfisha
+ |
+ +-- ocr variant:   "zebra ribbon angelfisha" x1
+ +-- stored label:  fish:angelfish x1
+ +-- images:        1
+ +-- sessions:      1
+ +-- days:          1
+ +-- DECISION:      PENDING

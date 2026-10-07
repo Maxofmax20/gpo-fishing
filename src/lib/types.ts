@@ -1126,3 +1126,65 @@ export type HermesTasks = {
   readiness: ModelReadiness[];
   history_tail: HistoryEntry[];
 };
+
+/* ------------------------------------------------------------------ *
+ * ONTOLOGY REVIEW
+ *
+ * A read-only view of the observed in-game names awaiting a human ruling.
+ *
+ * The payload is produced by `python -m ml.gpo_ontology_review build`.
+ * There is deliberately NO write command: a decision must be stated by a person
+ * with their name against it, not by a click attributed to nobody.
+ * ------------------------------------------------------------------ */
+
+/** One representative evidence image for a concept. */
+export type OntologyEvidence = {
+  imageId: string;
+  sessionId: string;
+  day: string;
+  rawOcr: string;
+  storedEntityId: string | null;
+  ocrConfidence: number | null;
+  /** Why this image was picked: session / day / variant / label coverage. */
+  selectedBecause: string;
+};
+
+/** One exact observed game name. Distinct names are distinct records. */
+export type OntologyConcept = {
+  conceptId: string;
+  displayName: string;
+  occurrences: number;
+  sessionCount: number;
+  dayCount: number;
+  /** P0 | P1 | P2 | P3 - review ORDER only, never a label change. */
+  priority: string;
+  priorityReasons: string[];
+  ontologyStatus: string;
+  /** What today's KB *could* claim. Candidates, never answers. */
+  currentKbCandidates: string[];
+  baseName: string | null;
+  modifiers: string[];
+  familyId: string | null;
+  storedLabels: [string, number][];
+  /** Rows whose stored label equals one KB candidate - agreement with one
+   *  COMPONENT of the name, which is NOT confirmation. */
+  storedAgreesWithCandidate: number;
+  ocrVariants: string[];
+  representativeImages: OntologyEvidence[];
+  humanDecision: string | null;
+  decisionNote: string | null;
+};
+
+export type OntologyReviewPayload = {
+  /** False when no review dataset has been built yet. */
+  available: boolean;
+  detail: string;
+  conceptsTotal: number;
+  decidedTotal: number;
+  pendingTotal: number;
+  queueP0: string[];
+  queueP1: string[];
+  queueP2: string[];
+  queueP3: string[];
+  concepts: OntologyConcept[];
+};
