@@ -514,7 +514,13 @@ pub enum ComparisonVerdict {
 /// verdict in either direction.
 pub const PER_CLASS_MIN_TEST_SUPPORT: usize = 10;
 
+/// Compare a candidate against the deployed model for a family.
+///
+/// `family` selects the canonical class vocabulary. For fish the candidate's
+/// class set must equal FISH_VOCAB exactly; the subset check below cannot see
+/// that, which is the exact gap that let a 10/10 claim ride an 8-class model.
 pub fn compare(
+    family: &str,
     current: &ModelMetrics,
     candidate: &ModelMetrics,
     current_classes: &[String],
@@ -583,6 +589,31 @@ pub fn compare(
 
     if !unqualified.is_empty() {
         reject! {format!("candidate covers unqualified classes: {}", unqualified.join(","))};
+    }
+    // EXACT COVERAGE OF THE CANONICAL VOCABULARY.
+    //
+    // The check above is a SUBSET test, so a candidate that learned fewer
+    // classes than the readiness gate counted passed. Combined with the old
+    // `FISH_MIN_ENTITIES = 10` scalar this let a model with fewer output logits
+    // than the claimed class count be reported as ready. For a fish candidate
+    // the class set must now equal FISH_VOCAB exactly - same classes, same
+    // order, and therefore the same `vocab_sha`.
+    if family == "fish" {
+        let required = crate::core::class_vocab::fish_vocab();
+        let missing = crate::core::class_vocab::missing_from(candidate_classes.iter().map(|s| s.as_str()));
+        let extra = crate::core::class_vocab::not_in_target(candidate_classes.iter().map(|s| s.as_str()));
+        if !missing.is_empty() {
+            reject! {format!(
+                "candidate does not cover the canonical vocabulary (missing {} of {}): {}",
+                missing.len(), required.len(), missing.join(",")
+            )};
+        }
+        if !extra.is_empty() {
+            reject! {format!(
+                "candidate covers classes outside the canonical vocabulary: {}",
+                extra.join(",")
+            )};
+        }
     }
     if !thin_support.is_empty() {
         inconclusive! {format!(
@@ -974,58 +1005,143 @@ mod tests {
         }
     }
 
+
+    /// Full canonical-vocabulary metrics: every class in FISH_VOCAB present,
+    /// with `over` supplying the per-class F1 values the test cares about and a
+    /// default for the rest.
+    ///
+    /// Tests that assert on VERDICT LOGIC must use a candidate that actually
+    /// covers the vocabulary, otherwise the exact-coverage gate rejects first
+    /// and masks what the test was written to check.
+    fn fish_metrics(sessions: usize, over: &[(&str, f32)]) -> ModelMetrics {
+        let mut per: Vec<(String, f32)> = crate::core::class_vocab::fish_vocab()
+            .iter()
+            .map(|c| ((*c).to_string(), 0.80))
+            .collect();
+        for (k, v) in over {
+            if let Some(e) = per.iter_mut().find(|(c, _)| c == k) {
+                e.1 = *v;
+            }
+        }
+        ModelMetrics {
+            accuracy: 0.77,
+            macro_f1: 0.72,
+            ece: Some(0.1),
+            test_sessions: sessions,
+            test_n: 100,
+            per_class_f1: per.into_iter().collect(),
+            per_class_test_support: Default::default(),
+            kept_accuracy: None,
+        }
+    }
+
+    /// Full canonical class list, in canonical order.
+    fn fish_classes() -> Vec<String> {
+        crate::core::class_vocab::fish_vocab()
+            .iter()
+            .map(|c| c.to_string())
+            .collect()
+    }
+
+    /// Same, with real per-class test support.
+    fn fish_metrics_with_support(sessions: usize, over: &[(&str, f32, usize)]) -> ModelMetrics {
+        let mut per: Vec<(String, f32)> = crate::core::class_vocab::fish_vocab()
+            .iter()
+            .map(|c| ((*c).to_string(), 0.80))
+            .collect();
+        let mut sup: Vec<(String, usize)> = crate::core::class_vocab::fish_vocab()
+            .iter()
+            .map(|c| ((*c).to_string(), 40usize))
+            .collect();
+        for (k, v, n) in over {
+            if let Some(e) = per.iter_mut().find(|(c, _)| c == k) {
+                e.1 = *v;
+            }
+            if let Some(e) = sup.iter_mut().find(|(c, _)| c == k) {
+                e.1 = *n;
+            }
+        }
+        ModelMetrics {
+            accuracy: 0.77,
+            macro_f1: 0.72,
+            ece: Some(0.1),
+            test_sessions: sessions,
+            test_n: 100,
+            per_class_f1: per.into_iter().collect(),
+            per_class_test_support: sup.into_iter().collect(),
+            kept_accuracy: None,
+        }
+    }
+
     fn classes(names: &[&str]) -> Vec<String> {
         names.iter().map(|s| s.to_string()).collect()
     }
 
     #[test]
     fn better_candidate_passes_with_reasons() {
-        let cur = metrics(0.58, 0.54, 5, &[("fish:shark", 0.7), ("fish:golden", 0.5)]);
-        let cand = metrics(0.77, 0.72, 8, &[("fish:shark", 0.8), ("fish:golden", 0.65)]);
-        let cls = classes(&["fish:shark", "fish:golden"]);
-        let c = compare(&cur, &cand, &cls, &cls, &cls);
-        assert_eq!(c.verdict, ComparisonVerdict::Pass);
+        let cur = fish_metrics(8, &[("fish:shark", 0.70), ("fish:golden", 0.50)]);
+        let mut cand = fish_metrics(8, &[("fish:shark", 0.80), ("fish:golden", 0.65)]);
+        cand.macro_f1 = 0.80; // clear the +0.01 promotion bar
+        cand.accuracy = 0.84;
+        let cls = fish_classes();
+        let c = compare("fish", &cur, &cand, &cls, &cls, &cls);
+        assert_eq!(c.verdict, ComparisonVerdict::Pass, "{:?}", c.reasons);
         assert!(!c.reasons.is_empty());
         assert_eq!(c.improvements.len(), 2);
     }
 
     #[test]
     fn worse_candidate_rejects_with_macro_reason() {
-        let cur = metrics(0.58, 0.54, 5, &[("fish:shark", 0.7)]);
-        let cand = metrics(0.55, 0.49, 6, &[("fish:shark", 0.68)]);
-        let cls = classes(&["fish:shark"]);
-        let c = compare(&cur, &cand, &cls, &cls, &cls);
-        assert_eq!(c.verdict, ComparisonVerdict::Reject);
+        let cur = fish_metrics(5, &[("fish:shark", 0.70)]);
+        let mut cand = fish_metrics(6, &[("fish:shark", 0.68)]);
+        cand.macro_f1 = 0.49; // genuinely worse overall
+        cand.accuracy = 0.55;
+        let cls = fish_classes();
+        let c = compare("fish", &cur, &cand, &cls, &cls, &cls);
+        assert_eq!(c.verdict, ComparisonVerdict::Reject, "{:?}", c.reasons);
         assert!(c.reasons.iter().any(|r| r.contains("macro-F1")));
     }
 
     #[test]
     fn per_class_regression_rejects_despite_better_macro() {
-        let cur = metrics(0.60, 0.55, 5, &[("fish:shark", 0.9), ("fish:golden", 0.2)]);
-        let cand = metrics(0.62, 0.58, 6, &[("fish:shark", 0.7), ("fish:golden", 0.5)]);
-        let cls = classes(&["fish:shark", "fish:golden"]);
-        let c = compare(&cur, &cand, &cls, &cls, &cls);
-        assert_eq!(c.verdict, ComparisonVerdict::Reject, "0.20 shark regression must block");
+        let cur = fish_metrics(5, &[("fish:shark", 0.90), ("fish:golden", 0.20)]);
+        let cand = fish_metrics(6, &[("fish:shark", 0.70), ("fish:golden", 0.50)]);
+        let cls = fish_classes();
+        let c = compare("fish", &cur, &cand, &cls, &cls, &cls);
+        assert_eq!(
+            c.verdict,
+            ComparisonVerdict::Reject,
+            "a 0.20 per-class regression must block: {:?}",
+            c.reasons
+        );
     }
 
     #[test]
     fn narrower_test_set_is_inconclusive_not_pass() {
-        let cur = metrics(0.58, 0.54, 8, &[("fish:shark", 0.7)]);
-        let cand = metrics(0.80, 0.78, 3, &[("fish:shark", 0.85)]);
-        let cls = classes(&["fish:shark"]);
-        let c = compare(&cur, &cand, &cls, &cls, &cls);
-        assert_eq!(c.verdict, ComparisonVerdict::Inconclusive);
+        let cur = fish_metrics(8, &[("fish:shark", 0.70)]);
+        let mut cand = fish_metrics(3, &[("fish:shark", 0.85)]);
+        cand.macro_f1 = 0.80; // otherwise the macro bar rejects and masks the point
+        cand.accuracy = 0.84;
+        let cls = fish_classes();
+        let c = compare("fish", &cur, &cand, &cls, &cls, &cls);
+        assert_eq!(
+            c.verdict,
+            ComparisonVerdict::Inconclusive,
+            "3 test sessions must not count as a pass: {:?}",
+            c.reasons
+        );
     }
 
     #[test]
     fn unqualified_classes_reject() {
-        let cur = metrics(0.58, 0.54, 5, &[("fish:shark", 0.7)]);
-        let cand = metrics(0.80, 0.78, 6, &[("fish:shark", 0.85), ("fish:megalodon", 0.9)]);
-        let c = compare(
-            &cur, &cand,
-            &classes(&["fish:shark"]), &classes(&["fish:shark", "fish:megalodon"]), &classes(&["fish:shark"]),
-        );
-        assert_eq!(c.verdict, ComparisonVerdict::Reject);
+        let cur = fish_metrics(5, &[]);
+        let mut cand = fish_metrics(6, &[("fish:shark", 0.85)]);
+        cand.per_class_f1
+            .insert("fish:megalodon".to_string(), 0.9);
+        let mut cand_cls = fish_classes();
+        cand_cls.push("fish:megalodon".to_string());
+        let c = compare("fish", &cur, &cand, &fish_classes(), &cand_cls, &fish_classes());
+        assert_eq!(c.verdict, ComparisonVerdict::Reject, "{:?}", c.reasons);
     }
 
     #[test]
@@ -1507,20 +1623,12 @@ mod tests {
         // Real numbers from the committed fish run: fish:swordfish had test
         // support 2 (F1 0.50) and fish:pufferfish 4 (F1 0.22). A two-sample F1
         // is noise; v5.6.x let it decide the verdict on its own.
-        let current = metrics(0.58, 0.54, 5, &[("fish:swordfish", 0.50)]);
-        let thin = metrics_with_support(
-            0.99,
-            0.99,
-            5,
-            &[("fish:swordfish", 0.00, 2)],
-        );
-        let c = compare(
-            &current,
-            &thin,
-            &["fish:swordfish".to_string()],
-            &["fish:swordfish".to_string()],
-            &["fish:swordfish".to_string()],
-        );
+        let current = fish_metrics(5, &[("fish:swordfish", 0.50)]);
+        let mut thin = fish_metrics_with_support(5, &[("fish:swordfish", 0.00, 2)]);
+        thin.macro_f1 = 0.99;
+        thin.accuracy = 0.99;
+        let cls = fish_classes();
+        let c = compare("fish", &current, &thin, &cls, &cls, &cls);
         assert!(
             !c.regressions.iter().any(|(cls, _, _)| cls == "fish:swordfish"),
             "a 2-example class must not register as a regression: {:?}",
@@ -1543,8 +1651,7 @@ mod tests {
         // The support floor must not become a loophole.
         let current = metrics(0.58, 0.54, 5, &[("fish:shark", 0.80)]);
         let worse = metrics_with_support(0.90, 0.90, 5, &[("fish:shark", 0.40, 40)]);
-        let c = compare(
-            &current,
+        let c = compare("fish", &current,
             &worse,
             &["fish:shark".to_string()],
             &["fish:shark".to_string()],

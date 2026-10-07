@@ -1,0 +1,71 @@
+# ============================================================================
+# FISH_VOCAB - THE CANONICAL FISH CLASS MAP. ONE SOURCE OF TRUTH.
+# ============================================================================
+#
+# This file is the ONLY place the fish target class list is defined.
+#
+#   Python trainer : ml/gpo_train/fish_train.py reads this file at runtime
+#   Rust backend   : src-tauri/src/core/class_vocab.rs embeds this file at
+#                    COMPILE TIME via include_str!
+#
+# Readiness, training eligibility, the candidate registry and the shadow
+# deployment all derive their expected class set from this list. There is no
+# scalar anywhere else that counts fish classes.
+#
+# ---------------------------------------------------------------------------
+# ORDER IS PART OF THE CONTRACT
+# ---------------------------------------------------------------------------
+# The position of a line IS its output-logit index. The deployed model's
+# `classes` array must match this order exactly.
+#
+# Reordering or inserting a line changes every class index. That is why the
+# loader verifies `vocab_sha` (SHA-256 of the newline-joined list) against the
+# deployed manifest before loading weights: a permuted class map passes the
+# ONNX checksum and would silently attribute every observation to the wrong
+# label.
+#
+# If you change this list you MUST retrain and promote a new candidate. Do not
+# edit a deployed manifest's `classes` array to match.
+#
+# ---------------------------------------------------------------------------
+# SCOPE - READ BEFORE ADDING A LINE
+# ---------------------------------------------------------------------------
+# A class belongs here only if BOTH are true:
+#
+#   1. It is a verified canonical entity in the project's knowledge base
+#      (src-tauri/src/core/knowledge.rs / DEFAULT_FISH).
+#   2. Real gameplay frames of it can actually be collected and human-reviewed.
+#
+# Do NOT add an entity to reach a class count. Do NOT add a name that only
+# appears in OCR text but is not a KB entity. The following were deliberately
+# excluded because the project has no authoritative evidence they are distinct
+# entities, and adding them would fabricate ground truth:
+#
+#   Blue-Lip Grouper, Tigerfin, Exotic Tigerfin, Golden Tigerfin,
+#   Skeletal Shark, Dark Skeletal Shark, Candy Corn Squid, Jack-O'-Bite,
+#   Fangfish, Anglerfish, Polka Puffer variants, Ribbon Angelfish variants,
+#   Sunken Armor, Sunken Anchor, Sunken Helmet
+#
+# `Crimson Snapper` is NOT a class: the KB holds `fish:crimson` and
+# `fish:snapper` as two separate entities and has never had a combined one.
+#
+# ---------------------------------------------------------------------------
+# KNOWN DATA HAZARD (measured 2026-10)
+# ---------------------------------------------------------------------------
+# 24.4% of the 1,453 collected fish rows have OCR text naming an entity that is
+# NOT in the KB (Crimson Snapper, Candy Corn Squid, Exotic Tigerfin, Dark
+# Skeletal Shark, Tigerfin) while `entity_id` was assigned to one of the classes
+# below. Those labels are contaminated and must be resolved by human review
+# before they can train anything. `fish:snapper` is worst affected (157 of 212
+# rows), then `fish:squid` (134 of 236).
+#
+# ============================================================================
+
+fish:angelfish
+fish:crimson
+fish:golden
+fish:pufferfish
+fish:shark
+fish:snapper
+fish:squid
+fish:swordfish

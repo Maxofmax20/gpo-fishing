@@ -25,9 +25,24 @@ pub const STATE_MIN_SESSIONS: usize = 4;
 pub const ENTITY_MIN_EXAMPLES: usize = 20;
 /// Per-entity session diversity: examples concentrated in fewer sessions
 /// may share one background/camera setup and overstate coverage.
+///
+/// HONESTY NOTE: the existing dataset's 71 "sessions" are 71 macro runs across
+/// only 4 calendar days, so this constant currently overstates real-world
+/// independence by roughly 18x. It is left at the historical value rather than
+/// silently redefined; the calendar-day metric is reported separately so the
+/// reviewer can see the real spread.
 pub const ENTITY_MIN_SESSIONS: usize = 3;
 /// How many entities must clear ENTITY_MIN_EXAMPLES for the capability gate.
-pub const FISH_MIN_ENTITIES: usize = 10;
+///
+/// REMOVED (was `FISH_MIN_ENTITIES = 10`). It contradicted reality in two
+/// independent places: `FISH_VOCAB` has 8 entries and the fish trainer's ONNX
+/// head is hard-wired to 8 logits, while `commands_training.rs` gated on
+/// `>= 8`. Because the gate compared a CARDINALITY rather than a SET, it could
+/// report `qualified_classes 10/10` beside an 8-class artifact.
+///
+/// The fish gate is now [`crate::core::class_vocab`]-derived: every canonical
+/// class must be qualified AND held-out-TEST-covered. See
+/// `FISH_VOCAB.txt` for the single source of truth.
 pub const FRUIT_MIN_ENTITIES: usize = 10;
 /// How many of those must also have held-out TEST coverage.
 pub const ENTITY_MIN_TEST_COVERED: usize = 5;
@@ -229,9 +244,35 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
         qualify_entities(rows, "fish:").into_iter().filter(|q| q.qualified).collect();
     let fruit_q: Vec<EntityQual> =
         qualify_entities(rows, "fruit:").into_iter().filter(|q| q.qualified).collect();
-    let fish_test = fish_q.iter().filter(|q| q.test_covered).count();
+    // FISH GATE (v5.7.1): set-based, derived from the canonical vocabulary.
+    //
+    // Was: `fish_q.len() >= FISH_MIN_ENTITIES(10) && fish_test >= 5`. That
+    // counted a CARDINALITY, so ANY ten KB fish entities satisfied it -
+    // including entities the 8-logit model would never learn - and readiness
+    // could print `10/10 qualified` beside `fish_v1` with 8 classes.
+    //
+    // Now: EVERY canonical class must be qualified, and EVERY canonical class
+    // must have held-out TEST coverage. A substituted entity cannot satisfy
+    // this, and neither can an equal-sized but wrong set.
+    let fish_required: Vec<&str> = crate::core::class_vocab::fish_vocab().to_vec();
+    let fish_qualified_set: Vec<&str> = fish_q.iter().map(|q| q.entity.as_str()).collect();
+    let fish_missing = crate::core::class_vocab::missing_from(fish_qualified_set.iter().copied());
+    let fish_required_no_test: Vec<&str> = fish_required
+        .iter()
+        .copied()
+        .filter(|c| {
+            !fish_q
+                .iter()
+                .any(|q| q.entity == *c && q.test_covered)
+        })
+        .collect();
+    let fish_ready = fish_missing.is_empty() && fish_required_no_test.is_empty();
+    // Entities qualified in the data but OUTSIDE the target vocabulary. Not a
+    // gate: this is the visible signal that label curation is incomplete and
+    // that the model will never distinguish them.
+    let fish_outside_target =
+        crate::core::class_vocab::not_in_target(fish_qualified_set.iter().copied());
     let fruit_test = fruit_q.iter().filter(|q| q.test_covered).count();
-    let fish_ready = fish_q.len() >= FISH_MIN_ENTITIES && fish_test >= ENTITY_MIN_TEST_COVERED;
     let fruit_ready = fruit_q.len() >= FRUIT_MIN_ENTITIES && fruit_test >= ENTITY_MIN_TEST_COVERED;
     let qual_detail = |q: &[EntityQual]| {
         q.iter()
@@ -268,15 +309,45 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
         ),
         gate(
             "fish_entity",
-            "FISH ENTITY (per-fish >=20 examples, >=3 sessions, TEST covered)",
+            "FISH ENTITY (every canonical class: >=20 examples, >=3 sessions, TEST covered)",
             fish_ready,
             fish_q.iter().map(|q| q.examples).sum(),
             fish_q.iter().map(|q| q.sessions).sum(),
-            format!("qualified fish {}/{} (test-covered {}/{}): {}",
-                fish_q.len(), FISH_MIN_ENTITIES, fish_test, ENTITY_MIN_TEST_COVERED,
-                qual_detail(&fish_q)),
+            format!(
+                "canonical fish {}/{} qualified, {}/{} test-covered: {}{}",
+                fish_required.len() - fish_missing.len(),
+                fish_required.len(),
+                fish_required.len() - fish_required_no_test.len(),
+                fish_required.len(),
+                qual_detail(&fish_q),
+                if fish_outside_target.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        " | qualified but NOT in the target vocabulary (never trained, never distinguished): {}",
+                        fish_outside_target.join(", ")
+                    )
+                }
+            ),
             (!fish_ready).then(|| {
-                format!("need >= {FISH_MIN_ENTITIES} fish with >= {ENTITY_MIN_EXAMPLES} examples over >= {ENTITY_MIN_SESSIONS} sessions and >= {ENTITY_MIN_TEST_COVERED} with TEST coverage; collect gameplay, never synthesize")
+                let mut parts = Vec::new();
+                if !fish_missing.is_empty() {
+                    parts.push(format!(
+                        "not yet qualified: {} (need >= {ENTITY_MIN_EXAMPLES} examples over >= {ENTITY_MIN_SESSIONS} sessions each)",
+                        fish_missing.join(", ")
+                    ));
+                }
+                if !fish_required_no_test.is_empty() {
+                    parts.push(format!(
+                        "qualified but no held-out TEST row: {}",
+                        fish_required_no_test.join(", ")
+                    ));
+                }
+                format!(
+                    "{}. Canonical vocabulary is FISH_VOCAB.txt ({} classes); collect real gameplay and human-review it, never synthesize.",
+                    parts.join("; "),
+                    fish_required.len()
+                )
             }),
         ),
         gate(

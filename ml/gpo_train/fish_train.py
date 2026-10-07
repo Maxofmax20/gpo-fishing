@@ -25,6 +25,7 @@ import json
 import os
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -51,10 +52,42 @@ from .train import compute_mean_std, pad_to_square  # identical preprocessing/au
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 
-FISH_VOCAB = [
-    "fish:angelfish", "fish:crimson", "fish:golden", "fish:pufferfish",
-    "fish:shark", "fish:snapper", "fish:squid", "fish:swordfish",
-]
+def _load_fish_vocab():
+    """THE canonical fish class list, in output-logit order.
+
+    Single source of truth: `FISH_VOCAB.txt` at the repository root. The Rust
+    backend embeds the SAME file at compile time (`core/class_vocab.rs`), so the
+    trainer, the readiness engine, the training-eligibility gate and the
+    candidate registry cannot disagree about what the fish model outputs.
+
+    This used to be a second, hardcoded Python literal. A `FISH_MIN_ENTITIES`
+    scalar in the Rust readiness engine demanded 10 classes while this list had
+    8, so readiness could report `10/10 qualified` next to an 8-logit artifact
+    and never notice.
+    """
+    path = Path(__file__).resolve().parent.parent.parent / "FISH_VOCAB.txt"
+    if not path.is_file():
+        raise SystemExit(f"canonical fish vocabulary not found: {path}")
+    out, seen = [], set()
+    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        t = line.strip()
+        if not t or t.startswith("#"):
+            continue
+        if not t.startswith("fish:"):
+            raise SystemExit(f"FISH_VOCAB.txt:{n}: '{t}' is not a fish class id")
+        if t in seen:
+            raise SystemExit(f"FISH_VOCAB.txt:{n}: duplicate class '{t}'")
+        seen.add(t)
+        out.append(t)
+    if not out:
+        raise SystemExit("FISH_VOCAB.txt defines no classes")
+    return out
+
+
+# THE class list. ORDER IS THE OUTPUT-LOGIT INDEX and is part of the contract;
+# see FISH_VOCAB.txt before reordering anything.
+FISH_VOCAB = _load_fish_vocab()
+
 MIN_EXAMPLES = 20
 
 

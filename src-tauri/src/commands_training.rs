@@ -161,12 +161,45 @@ fn family_eligibility(
     }
     match family {
         "fish" => {
+            // THE SAME SET GATE THE READINESS ENGINE USES.
+            //
+            // Was a second hardcoded literal, `q.len() >= 8`, with the string
+            // "scope: 8-class model" - while the readiness subsystem demanded
+            // 10 for the same quantity. Two numbers, one quantity, one
+            // subsystem. Both now derive from FISH_VOCAB.txt.
             let q: Vec<_> =
                 qualify_entities(rows, "fish:").into_iter().filter(|e| e.qualified).collect();
-            if q.len() >= 8 {
-                pass! {format!("{} qualified fish (scope: 8-class model)", q.len())};
+            let required = crate::core::class_vocab::fish_vocab();
+            let present: Vec<&str> = q.iter().map(|e| e.entity.as_str()).collect();
+            let missing = crate::core::class_vocab::missing_from(present.iter().copied());
+            let no_test: Vec<&str> = required
+                .iter()
+                .copied()
+                .filter(|c| !q.iter().any(|e| e.entity == *c && e.test_covered))
+                .collect();
+            if missing.is_empty() && no_test.is_empty() {
+                pass! {format!(
+                    "all {} canonical fish classes qualified with held-out TEST coverage ({} total examples)",
+                    required.len(),
+                    q.iter().map(|e| e.examples).sum::<usize>()
+                )};
             } else {
-                fail! {format!("only {}/8 qualified fish for the scoped model", q.len())};
+                let mut why = Vec::new();
+                if !missing.is_empty() {
+                    why.push(format!(
+                        "not qualified ({}/{}): {}",
+                        required.len() - missing.len(),
+                        required.len(),
+                        missing.join(", ")
+                    ));
+                }
+                if !no_test.is_empty() {
+                    why.push(format!("no held-out TEST row: {}", no_test.join(", ")));
+                }
+                fail! {format!(
+                    "canonical fish classes unmet - {}",
+                    why.join("; ")
+                )};
             }
         }
         "fruit" => {
@@ -709,7 +742,7 @@ fn decide_for_job(
             return format!("candidate {} registered; current metrics unavailable: {e}", rec.candidate_id);
         }
     };
-    let cmp = registry::compare(&cur_metrics, &rec.metrics, &cur_classes, &rec.classes, &qualified_now(store, &job.model_family));
+    let cmp = registry::compare(&job.model_family, &cur_metrics, &rec.metrics, &cur_classes, &rec.classes, &qualified_now(store, &job.model_family));
     if cmp.verdict != registry::ComparisonVerdict::Pass {
         job.status = training::JobStatus::Rejected;
         job.error = Some(format!("candidate {} rejected: {}", rec.candidate_id, cmp.reasons.join("; ")));
@@ -771,6 +804,7 @@ pub fn training_compare(st: State<'_, AppState>, candidate_id: String) -> Result
     let rec = records.iter().find(|r| r.candidate_id == candidate_id).ok_or("candidate not found")?.clone();
     let (cur_metrics, cur_classes) = current_metrics_for(&st.store, &rec.model_family)?;
     let cmp = registry::compare(
+        &rec.model_family,
         &cur_metrics,
         &rec.metrics,
         &cur_classes,
@@ -789,6 +823,7 @@ pub fn training_promote(st: State<'_, AppState>, candidate_id: String) -> Result
     }
     let (cur_metrics, cur_classes) = current_metrics_for(&st.store, &rec.model_family)?;
     let cmp = registry::compare(
+        &rec.model_family,
         &cur_metrics,
         &rec.metrics,
         &cur_classes,

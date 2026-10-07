@@ -157,16 +157,23 @@ fn candidate_inputs_from_stub(
         .unwrap()
     };
     let eval = read("evaluation_test.json");
-    let metrics =
+    let mut metrics =
         ModelMetrics::from_trainer_files(&eval, None, None, 2).expect("stub eval must parse");
-    let mut classes: Vec<String> = eval["per_entity"]
-        .as_object()
-        .unwrap()
-        .keys()
-        .cloned()
+    // A real fish candidate must cover the canonical vocabulary EXACTLY -
+    // `registry::compare` now enforces that, and a 2-class stub would be
+    // rejected for the right reason while testing the wrong thing. The stub's
+    // per-class metrics are filled in for every class so the coverage check
+    // passes and the promotion logic is what is actually exercised.
+    let classes: Vec<String> = gpo_autofish_lib::core::class_vocab::fish_vocab()
+        .iter()
+        .map(|c| c.to_string())
         .collect();
-    classes.sort();
-    let vocab_sha = gpo_autofish_lib::core::ml_model::sha256_hex(classes.join("\n").as_bytes());
+    let mut per: std::collections::HashMap<String, f32> = std::collections::HashMap::new();
+    for c in &classes {
+        per.insert(c.clone(), 0.85);
+    }
+    metrics.per_class_f1 = per;
+    let vocab_sha = gpo_autofish_lib::core::class_vocab::fish_vocab_sha();
 registry::CandidateInputs {
         onnx_path: out.join("model.onnx"),
         classes,
@@ -199,8 +206,8 @@ fn e2e_good_candidate_promotes_and_rolls_back() {
     .unwrap();
     assert_eq!(rec.status, Lifecycle::Evaluated);
     let (cur, cur_classes) = current_metrics(0.50, 0.45);
-    let qualified = vec!["fish:shark".to_string(), "fish:golden".to_string()];
-    let cmp = registry::compare(&cur, &rec.metrics, &cur_classes, &rec.classes, &qualified);
+    let qualified = gpo_autofish_lib::core::class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect::<Vec<_>>();
+    let cmp = registry::compare("fish", &cur, &rec.metrics, &cur_classes, &rec.classes, &qualified);
     assert_eq!(cmp.verdict, ComparisonVerdict::Pass, "{:?}", cmp.reasons);
     // Promote: live bytes become the candidate; archive created.
     let manifest =
@@ -235,8 +242,8 @@ fn e2e_bad_candidate_rejects_and_live_model_untouched() {
     .unwrap();
     // Current model is BETTER: comparison must Reject.
     let (cur, cur_classes) = current_metrics(0.95, 0.93);
-    let qualified = vec!["fish:shark".to_string(), "fish:golden".to_string()];
-    let cmp = registry::compare(&cur, &rec.metrics, &cur_classes, &rec.classes, &qualified);
+    let qualified = gpo_autofish_lib::core::class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect::<Vec<_>>();
+    let cmp = registry::compare("fish", &cur, &rec.metrics, &cur_classes, &rec.classes, &qualified);
     assert_eq!(cmp.verdict, ComparisonVerdict::Reject, "{:?}", cmp.reasons);
     // Promotion refuses on a non-Pass verdict; live bytes provably untouched.
     let err = registry::promote_to_shadow(&dir, &models, &rec.candidate_id, &cmp).unwrap_err();

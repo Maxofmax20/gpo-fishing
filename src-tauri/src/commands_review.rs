@@ -1186,10 +1186,19 @@ fn readiness_status_inner(
             .iter()
             .find(|q| q.sessions < crate::core::ml_capability::ENTITY_MIN_SESSIONS)
             .map(|q| (q.entity.clone(), q.sessions, crate::core::ml_capability::ENTITY_MIN_SESSIONS));
+        // REQUIRED CLASS COUNT IS NOW DERIVED, NEVER DECLARED.
+        //
+        // Was `FISH_MIN_ENTITIES = 10` - a scalar that contradicted the
+        // 8-logit fish model and could be satisfied by any 10 KB fish entities,
+        // including ones the model would never learn. It is now
+        // `len(FISH_VOCAB)`, the same list the trainer builds its output head
+        // from. The authoritative check is the SET comparison in
+        // `assess_capabilities` (`fish_entity`), which `g.ready` reflects; this
+        // count exists for display only.
         let (required, test_required, gate_id) = if family == "fish" {
             (
-                crate::core::ml_capability::FISH_MIN_ENTITIES,
-                crate::core::ml_capability::ENTITY_MIN_TEST_COVERED,
+                crate::core::class_vocab::fish_vocab_len(),
+                crate::core::class_vocab::fish_vocab_len(),
                 "fish_entity",
             )
         } else {
