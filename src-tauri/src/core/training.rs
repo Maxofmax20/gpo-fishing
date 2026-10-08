@@ -91,6 +91,21 @@ pub struct SnapshotMeta {
     /// caller can show how much of the frozen set is human-verified.
     #[serde(default = "default_rows_unreviewed")]
     pub rows_unreviewed: usize,
+    /// Kept rows whose frozen `entity_id` was REWRITTEN from the collector's
+    /// OCR+KB guess to the human review verdict (`human_entity_id`).
+    ///
+    /// Without this projection the frozen labels carried the collector's
+    /// guess: measured over the 1,804 kept rows of the 15-species review
+    /// universe, 1,803 were labelled with a legacy bare stem and only 63
+    /// (3.5%) matched the human decision. `reviewed_dataset.py` documents
+    /// the correct rule; the in-app snapshot now applies it too.
+    #[serde(default)]
+    pub rows_relabelled_by_review: usize,
+    /// Kept rows that retain the collector's `entity_id`: unreviewed rows
+    /// (no verdict exists to project) plus reviewed rows whose verdict
+    /// already equals the collector label (nothing to relabel).
+    #[serde(default)]
+    pub rows_kept_collector_label: usize,
     /// Why each excluded row was excluded, counted by reason.
     ///
     /// A bare count cannot be acted on: a reviewer cannot tell a human rejection
@@ -149,6 +164,11 @@ struct ReviewEligibilityLine {
     status: Option<String>,
     #[serde(default)]
     excluded_reason: Option<String>,
+    /// The human verdict's canonical entity. Projected onto the frozen
+    /// labels of eligible rows (see [`review_human_entity_map`]); read-only,
+    /// never written back to the review store.
+    #[serde(default)]
+    human_entity_id: Option<String>,
 }
 
 /// Parse `reviews.jsonl` bytes into per-image eligibility lines, ALSO
@@ -186,6 +206,22 @@ fn review_eligibility_map(records: &[ReviewEligibilityLine]) -> HashMap<&str, bo
             .or_insert(r.training_eligible);
     }
     map
+}
+
+/// `image_id -> human-verified entity id`, for reviews that are BOTH eligible
+/// and name a non-empty entity. This is the projection the frozen snapshot
+/// applies: the trainer learns the human verdict, not the collector's guess.
+fn review_human_entity_map(records: &[ReviewEligibilityLine]) -> HashMap<&str, &str> {
+    records
+        .iter()
+        .filter(|r| r.training_eligible)
+        .filter_map(|r| {
+            r.human_entity_id
+                .as_deref()
+                .filter(|h| !h.trim().is_empty())
+                .map(|h| (r.image_id.as_str(), h))
+        })
+        .collect()
 }
 
 /// Freeze the current label set for one job, AFTER applying human review.
@@ -276,10 +312,14 @@ pub fn snapshot_dataset(
         })
         .collect();
 
+    let human_entities = review_human_entity_map(&review_records);
+
     // Filter BEFORE any write, so a rejected snapshot leaves nothing behind.
     let mut kept: Vec<MlAnnotation> = Vec::with_capacity(rows.len());
     let mut rows_excluded_by_review = 0usize;
     let mut rows_unreviewed = 0usize;
+    let mut rows_relabelled_by_review = 0usize;
+    let mut rows_kept_collector_label = 0usize;
     // WHY each row is absent, counted. A bare "excluded: 3" tells a reviewer
     // nothing; they cannot tell a human rejection from a data defect, and so
     // cannot act on it. Recorded per reason so the snapshot is auditable on its
@@ -289,9 +329,24 @@ pub fn snapshot_dataset(
         match eligibility.get(r.image_id.as_str()) {
             None => {
                 rows_unreviewed += 1;
+                rows_kept_collector_label += 1;
                 kept.push(r.clone());
             }
-            Some(true) => kept.push(r.clone()),
+            Some(true) => match human_entities.get(r.image_id.as_str()) {
+                // The frozen label is the HUMAN VERDICT, not the collector's
+                // OCR+KB guess. Only the frozen copy changes; the live
+                // labels.jsonl is the immutable collection record.
+                Some(&human) if r.entity_id.as_deref() != Some(human) => {
+                    let mut relabelled = r.clone();
+                    relabelled.entity_id = Some(human.to_string());
+                    rows_relabelled_by_review += 1;
+                    kept.push(relabelled);
+                }
+                _ => {
+                    rows_kept_collector_label += 1;
+                    kept.push(r.clone());
+                }
+            },
             Some(false) => {
                 rows_excluded_by_review += 1;
                 *exclusions
@@ -356,6 +411,8 @@ pub fn snapshot_dataset(
         entity_registry_version: super::knowledge::KNOWLEDGE_VERSION,
         rows_excluded_by_review,
         rows_unreviewed,
+        rows_relabelled_by_review,
+        rows_kept_collector_label,
         exclusions,
         labels_sha,
     })
@@ -1328,6 +1385,119 @@ mod tests {
         (dir, rows)
     }
 
+    /// THE point of the projection: a collector's stem guess is replaced by
+    /// the human-confirmed species in the frozen copy only.
+    #[test]
+    fn the_frozen_snapshot_carries_the_human_verdict_not_the_collector_guess() {
+        let dir = std::env::temp_dir().join("gpo-train-relabel-species");
+        let _ = std::fs::remove_dir_all(&dir);
+        let v1 = dir.join("datasets").join("gpo-vision").join("v1");
+        std::fs::create_dir_all(&v1).unwrap();
+        let mut r = frow("img-1", "sess-a", 1, GameStateLabel::CatchResult);
+        r.entity_id = Some("fish:snapper".to_string()); // collector's stem guess
+        let rows = vec![r];
+        let body: String = rows.iter().map(|r| serde_json::to_string(r).unwrap() + "\n").collect();
+        std::fs::write(v1.join("labels.jsonl"), &body).unwrap();
+        std::fs::write(v1.join("manifest.json"), r#"{"version":1,"split_overrides":{}}"#).unwrap();
+        write_reviews(
+            &dir.join("reviews.jsonl"),
+            &[serde_json::json!({
+                "review_id": "rev-img-1", "image_id": "img-1", "session_id": "sess-a",
+                "review_status": "REVIEWED_CORRECTED",
+                "human_entity_id": "fish:crimsonsnapper",
+                "training_eligible": true, "dataset_version": 1,
+            })],
+        );
+
+        let meta = snapshot_dataset(&dir, &dir.join("snap"), &rows, 1).unwrap();
+        let frozen = std::fs::read_to_string(dir.join("snap").join("labels.jsonl")).unwrap();
+        let written: MlAnnotation = serde_json::from_str(frozen.trim()).unwrap();
+        assert_eq!(written.entity_id.as_deref(), Some("fish:crimsonsnapper"));
+        assert_eq!(meta.rows_relabelled_by_review, 1);
+        assert_eq!(meta.rows_kept_collector_label, 0);
+        // The live labels file is the immutable collection record: unchanged.
+        assert_eq!(std::fs::read_to_string(v1.join("labels.jsonl")).unwrap(), body);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A review verdict equal to the collector's label relabels NOTHING.
+    #[test]
+    fn a_matching_verdict_relabels_nothing() {
+        let dir = std::env::temp_dir().join("gpo-train-relabel-same");
+        let _ = std::fs::remove_dir_all(&dir);
+        let v1 = dir.join("datasets").join("gpo-vision").join("v1");
+        std::fs::create_dir_all(&v1).unwrap();
+        let mut r = frow("img-1", "sess-a", 1, GameStateLabel::CatchResult);
+        r.entity_id = Some("fish:swordfish".to_string());
+        let rows = vec![r];
+        std::fs::write(v1.join("labels.jsonl"), rows.iter().map(|r| serde_json::to_string(r).unwrap() + "\n").collect::<String>()).unwrap();
+        std::fs::write(v1.join("manifest.json"), r#"{"version":1,"split_overrides":{}}"#).unwrap();
+        write_reviews(
+            &dir.join("reviews.jsonl"),
+            &[serde_json::json!({
+                "review_id": "rev-img-1", "image_id": "img-1", "session_id": "sess-a",
+                "review_status": "REVIEWED_CORRECT",
+                "human_entity_id": "fish:swordfish",
+                "training_eligible": true, "dataset_version": 1,
+            })],
+        );
+        let meta = snapshot_dataset(&dir, &dir.join("snap"), &rows, 1).unwrap();
+        assert_eq!(meta.rows_relabelled_by_review, 0);
+        assert_eq!(meta.rows_kept_collector_label, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// labels_sha and the fingerprint must move when relabelling moves the
+    /// bytes, because both describe the rows AS WRITTEN.
+    #[test]
+    fn relabelling_moves_labels_sha_and_fingerprint() {
+        let make = |tag: &str, human: &str| {
+            let dir = std::env::temp_dir().join(format!("gpo-train-relabel-fp-{tag}"));
+            let _ = std::fs::remove_dir_all(&dir);
+            let v1 = dir.join("datasets").join("gpo-vision").join("v1");
+            std::fs::create_dir_all(&v1).unwrap();
+            let mut r = frow("img-1", "sess-a", 1, GameStateLabel::CatchResult);
+            r.entity_id = Some("fish:snapper".to_string());
+            let rows = vec![r];
+            std::fs::write(v1.join("labels.jsonl"), rows.iter().map(|r| serde_json::to_string(r).unwrap() + "\n").collect::<String>()).unwrap();
+            std::fs::write(v1.join("manifest.json"), r#"{"version":1,"split_overrides":{}}"#).unwrap();
+            write_reviews(
+                &dir.join("reviews.jsonl"),
+                &[serde_json::json!({
+                    "review_id": "rev-img-1", "image_id": "img-1", "session_id": "sess-a",
+                    "review_status": "REVIEWED_CORRECTED",
+                    "human_entity_id": human,
+                    "training_eligible": true, "dataset_version": 1,
+                })],
+            );
+            let meta = snapshot_dataset(&dir, &dir.join("snap"), &rows, 1).unwrap();
+            let bytes = std::fs::read(dir.join("snap").join("labels.jsonl")).unwrap();
+            (dir, meta, bytes)
+        };
+        let (dir_a, a, bytes_a) = make("a", "fish:crimsonsnapper");
+        let (dir_b, b, bytes_b) = make("b", "fish:candycornsquid");
+        assert_ne!(bytes_a, bytes_b, "different verdicts write different bytes");
+        assert_ne!(a.labels_sha, b.labels_sha, "labels_sha hashes the written bytes");
+        assert_ne!(a.fingerprint, b.fingerprint, "fingerprint covers the written entity");
+        let _ = std::fs::remove_dir_all(&dir_a);
+        let _ = std::fs::remove_dir_all(&dir_b);
+    }
+
+    /// A job file written before the relabelling fields existed still parses.
+    #[test]
+    fn an_old_snapshot_meta_without_relabelling_fields_still_parses() {
+        let old = serde_json::json!({
+            "fingerprint": "fp-x", "rows": 1, "sessions": 1, "test_sessions": [],
+            "created_at": 1, "snap_dir": "x",
+            "review_fingerprint": "none", "entity_registry_version": 1,
+            "rows_excluded_by_review": 0, "rows_unreviewed": 0,
+            "exclusions": {}, "labels_sha": "none"
+        });
+        let meta: SnapshotMeta = serde_json::from_value(old).expect("old job file must parse");
+        assert_eq!(meta.rows_relabelled_by_review, 0);
+        assert_eq!(meta.rows_kept_collector_label, 0);
+    }
+
     #[test]
     fn fingerprint_is_stable_and_sensitive() {
         let a = vec![row("s1", 1, GameStateLabel::Bite, None), row("s1", 2, GameStateLabel::WaitingForBite, None)];
@@ -1388,11 +1558,21 @@ mod tests {
         assert_eq!(ids, vec!["flt-a", "flt-b", "flt-d"], "input order preserved");
         assert!(!ids.contains(&"flt-c"), "skipped row must not reach the trainer");
 
-        // Every other field survives the serde_json round-trip untouched.
+        // Eligible-reviewed rows carry the HUMAN verdict as entity_id
+        // (flt-a/flt-b: None -> fish:golden); every other field survives the
+        // serde_json round-trip untouched. The unreviewed row (flt-d) is
+        // byte-identical to its source.
         for got in &parsed {
             let src = rows.iter().find(|r| r.image_id == got.image_id).unwrap();
-            assert_eq!(serde_json::to_value(src).unwrap(), serde_json::to_value(got).unwrap());
+            let mut expected = serde_json::to_value(src).unwrap();
+            if got.image_id == "flt-a" || got.image_id == "flt-b" {
+                expected["entity_id"] = serde_json::json!("fish:golden");
+            }
+            assert_eq!(expected, serde_json::to_value(got).unwrap(), "row {}", got.image_id);
         }
+        assert_eq!(parsed[2].entity_id.as_deref(), None, "unreviewed rows keep the collector label");
+        assert_eq!(meta.rows_relabelled_by_review, 2);
+        assert_eq!(meta.rows_kept_collector_label, 1);
         assert_eq!(parsed[2].game_state, Some(GameStateLabel::CatchResult));
 
         // Manifest still copied unchanged; the frozen review state remains.
@@ -1403,8 +1583,19 @@ mod tests {
         assert!(snap_dir.join("reviews.jsonl").exists(), "reviews.jsonl copy must survive filtering");
         assert_ne!(meta.review_fingerprint, "none", "reviews exist so fingerprint must be set");
 
-        // Fingerprint + session counts describe what trains, not the input.
-        let kept: Vec<MlAnnotation> = rows.iter().filter(|r| r.image_id != "flt-c").cloned().collect();
+        // Fingerprint + session counts describe what trains AS WRITTEN - i.e.
+        // the relabelled rows, not the collector's original labels.
+        let kept: Vec<MlAnnotation> = rows
+            .iter()
+            .filter(|r| r.image_id != "flt-c")
+            .map(|r| {
+                let mut k = r.clone();
+                if k.image_id == "flt-a" || k.image_id == "flt-b" {
+                    k.entity_id = Some("fish:golden".to_string());
+                }
+                k
+            })
+            .collect();
         assert_eq!(meta.fingerprint, dataset_fingerprint(&kept, 1));
         assert_ne!(meta.fingerprint, dataset_fingerprint(&rows, 1), "excluded row must not be in the fingerprint");
         let _ = std::fs::remove_dir_all(&dir);
@@ -1466,6 +1657,7 @@ mod tests {
             created_at: 1, snap_dir: dir.clone(),
             review_fingerprint: "none".into(), entity_registry_version: 1,
             rows_excluded_by_review: 0, rows_unreviewed: 0,
+            rows_relabelled_by_review: 0, rows_kept_collector_label: 0,
             exclusions: BTreeMap::new(), labels_sha: "none".into(),
         };
         let mut j = create_job(&dir, "fish", "manual", &snap, 1, "gpo_train.fish_train", 40, 7, "test", false).unwrap();
@@ -1488,6 +1680,7 @@ mod tests {
             created_at: 1, snap_dir: dir.clone(),
             review_fingerprint: "none".into(), entity_registry_version: 1,
             rows_excluded_by_review: 0, rows_unreviewed: 0,
+            rows_relabelled_by_review: 0, rows_kept_collector_label: 0,
             exclusions: BTreeMap::new(), labels_sha: "none".into(),
         };
         assert!(create_job(&dir, "dragons", "manual", &snap, 1, "m", 1, 1, "t", false).is_err());

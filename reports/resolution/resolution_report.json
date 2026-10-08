@@ -1,0 +1,86 @@
+{
+ "buckets_after": {
+  "ambiguous": {
+   "count": 14,
+   "share": 0.007506702412868633
+  },
+  "correct_species": {
+   "count": 641,
+   "share": 0.34369973190348524
+  },
+  "different_species": {
+   "count": 223,
+   "share": 0.1195710455764075
+  },
+  "legacy_stem": {
+   "count": 755,
+   "share": 0.40482573726541554
+  },
+  "unknown": {
+   "count": 232,
+   "share": 0.12439678284182305
+  }
+ },
+ "buckets_before": {
+  "ambiguous": {
+   "count": 0,
+   "share": 0.0
+  },
+  "correct_species": {
+   "count": 140,
+   "share": 0.07506702412868632
+  },
+  "different_species": {
+   "count": 214,
+   "share": 0.11474530831099196
+  },
+  "legacy_stem": {
+   "count": 1277,
+   "share": 0.6847184986595174
+  },
+  "unknown": {
+   "count": 234,
+   "share": 0.12546916890080428
+  }
+ },
+ "human_differs_from_collector": {
+  "count": 1801,
+  "meaning": "rows the in-app snapshot now relabels with the human verdict",
+  "of": 1865
+ },
+ "inputs": {
+  "kb_export": "D:\\AI Projects\\04_Apps_and_Code\\apps\\desktop\\gpo-fishing-macro\\ml\\gpo_ocr_audit\\kb_export.json",
+  "kb_export_sha256": "c424f8e5238bdd600f1fb53bab27b256c6c0ae24f65a3d23dcc2bf12d3fe79b6",
+  "labels": "C:\\Users\\xsmsm\\AppData\\Roaming\\gpo-autofish\\datasets\\gpo-vision\\v1\\labels.jsonl",
+  "labels_sha256": "a6fac80bd41202fae0352a1c1c6e03265233c4ba26e9dc8ccb69e6cbdbfb82de",
+  "overlay_entities": 15,
+  "reviews": "C:\\Users\\xsmsm\\AppData\\Roaming\\gpo-autofish\\reviews.jsonl",
+  "reviews_sha256": "df4c482f84e89dbdbe724666d1aeca772eed9be070ab902a57eff872994d76f8"
+ },
+ "kind": "resolution-report",
+ "perfect_model_agreement_ceiling": {
+  "after": {
+   "count": 641,
+   "of": 1852,
+   "rate": 0.3461123110151188
+  },
+  "before": {
+   "count": 140,
+   "of": 1852,
+   "rate": 0.0755939524838013
+  },
+  "definition": "share of rows whose human entity is in the 15-class v2 vocabulary where the runtime-resolved id equals the human id - i.e. the only rows a perfect 15-class model could agree with the runtime on",
+  "floor_reachable_after": false,
+  "floor_reachable_before": false,
+  "shadow_agreement_floor": 0.8
+ },
+ "resolution_path_after": {
+  "ambiguous": 14,
+  "no-candidate": 232,
+  "phrase": 510,
+  "word-stage": 1109
+ },
+ "reviewed_rows_with_human_entity": 1865,
+ "v2_class_count": 15,
+ "version": 1
+}

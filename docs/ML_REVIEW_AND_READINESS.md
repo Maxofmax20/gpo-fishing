@@ -111,7 +111,11 @@ instead of being silently deleted by the next save.
 
 - a row with **no** review record is kept (unreviewed data keeps exactly the
   meaning it had before) but counted in `rows_unreviewed`;
-- a row with `training_eligible: true` is kept;
+- a row with `training_eligible: true` is kept **with the human verdict
+  (`human_entity_id`) as its label** — the frozen row carries what the human
+  decided, not the collector's OCR+KB guess, and the count is recorded in
+  `rows_relabelled_by_review`. The live `labels.jsonl` is never rewritten;
+  only the frozen snapshot copy differs;
 - a row with `training_eligible: false` is **dropped** — physically absent from
   the file the trainer reads.
 
@@ -167,7 +171,8 @@ is answerable months later, without the snapshot directory still existing:
 - `exclusions` — **reason → count**, taken from the review record's own
   `excluded_reason`/`status`. A bare "excluded: 3" cannot be acted on; a
   reviewer cannot tell a human rejection from a data defect.
-- `rows`, `rows_unreviewed`, `rows_excluded_by_review`, `sessions`,
+- `rows`, `rows_unreviewed`, `rows_excluded_by_review`,
+  `rows_relabelled_by_review`, `rows_kept_collector_label`, `sessions`,
   `test_sessions`
 
 Identical inputs produce byte-identical metadata — that is why `exclusions` is a

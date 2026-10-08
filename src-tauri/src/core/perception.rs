@@ -197,6 +197,296 @@ fn score_word(word: &str, entity: &GpoEntity, fuzzy_threshold: f64) -> Option<(f
     }
 }
 
+// ===========================================================================
+// Phrase-first, longest-span resolution
+//
+// The per-word stage above scores each WORD independently, so `Crimson
+// Snapper` scored `fish:crimson` 1.000 and `fish:snapper` 1.000 while the real
+// entity (`fish:crimsonsnapper`) reached 0.973 as a fuzzy match and ranked
+// third. Measured over the 1,865 human-reviewed rows, that put the runtime on
+// a legacy bare stem 68.7% of the time and made the shadow agreement gate
+// structurally unreachable (a perfect model scored ~8.7% against an 80%
+// floor).
+//
+// The stage below ports the algorithm `ml/gpo_ocr_audit/ontology_matcher.py`
+// already specifies: strip UI templates, then claim the LONGEST contiguous
+// token span present in the text, so a species name consumes its tokens and a
+// stem inside it cannot compete. It runs BEFORE the per-word stage; the
+// per-word stage survives unchanged as the fallback for single-word entities
+// and garbled OCR.
+// ===========================================================================
+
+/// Evidence kind for a whole-name (multi-word) resolution.
+pub const EVIDENCE_EXACT_PHRASE: &str = "exact_phrase";
+/// Evidence kind marking a candidate that is ONE OF SEVERAL competitors for
+/// the same name. `correlate_text` refuses to confirm any of them.
+pub const EVIDENCE_AMBIGUOUS_PHRASE: &str = "ambiguous_phrase";
+/// Evidence kind recording that a UI banner template was stripped before
+/// lookup. Removal is evidence, never a silent edit.
+pub const EVIDENCE_UI_TEMPLATE: &str = "ui_template";
+
+/// UI-term templates as (normalized template text, owning entity id),
+/// ordered longest-template-first with a total deterministic tie-break.
+fn ui_templates(kb: &KnowledgeBase) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for e in kb.entities() {
+        if e.category != EntityCategory::UiTerm {
+            continue;
+        }
+        for name in std::iter::once(&e.canonical_name)
+            .chain(e.aliases.iter())
+            .chain(e.ocr_aliases.iter())
+        {
+            let n = fruit::normalize(name);
+            if !n.is_empty() {
+                out.push((n, e.id.clone()));
+            }
+        }
+    }
+    out.sort_by(|a, b| {
+        b.0.len()
+            .cmp(&a.0.len())
+            .then_with(|| a.0.cmp(&b.0))
+            .then_with(|| a.1.cmp(&b.1))
+    });
+    out.dedup();
+    out
+}
+
+/// Strip banner templates from NORMALIZED text, longest template first,
+/// mirroring `Ontology::strip_ui_templates`. One replacement per template;
+/// token boundaries are required so `spawn` is never carved out of `spawned`.
+/// Returns (residual, [(template, entity id)]) — the removal is reported, not
+/// dropped silently.
+fn strip_ui_templates(kb: &KnowledgeBase, norm_text: &str) -> (String, Vec<(String, String)>) {
+    let mut residual = norm_text.to_string();
+    let mut found: Vec<(String, String)> = Vec::new();
+    for (tmpl, id) in ui_templates(kb) {
+        let Some(idx) = residual.find(&tmpl) else { continue };
+        let end = idx + tmpl.len();
+        let left_ok = idx == 0 || residual.as_bytes()[idx - 1] == b' ';
+        let right_ok = end == residual.len() || residual.as_bytes()[end] == b' ';
+        if !(left_ok && right_ok) {
+            continue;
+        }
+        residual.replace_range(idx..end, " ");
+        found.push((tmpl, id));
+    }
+    (residual.split_whitespace().collect::<Vec<_>>().join(" "), found)
+}
+
+/// Every claimable name in the KB: normalized name -> owning entity ids
+/// (sorted, deduped; >1 id = same-name tie, which is ambiguity, never a win).
+/// UI terms are excluded: they are banner furniture, stripped by
+/// [`strip_ui_templates`], never entities a name resolves to.
+/// Ordered longest-name-first (chars), then name, for a greedy scan.
+fn phrase_name_index(kb: &KnowledgeBase) -> Vec<(String, Vec<String>)> {
+    let mut map: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    for e in kb.entities() {
+        if e.category == EntityCategory::UiTerm {
+            continue;
+        }
+        for name in std::iter::once(&e.canonical_name)
+            .chain(e.aliases.iter())
+            .chain(e.ocr_aliases.iter())
+        {
+            let n = fruit::normalize(name);
+            if n.is_empty() {
+                continue;
+            }
+            let ids = map.entry(n).or_default();
+            if !ids.contains(&e.id) {
+                ids.push(e.id.clone());
+            }
+        }
+    }
+    let mut out: Vec<(String, Vec<String>)> = map.into_iter().collect();
+    out.sort_by(|a, b| b.0.len().cmp(&a.0.len()).then_with(|| a.0.cmp(&b.0)));
+    out
+}
+
+/// One claimed token span.
+#[derive(Debug, Clone)]
+struct SpanMatch {
+    start: usize,
+    words: usize,
+    entity_ids: Vec<String>,
+}
+
+/// Greedy longest-span scan over the residual's tokens, mirroring
+/// `Ontology.scan_tokens` at token granularity: names are tried
+/// longest-first and a claimed span consumes its tokens, so `crimson snapper`
+/// claims both words for `fish:crimsonsnapper` and `fish:crimson` /
+/// `fish:snapper` cannot compete for them.
+fn longest_span_matches(kb: &KnowledgeBase, residual: &str) -> Vec<SpanMatch> {
+    let tokens: Vec<&str> = residual.split_whitespace().collect();
+    let mut taken = vec![false; tokens.len()];
+    let mut spans: Vec<SpanMatch> = Vec::new();
+    for (name, ids) in phrase_name_index(kb) {
+        let words: Vec<&str> = name.split_whitespace().collect();
+        let w = words.len();
+        if w == 0 || w > tokens.len() {
+            continue;
+        }
+        for start in 0..=(tokens.len() - w) {
+            if (start..start + w).any(|i| taken[i]) {
+                continue;
+            }
+            if tokens[start..start + w] == words[..] {
+                for t in taken.iter_mut().take(start + w).skip(start) {
+                    *t = true;
+                }
+                spans.push(SpanMatch { start, words: w, entity_ids: ids.clone() });
+            }
+        }
+    }
+    spans.sort_by_key(|s| s.start);
+    spans
+}
+
+/// What the phrase stage concluded.
+enum PhraseOutcome {
+    /// No span at all, or only single-word spans: defer to the per-word stage.
+    NoMatch,
+    /// Exactly one entity, named by a multi-word span.
+    Resolved { entity_id: String },
+    /// Two or more DISTINCT entity identities claimed (a same-span tie, or a
+    /// residual region independently matching another canonical entity).
+    /// Fail closed.
+    Ambiguous { competitor_ids: Vec<String> },
+}
+
+/// Two ids are the SAME in-game identity when one's canonical name appears
+/// among the other's names (canonical + aliases + ocr_aliases). The KB models
+/// `Tori` and `Phoenix` as two entities linked exactly this way (a canonical
+/// entity plus its reverse-alias entry); treating them as competitors would be
+/// the phantom-ambiguity bug, not a fix.
+fn alias_linked(a: &GpoEntity, b: &GpoEntity) -> bool {
+    let a_names: std::collections::HashSet<String> = std::iter::once(&a.canonical_name)
+        .chain(a.aliases.iter())
+        .chain(a.ocr_aliases.iter())
+        .map(|n| fruit::normalize(n))
+        .collect();
+    let b_names: std::collections::HashSet<String> = std::iter::once(&b.canonical_name)
+        .chain(b.aliases.iter())
+        .chain(b.ocr_aliases.iter())
+        .map(|n| fruit::normalize(n))
+        .collect();
+    a_names.contains(&fruit::normalize(&b.canonical_name))
+        || b_names.contains(&fruit::normalize(&a.canonical_name))
+}
+
+/// Group entity ids into alias-linked identities, each listed with its
+/// KB-first entity first (the same winner the per-word stage's stable ordering
+/// would pick). >1 group = genuine ambiguity between unrelated identities.
+fn alias_components(kb: &KnowledgeBase, ids: &[String]) -> Vec<Vec<String>> {
+    let mut components: Vec<Vec<String>> = Vec::new();
+    for id in ids {
+        let Some(entity) = kb.entities().iter().find(|e| &e.id == id) else { continue };
+        let mut placed = false;
+        for comp in components.iter_mut() {
+            let linked = comp.iter().any(|other| {
+                kb.entities()
+                    .iter()
+                    .find(|e| &e.id == other)
+                    .is_some_and(|o| alias_linked(entity, o))
+            });
+            if linked {
+                comp.push(id.clone());
+                placed = true;
+                break;
+            }
+        }
+        if !placed {
+            components.push(vec![id.clone()]);
+        }
+    }
+    // KB-first entity first within each component, for a deterministic winner.
+    for comp in components.iter_mut() {
+        comp.sort_by_key(|id| kb.entities().iter().position(|e| &e.id == id).unwrap_or(usize::MAX));
+    }
+    components.sort_by_key(|comp| kb.entities().iter().position(|e| e.id == comp[0]).unwrap_or(usize::MAX));
+    components
+}
+
+fn phrase_outcome(kb: &KnowledgeBase, spans: &[SpanMatch]) -> PhraseOutcome {
+    if spans.is_empty() {
+        return PhraseOutcome::NoMatch;
+    }
+    let mut ids: Vec<String> = spans
+        .iter()
+        .flat_map(|s| s.entity_ids.iter().cloned())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    let components = alias_components(kb, &ids);
+    if components.len() > 1 {
+        return PhraseOutcome::Ambiguous {
+            competitor_ids: components.into_iter().map(|c| c[0].clone()).collect(),
+        };
+    }
+    // Exactly one identity: it resolves as a PHRASE only when a multi-word
+    // span named it. A single-word hit is left to the per-word stage, which
+    // owns the exact/alias/fuzzy evidence kinds for single-word names.
+    if spans.iter().any(|s| s.words >= 2) {
+        PhraseOutcome::Resolved { entity_id: components[0][0].clone() }
+    } else {
+        PhraseOutcome::NoMatch
+    }
+}
+
+/// Build one candidate with the shared evidence tail (knowledge existence,
+/// context compatibility, stripped-template record). `primary` is the
+/// stage-specific first evidence entry.
+fn entity_match_for(
+    entity: &GpoEntity,
+    screen: ScreenKind,
+    base: f32,
+    primary: Evidence,
+    templates: &[(String, String)],
+) -> EntityMatch {
+    let mut score = base;
+    let mut evidence = vec![primary];
+    for (tmpl, id) in templates {
+        evidence.push(Evidence {
+            kind: EVIDENCE_UI_TEMPLATE.to_string(),
+            detail: format!("banner template '{tmpl}' ({id}) stripped before lookup"),
+            weight: 0.0,
+        });
+    }
+    evidence.push(Evidence {
+        kind: "knowledge_match".to_string(),
+        detail: format!(
+            "'{}' exists in knowledge base ({})",
+            entity.canonical_name, entity.provenance.source
+        ),
+        weight: 0.05,
+    });
+    score += 0.05;
+    if screen.plausible(entity.category) {
+        evidence.push(Evidence {
+            kind: "context_compatible".to_string(),
+            detail: format!("{:?} is plausible on {:?}", entity.category, screen),
+            weight: 0.03,
+        });
+        score += 0.03;
+    } else {
+        evidence.push(Evidence {
+            kind: "context_mismatch".to_string(),
+            detail: format!("{:?} is unusual on {:?}", entity.category, screen),
+            weight: -0.25,
+        });
+        score -= 0.25;
+    }
+    EntityMatch {
+        entity_id: entity.id.clone(),
+        canonical_name: entity.canonical_name.clone(),
+        category: entity.category.as_str().to_string(),
+        confidence: round2(score.clamp(0.0, 1.0)),
+        evidence,
+    }
+}
+
 /// Match OCR text against the knowledge base. Returns candidates sorted by
 /// descending confidence (best first), each with explainable evidence.
 pub fn match_entities(
@@ -206,11 +496,79 @@ pub fn match_entities(
     fuzzy_threshold: f64,
 ) -> Vec<EntityMatch> {
     let norm = fruit::normalize(text);
-    let words: Vec<&str> = norm.split_whitespace().filter(|w| w.len() >= 3).collect();
+    if norm.is_empty() {
+        return Vec::new();
+    }
+    // Stage 0: banner templates out first (recorded as evidence downstream).
+    let (residual, templates) = strip_ui_templates(kb, &norm);
+    // Stage 1: whole-name, longest-span resolution. When the whole text IS a
+    // template (empty residual), the phrase stage has nothing to claim and the
+    // per-word stage sees the ORIGINAL text, preserving the long-standing
+    // behaviour that a bare banner name resolves to its ui_term entity.
+    if !residual.is_empty() {
+        let spans = longest_span_matches(kb, &residual);
+        match phrase_outcome(kb, &spans) {
+            PhraseOutcome::Resolved { entity_id } => {
+                let Some(entity) = kb.entities().iter().find(|e| e.id == entity_id) else {
+                    debug_assert!(false, "phrase stage emitted id outside the KB: {entity_id}");
+                    return Vec::new();
+                };
+                return vec![entity_match_for(
+                    entity,
+                    screen,
+                    1.0,
+                    Evidence {
+                        kind: EVIDENCE_EXACT_PHRASE.to_string(),
+                        detail: format!(
+                            "the whole name '{residual}' is one canonical entity, matched as a phrase"
+                        ),
+                        weight: 1.0,
+                    },
+                    &templates,
+                )];
+            }
+            PhraseOutcome::Ambiguous { competitor_ids } => {
+                let mut out: Vec<EntityMatch> = competitor_ids
+                    .iter()
+                    .filter_map(|id| kb.entities().iter().find(|e| &e.id == id))
+                    .map(|entity| {
+                        entity_match_for(
+                            entity,
+                            screen,
+                            1.0,
+                            Evidence {
+                                kind: EVIDENCE_AMBIGUOUS_PHRASE.to_string(),
+                                detail: format!(
+                                    "'{residual}' matches {} distinct entities ({}); no single choice is made",
+                                    competitor_ids.len(),
+                                    competitor_ids.join(", ")
+                                ),
+                                weight: 1.0,
+                            },
+                            &templates,
+                        )
+                    })
+                    .collect();
+                out.sort_by(|a, b| {
+                    b.confidence
+                        .partial_cmp(&a.confidence)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| a.entity_id.cmp(&b.entity_id))
+                });
+                out.truncate(5);
+                return out;
+            }
+            PhraseOutcome::NoMatch => {}
+        }
+    }
+    // Stage 2: the EXISTING per-word stage, unchanged, as the fallback for
+    // single-word entities and garbled OCR.
+    let stage_text = if residual.is_empty() { norm.as_str() } else { residual.as_str() };
+    let words: Vec<&str> = stage_text.split_whitespace().filter(|w| w.len() >= 3).collect();
     if words.is_empty() {
         return Vec::new();
     }
-    let mut out: Vec<EntityMatch> = Vec::new();
+    let mut out: Vec<(f32, EntityMatch)> = Vec::new();
     for entity in kb.entities() {
         let mut best: Option<(f32, Evidence)> = None;
         for w in &words {
@@ -223,6 +581,14 @@ pub fn match_entities(
         }
         let Some((mut score, primary)) = best else { continue };
         let mut evidence = vec![primary];
+        // Stripped banner templates are recorded, never silently dropped.
+        for (tmpl, id) in &templates {
+            evidence.push(Evidence {
+                kind: EVIDENCE_UI_TEMPLATE.to_string(),
+                detail: format!("banner template '{tmpl}' ({id}) stripped before lookup"),
+                weight: 0.0,
+            });
+        }
         // Knowledge existence: the entity is real (not an OCR phantom).
         evidence.push(Evidence {
             kind: "knowledge_match".to_string(),
@@ -246,15 +612,32 @@ pub fn match_entities(
             });
             score -= 0.25;
         }
-        out.push(EntityMatch {
-            entity_id: entity.id.clone(),
-            canonical_name: entity.canonical_name.clone(),
-            category: entity.category.as_str().to_string(),
-            confidence: round2(score.clamp(0.0, 1.0)),
-            evidence,
-        });
+        out.push((
+            score,
+            EntityMatch {
+                entity_id: entity.id.clone(),
+                canonical_name: entity.canonical_name.clone(),
+                category: entity.category.as_str().to_string(),
+                confidence: round2(score.clamp(0.0, 1.0)),
+                evidence,
+            },
+        ));
     }
-    out.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+    // Sort on the UNCLAMPED score. Confidence is displayed at 2dp by design,
+    // but a fuzzy 0.93 and an exact 1.00 both clamp to 1.0, and sorting on the
+    // clamped value let insertion order hand the win to the fuzzy match
+    // (measured: `Anglerfish` resolved to fish:angelfish, not fish:anglerfish).
+    // Equal raw scores keep the KB's own entity order (the stable ordering the
+    // clamped sort produced), so alias-linked identities resolve as before.
+    out.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                let pos = |id: &str| kb.entities().iter().position(|e| e.id == id).unwrap_or(usize::MAX);
+                pos(&a.1.entity_id).cmp(&pos(&b.1.entity_id))
+            })
+    });
+    let mut out: Vec<EntityMatch> = out.into_iter().map(|(_, m)| m).collect();
     out.truncate(5);
     out
 }
@@ -273,6 +656,34 @@ pub fn correlate_text(
     vision_hint: Option<VisionHint>,
 ) -> Observation {
     let mut candidates = match_entities(kb, text, screen, fuzzy_threshold);
+
+    // Phrase-level ambiguity is fail-closed and checked FIRST: neither the
+    // confirm threshold nor vision fusion may pick one of the competitors.
+    // Falling through to a confidence comparison here is precisely what
+    // produced the original stem contamination.
+    let competitors: Vec<String> = candidates
+        .iter()
+        .filter(|c| c.evidence.iter().any(|e| e.kind == EVIDENCE_AMBIGUOUS_PHRASE))
+        .map(|c| c.entity_id.clone())
+        .collect();
+    if !competitors.is_empty() {
+        return Observation {
+            timestamp_ms: now_ms(),
+            source: ObservationSource::Ocr,
+            region: region.to_string(),
+            screen,
+            ocr: Some(TextReading { text: text.to_string(), region: region.to_string() }),
+            vision_hint,
+            confidence: candidates.first().map(|c| c.confidence).unwrap_or(0.0),
+            entity: None,
+            candidates,
+            unknown_reason: Some(format!(
+                "AMBIGUOUS: the name matches {} distinct entities ({}); no single choice is made.",
+                competitors.len(),
+                competitors.join(", ")
+            )),
+        };
+    }
 
     // Vision fusion: a hint naming the same entity (normalized contains)
     // adds bounded weight and is recorded as evidence either way.
@@ -416,9 +827,55 @@ pub fn fuse_observations(ocr: &Observation, ml: Option<&Observation>) -> Observa
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::knowledge::{EntityProvenance, ImportEntity};
 
     fn kb() -> &'static KnowledgeBase {
         KnowledgeBase::bundled()
+    }
+
+    /// The bundled KB PLUS the 15 human-confirmed species, mirroring the
+    /// persisted overlay (`knowledge_custom.json`) the app merges at runtime.
+    /// Building it here keeps the tests hermetic: no AppData, no filesystem.
+    fn kb_with_species() -> KnowledgeBase {
+        let mut kb = KnowledgeBase::bundled().clone();
+        let species = [
+            ("anglerfish", "Anglerfish"),
+            ("bluelipgrouper", "Blue-Lip Grouper"),
+            ("candycornsquid", "Candy Corn Squid"),
+            ("crimsonpolkapuffer", "Crimson Polka Puffer"),
+            ("crimsonsnapper", "Crimson Snapper"),
+            ("darkskeletalshark", "Dark Skeletal Shark"),
+            ("exotictigerfin", "Exotic Tigerfin"),
+            ("fangfish", "Fangfish"),
+            ("goldenpolkapuffer", "Golden Polka Puffer"),
+            ("goldenribbonangelfish", "Golden Ribbon Angelfish"),
+            ("goldentigerfin", "Golden Tigerfin"),
+            ("jackobite", "Jack-O'-Bite"),
+            ("skeletalshark", "Skeletal Shark"),
+            ("tigerfin", "Tigerfin"),
+            ("zebraribbonangelfish", "Zebra Ribbon Angelfish"),
+        ];
+        let imports: Vec<ImportEntity> = species
+            .iter()
+            .map(|(id, name)| ImportEntity {
+                id: format!("fish:{id}"),
+                canonical_name: name.to_string(),
+                aliases: vec![],
+                category: "fish".to_string(),
+                rarity: None,
+                description: None,
+                ocr_aliases: vec![],
+                visual_refs: vec![],
+                provenance: EntityProvenance {
+                    source: "test:confirmed-species".to_string(),
+                    url: Some("https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary".to_string()),
+                    updated: None,
+                },
+            })
+            .collect();
+        let report = kb.merge_import(&imports, false);
+        assert_eq!(report.added, 15, "test KB must carry all 15 species");
+        kb
     }
 
     #[test]
@@ -586,5 +1043,167 @@ mod tests {
         let o = correlate_text(kb(), "   ", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
         assert!(o.entity.is_none());
         assert_eq!(o.confidence, 0.0);
+    }
+
+    // ------------------------------------------------------------------
+    // Phrase-first, longest-span resolution
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn confirmed_species_names_resolve_to_the_species() {
+        let kb = kb_with_species();
+        for (text, want) in [
+            ("New Item <Crimson Snapper>", "fish:crimsonsnapper"),
+            ("Crimson Snapper", "fish:crimsonsnapper"),
+            ("Candy Corn Squid", "fish:candycornsquid"),
+            ("Skeletal Shark", "fish:skeletalshark"),
+            ("Exotic Tigerfin", "fish:exotictigerfin"),
+            ("Zebra Ribbon Angelfish", "fish:zebraribbonangelfish"),
+            ("Blue-Lip Grouper", "fish:bluelipgrouper"),
+            ("Golden Tigerfin", "fish:goldentigerfin"),
+            ("Jack-O'-Bite", "fish:jackobite"),
+            ("Fangfish", "fish:fangfish"),
+            ("Swordfish", "fish:swordfish"),
+        ] {
+            let o = correlate_text(&kb, text, "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+            let m = o.entity.unwrap_or_else(|| panic!("{text} must resolve"));
+            assert_eq!(m.entity_id, want, "{text}");
+            assert!(o.unknown_reason.is_none(), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_compound_species_name_offers_no_stem_candidates() {
+        let kb = kb_with_species();
+        let candidates = match_entities(&kb, "Crimson Snapper", ScreenKind::Fishing, 0.85);
+        assert_eq!(candidates.len(), 1, "one identity, no competing stems");
+        assert_eq!(candidates[0].entity_id, "fish:crimsonsnapper");
+        assert!(!candidates.iter().any(|c| c.entity_id == "fish:crimson"));
+        assert!(!candidates.iter().any(|c| c.entity_id == "fish:snapper"));
+        assert!(candidates[0].evidence.iter().any(|e| e.kind == EVIDENCE_EXACT_PHRASE));
+    }
+
+    #[test]
+    fn the_bundled_kb_fails_closed_on_a_compound_species_name() {
+        // Without the species (the pre-patch KB), the honest answer is
+        // AMBIGUOUS between the two stems, never a silent pick of either one.
+        let o = correlate_text(kb(), "Crimson Snapper", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        assert!(o.entity.is_none(), "must not collapse onto a stem");
+        let reason = o.unknown_reason.unwrap_or_default();
+        assert!(reason.contains("fish:crimson") && reason.contains("fish:snapper"), "{reason}");
+    }
+
+    #[test]
+    fn genuine_ambiguity_is_unknown_naming_the_competitors() {
+        let kb = kb_with_species();
+        let o = correlate_text(&kb, "Swordfish Suna", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        assert!(o.entity.is_none());
+        let reason = o.unknown_reason.unwrap_or_default();
+        assert!(reason.contains("fish:swordfish") && reason.contains("fruit:suna"), "{reason}");
+        // Both competitors are inspectable as candidates, none confirmed.
+        assert!(o.candidates.iter().any(|c| c.entity_id == "fish:swordfish"));
+        assert!(o.candidates.iter().any(|c| c.entity_id == "fruit:suna"));
+        assert!(o.candidates.iter().all(|c| c.evidence.iter().any(|e| e.kind == EVIDENCE_AMBIGUOUS_PHRASE)));
+    }
+
+    #[test]
+    fn a_same_span_tie_between_unrelated_identities_is_unknown() {
+        // Two entities whose OCR alias is the SAME name, neither claiming the
+        // other's canonical name: a genuine tie with no honest winner.
+        let mut kb = kb_with_species();
+        let tie = |id: &str, canonical: &str| ImportEntity {
+            id: id.to_string(),
+            canonical_name: canonical.to_string(),
+            aliases: vec![],
+            category: "item".to_string(),
+            rarity: None,
+            description: None,
+            ocr_aliases: vec!["Shared Trophy".to_string()],
+            visual_refs: vec![],
+            provenance: EntityProvenance { source: "test".into(), url: None, updated: None },
+        };
+        kb.merge_import(&[tie("item:tie-a", "Tie A"), tie("item:tie-b", "Tie B")], false);
+        let o = correlate_text(&kb, "Shared Trophy", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        assert!(o.entity.is_none());
+        let reason = o.unknown_reason.unwrap_or_default();
+        assert!(reason.contains("item:tie-a") && reason.contains("item:tie-b"), "{reason}");
+    }
+
+    #[test]
+    fn ui_templates_are_stripped_before_lookup_and_recorded() {
+        let kb = kb_with_species();
+        let o = correlate_text(&kb, "New Item <Shark>", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let m = o.entity.expect("shark must resolve");
+        assert_eq!(m.entity_id, "fish:shark");
+        assert!(!o.candidates.iter().any(|c| c.entity_id == "ui:new-item"));
+        assert!(m.evidence.iter().any(|e| e.kind == EVIDENCE_UI_TEMPLATE && e.detail.contains("ui:new-item")));
+    }
+
+    #[test]
+    fn gibberish_with_a_banner_stays_unknown_with_a_reason() {
+        let kb = kb_with_species();
+        let o = correlate_text(&kb, "New Item <zzq wobble>", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        assert!(o.entity.is_none());
+        assert!(o.unknown_reason.is_some());
+    }
+
+    #[test]
+    fn every_returned_id_exists_in_the_kb() {
+        let kb = kb_with_species();
+        for text in [
+            "Crimson Snapper", "Swordfish Suna", "New Item <Shark>", "Mera Mera",
+            "Suna fruit", "got Phoenix fruit", "KRAK3N", "xqz wobble",
+        ] {
+            for c in match_entities(&kb, text, ScreenKind::Fishing, 0.85) {
+                assert!(
+                    kb.entities().iter().any(|e| e.id == c.entity_id),
+                    "{} returned {} which is not in the KB",
+                    text,
+                    c.entity_id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn resolution_is_deterministic() {
+        let kb = kb_with_species();
+        for text in ["Crimson Snapper", "Swordfish Suna", "Mera Mera fruit drop"] {
+            let a = match_entities(&kb, text, ScreenKind::Fishing, 0.85);
+            let b = match_entities(&kb, text, ScreenKind::Fishing, 0.85);
+            let ids_a: Vec<&str> = a.iter().map(|c| c.entity_id.as_str()).collect();
+            let ids_b: Vec<&str> = b.iter().map(|c| c.entity_id.as_str()).collect();
+            assert_eq!(ids_a, ids_b, "{text} must resolve identically every call");
+        }
+    }
+
+    #[test]
+    fn alias_linked_identities_are_not_phantom_ambiguity() {
+        // The KB models Tori and Phoenix as two entities for one in-game
+        // identity. That is a linked pair, never a competitor set.
+        let o = correlate_text(kb(), "Tori Phoenix", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        assert!(o.entity.is_some(), "linked identities must not be ambiguous");
+    }
+
+    #[test]
+    fn single_word_names_keep_their_existing_evidence_kinds() {
+        // The phrase stage must not swallow single-word resolutions: Suna
+        // still carries exact_ocr (not exact_phrase), so downstream evidence
+        // reading is unchanged.
+        let o = correlate_text(kb(), "Suna fruit", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let m = o.entity.expect("Suna must confirm");
+        assert!(m.evidence.iter().any(|e| e.kind == "exact_ocr"));
+        assert!(!m.evidence.iter().any(|e| e.kind == EVIDENCE_EXACT_PHRASE));
+    }
+
+    #[test]
+    fn a_pure_banner_template_still_resolves_to_its_ui_entity() {
+        // A text that IS a template names the template's ui entity (the
+        // residual is empty, so the per-word stage sees the original text).
+        // `spawn` is EXACT for ui:spawn and fuzzy for ui:spawned; the unclamped
+        // sort now ranks the exact match first, which is the semantically
+        // correct answer (the old clamp-then-insertion order was luck).
+        let o = correlate_text(kb(), "spawn", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        assert_eq!(o.entity.map(|m| m.entity_id).as_deref(), Some("ui:spawn"));
     }
 }
