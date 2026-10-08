@@ -786,6 +786,78 @@ pub async fn review_priority(
     .await
 }
 
+/// How many rows, and how many distinct sessions, each class contributes to the
+/// TRAINING set. Reads the projection, never the live file.
+fn projected_class_support(
+    projected: &crate::core::training::ProjectedLabels,
+) -> (HashMap<&str, usize>, HashMap<&str, HashSet<&str>>) {
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    let mut sessions: HashMap<&str, HashSet<&str>> = HashMap::new();
+    for r in &projected.rows {
+        if let Some(e) = r.entity_id.as_deref() {
+            *counts.entry(e).or_default() += 1;
+            sessions.entry(e).or_default().insert(r.session_id.as_str());
+        }
+    }
+    (counts, sessions)
+}
+
+/// Folded text each entity can legitimately be recognised by: canonical name,
+/// aliases, OCR aliases. Sorted + deduped so the map is deterministic.
+fn ocr_name_keys(
+    kb: &crate::core::knowledge::KnowledgeBase,
+) -> HashMap<&str, Vec<String>> {
+    let mut out: HashMap<&str, Vec<String>> = HashMap::with_capacity(kb.len());
+    for e in kb.entities() {
+        let mut keys: Vec<String> = std::iter::once(e.canonical_name.as_str())
+            .chain(e.aliases.iter().map(|s| s.as_str()))
+            .chain(e.ocr_aliases.iter().map(|s| s.as_str()))
+            .map(canon::ocr_variant_fold)
+            .filter(|k| !k.is_empty())
+            .collect();
+        keys.sort();
+        keys.dedup();
+        out.insert(e.id.as_str(), keys);
+    }
+    out
+}
+
+/// Does the captured banner text actually name `entity_id`?
+///
+/// The review queue's "OCR disagrees with the stored label" flag decides what a
+/// human looks at next, so it must be true only when the pixels and the label
+/// really disagree.
+///
+/// Comparing folded banner text against the id's short name cannot see a
+/// multi-word species: `fish:crimsonsnapper` gives the key `crimsonsnapper`,
+/// while the banner folds to `crimson snapper`, so `contains` is false and
+/// EVERY correctly-labelled Crimson Snapper row was flagged as a disagreement.
+/// The KB carries the word boundaries the id lost, so agreement is decided
+/// against the names the runtime actually reads off the screen. The legacy
+/// short-name comparison is kept as an additional way to agree, which leaves
+/// single-word classes (`fish:crimson` -> `crimson`) behaving exactly as before,
+/// and ids the KB no longer knows keep working on their own short name.
+fn ocr_agrees_with_label(
+    name_keys: &HashMap<&str, Vec<String>>,
+    ocr_text: &str,
+    entity_id: &str,
+) -> bool {
+    let folded = canon::ocr_variant_fold(ocr_text);
+    let short = entity_id
+        .split(':')
+        .nth(1)
+        .unwrap_or(entity_id)
+        .replace(['-', '_'], " ")
+        .to_lowercase();
+    if !short.is_empty() && folded.contains(&short) {
+        return true;
+    }
+    name_keys
+        .get(entity_id)
+        .map(|keys| keys.iter().any(|k| folded.contains(k)))
+        .unwrap_or(false)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn review_priority_sync(
     dir: &std::path::Path,
@@ -811,14 +883,18 @@ fn review_priority_sync(
         .filter_map(|r| rows.by_id.get(r.image_id.as_str()).map(|i| rows.all[*i].session_id.as_str()))
         .collect();
 
-    let mut counts: HashMap<&str, usize> = HashMap::new();
-    let mut class_sessions: HashMap<&str, HashSet<&str>> = HashMap::new();
-    for r in &rows.all {
-        if let Some(e) = r.entity_id.as_deref() {
-            *counts.entry(e).or_default() += 1;
-            class_sessions.entry(e).or_default().insert(r.session_id.as_str());
-        }
-    }
+    // Per-class support, measured on the PROJECTED training set (human verdicts,
+    // review-excluded rows dropped): `n < 20` / `sess_n < 3` below ask "does this
+    // class have enough training rows to be worth more captures?", so they must
+    // count the rows a snapshot would actually write. Counting the collector's
+    // labels instead let a class read as supported on 224 rows while training had
+    // 13 of them.
+    let projected = crate::core::training::project_training_labels(&rows.all, &store);
+    let (counts, class_sessions) = projected_class_support(&projected);
+    // Names the KB knows each entity by, folded the same way the banner text is.
+    // See `ocr_agrees_with_label` for why the id alone cannot answer this.
+    let kb = crate::config::Store::new(dir.to_path_buf()).effective_knowledge();
+    let name_keys = ocr_name_keys(&kb);
 
     // v5.6.0 fed `hard_example` into the *low-confidence* slot, so hard
     // examples were displayed as "low model confidence" even though the queue
@@ -837,17 +913,12 @@ fn review_priority_sync(
             continue;
         }
         let e = r.entity_id.as_deref();
-        let key = e.map(|id| {
-            id.split(':')
-                .nth(1)
-                .unwrap_or(id)
-                .replace(['-', '_'], " ")
-                .to_lowercase()
-        });
-        let ocr_disagree = match (e, key.as_deref()) {
-            (Some(_), Some(k)) if !k.is_empty() => {
-                !canon::ocr_variant_fold(&r.ocr_text).contains(k)
-            }
+        // The stored label is still the collector's guess here: rows a human
+        // already judged are filtered out above, and a projection only relabels
+        // exactly those. So this comparison is genuinely "pixels vs the label the
+        // collector wrote", which is the question the queue asks.
+        let ocr_disagree = match e {
+            Some(id) if !id.is_empty() => !ocr_agrees_with_label(&name_keys, &r.ocr_text, id),
             _ => false,
         };
         let n = e.map(|id| counts.get(id).copied().unwrap_or(0)).unwrap_or(0);
@@ -1173,13 +1244,31 @@ fn readiness_status_inner(
     let all = &rows.all;
     let gates = assess_capabilities(all);
     let gate = |id: &str| gates.iter().find(|g| g.id == id);
-    let reviews = review_store(store_dir).list();
-    let reviewed_ids: HashSet<&str> = reviews
-        .iter()
-        .filter(|r| r.training_eligible)
-        .map(|r| r.image_id.as_str())
-        .collect();
+    // "Human-reviewed" comes from the PROJECTION below, not from a second parse of
+    // the review file: one file, one parser, one answer.
     let records = registry::load_registry(store_dir);
+    // THE PROJECTED TRAINING SET: live rows with the human review verdicts on
+    // them. The per-class qualification and coverage numbers below describe what
+    // a training snapshot WOULD contain, not the collector's guesses. Before this
+    // they read the live file, so readiness could show `fish:crimson` qualified
+    // on 224 rows while the snapshot wrote 13 and the trainer refused.
+    let projected =
+        crate::core::training::project_training_labels(all, &review_store(store_dir));
+    // A review state that cannot be read back is a refusal, never a fallback to
+    // the collector's labels: the fallback would be the lie this closes.
+    let projection_note = match &projected.read_error {
+        Some(err) => format!(
+            "; review state unreadable, so no class counts are reported: {err}"
+        ),
+        None => format!(
+            "; class counts are measured on the projected training set ({} row(s), \
+             {} relabelled by human review, {} excluded by review)",
+            projected.rows.len(),
+            projected.rows_relabelled_by_review,
+            projected.rows_excluded_by_review
+        ),
+    };
+    let gate_rows = projected.rows.as_slice();
     let thresholds = readiness::ReadinessThresholds {
         min_macro_f1: settings.training.readiness_min_macro_f1,
         min_worst_class_f1: settings.training.readiness_min_worst_f1,
@@ -1194,7 +1283,7 @@ fn readiness_status_inner(
     for (family, prefix, stem) in
         [("fish", Some("fish:"), "fish_v1"), ("state", None, "state_v1")]
     {
-        let scoped: Vec<_> = all
+        let scoped: Vec<_> = gate_rows
             .iter()
             .filter(|r| match prefix {
                 Some(p) => r.entity_id.as_deref().is_some_and(|e| e.starts_with(p)),
@@ -1206,12 +1295,12 @@ fn readiness_status_inner(
             .collect();
         let reviewed_scoped = scoped
             .iter()
-            .filter(|r| reviewed_ids.contains(r.image_id.as_str()))
+            .filter(|r| projected.reviewed_eligible_ids.contains(r.image_id.as_str()))
             .count();
 
         // Structured data gate from the real capability gate + per-entity
         // qualification, so readiness can say WHICH shortfall it is.
-        let quals = qualify_entities(all, prefix.unwrap_or(""));
+        let quals = qualify_entities(gate_rows, prefix.unwrap_or(""));
         let qualified: Vec<_> = quals.iter().filter(|q| q.qualified).collect();
         let test_covered = qualified.iter().filter(|q| q.test_covered).count();
         // Session shortfall: a class that has examples but too few sessions.
@@ -1245,7 +1334,11 @@ fn readiness_status_inner(
             test_covered,
             test_required,
             sessions_short,
-            detail: g.map(|x| x.detail.clone()).unwrap_or_else(|| "no gate".to_string()),
+            detail: format!(
+                "{}{}",
+                g.map(|x| x.detail.clone()).unwrap_or_else(|| "no gate".to_string()),
+                projection_note
+            ),
             next_action: g
                 .and_then(|x| x.blocking_requirement.clone())
                 .unwrap_or_else(|| "Open Dataset to see per-class qualification.".to_string()),
@@ -1298,17 +1391,18 @@ fn readiness_status_inner(
         ));
     }
 
-    // Fruit: same shape, honest about being far from ready.
+    // Fruit: same shape, honest about being far from ready. Same projection as
+    // fish: the counts describe the rows a snapshot would write.
     {
-        let scoped: Vec<_> = all
+        let scoped: Vec<_> = gate_rows
             .iter()
             .filter(|r| r.entity_id.as_deref().is_some_and(|e| e.starts_with("fruit:")))
             .collect();
         let reviewed_scoped = scoped
             .iter()
-            .filter(|r| reviewed_ids.contains(r.image_id.as_str()))
+            .filter(|r| projected.reviewed_eligible_ids.contains(r.image_id.as_str()))
             .count();
-        let quals = qualify_entities(all, "fruit:");
+        let quals = qualify_entities(gate_rows, "fruit:");
         let qualified: Vec<_> = quals.iter().filter(|q| q.qualified).collect();
         let g = gate("fruit_entity");
         out.push(readiness::assess_family(
@@ -1320,7 +1414,11 @@ fn readiness_status_inner(
                 test_covered: qualified.iter().filter(|q| q.test_covered).count(),
                 test_required: crate::core::ml_capability::ENTITY_MIN_TEST_COVERED,
                 sessions_short: None,
-                detail: g.map(|x| x.detail.clone()).unwrap_or_else(|| "no gate".to_string()),
+                detail: format!(
+                    "{}{}",
+                    g.map(|x| x.detail.clone()).unwrap_or_else(|| "no gate".to_string()),
+                    projection_note
+                ),
                 next_action: g
                     .and_then(|x| x.blocking_requirement.clone())
                     .unwrap_or_else(|| "Collect real fruit catches.".to_string()),
@@ -1523,4 +1621,230 @@ pub async fn semantic_teacher_status(
 ) -> Result<SemanticTeacherStatus, String> {
     let dir = st.store.dir().to_path_buf();
     blocking(move || Ok(semantic_teacher_status_sync(&dir))).await
+}
+
+// ---------------------------------------------------------------------------
+// Tests: readiness and the review queue measure the projected training set
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::ml_dataset::{MlAnnotation, MlDatasetStore, MlTask, DATASET_VERSION};
+    use std::io::Write as _;
+
+    fn tmp_dir(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("gpo-review-{tag}-{}", crate::events::now_ms()));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn row(image_id: &str, session: &str, entity: Option<&str>, ocr: &str) -> MlAnnotation {
+        MlAnnotation {
+            image_id: image_id.to_string(),
+            dataset_version: DATASET_VERSION,
+            session_id: session.to_string(),
+            task: MlTask::EntityRecognition,
+            ocr_text: ocr.to_string(),
+            region_name: "drop".to_string(),
+            ui_label: None,
+            bbox: None,
+            game_state: None,
+            entity_id: entity.map(str::to_string),
+            annotator: "collector".to_string(),
+            timestamp_ms: 1,
+            source: "ui".to_string(),
+            confidence: Some(0.9),
+            hard_example: false,
+            hard_reason: None,
+            corrections: Vec::new(),
+            event_id: None,
+            frame_index: None,
+        }
+    }
+
+    /// Full `reviews.jsonl` schema, so both review parsers agree.
+    fn review_line(image_id: &str, eligible: bool, human: Option<&str>, reason: Option<&str>) -> String {
+        serde_json::json!({
+            "review_id": format!("rv-{image_id}"),
+            "image_id": image_id,
+            "session_id": "fixture-session",
+            "review_status": if eligible { "REVIEWED_CORRECTED" } else { "REVIEWED_SKIPPED" },
+            "training_eligible": eligible,
+            "human_entity_id": human,
+            "excluded_reason": reason,
+            "dataset_version": DATASET_VERSION,
+        })
+        .to_string()
+    }
+
+    fn write_labels(dir: &std::path::Path, rows: &[MlAnnotation]) {
+        let ml = MlDatasetStore::new(dir.to_path_buf());
+        let root = ml.root().to_path_buf();
+        std::fs::create_dir_all(&root).unwrap();
+        let mut f = std::fs::File::create(root.join("labels.jsonl")).unwrap();
+        for r in rows {
+            writeln!(f, "{}", serde_json::to_string(r).unwrap()).unwrap();
+        }
+    }
+
+    fn write_reviews(dir: &std::path::Path, lines: &[String]) {
+        let mut f = std::fs::File::create(dir.join("reviews.jsonl")).unwrap();
+        for l in lines {
+            writeln!(f, "{l}").unwrap();
+        }
+    }
+
+    /// Add a multi-word species to the KB overlay, the way the app's own
+    /// knowledge store holds it. Without it the banner text and the flattened id
+    /// cannot be compared at all.
+    fn write_overlay(dir: &std::path::Path, id: &str, name: &str) {
+        std::fs::write(
+            dir.join("knowledge_custom.json"),
+            serde_json::json!([{
+                "id": id,
+                "canonical_name": name,
+                "aliases": [],
+                "category": "fish",
+                "rarity": null,
+                "description": null,
+                "ocr_aliases": [],
+                "visual_refs": [],
+                "provenance": { "source": "test", "url": null, "updated": null },
+            }])
+            .to_string(),
+        )
+        .unwrap();
+    }
+
+    /// Readiness must count the rows a snapshot WOULD write. 100 collected rows
+    /// of which a human rejected 40 leaves 60 training rows, all reviewed - and
+    /// the readiness evidence must say 60/60, not the live file's 60/100.
+    #[test]
+    fn readiness_counts_the_projected_training_set() {
+        let dir = tmp_dir("readiness");
+        let mut rows = Vec::new();
+        let mut reviews = Vec::new();
+        for i in 0..100 {
+            let id = format!("g-{i}");
+            rows.push(row(&id, "fixture-session", Some("fish:golden"), "Golden Fish"));
+            if i < 60 {
+                reviews.push(review_line(&id, true, Some("fish:golden"), None));
+            } else {
+                reviews.push(review_line(&id, false, None, Some("human skipped")));
+            }
+        }
+        write_labels(&dir, &rows);
+        write_reviews(&dir, &reviews);
+
+        let live = MlDatasetStore::new(dir.clone()).annotations();
+        assert_eq!(live.len(), 100);
+        let out = readiness_status_inner(&dir, &crate::config::Settings::default());
+        let fish = out.iter().find(|r| r.family == "fish").expect("fish readiness");
+        assert_eq!(
+            fish.evidence["scoped_total"], 60,
+            "rejected rows are not training rows: {}",
+            fish.evidence
+        );
+        assert_eq!(fish.evidence["reviewed_scoped"], 60);
+        assert!(
+            fish.checks.iter().any(|c| c.detail.contains("projected training set"))
+                || out.iter().any(|r| r.checks.iter().any(|c| c.detail.contains("projected training set"))),
+            "the evidence must say which set it measured"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Per-class counters must count the projected set: a class whose rows a
+    /// human moved to other species contributes 13 training rows, not 224, so the
+    /// queue treats it as needing more captures.
+    #[test]
+    fn the_review_queue_counts_classes_in_the_projected_training_set() {
+        let dir = tmp_dir("queue-counts");
+        let mut rows = Vec::new();
+        let mut reviews = Vec::new();
+        for i in 0..224 {
+            let id = format!("c-{i}");
+            rows.push(row(&id, "fixture-session", Some("fish:crimson"), "Crimson"));
+            if i < 211 {
+                reviews.push(review_line(&id, true, Some("fish:crimsonsnapper"), None));
+            }
+        }
+        write_labels(&dir, &rows);
+        write_reviews(&dir, &reviews);
+
+        let live = crate::core::ml_capability::qualify_entities(&rows, "fish:");
+        let crimson_live = live.iter().find(|q| q.entity == "fish:crimson").expect("live class");
+        assert_eq!(crimson_live.examples, 224, "the live file still claims 224");
+
+        let loaded = load_rows(&dir);
+        let projected = crate::core::training::project_training_labels(
+            &loaded.all,
+            &review_store(&dir),
+        );
+        let (counts, sessions) = projected_class_support(&projected);
+        assert_eq!(
+            counts.get("fish:crimson").copied(),
+            Some(13),
+            "the queue must count what trains, not what was collected"
+        );
+        assert_eq!(sessions.get("fish:crimson").map(|s| s.len()), Some(1));
+        assert_eq!(counts.get("fish:crimsonsnapper").copied(), Some(211));
+
+        // The judged rows leave the pending queue; the 13 unjudged ones stay.
+        let page = review_priority_sync(&dir, Some(500), None, None, None, None, None, None);
+        assert_eq!(page.items.len(), 13, "{:?}", page.items.len());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The disagreement flag is a claim about the PIXELS. A species id has no
+    /// spaces, so comparing it to banner text that does flagged every correctly
+    /// labelled Crimson Snapper as a disagreement. It must now agree when the
+    /// banner names the species - and still disagree when it names something
+    /// else.
+    #[test]
+    fn a_species_row_is_flagged_only_when_the_banner_really_disagrees() {
+        let dir = tmp_dir("queue-ocr");
+        write_overlay(&dir, "fish:crimsonsnapper", "Crimson Snapper");
+        let rows = vec![
+            row("ok-species", "fixture-session", Some("fish:crimsonsnapper"), "Crimson Snapper"),
+            row("other-banner", "fixture-session", Some("fish:crimsonsnapper"), "Golden Ribbon Angelfish"),
+            row("ok-stem", "fixture-session", Some("fish:crimson"), "Crimson"),
+            row("stem-mismatch", "fixture-session", Some("fish:crimson"), "Golden Ribbon Angelfish"),
+        ];
+        write_labels(&dir, &rows);
+        write_reviews(&dir, &[]);
+
+        let page = review_priority_sync(&dir, Some(50), None, None, None, None, None, None);
+        let flag = |id: &str| -> Option<bool> {
+            page.items.iter().find(|i| i.image_id == id).map(|i| i.ocr_disagreement)
+        };
+        assert_eq!(flag("ok-species"), Some(false), "the banner names it");
+        assert_eq!(flag("other-banner"), Some(true), "the banner names something else");
+        assert_eq!(flag("ok-stem"), Some(false), "single-word behaviour is unchanged");
+        assert_eq!(flag("stem-mismatch"), Some(true), "mismatch is still a disagreement");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// No row may be called a disagreement just because a human replaced a
+    /// stem. Reviewed rows leave the pending queue entirely, so the flag can
+    /// never describe a verdict the collector made and a human undid.
+    #[test]
+    fn a_row_a_human_overrode_is_not_in_the_queue_as_a_disagreement() {
+        let dir = tmp_dir("queue-overridden");
+        let rows = vec![
+            row("kept", "fixture-session", Some("fish:crimson"), "Crimson"),
+            row("overridden", "fixture-session", Some("fish:crimson"), "Crimson Snapper"),
+        ];
+        write_labels(&dir, &rows);
+        write_reviews(
+            &dir,
+            &[review_line("overridden", true, Some("fish:crimsonsnapper"), None)],
+        );
+        let page = review_priority_sync(&dir, Some(50), None, None, None, None, None, None);
+        assert_eq!(page.items.len(), 1, "the judged row is not pending: {:?}", page.items);
+        assert_eq!(page.items[0].image_id, "kept");
+        assert!(!page.items[0].ocr_disagreement);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

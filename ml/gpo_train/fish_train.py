@@ -222,7 +222,26 @@ def main() -> int:
     tr, va, te = fish_only(splits.train), fish_only(splits.validation), fish_only(splits.test)
     from collections import Counter
     ctr = Counter(snap.rows[i].entity_id for i in tr)
-    assert all(ctr.get(e, 0) >= MIN_EXAMPLES for e in FISH_VOCAB), f"scope violated: {dict(ctr)}"
+    # SCOPE CHECK. Unchanged in strength: every canonical class must be trainable
+    # or the run aborts. Only the MESSAGE improved. It used to dump the whole
+    # counter, which required the operator to diff it against FISH_VOCAB by hand
+    # to learn that `fish:crimson` had 13 of the 20 rows it needs; now the short
+    # classes are named with their counts and their deficits.
+    #
+    # `assert` is deliberate and stays: the supervisor strips PYTHONOPTIMIZE from
+    # the trainer environment, so the guard is always compiled in.
+    short = sorted(e for e in FISH_VOCAB if ctr.get(e, 0) < MIN_EXAMPLES)
+    shortfall = ", ".join(
+        f"{e} {ctr.get(e, 0)}/{MIN_EXAMPLES} (need {MIN_EXAMPLES - ctr.get(e, 0)} more)"
+        for e in short
+    )
+    assert all(ctr.get(e, 0) >= MIN_EXAMPLES for e in FISH_VOCAB), (
+        f"scope violated: {len(short)} of {len(FISH_VOCAB)} canonical fish classes have "
+        f"fewer than {MIN_EXAMPLES} rows in the TRAIN split [{shortfall}]. "
+        f"The output head still claims all {len(FISH_VOCAB)} classes and this trainer "
+        f"will not substitute a partial vocabulary, so the run stops here. "
+        f"Collect and review the named classes, then re-run."
+    )
     assert va and te, "need held-out val and test fish rows"
 
     mean, std = compute_mean_std(snap, tr)

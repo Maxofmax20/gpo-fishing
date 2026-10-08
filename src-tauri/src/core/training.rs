@@ -18,7 +18,7 @@
 //!   startup is honestly marked INTERRUPTED (never claimed complete).
 
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -165,10 +165,23 @@ struct ReviewEligibilityLine {
     #[serde(default)]
     excluded_reason: Option<String>,
     /// The human verdict's canonical entity. Projected onto the frozen
-    /// labels of eligible rows (see [`review_human_entity_map`]); read-only,
+    /// labels of eligible rows (see [`project_training_labels`]); read-only,
     /// never written back to the review store.
     #[serde(default)]
     human_entity_id: Option<String>,
+}
+
+/// `image_id -> training_eligible`. Exclusion is sticky: if the same image
+/// somehow appears twice with disagreeing verdicts, `false` wins (fail
+/// closed — the conservative answer is always the one that trains on less).
+fn review_eligibility_map(records: &[ReviewEligibilityLine]) -> HashMap<&str, bool> {
+    let mut map: HashMap<&str, bool> = HashMap::with_capacity(records.len());
+    for r in records {
+        map.entry(r.image_id.as_str())
+            .and_modify(|v| *v &= r.training_eligible)
+            .or_insert(r.training_eligible);
+    }
+    map
 }
 
 /// Parse `reviews.jsonl` bytes into per-image eligibility lines, ALSO
@@ -195,19 +208,6 @@ fn parse_review_eligibility(raw: &[u8]) -> (Vec<ReviewEligibilityLine>, usize) {
     (rows, unreadable)
 }
 
-/// `image_id -> training_eligible`. Exclusion is sticky: if the same image
-/// somehow appears twice with disagreeing verdicts, `false` wins (fail
-/// closed — the conservative answer is always the one that trains on less).
-fn review_eligibility_map(records: &[ReviewEligibilityLine]) -> HashMap<&str, bool> {
-    let mut map: HashMap<&str, bool> = HashMap::with_capacity(records.len());
-    for r in records {
-        map.entry(r.image_id.as_str())
-            .and_modify(|v| *v &= r.training_eligible)
-            .or_insert(r.training_eligible);
-    }
-    map
-}
-
 /// `image_id -> human-verified entity id`, for reviews that are BOTH eligible
 /// and name a non-empty entity. This is the projection the frozen snapshot
 /// applies: the trainer learns the human verdict, not the collector's guess.
@@ -222,6 +222,170 @@ fn review_human_entity_map(records: &[ReviewEligibilityLine]) -> HashMap<&str, &
                 .map(|h| (r.image_id.as_str(), h))
         })
         .collect()
+}
+
+/// The training set as a frozen snapshot will contain it: live rows with the
+/// human review projected onto them.
+///
+/// One function, called by [`snapshot_dataset`] AND by every consumer that must
+/// describe the same training set (the Training Center eligibility gate, the
+/// readiness data gate, the review queue's per-class counters). Before this
+/// existed those consumers read the LIVE file — whose `entity_id` values are the
+/// collector's OCR+KB guesses — while the snapshot wrote the human verdicts, so
+/// the gate could report "ready" on a set the trainer would refuse (measured:
+/// `fish:crimson` reads 224 live rows, 13 projected).
+#[derive(Debug, Clone, Default)]
+pub struct ProjectedLabels {
+    /// Kept rows, in input order, relabelled where a human verdict applies.
+    pub rows: Vec<MlAnnotation>,
+    pub rows_relabelled_by_review: usize,
+    pub rows_kept_collector_label: usize,
+    pub rows_unreviewed: usize,
+    pub rows_excluded_by_review: usize,
+    /// Why each excluded row was excluded, counted by reason (sorted).
+    pub exclusions: BTreeMap<String, usize>,
+    /// `image_id`s of KEPT rows that carry an eligible human review, whether or
+    /// not the verdict changed the label.
+    ///
+    /// Consumers of the review-coverage number must read it from HERE, not from
+    /// `ReviewStore::list()`: that method drops records it cannot fully parse,
+    /// while the projection deliberately parses only the fields it needs. Two
+    /// parsers of one file made the coverage gate report 0/60 on rows whose
+    /// verdicts were being applied.
+    pub reviewed_eligible_ids: BTreeSet<String>,
+    /// Set when the review state could not be read back. The projected rows are
+    /// then EMPTY: a consumer that cannot read the reviews must refuse, never
+    /// fall back to the collector's labels (that fallback is the original bug).
+    pub read_error: Option<String>,
+}
+
+impl ProjectedLabels {
+    pub fn is_ok(&self) -> bool {
+        self.read_error.is_none()
+    }
+}
+
+/// Project the live rows into the training set, using the review store as the
+/// only channel by which a human verdict reaches training.
+///
+/// Pure: reads the store, writes nothing, mutates nothing. Idempotent —
+/// projecting the already-projected rows again changes nothing, because the
+/// projection only depends on the review records, not on the input labels.
+pub fn project_training_labels(rows: &[MlAnnotation], reviews: &super::review::ReviewStore) -> ProjectedLabels {
+    // FAIL CLOSED, and read the review file the way the snapshot always has: the
+    // MINIMAL projection, so a record predating newer fields still parses, plus an
+    // explicit count of the lines that do not. `ReviewStore::list()` silently
+    // drops those lines, which is how an excluded row comes to look unreviewed -
+    // so the count is taken here, never inferred from the store.
+    let path = reviews.dir().join("reviews.jsonl");
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        // An absent review file legitimately means "nothing reviewed yet".
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => {
+            return ProjectedLabels {
+                read_error: Some(format!(
+                    "cannot read {} ({e}); refusing to train because review exclusions \
+                     cannot be verified",
+                    path.display()
+                )),
+                ..Default::default()
+            }
+        }
+    };
+    let (records, unreadable) = parse_review_eligibility(&bytes);
+    if unreadable > 0 {
+        return ProjectedLabels {
+            read_error: Some(format!(
+                "{} line(s) of reviews.jsonl are unreadable; refusing to train because \
+                 review exclusions would be silently ignored. \
+                 Repair the file or run Review > Rebuild from audit.",
+                unreadable
+            )),
+            ..Default::default()
+        };
+    }
+
+    let eligibility = review_eligibility_map(&records);
+    // Human-readable reason per excluded image, straight from the review record.
+    let reasons: HashMap<&str, String> = records
+        .iter()
+        .filter(|r| !r.training_eligible)
+        .map(|r| {
+            let why = r
+                .excluded_reason
+                .clone()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| match r.status.as_deref().unwrap_or("") {
+                    "SKIPPED" => "human skipped".to_string(),
+                    "UNKNOWN" => "human marked unknown".to_string(),
+                    "CONFLICT" => "unresolved conflict".to_string(),
+                    "" => "human verdict: not training-eligible".to_string(),
+                    other => format!("human verdict {other}: not training-eligible"),
+                });
+            (r.image_id.as_str(), why)
+        })
+        .collect();
+    let human_entities = review_human_entity_map(&records);
+
+    let mut out = ProjectedLabels::default();
+    for r in rows {
+        match eligibility.get(r.image_id.as_str()) {
+            None => {
+                out.rows_unreviewed += 1;
+                out.rows_kept_collector_label += 1;
+                out.rows.push(r.clone());
+            }
+            Some(true) => {
+                out.reviewed_eligible_ids.insert(r.image_id.clone());
+                match human_entities.get(r.image_id.as_str()) {
+                    // The label is the HUMAN VERDICT, not the collector's guess.
+                    Some(human) if r.entity_id.as_deref() != Some(human) => {
+                        let mut relabelled = r.clone();
+                        relabelled.entity_id = Some(human.to_string());
+                        out.rows_relabelled_by_review += 1;
+                        out.rows.push(relabelled);
+                    }
+                    _ => {
+                        out.rows_kept_collector_label += 1;
+                        out.rows.push(r.clone());
+                    }
+                }
+            }
+            Some(false) => {
+                out.rows_excluded_by_review += 1;
+                *out
+                    .exclusions
+                    .entry(reasons.get(r.image_id.as_str()).cloned().unwrap_or_else(|| {
+                        "human verdict: not training-eligible".to_string()
+                    }))
+                    .or_insert(0) += 1;
+            }
+        }
+    }
+    out
+}
+
+/// Per-class TRAIN-split row counts over the projected rows.
+///
+/// This is the exact quantity `ml/gpo_train/fish_train.py` asserts on
+/// (`all(ctr.get(e, 0) >= MIN_EXAMPLES for e in FISH_VOCAB)`, computed over
+/// the train split of the frozen snapshot). Measuring it here turns the
+/// trainer's abort into an eligibility check the operator sees BEFORE they
+/// press Train.
+pub fn train_support_per_class(rows: &[MlAnnotation], prefix: &str) -> BTreeMap<String, usize> {
+    let mut out: BTreeMap<String, usize> = BTreeMap::new();
+    for r in rows {
+        if MlDatasetStore::split_of(&r.session_id).as_str() != "train" {
+            continue;
+        }
+        if let Some(e) = r.entity_id.as_deref() {
+            if e.starts_with(prefix) {
+                *out.entry(e.to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+    out
 }
 
 /// Freeze the current label set for one job, AFTER applying human review.
@@ -261,15 +425,11 @@ pub fn snapshot_dataset(
     let manifest_bytes =
         std::fs::read(src.join("manifest.json")).map_err(|e| format!("snapshot read manifest.json: {e}"))?;
 
-    // Read the review state ONCE: it both decides what may train and
-    // fingerprints exactly what humans had seen at freeze time.
-    //
-    // FAIL CLOSED (v5.6.1). v5.6.0 used `unwrap_or_default()` and then
-    // silently skipped unparseable lines, so a read error OR one corrupt
-    // line made every excluded row look "unreviewed" and it trained anyway.
-    // A missing file legitimately means "no reviews exist yet"; an existing
-    // but unreadable file must NOT be treated the same way, because the safe
-    // reading of a lost review file is "nothing may be assumed reviewed".
+    // Read the review state ONCE, for the fingerprint of what humans had seen at
+    // freeze time. The DECISION about which rows may train (and with which
+    // label) belongs to `project_training_labels` below, so there is exactly one
+    // projection. A missing file legitimately means "no reviews exist yet"; the
+    // unreadable-line case is caught there and fails closed.
     let reviews_path = data_dir.join("reviews.jsonl");
     let reviews_bytes = match std::fs::read(&reviews_path) {
         Ok(b) => b,
@@ -282,84 +442,20 @@ pub fn snapshot_dataset(
             ))
         }
     };
-    let (review_records, unreadable) = parse_review_eligibility(&reviews_bytes);
-    if unreadable > 0 {
-        return Err(format!(
-            "snapshot: {} line(s) of reviews.jsonl are unreadable; refusing to train \
-             because review exclusions would be silently ignored. \
-             Repair the file or run Review > Rebuild from audit.",
-            unreadable
-        ));
+    // The projection is the SINGLE implementation of "what trains": one pure
+    // function, shared with the eligibility gate and the readiness data gate so
+    // they can never describe a different training set than the snapshot.
+    let review_store = super::review::ReviewStore::new(data_dir.to_path_buf());
+    let projected = project_training_labels(rows, &review_store);
+    if let Some(err) = &projected.read_error {
+        return Err(format!("snapshot: {err}"));
     }
-    let eligibility = review_eligibility_map(&review_records);
-    // Human-readable reason per excluded image, straight from the review record.
-    let reasons: HashMap<&str, String> = review_records
-        .iter()
-        .filter(|r| !r.training_eligible)
-        .map(|r| {
-            let why = r
-                .excluded_reason
-                .clone()
-                .filter(|s| !s.trim().is_empty())
-                .unwrap_or_else(|| match r.status.as_deref().unwrap_or("") {
-                    "SKIPPED" => "human skipped".to_string(),
-                    "UNKNOWN" => "human marked unknown".to_string(),
-                    "CONFLICT" => "unresolved conflict".to_string(),
-                    "" => "human verdict: not training-eligible".to_string(),
-                    other => format!("human verdict {other}: not training-eligible"),
-                });
-            (r.image_id.as_str(), why)
-        })
-        .collect();
-
-    let human_entities = review_human_entity_map(&review_records);
-
-    // Filter BEFORE any write, so a rejected snapshot leaves nothing behind.
-    let mut kept: Vec<MlAnnotation> = Vec::with_capacity(rows.len());
-    let mut rows_excluded_by_review = 0usize;
-    let mut rows_unreviewed = 0usize;
-    let mut rows_relabelled_by_review = 0usize;
-    let mut rows_kept_collector_label = 0usize;
-    // WHY each row is absent, counted. A bare "excluded: 3" tells a reviewer
-    // nothing; they cannot tell a human rejection from a data defect, and so
-    // cannot act on it. Recorded per reason so the snapshot is auditable on its
-    // own terms.
-    let mut exclusions: BTreeMap<String, usize> = BTreeMap::new();
-    for r in rows {
-        match eligibility.get(r.image_id.as_str()) {
-            None => {
-                rows_unreviewed += 1;
-                rows_kept_collector_label += 1;
-                kept.push(r.clone());
-            }
-            Some(true) => match human_entities.get(r.image_id.as_str()) {
-                // The frozen label is the HUMAN VERDICT, not the collector's
-                // OCR+KB guess. Only the frozen copy changes; the live
-                // labels.jsonl is the immutable collection record.
-                Some(&human) if r.entity_id.as_deref() != Some(human) => {
-                    let mut relabelled = r.clone();
-                    relabelled.entity_id = Some(human.to_string());
-                    rows_relabelled_by_review += 1;
-                    kept.push(relabelled);
-                }
-                _ => {
-                    rows_kept_collector_label += 1;
-                    kept.push(r.clone());
-                }
-            },
-            Some(false) => {
-                rows_excluded_by_review += 1;
-                *exclusions
-                    .entry(
-                        reasons
-                            .get(r.image_id.as_str())
-                            .cloned()
-                            .unwrap_or_else(|| "human verdict: not training-eligible".to_string()),
-                    )
-                    .or_insert(0) += 1;
-            }
-        }
-    }
+    let kept = projected.rows;
+    let rows_excluded_by_review = projected.rows_excluded_by_review;
+    let rows_unreviewed = projected.rows_unreviewed;
+    let rows_relabelled_by_review = projected.rows_relabelled_by_review;
+    let rows_kept_collector_label = projected.rows_kept_collector_label;
+    let exclusions = projected.exclusions;
     if kept.is_empty() {
         return Err("training snapshot has 0 rows after review filtering".to_string());
     }
@@ -1496,6 +1592,81 @@ mod tests {
         let meta: SnapshotMeta = serde_json::from_value(old).expect("old job file must parse");
         assert_eq!(meta.rows_relabelled_by_review, 0);
         assert_eq!(meta.rows_kept_collector_label, 0);
+    }
+
+    /// The projection is the training set definition: counts correct, a
+    /// differing human verdict applied, unreviewed rows kept, ineligible rows
+    /// absent.
+    #[test]
+    fn the_projection_counts_and_labels_match_the_snapshot() {
+        let (dir, rows) = seeded_review_dir("projection");
+        let store = crate::core::review::ReviewStore::new(dir.clone());
+        let p = project_training_labels(&rows, &store);
+        assert!(p.is_ok(), "{:?}", p.read_error);
+        assert_eq!(p.rows_relabelled_by_review, 2, "flt-a/flt-b gain the human label");
+        assert_eq!(p.rows_kept_collector_label, 1, "unreviewed flt-d keeps the collector label");
+        assert_eq!(p.rows_unreviewed, 1);
+        assert_eq!(p.rows_excluded_by_review, 1);
+        assert_eq!(p.rows.len(), 3, "the skipped row is absent");
+        assert!(!p.rows.iter().any(|r| r.image_id == "flt-c"));
+        let a = p.rows.iter().find(|r| r.image_id == "flt-a").unwrap();
+        assert_eq!(a.entity_id.as_deref(), Some("fish:golden"));
+
+        // And it is what the snapshot writes.
+        let meta = snapshot_dataset(&dir, &dir.join("snap-proj"), &rows, 1).unwrap();
+        assert_eq!(meta.rows_relabelled_by_review, p.rows_relabelled_by_review);
+        assert_eq!(meta.rows_kept_collector_label, p.rows_kept_collector_label);
+        assert_eq!(meta.rows_excluded_by_review, p.rows_excluded_by_review);
+        assert_eq!(meta.rows, p.rows.len());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Pure + idempotent: projecting twice changes nothing, and the snapshot is
+    /// identical whether or not a projection ran first (no cache, no ordering
+    /// dependence between the gate and the snapshot).
+    #[test]
+    fn the_projection_is_pure_and_idempotent() {
+        let (dir, rows) = seeded_review_dir("projection-pure");
+        let store = crate::core::review::ReviewStore::new(dir.clone());
+        let a = project_training_labels(&rows, &store);
+        let b = project_training_labels(&a.rows, &store);
+        assert_eq!(a.rows.len(), b.rows.len());
+        let ja: Vec<String> =
+            a.rows.iter().map(|r| serde_json::to_string(r).unwrap()).collect();
+        let jb: Vec<String> =
+            b.rows.iter().map(|r| serde_json::to_string(r).unwrap()).collect();
+        assert_eq!(ja, jb, "projecting already-projected rows must be a no-op");
+
+        // A prior projection call must not change what the snapshot writes.
+        let before = snapshot_dataset(&dir, &dir.join("snap-order-1"), &rows, 1).unwrap();
+        let _ = project_training_labels(&rows, &store);
+        let after = snapshot_dataset(&dir, &dir.join("snap-order-2"), &rows, 1).unwrap();
+        assert_eq!(before.fingerprint, after.fingerprint);
+        assert_eq!(before.labels_sha, after.labels_sha);
+        assert_eq!(
+            std::fs::read(dir.join("snap-order-1").join("labels.jsonl")).unwrap(),
+            std::fs::read(dir.join("snap-order-2").join("labels.jsonl")).unwrap()
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// An unreadable review line must fail the PROJECTION closed, not quietly
+    /// drop the exclusion (which is how an excluded row comes to look
+    /// unreviewed).
+    #[test]
+    fn the_projection_fails_closed_on_an_unreadable_review_file() {
+        let (dir, rows) = seeded_review_dir("projection-corrupt");
+        let reviews = dir.join("reviews.jsonl");
+        let mut body = std::fs::read_to_string(&reviews).unwrap();
+        body.push_str("{ this is not a review record\n");
+        std::fs::write(&reviews, body).unwrap();
+        let store = crate::core::review::ReviewStore::new(dir.clone());
+        let p = project_training_labels(&rows, &store);
+        assert!(!p.is_ok());
+        assert!(p.read_error.unwrap().contains("unreadable"));
+        assert!(p.rows.is_empty(), "no rows means no silent fallback to collector labels");
+        assert!(snapshot_dataset(&dir, &dir.join("snap"), &rows, 1).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

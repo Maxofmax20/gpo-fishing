@@ -32,6 +32,23 @@ fn rows_of_checked(store: &Store) -> Result<Vec<crate::core::ml_dataset::MlAnnot
     MlDatasetStore::new(store.dir().to_path_buf()).annotations_checked()
 }
 
+/// The rows a frozen snapshot WOULD write, for the given live rows: the human
+/// review verdicts projected onto the collector's labels.
+///
+/// One projection per call site so a gate and the snapshot it guards can never
+/// describe different training sets. If the review state cannot be read the
+/// result is empty + `read_error`, which every gate reports as a refusal rather
+/// than silently falling back to the collector's labels.
+fn projected_labels(
+    store: &Store,
+    rows: &[crate::core::ml_dataset::MlAnnotation],
+) -> training::ProjectedLabels {
+    training::project_training_labels(
+        rows,
+        &crate::core::review::ReviewStore::new(store.dir().to_path_buf()),
+    )
+}
+
 fn trainer_module_for(family: &str) -> Option<&'static str> {
     match family {
         "fish" => Some("gpo_train.fish_train"),
@@ -116,15 +133,44 @@ fn last_training_ms(store: &Store) -> Option<u64> {
         .max()
 }
 
+/// The fish class-sufficiency check as a PURE function: `None` when every
+/// canonical class has at least `min` rows in the projected TRAIN split, else
+/// the actionable refusal naming each short class and its count.
+///
+/// Extracted, and `pub`, so the gate and the read-only evidence example
+/// (`examples/gate_evidence.rs`) run the SAME arithmetic - a report that
+/// recomputes the rule itself is how two numbers for one quantity appear.
+pub fn fish_train_support_failure(
+    required: &[&str],
+    support: &std::collections::BTreeMap<String, usize>,
+    min: usize,
+) -> Option<String> {
+    let short: Vec<(String, usize)> = required
+        .iter()
+        .map(|c| (c.to_string(), support.get(*c).copied().unwrap_or(0)))
+        .filter(|(_, n)| *n < min)
+        .collect();
+    if short.is_empty() {
+        return None;
+    }
+    let named: Vec<String> = short.iter().map(|(c, n)| format!("{c} {n}/{min}")).collect();
+    Some(format!(
+        "{} of {} canonical classes are short of {min} projected TRAIN rows ({}); \
+         the trainer's scope assert would abort the run",
+        short.len(),
+        required.len(),
+        named.join(", ")
+    ))
+}
+
 #[allow(clippy::too_many_arguments)]
 fn family_eligibility(
     family: &str,
-    rows: &[crate::core::ml_dataset::MlAnnotation],
+    projected: &training::ProjectedLabels,
     settings: &TrainingSettings,
     backend_ok: bool,
     backend_detail: &str,
     running: usize,
-    store_dir: Option<&std::path::Path>,
     review_floor: f64,
 ) -> FamilyEligibility {
     let mut checks: Vec<GateCheck> = Vec::new();
@@ -140,6 +186,17 @@ fn family_eligibility(
             checks.push(GateCheck { ok: true, text: $text.to_string() });
         }};
     }
+    // The gate must describe the SAME rows the snapshot will write. When the
+    // review state cannot be read the projected set is empty and every check
+    // below fails: falling back to the collector's labels here would recreate
+    // the exact lie this gate exists to prevent (measured: it read 224 rows for
+    // `fish:crimson` while the projected snapshot wrote 13, and the trainer
+    // aborted).
+    if let Some(err) = &projected.read_error {
+        checks.push(GateCheck { ok: false, text: format!("human review state unreadable: {err}") });
+        return FamilyEligibility { family: family.to_string(), eligible: false, checks };
+    }
+    let rows = projected.rows.as_slice();
     if !backend_ok {
         fail! {format!("training backend unavailable: {backend_detail}")};
     } else {
@@ -161,7 +218,9 @@ fn family_eligibility(
     }
     match family {
         "fish" => {
-            // THE SAME SET GATE THE READINESS ENGINE USES.
+            // THE SAME SET GATE THE READINESS ENGINE USES, over the PROJECTED
+            // rows (the human verdicts), so it describes what the frozen
+            // snapshot will actually contain.
             //
             // Was a second hardcoded literal, `q.len() >= 8`, with the string
             // "scope: 8-class model" - while the readiness subsystem demanded
@@ -200,6 +259,26 @@ fn family_eligibility(
                     "canonical fish classes unmet - {}",
                     why.join("; ")
                 )};
+            }
+
+            // CLASS SUFFICIENCY IN THE TRAIN SPLIT - the exact quantity the
+            // trainer asserts on (`fish_train.py`: every FISH_VOCAB class needs
+            // >= MIN_EXAMPLES rows in TRAIN, else the run aborts).
+            //
+            // Measured today this is the check that would have stopped a broken
+            // run: `fish:crimson` reads 224 rows in the live file, but only 13
+            // survive the human projection, so the trainer dies on that class
+            // alone. The gate said "ready" and the job crashed. Now the gate
+            // says NOT ready and NAMES the class and its count.
+            let support = training::train_support_per_class(rows, "fish:");
+            let min = crate::core::ml_capability::ENTITY_MIN_EXAMPLES;
+            match fish_train_support_failure(required, &support, min) {
+                None => {
+                    pass! {format!(
+                        "every canonical class has >= {min} rows in the projected TRAIN split",
+                    )};
+                }
+                Some(why) => fail! {why},
             }
         }
         "fruit" => {
@@ -241,12 +320,14 @@ fn family_eligibility(
     if scoped.is_empty() {
         fail! {"no scoped rows for this family yet"};
     } else {
-        let dir = store_dir.unwrap_or(std::path::Path::new("."));
-        let reviewed = crate::core::review::ReviewStore::new(dir.to_path_buf())
-            .list()
-            .into_iter()
-            .filter(|r| r.training_eligible)
-            .filter(|r| scoped.iter().any(|s| s.image_id == r.image_id))
+        // "Human-reviewed" is read from the PROJECTION, i.e. from the same parse
+        // that decided the labels and the exclusions. `ReviewStore::list()` was
+        // reading the same file with a stricter parser and dropping records it
+        // did not like, so the floor could report 0/N on rows whose verdicts were
+        // demonstrably being applied.
+        let reviewed = scoped
+            .iter()
+            .filter(|r| projected.reviewed_eligible_ids.contains(r.image_id.as_str()))
             .count();
         let share = reviewed as f64 / scoped.len() as f64;
         if share >= review_floor {
@@ -332,6 +413,9 @@ pub async fn training_overview(st: State<'_, AppState>) -> Result<TrainingOvervi
                     .events
             })
             .sum();
+        // ONE projection, shared by every family gate: the rows a snapshot would
+        // write, with the human verdicts on them.
+        let projected = projected_labels(&store, &rows);
         Ok(TrainingOverview {
             dataset_version: DATASET_VERSION,
             rows: rows.len(),
@@ -344,7 +428,7 @@ pub async fn training_overview(st: State<'_, AppState>) -> Result<TrainingOvervi
             shadow_events,
             eligibility: ["fish", "fruit", "state"]
                 .iter()
-                .map(|f| family_eligibility(f, &rows, &tsettings, backend.available, &backend.detail, running, Some(store.dir()), tsettings.readiness_min_review_coverage as f64))
+                .map(|f| family_eligibility(f, &projected, &tsettings, backend.available, &backend.detail, running, tsettings.readiness_min_review_coverage as f64))
                 .collect(),
             auto_enabled: tsettings.auto_enabled,
             backend_available: backend.available,
@@ -381,7 +465,7 @@ pub fn training_start(
         .iter()
         .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
         .count();
-    let elig = family_eligibility(&family, &rows, &settings, true, "", running, Some(st.store.dir()), settings.readiness_min_review_coverage as f64);
+    let elig = family_eligibility(&family, &projected_labels(&st.store, &rows), &settings, true, "", running, settings.readiness_min_review_coverage as f64);
     if !elig.eligible {
         return Err(format!(
             "{} training blocked: {}",
@@ -473,12 +557,11 @@ pub fn training_restart(st: State<'_, AppState>, job_id: String) -> Result<train
         .count();
     let elig = family_eligibility(
         &old.model_family,
-        &rows,
+        &projected_labels(&st.store, &rows),
         &settings,
         true,
         "",
         running,
-        Some(st.store.dir()),
         settings.readiness_min_review_coverage as f64,
     );
     if !elig.eligible {
@@ -1186,7 +1269,7 @@ pub(crate) fn training_auto_tick(
     if running >= s.max_concurrent_jobs.max(1) {
         return;
     }
-    let elig = family_eligibility(family, &rows, &s, true, "", running, Some(store.dir()), s.readiness_min_review_coverage as f64);
+    let elig = family_eligibility(family, &projected_labels(store, &rows), &s, true, "", running, s.readiness_min_review_coverage as f64);
     if !elig.eligible {
         training::append_history(
             store.dir(),
@@ -1247,4 +1330,308 @@ pub fn training_decide(st: State<'_, AppState>, job_id: String) -> Result<String
         return Err("job already decided (candidate exists)".to_string());
     }
     Ok(decide_for_job(&st.store, &mut job, false, true))
+}
+
+// ---------------------------------------------------------------------------
+// Tests: the gate measures the PROJECTED training set
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::ml_dataset::{MlAnnotation, MlDatasetStore, MlTask, DATASET_VERSION};
+    use std::io::Write as _;
+
+    /// One session id that hashes into the requested split. Splits are
+    /// session-pure FNV-1a, so this is how a fixture asks for rows that will be
+    /// in TRAIN without touching a real session.
+    fn session_in(split: &str) -> String {
+        for i in 0..100_000u32 {
+            let id = format!("fixture-session-{i}");
+            if MlDatasetStore::split_of(&id).as_str() == split {
+                return id;
+            }
+        }
+        panic!("no session id hashes into the {split} split");
+    }
+
+    fn row(image_id: &str, session: &str, entity: Option<&str>) -> MlAnnotation {
+        MlAnnotation {
+            image_id: image_id.to_string(),
+            dataset_version: DATASET_VERSION,
+            session_id: session.to_string(),
+            task: MlTask::EntityRecognition,
+            ocr_text: format!("<{}>", entity.unwrap_or("none")),
+            region_name: "drop".to_string(),
+            ui_label: None,
+            bbox: None,
+            game_state: None,
+            entity_id: entity.map(str::to_string),
+            annotator: "collector".to_string(),
+            timestamp_ms: 1,
+            source: "ui".to_string(),
+            confidence: Some(0.9),
+            hard_example: false,
+            hard_reason: None,
+            corrections: Vec::new(),
+            event_id: None,
+            frame_index: None,
+        }
+    }
+
+    /// One `reviews.jsonl` line in the FULL on-disk schema, so the strict
+    /// `ReviewStore` parser and the projection's tolerant parser see the same
+    /// verdict - a fixture that only satisfies one of them would test a
+    /// disagreement between parsers instead of the gate.
+    fn review_line(image_id: &str, eligible: bool, human: Option<&str>, reason: Option<&str>) -> String {
+        serde_json::json!({
+            "review_id": format!("rv-{image_id}"),
+            "image_id": image_id,
+            "session_id": "fixture-session",
+            "review_status": if eligible { "REVIEWED_CORRECTED" } else { "REVIEWED_SKIPPED" },
+            "training_eligible": eligible,
+            "human_entity_id": human,
+            "excluded_reason": reason,
+            "dataset_version": DATASET_VERSION,
+        })
+        .to_string()
+    }
+
+    fn write_reviews(dir: &std::path::Path, lines: &[String]) {
+        std::fs::create_dir_all(dir).unwrap();
+        let mut f = std::fs::File::create(dir.join("reviews.jsonl")).unwrap();
+        for l in lines {
+            writeln!(f, "{l}").unwrap();
+        }
+    }
+
+    fn tmp_dir(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("gpo-elig-{tag}-{}", crate::events::now_ms()));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// THE HEADLINE TEST. The live file says `fish:crimson` has 224 rows in
+    /// TRAIN; humans reviewed 211 of them as species that are not the stem, so
+    /// the snapshot writes 13. The gate must report the 13 and refuse - never the
+    /// 224 the trainer would never see.
+    #[test]
+    fn a_stem_the_humans_replaced_cannot_arm_the_train_button() {
+        let dir = tmp_dir("crimson");
+        let train = session_in("train");
+        let mut rows: Vec<MlAnnotation> = Vec::new();
+        let mut reviews: Vec<String> = Vec::new();
+
+        // Every canonical class except `fish:crimson` is comfortably supported.
+        for c in crate::core::class_vocab::fish_vocab()
+            .iter()
+            .copied()
+            .filter(|c| *c != "fish:crimson")
+        {
+            for i in 0..25 {
+                let id = format!("{c}-row-{i}");
+                rows.push(row(&id, &train, Some(c)));
+                reviews.push(review_line(&id, true, Some(c), None));
+            }
+        }
+        // 224 collected rows for the stem...
+        for i in 0..224 {
+            let id = format!("crimson-row-{i}");
+            rows.push(row(&id, &train, Some("fish:crimson")));
+            if i < 211 {
+                // ...211 of them a human decided were two different species.
+                let human = if i % 2 == 0 { "fish:crimsonsnapper" } else { "fish:crimsonpolkapuffer" };
+                reviews.push(review_line(&id, true, Some(human), None));
+            }
+            // The remaining 13 stay unreviewed and keep the collector's label.
+        }
+        write_reviews(&dir, &reviews);
+
+        // The quantity the live file reports: enough to arm the button.
+        let live_support = crate::core::training::train_support_per_class(&rows, "fish:");
+        assert_eq!(live_support.get("fish:crimson").copied(), Some(224));
+
+        let store = Store::new(dir.clone());
+        let projected = projected_labels(&store, &rows);
+        assert!(projected.is_ok(), "{:?}", projected.read_error);
+        assert_eq!(
+            projected.rows_relabelled_by_review, 211,
+            "a human verdict is the label the snapshot writes"
+        );
+
+        let elig = family_eligibility(
+            "fish",
+            &projected,
+            &TrainingSettings::default(),
+            true,
+            "",
+            0,
+            0.5,
+        );
+        assert!(!elig.eligible, "a class the trainer cannot fill must not be armed: {:?}", elig.checks);
+        let failures: Vec<&str> = elig
+            .checks
+            .iter()
+            .filter(|c| !c.ok)
+            .map(|c| c.text.as_str())
+            .collect();
+        let sufficiency = failures
+            .iter()
+            .find(|t| t.contains("projected TRAIN rows"))
+            .unwrap_or_else(|| panic!("no train-support check reported: {failures:?}"));
+        assert!(
+            sufficiency.contains("fish:crimson 13/20"),
+            "the check must name the class and its PROJECTED count: {sufficiency}"
+        );
+        assert!(
+            !failures.iter().any(|t| t.contains("224")),
+            "no check may quote the collector's row count: {failures:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Every short class is named with its own count, so the operator does not
+    /// have to diff two lists to find what to collect.
+    #[test]
+    fn the_class_sufficiency_check_names_every_short_class() {
+        let dir = tmp_dir("short");
+        let train = session_in("train");
+        let mut rows = Vec::new();
+        let mut reviews = Vec::new();
+        for i in 0..25 {
+            let id = format!("golden-{i}");
+            rows.push(row(&id, &train, Some("fish:golden")));
+            reviews.push(review_line(&id, true, Some("fish:golden"), None));
+        }
+        write_reviews(&dir, &reviews);
+        let elig = family_eligibility(
+            "fish",
+            &projected_labels(&Store::new(dir.clone()), &rows),
+            &TrainingSettings::default(),
+            true,
+            "",
+            0,
+            0.5,
+        );
+        let failures: Vec<&str> = elig.checks.iter().filter(|c| !c.ok).map(|c| c.text.as_str()).collect();
+        let sufficiency = failures
+            .iter()
+            .find(|t| t.contains("projected TRAIN rows"))
+            .unwrap_or_else(|| panic!("no train-support check reported: {failures:?}"));
+        let short = crate::core::class_vocab::fish_vocab().len() - 1;
+        assert!(sufficiency.contains(&format!("{short} of 8")), "{sufficiency}");
+        for c in crate::core::class_vocab::fish_vocab()
+            .iter()
+            .copied()
+            .filter(|c| *c != "fish:golden")
+        {
+            assert!(
+                sufficiency.contains(&format!("{c} 0/20")),
+                "{c} must be named with its count: {sufficiency}"
+            );
+        }
+        assert!(!sufficiency.contains("fish:golden"), "a supported class is not a shortfall: {sufficiency}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The human-review floor is measured over the projected set: rows a human
+    /// rejected are not training data and must not sit in the denominator
+    /// pretending to be unreviewed evidence. 100 live rows, 60 of them usable,
+    /// is 60% live and 100% projected - and the floor is 90%.
+    #[test]
+    fn the_review_floor_is_measured_over_the_projected_rows() {
+        let dir = tmp_dir("floor");
+        let train = session_in("train");
+        let mut rows = Vec::new();
+        let mut reviews = Vec::new();
+        for i in 0..100 {
+            let id = format!("floor-row-{i}");
+            rows.push(row(&id, &train, Some("fish:golden")));
+            if i < 60 {
+                reviews.push(review_line(&id, true, Some("fish:golden"), None));
+            } else {
+                reviews.push(review_line(&id, false, None, Some("human skipped")));
+            }
+        }
+        write_reviews(&dir, &reviews);
+
+        let elig = family_eligibility(
+            "fish",
+            &projected_labels(&Store::new(dir.clone()), &rows),
+            &TrainingSettings::default(),
+            true,
+            "",
+            0,
+            0.9,
+        );
+        let floor_check = elig
+            .checks
+            .iter()
+            .find(|c| c.text.contains("human-reviewed"))
+            .expect("a review-floor check is always reported");
+        assert!(
+            floor_check.ok,
+            "60 of 60 usable rows are human-reviewed, so the floor passes: {:?}",
+            floor_check.text
+        );
+        assert!(floor_check.text.contains("60/60"), "{}", floor_check.text);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// FAIL CLOSED, never fall back. An unreadable review file means exclusions
+    /// cannot be verified; reporting the collector's labels instead would be the
+    /// original lie with a fresh coat of paint.
+    #[test]
+    fn an_unreadable_review_file_refuses_the_gate_instead_of_reporting_collector_labels() {
+        let dir = tmp_dir("unreadable");
+        let train = session_in("train");
+        let rows: Vec<MlAnnotation> = (0..50)
+            .map(|i| row(&format!("r-{i}"), &train, Some("fish:crimson")))
+            .collect();
+        write_reviews(&dir, &["{ not a review record".to_string()]);
+        let projected = projected_labels(&Store::new(dir.clone()), &rows);
+        assert!(!projected.is_ok());
+        let elig = family_eligibility(
+            "fish",
+            &projected,
+            &TrainingSettings::default(),
+            true,
+            "",
+            0,
+            0.5,
+        );
+        assert!(!elig.eligible);
+        assert!(
+            elig.checks[0].text.contains("human review state unreadable"),
+            "{:?}",
+            elig.checks
+        );
+        assert!(
+            elig.checks.iter().all(|c| !c.text.contains("fish:crimson")),
+            "no class claim may be made from an unreadable review file: {:?}",
+            elig.checks
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The fail-closed row loader still refuses a partially readable
+    /// `labels.jsonl`: a row no filter can see must not become eligibility
+    /// evidence.
+    #[test]
+    fn an_unreadable_labels_line_still_refuses_before_any_gate_runs() {
+        let dir = tmp_dir("labels-bad");
+        let ml = MlDatasetStore::new(dir.clone());
+        let root = ml.root().to_path_buf();
+        std::fs::create_dir_all(&root).unwrap();
+        let good = row("ok-1", "session-a", Some("fish:golden"));
+        std::fs::write(
+            root.join("labels.jsonl"),
+            format!("{}\n{{ truncated\n", serde_json::to_string(&good).unwrap()),
+        )
+        .unwrap();
+        let store = Store::new(dir.clone());
+        let err = rows_of_checked(&store).expect_err("a truncated row must refuse");
+        assert!(err.contains("unreadable line"), "{err}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

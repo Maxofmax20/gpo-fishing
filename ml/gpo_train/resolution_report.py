@@ -419,7 +419,18 @@ def main() -> int:
                     default=Path(os.environ.get("APPDATA", "")) / "gpo-autofish")
     ap.add_argument("--out", type=Path,
                     default=REPO_ROOT / "reports" / "resolution" / "resolution_report.json")
+    ap.add_argument("--vocab-decision", action="store_true",
+                    help="also emit the fish-vocabulary decision report "
+                         "(reports/resolution/vocab_decision.json); the arithmetic "
+                         "lives in gpo_train.vocab_decision")
+    ap.add_argument("--vocab-out", type=Path,
+                    default=REPO_ROOT / "reports" / "resolution" / "vocab_decision.json")
     args = ap.parse_args()
+    if args.vocab_decision:
+        # Delegated, not duplicated: one implementation of the projection, one
+        # place where either option could be "chosen" by accident.
+        from . import vocab_decision
+        return vocab_decision.main_for(args.appdata, args.vocab_out)
     report = run(args.appdata)
     out = args.out if args.out.is_absolute() else REPO_ROOT / args.out
     out.parent.mkdir(parents=True, exist_ok=True)

@@ -1,0 +1,770 @@
+{
+ "costs": {
+  "option_a": {
+   "classes_the_model_cannot_emit": [
+    "fish:bluelipgrouper",
+    "fish:candycornsquid",
+    "fish:crimsonpolkapuffer",
+    "fish:crimsonsnapper",
+    "fish:darkskeletalshark",
+    "fish:exotictigerfin",
+    "fish:fangfish",
+    "fish:goldenpolkapuffer",
+    "fish:goldenribbonangelfish",
+    "fish:goldentigerfin",
+    "fish:jackobite",
+    "fish:skeletalshark",
+    "fish:tigerfin",
+    "fish:zebraribbonangelfish",
+    "fish:anglerfish"
+   ],
+   "count": 15,
+   "runtime_effect": "Every one of these species keeps resolving to a bare stem or to UNKNOWN at runtime, so the shadow log keeps recording the same legacy-stem disagreement measured in resolution_report.json (1801 of 14805 live rows carry a different human label).",
+   "vocab_sha_unchanged": true
+  },
+  "option_b": {
+   "classes_the_model_cannot_emit": [
+    "fish:angelfish",
+    "fish:crimson",
+    "fish:golden",
+    "fish:pufferfish",
+    "fish:shark",
+    "fish:snapper",
+    "fish:squid"
+   ],
+   "count": 7,
+   "retraining_required": true,
+   "runtime_effect": "7 of the 8 current classes leave the output head, so anything the bot currently labels with them becomes UNKNOWN until a model trained on the new head is promoted.",
+   "vocab_sha_deployed": "256508a6e89ed593832e2d79ebc48e423b2fa3bc531d6ec8ca56facccef0ef10",
+   "vocab_sha_required": "f2ce3dd21f7b4039551be67e3f0b34bd5f103537fadc0d00ec5e6d2c6edb5958",
+   "why": "FISH_VOCAB.txt is include_str!-embedded and line order IS the output-logit index. models/fish_v1.json pins `vocab_sha`, and shadow_infer verifies it before loading weights, so the deployed model would refuse to load against a changed class map. Changing the file therefore REQUIRES: retrain -> new candidate -> soak -> promotion. Hand-editing a manifest's `classes` array is explicitly forbidden by the file's own header."
+  }
+ },
+ "decision": "NOT MADE HERE. This report presents both options with measured support and cost; choosing the fish class map changes what the product recognises, what gets deployed, and what every gate compares against.",
+ "deployed_fish_model": {
+  "classes": [
+   "fish:angelfish",
+   "fish:crimson",
+   "fish:golden",
+   "fish:pufferfish",
+   "fish:shark",
+   "fish:snapper",
+   "fish:squid",
+   "fish:swordfish"
+  ],
+  "manifest": "C:\\Users\\xsmsm\\AppData\\Roaming\\gpo-autofish\\models\\fish_v1.json",
+  "manifest_present": true,
+  "manifest_sha256": "e8bc7ad8789bd2ab18dd33ca305e7c335d4b1c2b323cb4daef48b42374ac1f3a",
+  "stem": "fish_v1",
+  "version": "1",
+  "vocab_sha": "256508a6e89ed593832e2d79ebc48e423b2fa3bc531d6ec8ca56facccef0ef10"
+ },
+ "inputs": {
+  "fish_vocab": "D:\\AI Projects\\04_Apps_and_Code\\apps\\desktop\\gpo-fishing-macro\\FISH_VOCAB.txt",
+  "fish_vocab_sha256": "5170edf0f46d89bb95d72b608d66ff7817331c78988969c28efaa2bf9ccc604b",
+  "kb_entities": 156,
+  "kb_export": "D:\\AI Projects\\04_Apps_and_Code\\apps\\desktop\\gpo-fishing-macro\\ml\\gpo_ocr_audit\\kb_export.json",
+  "kb_export_sha256": "c424f8e5238bdd600f1fb53bab27b256c6c0ae24f65a3d23dcc2bf12d3fe79b6",
+  "labels": "C:\\Users\\xsmsm\\AppData\\Roaming\\gpo-autofish\\datasets\\gpo-vision\\v1\\labels.jsonl",
+  "labels_sha256": "a6fac80bd41202fae0352a1c1c6e03265233c4ba26e9dc8ccb69e6cbdbfb82de",
+  "overlay_entities": 15,
+  "reviews": "C:\\Users\\xsmsm\\AppData\\Roaming\\gpo-autofish\\reviews.jsonl",
+  "reviews_sha256": "df4c482f84e89dbdbe724666d1aeca772eed9be070ab902a57eff872994d76f8",
+  "wiki_snapshot": "D:\\AI Projects\\04_Apps_and_Code\\apps\\desktop\\gpo-fishing-macro\\reports\\ontology_review\\wiki_fish.json",
+  "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+ },
+ "kind": "vocab-decision",
+ "options": {
+  "option_a": {
+   "below_test_support_floor": [
+    {
+     "entity": "fish:crimson",
+     "test_rows": 1
+    },
+    {
+     "entity": "fish:golden",
+     "test_rows": 2
+    },
+    {
+     "entity": "fish:pufferfish",
+     "test_rows": 1
+    },
+    {
+     "entity": "fish:snapper",
+     "test_rows": 6
+    },
+    {
+     "entity": "fish:squid",
+     "test_rows": 5
+    },
+    {
+     "entity": "fish:swordfish",
+     "test_rows": 6
+    }
+   ],
+   "classes": [
+    "fish:angelfish",
+    "fish:crimson",
+    "fish:golden",
+    "fish:pufferfish",
+    "fish:shark",
+    "fish:snapper",
+    "fish:squid",
+    "fish:swordfish"
+   ],
+   "contradicted_by_reviews": [
+    {
+     "collector_rows": 285,
+     "entity": "fish:angelfish",
+     "moved_to": {
+      "fish:anglerfish": 2,
+      "fish:candycornsquid": 1,
+      "fish:crimsonpolkapuffer": 21,
+      "fish:crimsonsnapper": 6,
+      "fish:darkskeletalshark": 1,
+      "fish:exotictigerfin": 2,
+      "fish:fangfish": 1,
+      "fish:goldenpolkapuffer": 1,
+      "fish:goldenribbonangelfish": 7,
+      "fish:zebraribbonangelfish": 186
+     },
+     "projected_rows": 57,
+     "rows_humans_moved": 228
+    },
+    {
+     "collector_rows": 224,
+     "entity": "fish:crimson",
+     "moved_to": {
+      "fish:candycornsquid": 3,
+      "fish:crimsonpolkapuffer": 168,
+      "fish:crimsonsnapper": 13,
+      "fish:darkskeletalshark": 3,
+      "fish:exotictigerfin": 2,
+      "fish:goldenpolkapuffer": 2,
+      "fish:goldenribbonangelfish": 1,
+      "fish:jackobite": 1,
+      "fish:zebraribbonangelfish": 18
+     },
+     "projected_rows": 13,
+     "rows_humans_moved": 211
+    },
+    {
+     "collector_rows": 287,
+     "entity": "fish:golden",
+     "moved_to": {
+      "fish:bluelipgrouper": 1,
+      "fish:candycornsquid": 2,
+      "fish:crimsonpolkapuffer": 10,
+      "fish:crimsonsnapper": 2,
+      "fish:darkskeletalshark": 1,
+      "fish:exotictigerfin": 2,
+      "fish:goldenpolkapuffer": 74,
+      "fish:goldenribbonangelfish": 69,
+      "fish:goldentigerfin": 34,
+      "fish:jackobite": 1,
+      "fish:swordfish": 1,
+      "fish:zebraribbonangelfish": 5
+     },
+     "projected_rows": 85,
+     "rows_humans_moved": 202
+    },
+    {
+     "collector_rows": 103,
+     "entity": "fish:pufferfish",
+     "moved_to": {
+      "fish:candycornsquid": 1,
+      "fish:crimsonpolkapuffer": 34,
+      "fish:crimsonsnapper": 1,
+      "fish:darkskeletalshark": 1,
+      "fish:exotictigerfin": 1,
+      "fish:fangfish": 1,
+      "fish:goldenpolkapuffer": 26
+     },
+     "projected_rows": 38,
+     "rows_humans_moved": 65
+    },
+    {
+     "collector_rows": 254,
+     "entity": "fish:shark",
+     "moved_to": {
+      "fish:bluelipgrouper": 1,
+      "fish:candycornsquid": 5,
+      "fish:crimsonpolkapuffer": 5,
+      "fish:crimsonsnapper": 9,
+      "fish:darkskeletalshark": 16,
+      "fish:exotictigerfin": 8,
+      "fish:goldenpolkapuffer": 2,
+      "fish:goldentigerfin": 2,
+      "fish:jackobite": 2,
+      "fish:skeletalshark": 29,
+      "fish:swordfish": 1,
+      "fish:tigerfin": 1,
+      "fish:zebraribbonangelfish": 3
+     },
+     "projected_rows": 170,
+     "rows_humans_moved": 84
+    },
+    {
+     "collector_rows": 271,
+     "entity": "fish:snapper",
+     "moved_to": {
+      "fish:bluelipgrouper": 1,
+      "fish:candycornsquid": 11,
+      "fish:crimsonpolkapuffer": 1,
+      "fish:crimsonsnapper": 199,
+      "fish:darkskeletalshark": 2,
+      "fish:exotictigerfin": 8,
+      "fish:fangfish": 1,
+      "fish:goldenribbonangelfish": 1,
+      "fish:jackobite": 3,
+      "fish:skeletalshark": 1,
+      "fish:swordfish": 1,
+      "fish:tigerfin": 1,
+      "fish:zebraribbonangelfish": 1
+     },
+     "projected_rows": 40,
+     "rows_humans_moved": 231
+    },
+    {
+     "collector_rows": 301,
+     "entity": "fish:squid",
+     "moved_to": {
+      "fish:candycornsquid": 200,
+      "fish:crimsonpolkapuffer": 3,
+      "fish:crimsonsnapper": 13,
+      "fish:exotictigerfin": 8,
+      "fish:fangfish": 3,
+      "fish:goldenpolkapuffer": 2,
+      "fish:jackobite": 1,
+      "fish:skeletalshark": 2,
+      "fish:swordfish": 1,
+      "fish:zebraribbonangelfish": 2
+     },
+     "projected_rows": 66,
+     "rows_humans_moved": 235
+    }
+   ],
+   "failing_class_gate": [
+    {
+     "entity": "fish:crimson",
+     "projected_rows": 13,
+     "sessions": 9
+    }
+   ],
+   "failing_trainer_scope": [
+    {
+     "entity": "fish:crimson",
+     "needs": 9,
+     "train_rows": 11
+    }
+   ],
+   "note": "7 of these 8 classes are bare stems the human review contradicts. A class whose rows humans keep re-labelling is not a class the data supports; it is a bucket the collector never resolved.",
+   "option": "A - the 8 legacy stems in FISH_VOCAB.txt",
+   "per_class": [
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": true,
+     "clears_trainer_scope": true,
+     "entity": "fish:angelfish",
+     "projected_rows": 57,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 27,
+     "test_rows": 10,
+     "train_rows": 44,
+     "validation_rows": 3
+    },
+    {
+     "clears_class_gate": false,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": false,
+     "entity": "fish:crimson",
+     "projected_rows": 13,
+     "rows_short_of_trainer_scope": 9,
+     "sessions": 9,
+     "test_rows": 1,
+     "train_rows": 11,
+     "validation_rows": 1
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:golden",
+     "projected_rows": 85,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 31,
+     "test_rows": 2,
+     "train_rows": 77,
+     "validation_rows": 6
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:pufferfish",
+     "projected_rows": 38,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 19,
+     "test_rows": 1,
+     "train_rows": 33,
+     "validation_rows": 4
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": true,
+     "clears_trainer_scope": true,
+     "entity": "fish:shark",
+     "projected_rows": 170,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 37,
+     "test_rows": 16,
+     "train_rows": 142,
+     "validation_rows": 12
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:snapper",
+     "projected_rows": 40,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 22,
+     "test_rows": 6,
+     "train_rows": 32,
+     "validation_rows": 2
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:squid",
+     "projected_rows": 66,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 30,
+     "test_rows": 5,
+     "train_rows": 50,
+     "validation_rows": 11
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:swordfish",
+     "projected_rows": 79,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 34,
+     "test_rows": 6,
+     "train_rows": 70,
+     "validation_rows": 3
+    }
+   ],
+   "source": "D:\\AI Projects\\04_Apps_and_Code\\apps\\desktop\\gpo-fishing-macro\\FISH_VOCAB.txt",
+   "totals": {
+    "classes": 8,
+    "clearing_class_gate": 7,
+    "clearing_test_support_floor": 2,
+    "clearing_trainer_scope": 7,
+    "projected_rows_in_vocab": 548
+   },
+   "vocab_sha256": "256508a6e89ed593832e2d79ebc48e423b2fa3bc531d6ec8ca56facccef0ef10"
+  },
+  "option_b": {
+   "anglerfish_auto_entry": {
+    "entity": "fish:anglerfish",
+    "mechanism": "fish:anglerfish is wiki-documented and in the KB, so the class gate counts it automatically once it reaches 20 rows over 3 sessions: there is no code change, no config toggle and no file edit. Option B is therefore not a frozen list - it is 'every confirmed species with enough reviewed evidence'.",
+    "projected_rows": 12,
+    "rows_needed": 8,
+    "sessions": 9
+   },
+   "below_test_support_floor": [
+    {
+     "entity": "fish:bluelipgrouper",
+     "test_rows": 3
+    },
+    {
+     "entity": "fish:darkskeletalshark",
+     "test_rows": 4
+    },
+    {
+     "entity": "fish:exotictigerfin",
+     "test_rows": 8
+    },
+    {
+     "entity": "fish:fangfish",
+     "test_rows": 8
+    },
+    {
+     "entity": "fish:goldenpolkapuffer",
+     "test_rows": 4
+    },
+    {
+     "entity": "fish:goldenribbonangelfish",
+     "test_rows": 5
+    },
+    {
+     "entity": "fish:goldentigerfin",
+     "test_rows": 0
+    },
+    {
+     "entity": "fish:jackobite",
+     "test_rows": 4
+    },
+    {
+     "entity": "fish:skeletalshark",
+     "test_rows": 4
+    },
+    {
+     "entity": "fish:swordfish",
+     "test_rows": 6
+    },
+    {
+     "entity": "fish:tigerfin",
+     "test_rows": 3
+    }
+   ],
+   "classes": [
+    "fish:bluelipgrouper",
+    "fish:candycornsquid",
+    "fish:crimsonpolkapuffer",
+    "fish:crimsonsnapper",
+    "fish:darkskeletalshark",
+    "fish:exotictigerfin",
+    "fish:fangfish",
+    "fish:goldenpolkapuffer",
+    "fish:goldenribbonangelfish",
+    "fish:goldentigerfin",
+    "fish:jackobite",
+    "fish:skeletalshark",
+    "fish:swordfish",
+    "fish:tigerfin",
+    "fish:zebraribbonangelfish"
+   ],
+   "cross_check_reviewed_manifest": {
+    "class_map_matches": true,
+    "manifest": "D:\\AI Projects\\04_Apps_and_Code\\apps\\desktop\\gpo-fishing-macro\\ml\\output\\reviewed-fish-v1\\dataset_manifest.json",
+    "manifest_class_map": [
+     "fish:bluelipgrouper",
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper",
+     "fish:darkskeletalshark",
+     "fish:exotictigerfin",
+     "fish:fangfish",
+     "fish:goldenpolkapuffer",
+     "fish:goldenribbonangelfish",
+     "fish:goldentigerfin",
+     "fish:jackobite",
+     "fish:skeletalshark",
+     "fish:swordfish",
+     "fish:tigerfin",
+     "fish:zebraribbonangelfish"
+    ],
+    "manifest_per_class": {
+     "fish:bluelipgrouper": {
+      "rows": 47,
+      "sessions": 4,
+      "test_support": 3,
+      "val_support": 0
+     },
+     "fish:candycornsquid": {
+      "rows": 235,
+      "sessions": 48,
+      "test_support": 17,
+      "val_support": 20
+     },
+     "fish:crimsonpolkapuffer": {
+      "rows": 247,
+      "sessions": 39,
+      "test_support": 31,
+      "val_support": 14
+     },
+     "fish:crimsonsnapper": {
+      "rows": 261,
+      "sessions": 41,
+      "test_support": 21,
+      "val_support": 28
+     },
+     "fish:darkskeletalshark": {
+      "rows": 98,
+      "sessions": 33,
+      "test_support": 4,
+      "val_support": 11
+     },
+     "fish:exotictigerfin": {
+      "rows": 199,
+      "sessions": 35,
+      "test_support": 8,
+      "val_support": 13
+     },
+     "fish:fangfish": {
+      "rows": 49,
+      "sessions": 21,
+      "test_support": 8,
+      "val_support": 3
+     },
+     "fish:goldenpolkapuffer": {
+      "rows": 113,
+      "sessions": 30,
+      "test_support": 4,
+      "val_support": 8
+     },
+     "fish:goldenribbonangelfish": {
+      "rows": 84,
+      "sessions": 36,
+      "test_support": 5,
+      "val_support": 8
+     },
+     "fish:goldentigerfin": {
+      "rows": 38,
+      "sessions": 20,
+      "test_support": 0,
+      "val_support": 3
+     },
+     "fish:jackobite": {
+      "rows": 75,
+      "sessions": 30,
+      "test_support": 4,
+      "val_support": 6
+     },
+     "fish:skeletalshark": {
+      "rows": 41,
+      "sessions": 21,
+      "test_support": 4,
+      "val_support": 4
+     },
+     "fish:swordfish": {
+      "rows": 74,
+      "sessions": 34,
+      "test_support": 6,
+      "val_support": 3
+     },
+     "fish:tigerfin": {
+      "rows": 46,
+      "sessions": 5,
+      "test_support": 3,
+      "val_support": 0
+     },
+     "fish:zebraribbonangelfish": {
+      "rows": 245,
+      "sessions": 43,
+      "test_support": 20,
+      "val_support": 23
+     }
+    },
+    "manifest_sha256": "95cba76030df00609a44a23568d7ac4e684c20c1934ec084e04e899c8a2cdcba",
+    "note": "ml/gpo_train/reviewed_dataset.py applies three further filters (KB membership, wiki documentation, catch_result + image present), so its per-class rows can be LOWER than the projection's; the class list must still match exactly."
+   },
+   "failing_class_gate": [],
+   "failing_trainer_scope": [],
+   "option": "B - the 15 confirmed species",
+   "per_class": [
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:bluelipgrouper",
+     "projected_rows": 47,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 4,
+     "test_rows": 3,
+     "train_rows": 44,
+     "validation_rows": 0
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": true,
+     "clears_trainer_scope": true,
+     "entity": "fish:candycornsquid",
+     "projected_rows": 235,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 48,
+     "test_rows": 17,
+     "train_rows": 198,
+     "validation_rows": 20
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": true,
+     "clears_trainer_scope": true,
+     "entity": "fish:crimsonpolkapuffer",
+     "projected_rows": 247,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 39,
+     "test_rows": 31,
+     "train_rows": 202,
+     "validation_rows": 14
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": true,
+     "clears_trainer_scope": true,
+     "entity": "fish:crimsonsnapper",
+     "projected_rows": 261,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 41,
+     "test_rows": 21,
+     "train_rows": 212,
+     "validation_rows": 28
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:darkskeletalshark",
+     "projected_rows": 98,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 33,
+     "test_rows": 4,
+     "train_rows": 83,
+     "validation_rows": 11
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:exotictigerfin",
+     "projected_rows": 199,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 35,
+     "test_rows": 8,
+     "train_rows": 178,
+     "validation_rows": 13
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:fangfish",
+     "projected_rows": 49,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 21,
+     "test_rows": 8,
+     "train_rows": 38,
+     "validation_rows": 3
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:goldenpolkapuffer",
+     "projected_rows": 113,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 30,
+     "test_rows": 4,
+     "train_rows": 101,
+     "validation_rows": 8
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:goldenribbonangelfish",
+     "projected_rows": 84,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 36,
+     "test_rows": 5,
+     "train_rows": 71,
+     "validation_rows": 8
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:goldentigerfin",
+     "projected_rows": 38,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 20,
+     "test_rows": 0,
+     "train_rows": 35,
+     "validation_rows": 3
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:jackobite",
+     "projected_rows": 75,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 30,
+     "test_rows": 4,
+     "train_rows": 65,
+     "validation_rows": 6
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:skeletalshark",
+     "projected_rows": 41,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 21,
+     "test_rows": 4,
+     "train_rows": 33,
+     "validation_rows": 4
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:swordfish",
+     "projected_rows": 79,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 34,
+     "test_rows": 6,
+     "train_rows": 70,
+     "validation_rows": 3
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": false,
+     "clears_trainer_scope": true,
+     "entity": "fish:tigerfin",
+     "projected_rows": 46,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 5,
+     "test_rows": 3,
+     "train_rows": 43,
+     "validation_rows": 0
+    },
+    {
+     "clears_class_gate": true,
+     "clears_test_support_floor": true,
+     "clears_trainer_scope": true,
+     "entity": "fish:zebraribbonangelfish",
+     "projected_rows": 245,
+     "rows_short_of_trainer_scope": 0,
+     "sessions": 43,
+     "test_rows": 20,
+     "train_rows": 202,
+     "validation_rows": 23
+    }
+   ],
+   "source": "D:\\AI Projects\\04_Apps_and_Code\\apps\\desktop\\gpo-fishing-macro\\reports\\ontology_review\\wiki_fish.json (wiki-documented fish) INTERSECT D:\\AI Projects\\04_Apps_and_Code\\apps\\desktop\\gpo-fishing-macro\\ml\\gpo_ocr_audit\\kb_export.json (effective KB), minus fish:anglerfish (see anglerfish_auto_entry)",
+   "totals": {
+    "classes": 15,
+    "clearing_class_gate": 15,
+    "clearing_test_support_floor": 4,
+    "clearing_trainer_scope": 15,
+    "projected_rows_in_vocab": 1857
+   },
+   "vocab_sha256": "f2ce3dd21f7b4039551be67e3f0b34bd5f103537fadc0d00ec5e6d2c6edb5958"
+  }
+ },
+ "projection": {
+  "rows_excluded_by_review": 1,
+  "rows_kept_collector_label": 13003,
+  "rows_live": 14805,
+  "rows_projected": 14804,
+  "rows_relabelled_by_review": 1801,
+  "rows_unreviewed": 12940
+ },
+ "read_only": true,
+ "thresholds": {
+  "entity_min_examples": 20,
+  "entity_min_sessions": 3,
+  "fish_train_min_examples_train_split": 20,
+  "per_class_min_test_support": 10,
+  "source": "src-tauri/src/core/ml_capability.rs, src-tauri/src/core/registry.rs, ml/gpo_train/fish_train.py"
+ },
+ "version": 1
+}

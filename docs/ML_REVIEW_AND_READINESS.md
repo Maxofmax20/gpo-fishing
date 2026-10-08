@@ -126,6 +126,56 @@ snapshot that would contain zero rows is an error, never an empty training run.
 The trainer never reads `reviews.jsonl` itself. The frozen copy exists to make
 `review_fingerprint` computable and the decision auditable.
 
+### One projection, every consumer (v5.8.0)
+
+The projection above is **not** implemented inside the snapshot. It is a single
+pure function:
+
+```text
+core::training::project_training_labels(rows, &ReviewStore) -> ProjectedLabels
+```
+
+and every component that must describe the training set calls it:
+
+| Consumer | What it now measures |
+|---|---|
+| `snapshot_dataset` | the frozen `labels.jsonl` it writes |
+| `family_eligibility` (Training Center gate) | `qualified`, `sessions`, `test_covered`, the review floor |
+| readiness `DataGateInfo` | `scoped_total`, `reviewed_scoped`, `qualified_classes`, `test_covered` |
+| `review_priority_sync` | the per-class `n` / `sess_n` counters in the review queue |
+
+Before this, the gate read the LIVE file, whose `entity_id` values are the
+collector's OCR+KB guesses, while the snapshot wrote the human verdicts. Measured
+on the live store: `fish:crimson` has **224 collected rows / 184 in TRAIN** but
+only **13 projected rows / 11 in TRAIN**, so the Train button was armed on a set
+`fish_train.py` refuses (`assert all(ctr.get(e, 0) >= 20 …)`). The gate now
+reports `fish:crimson 11/20` and says **not ready**.
+
+The same function hands out `reviewed_eligible_ids`, so "human-reviewed" is
+answered by ONE parse of `reviews.jsonl` — the projection's tolerant one. Reading
+it from `ReviewStore::list()` (a stricter parser that silently drops records it
+cannot parse) made the review-coverage floor report 0/N on rows whose verdicts
+were demonstrably being applied.
+
+**Fail-closed.** An unreadable or unparseable `reviews.jsonl` yields empty
+projected rows plus `read_error`; every gate then refuses. Falling back to the
+collector's labels would be the original lie in a new place.
+
+### The class-sufficiency check
+
+`family_eligibility` also computes, per canonical class, the TRAIN-split support
+of the projected rows — the exact quantity `fish_train.py`'s scope assert
+requires (`train_support_per_class`). Any class short of
+`ml_capability::ENTITY_MIN_EXAMPLES` is named with its count:
+
+```text
+1 of 8 canonical classes are short of 20 projected TRAIN rows
+(fish:crimson 11/20); the trainer's scope assert would abort the run
+```
+
+so the refusal arrives BEFORE the trainer aborts, naming the class and the gap.
+The assert itself is unchanged; only its message improved.
+
 ### The verdict matrix
 
 This is the contract a reviewer relies on when they press a key. It is pinned as
@@ -197,7 +247,9 @@ displayed blocker decorative.
 `family_eligibility` now requires a minimum share of scoped rows to be both
 **reviewed** and **training-eligible**, using `readiness_min_review_coverage`
 (floor 0.10, clamped). Collector labels carry `annotator: "collector"` and are
-the bot's own OCR+KB guesses; on their own they are not training evidence.
+the bot's own OCR+KB guesses; on their own they are not training evidence. The
+share is measured over the **projected** rows, so a rejected row does not sit in
+the denominator pretending to be unreviewed evidence.
 
 ### Class-map integrity
 
@@ -214,6 +266,32 @@ stayed identical — undetectable and unrecoverable.
   manifest JSON.
 - A manifest whose `name` does not match the file slot it occupies is refused: a
   model family cannot cross slots.
+
+### The fish vocabulary is a human decision, and this repo does not make it
+
+`FISH_VOCAB.txt` names 8 classes; 7 of them are bare legacy stems
+(`fish:crimson`, `fish:snapper`, …) that the human review contradicts — 211 of the
+224 `fish:crimson` rows were re-labelled to two different species. The confirmed
+ontology is 15 species. Changing the file changes the output head of a deployed
+model, so it is reported, never chosen:
+
+```text
+python -m ml.gpo_train.vocab_decision          # -> reports/resolution/vocab_decision.json
+python -m ml.gpo_train.resolution_report --vocab-decision
+```
+
+Read-only, deterministic, SHA-256-stamped, and it presents **both** options with
+per-class projected rows, sessions, TRAIN/TEST support, the gate verdict, and the
+cost of choosing (including the `vocab_sha` a new head would need and the
+retrain → candidate → soak → promote cycle a change requires). `fish:anglerfish`
+is called out explicitly: it enters automatically at 20 rows / 3 sessions with no
+code change, so the 15-species option is not a frozen list.
+
+Reproduce the gate's own verdict read-only, without launching the app:
+
+```text
+cargo run --example gate_evidence
+```
 
 ### Soak isolation
 
@@ -423,6 +501,7 @@ permission check.
 | Status shows "Evidence: MISMATCH" | metrics and soak describe different revisions | same — the panel will not add numbers from two models together |
 | "no version counter and shadow telemetry already exists" | the registry was wiped but telemetry survived, so a revision cannot be proven unused | delete `shadow_events.jsonl` too if you truly mean a full reset, or restore the registry |
 | Train is refused with "human-reviewed" in the reason | the review floor is not met | review scoped rows in Training › Review; collector labels alone are not evidence |
+| Train is refused with "short of 20 projected TRAIN rows" | a canonical class has too few human-verified rows left after the review projection | the check names each short class and its count; collect and review more of those, or settle the vocabulary question (§3) — the trainer will abort on exactly this set |
 | "alias of fruit:…" in Drops | KB name collision | use the canonical entity id |
 | `unreadable_lines` > 0 | a state line could not be parsed (external edit, or a record from a newer build) | it is preserved, not lost; run Rebuild from audit |
 | Training refuses with "unreadable" | `reviews.jsonl` exists but a line will not parse | repair it, or Rebuild from audit; training stays blocked until then |
