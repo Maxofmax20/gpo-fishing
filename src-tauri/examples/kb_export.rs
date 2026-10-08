@@ -51,11 +51,23 @@ struct Export {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let out_path = std::env::args()
-        .nth(1)
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    // `--effective` includes the persisted curator overlay (knowledge_custom.json),
+    // so the consumer sees the SAME KB the app runs with. Default stays the
+    // compiled bundled base, which is what the OCR-audit contract test pins.
+    let effective = args.iter().any(|a| a == "--effective");
+    let out_path = args
+        .iter()
+        .find(|a| !a.starts_with("--"))
+        .cloned()
         .unwrap_or_else(|| "kb_export.json".to_string());
 
-    let kb = KnowledgeBase::bundled();
+    let kb = if effective {
+        gpo_autofish_lib::config::Store::new(gpo_autofish_lib::app::data_dir())
+            .effective_knowledge()
+    } else {
+        KnowledgeBase::bundled().clone()
+    };
 
     // Sort by id so the export is byte-stable across runs. The audit's
     // determinism guarantee depends on this.

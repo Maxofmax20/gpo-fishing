@@ -12,7 +12,7 @@
     "fish:swordfish"
   ],
   "fish_vocab_sha256": "256508a6e89ed593832e2d79ebc48e423b2fa3bc531d6ec8ca56facccef0ef10",
-  "entity_count": 141,
+  "entity_count": 156,
   "entities": [
     {
       "id": "bait:common",
@@ -53,6 +53,14 @@
       "rarity": null
     },
     {
+      "id": "fish:anglerfish",
+      "canonical_name": "Anglerfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Legendary"
+    },
+    {
       "id": "fish:barracuda",
       "canonical_name": "Barracuda",
       "aliases": [],
@@ -85,12 +93,28 @@
       "rarity": null
     },
     {
+      "id": "fish:bluelipgrouper",
+      "canonical_name": "Blue-Lip Grouper",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Common"
+    },
+    {
       "id": "fish:boot",
       "canonical_name": "Boot",
       "aliases": [],
       "ocr_aliases": [],
       "category": "fish",
       "rarity": null
+    },
+    {
+      "id": "fish:candycornsquid",
+      "canonical_name": "Candy Corn Squid",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Rare"
     },
     {
       "id": "fish:carp",
@@ -149,12 +173,52 @@
       "rarity": null
     },
     {
+      "id": "fish:crimsonpolkapuffer",
+      "canonical_name": "Crimson Polka Puffer",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fish:crimsonsnapper",
+      "canonical_name": "Crimson Snapper",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fish:darkskeletalshark",
+      "canonical_name": "Dark Skeletal Shark",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Legendary"
+    },
+    {
       "id": "fish:eel",
       "canonical_name": "Eel",
       "aliases": [],
       "ocr_aliases": [],
       "category": "fish",
       "rarity": null
+    },
+    {
+      "id": "fish:exotictigerfin",
+      "canonical_name": "Exotic Tigerfin",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Rare"
+    },
+    {
+      "id": "fish:fangfish",
+      "canonical_name": "Fangfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Rare"
     },
     {
       "id": "fish:flying",
@@ -173,12 +237,44 @@
       "rarity": null
     },
     {
+      "id": "fish:goldenpolkapuffer",
+      "canonical_name": "Golden Polka Puffer",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fish:goldenribbonangelfish",
+      "canonical_name": "Golden Ribbon Angelfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Legendary"
+    },
+    {
+      "id": "fish:goldentigerfin",
+      "canonical_name": "Golden Tigerfin",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Legendary"
+    },
+    {
       "id": "fish:halibut",
       "canonical_name": "Halibut",
       "aliases": [],
       "ocr_aliases": [],
       "category": "fish",
       "rarity": null
+    },
+    {
+      "id": "fish:jackobite",
+      "canonical_name": "Jack-O'-Bite",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Legendary"
     },
     {
       "id": "fish:jellyfish",
@@ -301,6 +397,14 @@
       "rarity": null
     },
     {
+      "id": "fish:skeletalshark",
+      "canonical_name": "Skeletal Shark",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Epic"
+    },
+    {
       "id": "fish:snapper",
       "canonical_name": "Snapper",
       "aliases": [],
@@ -341,6 +445,14 @@
       "rarity": null
     },
     {
+      "id": "fish:tigerfin",
+      "canonical_name": "Tigerfin",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Common"
+    },
+    {
       "id": "fish:trash",
       "canonical_name": "Trash",
       "aliases": [],
@@ -371,6 +483,14 @@
       "ocr_aliases": [],
       "category": "fish",
       "rarity": null
+    },
+    {
+      "id": "fish:zebraribbonangelfish",
+      "canonical_name": "Zebra Ribbon Angelfish",
+      "aliases": [],
+      "ocr_aliases": [],
+      "category": "fish",
+      "rarity": "Rare"
     },
     {
       "id": "fruit:bane",

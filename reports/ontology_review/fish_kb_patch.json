@@ -1,0 +1,1073 @@
+{
+ "kind": "fish-kb-patch",
+ "version": 1,
+ "created_at": "2026-10-07T23:55:09+00:00",
+ "source": {
+  "reviews": "C:\\Users\\xsmsm\\AppData\\Roaming\\gpo-autofish\\reviews.jsonl",
+  "reviews_sha256": "4acf3f934c6f56d33b8372579d31824c944a6dc46dd969f1e645eeb5c26c05a0",
+  "wiki_snapshot": "reports\\ontology_review\\wiki_fish.json",
+  "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d",
+  "kb_export": "ml\\gpo_ocr_audit\\kb_export.json",
+  "kb_export_sha256": "03898ad877d0f459cf4f330a86fc104c618095d18375bb2ad60317333a92523c",
+  "thresholds": {
+   "entity_min_examples": 20,
+   "entity_min_sessions": 3,
+   "fruit_min_entities": 10
+  }
+ },
+ "entities_to_add": [
+  {
+   "entity": {
+    "id": "fish:anglerfish",
+    "canonical_name": "Anglerfish",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Legendary",
+    "description": "A legendary Deep-sea fish with an eerie glow",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 12 reviewed rows over 9 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 12,
+   "sessions": 9,
+   "days": 3,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Anglerfish",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Legendary",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:bluelipgrouper",
+    "canonical_name": "Blue-Lip Grouper",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Common",
+    "description": "A common grouper with a distinct blue-lipped appearance.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 47 reviewed rows over 4 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 47,
+   "sessions": 4,
+   "days": 3,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Blue-Lip Grouper",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Common",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:candycornsquid",
+    "canonical_name": "Candy Corn Squid",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Rare",
+    "description": "A squid-like creature with bright orange, white, and yellow colors, resembling a piece of candy corn. Exclusive to the Halloween event.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 235 reviewed rows over 48 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 235,
+   "sessions": 48,
+   "days": 5,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Candy Corn Squid",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Rare",
+   "wiki_seasonal": true,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:crimsonpolkapuffer",
+    "canonical_name": "Crimson Polka Puffer",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Rare",
+    "description": "A rare pufferfish with crimson polka dots.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 247 reviewed rows over 39 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 247,
+   "sessions": 39,
+   "days": 5,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Crimson Polka Puffer",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Rare",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:crimsonsnapper",
+    "canonical_name": "Crimson Snapper",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Rare",
+    "description": "A rare snapper fish with a crimson tint.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 261 reviewed rows over 41 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 261,
+   "sessions": 41,
+   "days": 5,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Crimson Snapper",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Rare",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:darkskeletalshark",
+    "canonical_name": "Dark Skeletal Shark",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Legendary",
+    "description": "A fearsome black skeletal shark with glowing blue eyes, hunting the deep. Exclusive to the Halloween event.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 98 reviewed rows over 33 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 98,
+   "sessions": 33,
+   "days": 6,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Dark Skeletal Shark",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Legendary",
+   "wiki_seasonal": true,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:exotictigerfin",
+    "canonical_name": "Exotic Tigerfin",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Rare",
+    "description": "A rare variation of the striped Tigerfin.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 199 reviewed rows over 35 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 199,
+   "sessions": 35,
+   "days": 5,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Exotic Tigerfin",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Rare",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:fangfish",
+    "canonical_name": "Fangfish",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Rare",
+    "description": "A rare fish with sharp, fang-like teeth.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 49 reviewed rows over 21 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 49,
+   "sessions": 21,
+   "days": 5,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Fangfish",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Rare",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:goldenpolkapuffer",
+    "canonical_name": "Golden Polka Puffer",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Legendary",
+    "description": "A legendary pufferfish with shimmering golden spots.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 113 reviewed rows over 30 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 113,
+   "sessions": 30,
+   "days": 6,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Golden Polka Puffer",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Legendary",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:goldenribbonangelfish",
+    "canonical_name": "Golden Ribbon Angelfish",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Legendary",
+    "description": "A golden angelfish adorned with elegant ribbon patterns.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 84 reviewed rows over 36 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 84,
+   "sessions": 36,
+   "days": 5,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Golden Ribbon Angelfish",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Legendary",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:goldentigerfin",
+    "canonical_name": "Golden Tigerfin",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Legendary",
+    "description": "A legendary Tigerfin with gleaming golden scales.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 38 reviewed rows over 20 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 38,
+   "sessions": 20,
+   "days": 4,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Golden Tigerfin",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Legendary",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:jackobite",
+    "canonical_name": "Jack-O'-Bite",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Legendary",
+    "description": "A fierce, pumpkin-shaped fish with glowing green eyes and a jagged grind, Exclusive to the Halloween event.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 75 reviewed rows over 30 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 75,
+   "sessions": 30,
+   "days": 6,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Jack-O'-Bite",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Legendary",
+   "wiki_seasonal": true,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:skeletalshark",
+    "canonical_name": "Skeletal Shark",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Epic",
+    "description": "with a stone-like appearance, eerie green eyes, and an ancient haunting aura. Exclusive to the Halloween event.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 41 reviewed rows over 21 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 41,
+   "sessions": 21,
+   "days": 5,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Skeletal Shark",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Epic",
+   "wiki_seasonal": true,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:tigerfin",
+    "canonical_name": "Tigerfin",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Common",
+    "description": "A common fish with tiger-like stripes",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 46 reviewed rows over 5 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 46,
+   "sessions": 5,
+   "days": 3,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Tigerfin",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Common",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  },
+  {
+   "entity": {
+    "id": "fish:zebraribbonangelfish",
+    "canonical_name": "Zebra Ribbon Angelfish",
+    "aliases": [],
+    "category": "fish",
+    "rarity": "Rare",
+    "description": "A rare angelfish with zebra-like ribbons.",
+    "ocr_aliases": [],
+    "visual_refs": [],
+    "provenance": {
+     "source": "fish-kb-patch/v1: human-confirmed 245 reviewed rows over 43 sessions + wiki bestiary",
+     "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+     "updated": "2026-10-07"
+    }
+   },
+   "id_source": "human-confirmed review rows; equals 'fish:' + wiki matchKey",
+   "human_reviewed_rows": 245,
+   "sessions": 43,
+   "days": 5,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Zebra Ribbon Angelfish",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Rare",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  }
+ ],
+ "entities_to_update": [],
+ "entities_reused": [
+  {
+   "entity_id": "fish:swordfish",
+   "already_in": "bundled",
+   "human_reviewed_rows": 74,
+   "sessions": 34,
+   "days": 5,
+   "review_statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "wiki_name": "Swordfish",
+   "wiki_url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+   "wiki_rarity": "Legendary",
+   "wiki_seasonal": false,
+   "wiki_snapshot_sha256": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d"
+  }
+ ],
+ "aliases_to_add": [],
+ "legacy_entities": [
+  {
+   "entity_id": "fish:angelfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:goldenribbonangelfish",
+    "fish:zebraribbonangelfish"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:goldenribbonangelfish, fish:zebraribbonangelfish. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:barracuda",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:bass",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:beast",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:bluefin",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:boot",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:carp",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:catfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:clownfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:cod",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:colossal",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:crab",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:crimson",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:crimsonpolkapuffer",
+    "fish:crimsonsnapper"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:crimsonpolkapuffer, fish:crimsonsnapper. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:eel",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:flying",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:golden",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:goldenpolkapuffer",
+    "fish:goldenribbonangelfish",
+    "fish:goldentigerfin"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:goldenpolkapuffer, fish:goldenribbonangelfish, fish:goldentigerfin. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:halibut",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:jellyfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:kraken",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:lobster",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:manta",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:marlin",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:megalodon",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:octopus",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:piranha",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:pufferfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:crimsonpolkapuffer",
+    "fish:goldenpolkapuffer"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:crimsonpolkapuffer, fish:goldenpolkapuffer. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:ray",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:sailfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:salmon",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:seaweed",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:shark",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:darkskeletalshark",
+    "fish:skeletalshark"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:darkskeletalshark, fish:skeletalshark. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:shrimp",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:snapper",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:crimsonsnapper"
+   ],
+   "ambiguous": false,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:crimsonsnapper. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:squid",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:candycornsquid"
+   ],
+   "ambiguous": false,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:candycornsquid. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:sunfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:swordfish",
+   "role": "VALID_CANONICAL",
+   "migration_targets": [
+    "fish:swordfish"
+   ],
+   "ambiguous": false,
+   "reason": "documented in the wiki bestiary"
+  },
+  {
+   "entity_id": "fish:tiger",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:exotictigerfin",
+    "fish:goldentigerfin",
+    "fish:tigerfin"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:exotictigerfin, fish:goldentigerfin, fish:tigerfin. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:trash",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:trout",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:tuna",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:turtle",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  }
+ ],
+ "migration_map": [
+  {
+   "old_entity_id": "fish:angelfish",
+   "canonical_entity_id": null,
+   "candidate_targets": [
+    "fish:goldenribbonangelfish",
+    "fish:zebraribbonangelfish"
+   ],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten; AMBIGUOUS - per-row human review already resolved these"
+  },
+  {
+   "old_entity_id": "fish:barracuda",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:bass",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:beast",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:bluefin",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:boot",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:carp",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:catfish",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:clownfish",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:cod",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:colossal",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:crab",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:crimson",
+   "canonical_entity_id": null,
+   "candidate_targets": [
+    "fish:crimsonpolkapuffer",
+    "fish:crimsonsnapper"
+   ],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten; AMBIGUOUS - per-row human review already resolved these"
+  },
+  {
+   "old_entity_id": "fish:eel",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:flying",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:golden",
+   "canonical_entity_id": null,
+   "candidate_targets": [
+    "fish:goldenpolkapuffer",
+    "fish:goldenribbonangelfish",
+    "fish:goldentigerfin"
+   ],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten; AMBIGUOUS - per-row human review already resolved these"
+  },
+  {
+   "old_entity_id": "fish:halibut",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:jellyfish",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:kraken",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:lobster",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:manta",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:marlin",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:megalodon",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:octopus",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:piranha",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:pufferfish",
+   "canonical_entity_id": null,
+   "candidate_targets": [
+    "fish:crimsonpolkapuffer",
+    "fish:goldenpolkapuffer"
+   ],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten; AMBIGUOUS - per-row human review already resolved these"
+  },
+  {
+   "old_entity_id": "fish:ray",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:sailfish",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:salmon",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:seaweed",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:shark",
+   "canonical_entity_id": null,
+   "candidate_targets": [
+    "fish:darkskeletalshark",
+    "fish:skeletalshark"
+   ],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten; AMBIGUOUS - per-row human review already resolved these"
+  },
+  {
+   "old_entity_id": "fish:shrimp",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:snapper",
+   "canonical_entity_id": "fish:crimsonsnapper",
+   "candidate_targets": [
+    "fish:crimsonsnapper"
+   ],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:squid",
+   "canonical_entity_id": "fish:candycornsquid",
+   "candidate_targets": [
+    "fish:candycornsquid"
+   ],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:sunfish",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:tiger",
+   "canonical_entity_id": null,
+   "candidate_targets": [
+    "fish:exotictigerfin",
+    "fish:goldentigerfin",
+    "fish:tigerfin"
+   ],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten; AMBIGUOUS - per-row human review already resolved these"
+  },
+  {
+   "old_entity_id": "fish:trash",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:trout",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:tuna",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  },
+  {
+   "old_entity_id": "fish:turtle",
+   "canonical_entity_id": null,
+   "candidate_targets": [],
+   "reason": "interpretation layer for historical labels only; raw labels are never rewritten"
+  }
+ ],
+ "unresolved_concepts": [
+  {
+   "entity_id": "fish:tiger",
+   "human_reviewed_rows": 1,
+   "sessions": 1,
+   "days": 1,
+   "review_statuses": [
+    "CONFLICT"
+   ],
+   "reason": "no wiki bestiary entry; not one of the confirmed documented fish. No entity is created for it."
+  }
+ ],
+ "validation_results": [
+  {
+   "check": "all",
+   "ok": true
+  }
+ ]
+}

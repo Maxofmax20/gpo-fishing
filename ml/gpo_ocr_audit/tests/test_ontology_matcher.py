@@ -3,6 +3,11 @@
 The behaviour under test is the one that matters most in this project: a name
 that maps to zero or several entities is never resolved. Every "must not resolve"
 test here corresponds to a mistake the project has already made once.
+
+Post KB-patch (fish_kb_patch.json, applied through the overlay): the sixteen
+documented, human-confirmed fish resolve to their whole-name entities. What has
+NOT changed: garbled or concatenated renderings still fail closed, and no name
+ever resolves to a bare stem (`fish:squid`, `fish:shark`, `fish:tiger`, ...).
 """
 
 from __future__ import annotations
@@ -33,70 +38,81 @@ def _ont() -> Ontology:
 # The exact cases the audit exists to get right
 # --------------------------------------------------------------------------
 
-def test_crimson_snapper_yields_both_entities_and_is_ambiguous():
-    """`Crimson Snapper` names two canonical entities and must choose neither."""
-    for raw in ["New Item <Crimson Snapper>", "Nev Item<crimsonSnapper>",
-                "You caught a Crimson Snapper!"]:
+def test_crimson_snapper_resolves_to_the_whole_name_entity():
+    """Post KB-patch, `Crimson Snapper` is one documented, human-confirmed entity.
+
+    The safety property the old ambiguous-world test guarded survives unchanged:
+    the name must NEVER resolve to either stem (`fish:crimson` / `fish:snapper`).
+    What changed is only that it now has a legitimate whole-name home."""
+    for raw in ["New Item <Crimson Snapper>", "Nev Item <Crimson Snapper>"]:
         m = _match(_ont(), raw)
-        assert m.kind == MatchKind.AMBIGUOUS, (raw, m.kind)
-        assert m.status == OntologyStatus.COMPOUND, (raw, m.status)
-        assert set(m.candidates) == {"fish:crimson", "fish:snapper"}, (raw, m.candidates)
-        assert not m.matched, "a compound name must never resolve to one entity"
+        assert m.matched == ["fish:crimsonsnapper"], (raw, m.matched)
+        assert m.kind == MatchKind.EXACT, (raw, m.kind)
+        assert m.status == OntologyStatus.EXACT_ENTITY, (raw, m.status)
+        assert "fish:crimson" not in m.matched and "fish:snapper" not in m.matched
 
 
 def test_concatenated_compound_is_still_detected():
-    """The game often renders it with no space at all."""
+    """The game often renders it with no space at all. The whole-name entity's
+    canonical form carries the space, so the garbled rendering still cannot
+    reach it - it decomposes into the two stems and stays unresolved."""
     m = _match(_ont(), "Nev Item<crimsonSnapper>")
     assert set(m.candidates) == {"fish:crimson", "fish:snapper"}, m.candidates
+    assert not m.matched, "a garbled compound must never resolve"
     # Both are flagged as fragments, not whole words - which is why they cannot
     # be treated as a clean single-entity match.
     assert all(not t.whole_word for t in m.compound_tokens), m.compound_tokens
 
 
 def test_candy_corn_squid_does_not_resolve_to_squid():
-    """`squid` is present but `candy corn` is not in the KB, so the name is
-    only partly explained. Resolving it to fish:squid is the error under test."""
+    """Resolving the name to the bare stem `fish:squid` remains the error under
+    test. Post-patch it has a whole-name entity and resolves there instead."""
     m = _match(_ont(), "New Item <Candy Corn Squid>")
-    assert m.status == OntologyStatus.UNKNOWN_ENTITY, (m.status, m.reason)
-    assert not m.matched, f"'candy corn' is unknown; must not match {m.matched}"
-    assert "fish:squid" in {t.entity_id for t in m.compound_tokens}
+    assert m.matched == ["fish:candycornsquid"], m.matched
+    assert "fish:squid" not in m.matched
+    assert m.kind == MatchKind.EXACT
 
 
 def test_tigerfin_does_not_resolve_to_tiger():
-    """`tiger` occurs inside `tigerfin`. That is a fragment, not a match."""
-    for raw in ["New Item <Tigerfin>", "New Item <Exotic Tigerfin>",
-                "Nev Item<Exotic Tigerfinz>"]:
-        m = _match(_ont(), raw)
-        assert m.matched == [], (raw, m.matched)
-        assert m.kind in (MatchKind.PARTIAL, MatchKind.NONE), (raw, m.kind)
-        assert m.status == OntologyStatus.UNKNOWN_ENTITY, (raw, m.status)
+    """`tiger` occurs inside `tigerfin`. That is a fragment, not a match.
+    Post-patch the whole names have their own entities; the fragment still
+    loses, and a GARBLED rendering still fails closed."""
+    m = _match(_ont(), "New Item <Tigerfin>")
+    assert m.matched == ["fish:tigerfin"], m.matched
+    m = _match(_ont(), "New Item <Exotic Tigerfin>")
+    assert m.matched == ["fish:exotictigerfin"], m.matched
+    m = _match(_ont(), "Nev Item<Exotic Tigerfinz>")
+    assert m.matched == [], m.matched
+    assert m.status == OntologyStatus.UNKNOWN_ENTITY, m.status
+    assert "fish:tiger" not in (m.matched or [])
 
 
-def test_dark_skeletal_shark_is_ambiguous_not_shark():
-    """`skeletal` is unknown, but `dark` IS a KB fruit and `shark` is a KB fish."""
+def test_dark_skeletal_shark_resolves_wholesale_not_to_shark():
+    """Post-patch the documented shark has its own entity; `fish:shark` must
+    still never win."""
     m = _match(_ont(), "New Item <Dark Skeletal Shark>")
-    assert m.status == OntologyStatus.COMPOUND, (m.status, m.reason)
-    assert set(m.candidates) == {"fish:shark", "fruit:dark"}, m.candidates
-    assert not m.matched
+    assert m.matched == ["fish:darkskeletalshark"], m.matched
+    assert m.kind == MatchKind.EXACT
+    assert "fish:shark" not in m.matched
 
 
-def test_golden_ribbon_angelfish_is_ambiguous():
+def test_golden_ribbon_angelfish_resolves_wholesale():
     m = _match(_ont(), "New Item <Golden Ribbon Angelfish>")
-    assert m.kind == MatchKind.AMBIGUOUS
-    assert set(m.candidates) == {"fish:angelfish", "fish:golden"}, m.candidates
+    assert m.matched == ["fish:goldenribbonangelfish"], m.matched
+    assert m.kind == MatchKind.EXACT
+    assert "fish:angelfish" not in m.matched and "fish:golden" not in m.matched
 
 
-def test_golden_polka_puffer_is_partly_explained():
-    """`golden` is known; `polka puffer` is not."""
+def test_golden_polka_puffer_resolves_wholesale():
     m = _match(_ont(), "New Item <Golden Polka Puffer>")
-    assert m.status == OntologyStatus.UNKNOWN_ENTITY
-    assert not m.matched
+    assert m.matched == ["fish:goldenpolkapuffer"], m.matched
+    assert m.kind == MatchKind.EXACT
 
 
-def test_blue_lip_grouper_is_unknown():
+def test_blue_lip_grouper_resolves_wholesale():
     m = _match(_ont(), "New Item <Blue-Lip Grouper>")
-    assert m.status == OntologyStatus.UNKNOWN_ENTITY
-    assert not m.matched and not m.candidates
+    assert m.matched == ["fish:bluelipgrouper"], m.matched
+    assert m.kind == MatchKind.EXACT
 
 
 def test_banner_template_is_never_an_entity_candidate():
@@ -150,10 +166,11 @@ def test_longest_span_wins_for_substring_collisions():
 
 
 def test_category_is_reported_for_each_candidate():
-    """A FRUIT candidate inside a fish drop is evidence the label is compound."""
-    m = _match(_ont(), "New Item <Dark Skeletal Shark>")
+    """A FRUIT candidate inside a fish drop is evidence the label is compound.
+    (`Dark Pufferfish` is not a documented fish, so it still decomposes.)"""
+    m = _match(_ont(), "New Item <Dark Pufferfish>")
     assert m.categories.get("fruit:dark") == "fruit"
-    assert m.categories.get("fish:shark") == "fish"
+    assert m.categories.get("fish:pufferfish") == "fish"
 
 
 def test_fuzzy_candidates_are_suggestions_only():
@@ -180,8 +197,9 @@ def test_ontology_matches_the_canonical_vocabulary_file():
 
 
 def test_kb_contains_no_fish_aliases_so_alias_stage_is_honest():
-    """All 41 fish entities have no aliases, so an ALIAS_MATCH can never occur
-    for a fish. Asserting this keeps a future alias addition honest."""
+    """No fish entity has aliases, so an ALIAS_MATCH can never occur for a
+    fish. Asserting this keeps a future alias addition honest. (The KB-patch
+    additions deliberately carry none, exactly so this stays true.)"""
     ont = _ont()
     fish_with_alias = [
         e.id for e in ont.entities
@@ -203,7 +221,9 @@ def test_status_classification_precedence():
         entity_id = "fish:snapper"
 
     ont = _ont()
-    m = _match(ont, "New Item <Crimson Snapper>")
+    # The garbled concatenated form still cannot resolve, so a stored stem label
+    # against it is still compound-ambiguous - ambiguity outranks conflict.
+    m = _match(ont, "Nev Item<crimsonSnapper>")
     assert classify(Row(), m, "fish:snapper", None) == AuditStatus.COMPOUND_AMBIGUOUS
     assert is_entity_frame(Row())
 

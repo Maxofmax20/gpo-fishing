@@ -109,8 +109,11 @@ fn zz_scenario_child() {
         }
         "kb_search" => {
             let hits = ws::ontology_review_kb_search("shark".into(), Some(20));
-            println!("WSRESULT kb_hits={} first={}", hits.len(),
-                hits.first().map(|h| h.id.as_str()).unwrap_or("-"));
+            // Every hit id, not just the first: post KB-patch the search finds the
+            // new documented sharks as well, and first-alphabetically is no longer
+            // the bare stem.
+            let ids: Vec<&str> = hits.iter().map(|h| h.id.as_str()).collect();
+            println!("WSRESULT kb_hits={} ids={}", hits.len(), ids.join(","));
         }
         "family" => {
             // The tigerfin family is the one Phase 12 calls out by name.
@@ -305,7 +308,11 @@ fn kb_search_returns_real_entities() {
     assert!(out.contains("WSRESULT"), "{out}");
     let hits = field(&out, "kb_hits=");
     assert!(hits > 0, "searching 'shark' must find real KB entities: {out}");
-    assert!(out.contains("fish:shark"), "{out}");
+    // The bare stem still exists (legacy, retained), and the two documented
+    // sharks joined it via the KB patch.
+    for want in ["fish:shark", "fish:skeletalshark", "fish:darkskeletalshark"] {
+        assert!(out.contains(want), "expected {want} in hits: {out}");
+    }
 }
 
 #[test]

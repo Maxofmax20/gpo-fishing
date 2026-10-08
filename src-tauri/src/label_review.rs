@@ -18,10 +18,10 @@
 //! # What it does not do
 //!
 //! * It does not make a row training-eligible. Eligibility is computed by the
-//!   review store from `canonical_valid`, and **15 of the 16 real fish do not yet
-//!   exist in the knowledge base**. Confirming those rows records a genuine human
-//!   judgement and leaves the row ineligible, which is correct: the entity has to be
-//!   created by a person applying the proposed patch first. The screen says so
+//!   review store from `canonical_valid` against the EFFECTIVE knowledge base
+//!   (bundled + curator overlay). A confirmed row whose entity is not yet in the
+//!   KB records a genuine human judgement and stays ineligible until a person
+//!   applies the KB patch (`examples/apply_kb_patch.rs`). The screen says so
 //!   rather than letting a reviewer assume the batch unlocked training.
 //! * It does not invent, edit, or delete a knowledge-base entity.
 //! * It never writes to `labels.jsonl`.
@@ -66,18 +66,15 @@ static KNOWN_IMAGE_IDS: LazyLock<Option<HashSet<String>>> = LazyLock::new(|| {
 
 /// Canonical KB entity ids, used only to report honestly which proposed entities
 /// already exist.
+///
+/// Read from the EFFECTIVE knowledge base (compiled bundled base + the persisted
+/// curator overlay), the same source `commands_review` and the bot itself use.
+/// Reading the exported snapshot instead is how this screen and the real KB
+/// drifted apart once already.
 static KB_IDS: LazyLock<Option<HashSet<String>>> = LazyLock::new(|| {
-    core::find_report_dir()
-        .and_then(|d| read_json(&d.join("workstation").join("kb_entities.json")))
-        .and_then(|kb| {
-            kb.get("entities")
-                .and_then(|e| e.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.get("id").and_then(|i| i.as_str()).map(str::to_string))
-                        .collect()
-                })
-        })
+    let kb = crate::config::Store::new(crate::app::data_dir()).effective_knowledge();
+    let ids: HashSet<String> = kb.entities().iter().map(|e| e.id.clone()).collect();
+    (!ids.is_empty()).then_some(ids)
 });
 
 fn read_json(p: &std::path::Path) -> Option<serde_json::Value> {

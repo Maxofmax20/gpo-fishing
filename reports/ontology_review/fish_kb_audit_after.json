@@ -1,0 +1,683 @@
+{
+ "kind": "fish-kb-audit",
+ "phase": "after",
+ "generated_at": "2026-10-08T00:17:27+00:00",
+ "thresholds": {
+  "entity_min_examples": 20,
+  "entity_min_sessions": 3,
+  "fruit_min_entities": 10
+ },
+ "thresholds_source": "src-tauri\\src\\core\\ml_capability.rs",
+ "kb": {
+  "bundled_fish_entities": 41,
+  "overlay_present": true,
+  "overlay_entities": 15,
+  "fish_vocab_sha256": "5170edf0f46d89bb95d72b608d66ff7817331c78988969c28efaa2bf9ccc604b",
+  "fish_vocab": [
+   "fish:angelfish",
+   "fish:crimson",
+   "fish:golden",
+   "fish:pufferfish",
+   "fish:shark",
+   "fish:snapper",
+   "fish:squid",
+   "fish:swordfish"
+  ]
+ },
+ "reviews": {
+  "path": "C:\\Users\\xsmsm\\AppData\\Roaming\\gpo-autofish\\reviews.jsonl",
+  "sha256": "df4c482f84e89dbdbe724666d1aeca772eed9be070ab902a57eff872994d76f8",
+  "total": 1865,
+  "by_status": {
+   "REVIEWED_CORRECTED": 1864,
+   "CONFLICT": 1
+  },
+  "eligible": 1864,
+  "ineligible": 1
+ },
+ "dataset": {
+  "labels_path": "C:\\Users\\xsmsm\\AppData\\Roaming\\gpo-autofish\\datasets\\gpo-vision\\v1\\labels.jsonl",
+  "labels_rows": 14805,
+  "review_rows_without_labels_row": 0
+ },
+ "entities": [
+  {
+   "entity_id": "fish:anglerfish",
+   "display_name": "Anglerfish",
+   "wiki_documented": true,
+   "rows": 12,
+   "sessions": 9,
+   "days": 3,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 12,
+   "threshold": {
+    "rows_ok": false,
+    "sessions_ok": true,
+    "clears": false
+   },
+   "blocking_reason": "below ENTITY_MIN_EXAMPLES (12/20)"
+  },
+  {
+   "entity_id": "fish:bluelipgrouper",
+   "display_name": "Blue-Lip Grouper",
+   "wiki_documented": true,
+   "rows": 47,
+   "sessions": 4,
+   "days": 3,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 47,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:candycornsquid",
+   "display_name": "Candy Corn Squid",
+   "wiki_documented": true,
+   "rows": 235,
+   "sessions": 48,
+   "days": 5,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 235,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:crimsonpolkapuffer",
+   "display_name": "Crimson Polka Puffer",
+   "wiki_documented": true,
+   "rows": 247,
+   "sessions": 39,
+   "days": 5,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 247,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:crimsonsnapper",
+   "display_name": "Crimson Snapper",
+   "wiki_documented": true,
+   "rows": 261,
+   "sessions": 41,
+   "days": 5,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 261,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:darkskeletalshark",
+   "display_name": "Dark Skeletal Shark",
+   "wiki_documented": true,
+   "rows": 98,
+   "sessions": 33,
+   "days": 6,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 98,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:exotictigerfin",
+   "display_name": "Exotic Tigerfin",
+   "wiki_documented": true,
+   "rows": 199,
+   "sessions": 35,
+   "days": 5,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 199,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:fangfish",
+   "display_name": "Fangfish",
+   "wiki_documented": true,
+   "rows": 49,
+   "sessions": 21,
+   "days": 5,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 49,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:goldenpolkapuffer",
+   "display_name": "Golden Polka Puffer",
+   "wiki_documented": true,
+   "rows": 113,
+   "sessions": 30,
+   "days": 6,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 113,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:goldenribbonangelfish",
+   "display_name": "Golden Ribbon Angelfish",
+   "wiki_documented": true,
+   "rows": 84,
+   "sessions": 36,
+   "days": 5,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 84,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:goldentigerfin",
+   "display_name": "Golden Tigerfin",
+   "wiki_documented": true,
+   "rows": 38,
+   "sessions": 20,
+   "days": 4,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 38,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:jackobite",
+   "display_name": "Jack-O'-Bite",
+   "wiki_documented": true,
+   "rows": 75,
+   "sessions": 30,
+   "days": 6,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 75,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:skeletalshark",
+   "display_name": "Skeletal Shark",
+   "wiki_documented": true,
+   "rows": 41,
+   "sessions": 21,
+   "days": 5,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 41,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:swordfish",
+   "display_name": "Swordfish",
+   "wiki_documented": true,
+   "rows": 74,
+   "sessions": 34,
+   "days": 5,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 74,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:tiger",
+   "display_name": null,
+   "wiki_documented": false,
+   "rows": 1,
+   "sessions": 1,
+   "days": 1,
+   "statuses": [
+    "CONFLICT"
+   ],
+   "kb_present": true,
+   "eligible_rows": 0,
+   "threshold": {
+    "rows_ok": false,
+    "sessions_ok": false,
+    "clears": false
+   },
+   "blocking_reason": "conflict: competing human verdicts, excluded until resolved; below ENTITY_MIN_EXAMPLES (1/20); below ENTITY_MIN_SESSIONS (1/3)"
+  },
+  {
+   "entity_id": "fish:tigerfin",
+   "display_name": "Tigerfin",
+   "wiki_documented": true,
+   "rows": 46,
+   "sessions": 5,
+   "days": 3,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 46,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  },
+  {
+   "entity_id": "fish:zebraribbonangelfish",
+   "display_name": "Zebra Ribbon Angelfish",
+   "wiki_documented": true,
+   "rows": 245,
+   "sessions": 43,
+   "days": 5,
+   "statuses": [
+    "REVIEWED_CORRECTED"
+   ],
+   "kb_present": true,
+   "eligible_rows": 245,
+   "threshold": {
+    "rows_ok": true,
+    "sessions_ok": true,
+    "clears": true
+   },
+   "blocking_reason": "none"
+  }
+ ],
+ "legacy_kb_fish": [
+  {
+   "entity_id": "fish:angelfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:goldenribbonangelfish",
+    "fish:zebraribbonangelfish"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:goldenribbonangelfish, fish:zebraribbonangelfish. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:barracuda",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:bass",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:beast",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:bluefin",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:boot",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:carp",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:catfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:clownfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:cod",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:colossal",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:crab",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:crimson",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:crimsonpolkapuffer",
+    "fish:crimsonsnapper"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:crimsonpolkapuffer, fish:crimsonsnapper. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:eel",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:flying",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:golden",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:goldenpolkapuffer",
+    "fish:goldenribbonangelfish",
+    "fish:goldentigerfin"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:goldenpolkapuffer, fish:goldenribbonangelfish, fish:goldentigerfin. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:halibut",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:jellyfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:kraken",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:lobster",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:manta",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:marlin",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:megalodon",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:octopus",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:piranha",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:pufferfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:crimsonpolkapuffer",
+    "fish:goldenpolkapuffer"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:crimsonpolkapuffer, fish:goldenpolkapuffer. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:ray",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:sailfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:salmon",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:seaweed",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:shark",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:darkskeletalshark",
+    "fish:skeletalshark"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:darkskeletalshark, fish:skeletalshark. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:shrimp",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:snapper",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:crimsonsnapper"
+   ],
+   "ambiguous": false,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:crimsonsnapper. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:squid",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:candycornsquid"
+   ],
+   "ambiguous": false,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:candycornsquid. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:sunfish",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:swordfish",
+   "role": "VALID_CANONICAL",
+   "migration_targets": [
+    "fish:swordfish"
+   ],
+   "ambiguous": false,
+   "reason": "documented in the wiki bestiary"
+  },
+  {
+   "entity_id": "fish:tiger",
+   "role": "LEGACY_STEM",
+   "migration_targets": [
+    "fish:exotictigerfin",
+    "fish:goldentigerfin",
+    "fish:tigerfin"
+   ],
+   "ambiguous": true,
+   "reason": "not a documented fish name; the documented fish containing this stem are fish:exotictigerfin, fish:goldentigerfin, fish:tigerfin. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:trash",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:trout",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:tuna",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  },
+  {
+   "entity_id": "fish:turtle",
+   "role": "LEGACY_STEM",
+   "migration_targets": [],
+   "ambiguous": false,
+   "reason": "not a documented fish name and no documented fish contains this stem. Retained for the OCR matcher and historical labels; must not qualify new training rows"
+  }
+ ]
+}

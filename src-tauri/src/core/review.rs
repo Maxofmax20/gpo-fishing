@@ -4,7 +4,7 @@
 //! every mutation also appends one event line to `review_audit.jsonl`
 //! (append-only history: `REVIEW_CREATED` / `REVIEW_CHANGED` /
 //! `REVIEW_CORRECTED` / `ENTITY_REMAP` / `REVIEW_EXCLUDED` / `REVIEW_RESTORED`
-//! / `CONFLICT` / `RESOLVED`).
+//! / `CONFLICT` / `RESOLVED` / `ELIGIBILITY_RECOMPUTED`).
 //!
 //! Storage layout (directly under `data_dir`, no subdirectories):
 //! ```text
@@ -47,6 +47,7 @@ pub const AUDIT_EXCLUDED: &str = "REVIEW_EXCLUDED";
 pub const AUDIT_RESTORED: &str = "REVIEW_RESTORED";
 pub const AUDIT_CONFLICT: &str = "CONFLICT";
 pub const AUDIT_RESOLVED: &str = "RESOLVED";
+pub const AUDIT_ELIGIBILITY_RECOMPUTED: &str = "ELIGIBILITY_RECOMPUTED";
 
 /// Review lifecycle state. Serialized SCREAMING_SNAKE_CASE for stable logs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -684,6 +685,65 @@ pub fn apply_human_review(store: &ReviewStore, input: ReviewInput<'_>) -> Result
     Ok(rec)
 }
 
+/// What one eligibility recompute changed, if anything.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EligibilityRecompute {
+    pub image_id: String,
+    pub was_eligible: bool,
+    pub now_eligible: bool,
+    pub excluded_reason: Option<String>,
+}
+
+/// Recompute ONE reviewed record's training eligibility from fresh facts -
+/// typically KB membership after an ontology patch - WITHOUT touching the
+/// human judgement.
+///
+/// Why not [`apply_human_review`]: that path records HUMAN verdicts and stamps
+/// `reviewed_at` with the current time. A mechanical recompute is not a new
+/// human review; timestamping it as one would falsify when the judgement
+/// actually happened. This function updates only `training_eligible` and
+/// `excluded_reason`, records an explicit `ELIGIBILITY_RECOMPUTED` audit event,
+/// and leaves every human field - verdict, status, reviewer version, and the
+/// `reviewed_at` timestamp - untouched.
+///
+/// Rows without a confirmed human verdict are never modified:
+/// `Unreviewed`/`ReviewedSkipped` (a proposal alone is never eligible) and
+/// `Conflict` (excluded until a human resolves it).
+pub fn recompute_row_eligibility(
+    store: &ReviewStore,
+    image_id: &str,
+    eligibility: EligibilityInput,
+) -> Result<Option<EligibilityRecompute>, String> {
+    let cur = store
+        .get(image_id)
+        .ok_or_else(|| format!("no review record for {image_id}"))?;
+    if !is_reviewed(cur.review_status) {
+        return Ok(None);
+    }
+    let (eligible, excluded) = evaluate_input(&eligibility);
+    if cur.training_eligible == eligible && cur.excluded_reason == excluded {
+        return Ok(None);
+    }
+    let mut next = cur.clone();
+    next.training_eligible = eligible;
+    next.excluded_reason = excluded.clone();
+    let change = EligibilityRecompute {
+        image_id: image_id.to_string(),
+        was_eligible: cur.training_eligible,
+        now_eligible: eligible,
+        excluded_reason: excluded,
+    };
+    store.upsert_with_event(
+        &next,
+        AUDIT_ELIGIBILITY_RECOMPUTED,
+        Some(format!(
+            "eligibility {} -> {} (judgement, attribution and timestamp untouched)",
+            change.was_eligible, change.now_eligible
+        )),
+    )?;
+    Ok(Some(change))
+}
+
 /// Undo the most recent review of `image_id`.
 ///
 /// The canonical undo target is `UNREVIEWED`: undoing a review returns work,
@@ -992,6 +1052,103 @@ mod tests {
             excluded_reason: None,
             dataset_version: 1,
         }
+    }
+
+    fn eligible_input(canonical_valid: bool) -> EligibilityInput {
+        EligibilityInput {
+            png_decodable: true,
+            canonical_valid,
+            is_duplicate: false,
+            has_provenance: true,
+            has_entity: true,
+        }
+    }
+
+    #[test]
+    fn recompute_flips_eligibility_without_touching_the_judgement() {
+        let (store, _dir) = test_store("recompute-flip");
+        let mut rec = sample_record("img1", "s1", ReviewStatus::ReviewedCorrected, false);
+        rec.human_entity_id = Some("fish:crimsonsnapper".to_string());
+        rec.excluded_reason = Some("invalid canonical mapping".to_string());
+        store.upsert(&rec).unwrap();
+        let before = store.get("img1").unwrap();
+
+        let change = recompute_row_eligibility(&store, "img1", eligible_input(true))
+            .unwrap()
+            .expect("eligibility changed");
+        assert!(!change.was_eligible && change.now_eligible);
+
+        let after = store.get("img1").unwrap();
+        assert!(after.training_eligible);
+        assert_eq!(after.excluded_reason, None);
+        // The judgement, attribution and timestamp are byte-identical: only the
+        // derived flag moved.
+        assert_eq!(after.human_entity_id, before.human_entity_id);
+        assert_eq!(after.review_status, before.review_status);
+        assert_eq!(after.reviewed_at, before.reviewed_at);
+        assert_eq!(after.reviewer_version, before.reviewer_version);
+        assert_eq!(after.review_id, before.review_id);
+
+        // And the audit trail says WHY, as its own event type.
+        let audit = store.audit();
+        let last = audit.last().unwrap();
+        assert_eq!(last.event, AUDIT_ELIGIBILITY_RECOMPUTED);
+    }
+
+    #[test]
+    fn recompute_can_revoke_eligibility_when_the_entity_leaves_the_kb() {
+        let (store, _dir) = test_store("recompute-revoke");
+        let rec = sample_record("img1", "s1", ReviewStatus::ReviewedCorrect, true);
+        store.upsert(&rec).unwrap();
+
+        let change = recompute_row_eligibility(&store, "img1", eligible_input(false))
+            .unwrap()
+            .expect("eligibility changed");
+        assert!(change.was_eligible && !change.now_eligible);
+        let after = store.get("img1").unwrap();
+        assert!(!after.training_eligible);
+        assert_eq!(after.excluded_reason.as_deref(), Some("invalid canonical mapping"));
+    }
+
+    #[test]
+    fn recompute_never_touches_unreviewed_skipped_or_conflict_rows() {
+        let (store, _dir) = test_store("recompute-untouched");
+        for (i, status) in [
+            ReviewStatus::Unreviewed,
+            ReviewStatus::ReviewedSkipped,
+            ReviewStatus::Conflict,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let image = format!("img{i}");
+            let mut rec = sample_record(&image, "s1", status, false);
+            if status == ReviewStatus::Conflict {
+                rec.excluded_reason = Some("conflict".to_string());
+            }
+            store.upsert(&rec).unwrap();
+            // Even with every eligibility fact TRUE, nothing happens.
+            let out = recompute_row_eligibility(&store, &image, eligible_input(true)).unwrap();
+            assert!(out.is_none(), "{status:?} must never be recomputed");
+            assert!(!store.get(&image).unwrap().training_eligible);
+        }
+    }
+
+    #[test]
+    fn recompute_is_idempotent_when_nothing_changed() {
+        let (store, _dir) = test_store("recompute-idem");
+        let rec = sample_record("img1", "s1", ReviewStatus::ReviewedCorrect, true);
+        store.upsert(&rec).unwrap();
+        let events_before = store.audit().len();
+        let out = recompute_row_eligibility(&store, "img1", eligible_input(true)).unwrap();
+        assert!(out.is_none(), "no change -> no write");
+        assert_eq!(store.audit().len(), events_before, "no audit event either");
+    }
+
+    #[test]
+    fn recompute_missing_record_is_an_error_not_a_fabrication() {
+        let (store, _dir) = test_store("recompute-missing");
+        assert!(recompute_row_eligibility(&store, "ghost", eligible_input(true)).is_err());
     }
 
 

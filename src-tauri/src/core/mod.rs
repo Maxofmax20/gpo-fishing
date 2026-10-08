@@ -14,6 +14,7 @@ pub mod gemini;
 pub mod audio;
 pub mod brightness;
 pub mod secrets;
+pub mod kb_patch;
 pub mod knowledge;
 pub mod perception;
 pub mod vision_provider;
