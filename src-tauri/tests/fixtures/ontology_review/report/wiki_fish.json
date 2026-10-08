@@ -1,0 +1,141 @@
+{
+ "caveat": "Community-editable reference, not an authority. A match is evidence that the name is a documented fish; NO match is evidence only that this list does not contain it, because the wiki can lag the game. Never a decision.",
+ "contentSha256": "9c457a9e6828801489ba22a3a1c9e9b2412a283b5a92feb37cbe84293f13ee3a",
+ "entries": [
+  {
+   "description": "A legendary Deep-sea fish with an eerie glow",
+   "matchKey": "anglerfish",
+   "name": "Anglerfish",
+   "rarity": "Legendary",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A common grouper with a distinct blue-lipped appearance.",
+   "matchKey": "bluelipgrouper",
+   "name": "Blue-Lip Grouper",
+   "rarity": "Common",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A squid-like creature with bright orange, white, and yellow colors, resembling a piece of candy corn. Exclusive to the Halloween event.",
+   "matchKey": "candycornsquid",
+   "name": "Candy Corn Squid",
+   "rarity": "Rare",
+   "seasonal": true,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A rare pufferfish with crimson polka dots.",
+   "matchKey": "crimsonpolkapuffer",
+   "name": "Crimson Polka Puffer",
+   "rarity": "Rare",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A rare snapper fish with a crimson tint.",
+   "matchKey": "crimsonsnapper",
+   "name": "Crimson Snapper",
+   "rarity": "Rare",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A fearsome black skeletal shark with glowing blue eyes, hunting the deep. Exclusive to the Halloween event.",
+   "matchKey": "darkskeletalshark",
+   "name": "Dark Skeletal Shark",
+   "rarity": "Legendary",
+   "seasonal": true,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A rare variation of the striped Tigerfin.",
+   "matchKey": "exotictigerfin",
+   "name": "Exotic Tigerfin",
+   "rarity": "Rare",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A rare fish with sharp, fang-like teeth.",
+   "matchKey": "fangfish",
+   "name": "Fangfish",
+   "rarity": "Rare",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A legendary pufferfish with shimmering golden spots.",
+   "matchKey": "goldenpolkapuffer",
+   "name": "Golden Polka Puffer",
+   "rarity": "Legendary",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A golden angelfish adorned with elegant ribbon patterns.",
+   "matchKey": "goldenribbonangelfish",
+   "name": "Golden Ribbon Angelfish",
+   "rarity": "Legendary",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A legendary Tigerfin with gleaming golden scales.",
+   "matchKey": "goldentigerfin",
+   "name": "Golden Tigerfin",
+   "rarity": "Legendary",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A fierce, pumpkin-shaped fish with glowing green eyes and a jagged grind, Exclusive to the Halloween event.",
+   "matchKey": "jackobite",
+   "name": "Jack-O'-Bite",
+   "rarity": "Legendary",
+   "seasonal": true,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "with a stone-like appearance, eerie green eyes, and an ancient haunting aura. Exclusive to the Halloween event.",
+   "matchKey": "skeletalshark",
+   "name": "Skeletal Shark",
+   "rarity": "Epic",
+   "seasonal": true,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A legendary fish with a sword-like bill.",
+   "matchKey": "swordfish",
+   "name": "Swordfish",
+   "rarity": "Legendary",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A common fish with tiger-like stripes",
+   "matchKey": "tigerfin",
+   "name": "Tigerfin",
+   "rarity": "Common",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  },
+  {
+   "description": "A rare angelfish with zebra-like ribbons.",
+   "matchKey": "zebraribbonangelfish",
+   "name": "Zebra Ribbon Angelfish",
+   "rarity": "Rare",
+   "seasonal": false,
+   "url": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary"
+  }
+ ],
+ "entryCount": 16,
+ "kind": "ontology_wiki_bestiary",
+ "retrievedAtUnix": 1791412447,
+ "sourceHost": "grand-piece-online.fandom.com",
+ "sourcePage": "Fishing/Bestiary",
+ "sourceUrl": "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary",
+ "version": 1
+}

@@ -1,0 +1,30 @@
+{
+ "bands": {
+  "P0": 14,
+  "P1": 2,
+  "P2": 16,
+  "P3": 47
+ },
+ "concepts": 79,
+ "files": {
+  "dataset/images/602020303ebe80ff-9.png": "c52f41754409c488489bc62b22a02d5e16e4813efd5e7efcc8d3731e282c1df3",
+  "report/wiki_fish.json": "f788dd021034f3e69d4158666a1d49730eb42ea6db4bcbe1ef3b4dd13c93242d",
+  "report/workstation/index.json": "2b1d4bef72432c0580ae42da526599ce2cc10079094f5d816c1a43ba1b3b952f",
+  "report/workstation/kb_entities.json": "81b8bbddf2185b3cf0f23ed925cecf0e26fccd9ae40672032846b513e698e320",
+  "report/workstation/structural.json": "54659681d0d10c648acd09a06a875f84fcb775864500b3ff6fee41592b271a9d",
+  "report/workstation/thumbs/602020303ebe80ff-9.jpg": "6b85df37c5f093b9b821a05a7c6e3f2ba6e543cf938abb36eb2c73d29064190c"
+ },
+ "first_concept": "concept:fangfish",
+ "first_evidence_image": "602020303ebe80ff-9",
+ "kind": "ontology-review-http-fixture",
+ "p0": 14,
+ "source": {
+  "index": "reports\\ontology_review\\workstation\\index.json",
+  "index_sha256": "2b1d4bef72432c0580ae42da526599ce2cc10079094f5d816c1a43ba1b3b952f",
+  "labels_sha256": "a6fac80bd41202fae0352a1c1c6e03265233c4ba26e9dc8ccb69e6cbdbfb82de",
+  "note": "snapshot of the generated workstation index; refresh with `python scripts/gen_ontology_review_fixture.py`",
+  "reviews_sha256": "df4c482f84e89dbdbe724666d1aeca772eed9be070ab902a57eff872994d76f8"
+ },
+ "version": 1,
+ "wiki_fish_entries": 16
+}

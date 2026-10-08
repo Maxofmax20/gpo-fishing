@@ -1,0 +1,3781 @@
+{
+ "bases": [
+  {
+   "bareConcept": "tigerfin",
+   "baseName": "tigerfin",
+   "conceptCount": 4,
+   "concepts": [
+    {
+     "conceptId": "concept:exotic-tigerfin",
+     "displayName": "exotic tigerfin",
+     "modifiers": [
+      "exotic"
+     ],
+     "occurrences": 262
+    },
+    {
+     "conceptId": "concept:golden-tigerfin",
+     "displayName": "golden tigerfin",
+     "modifiers": [
+      "golden"
+     ],
+     "occurrences": 102
+    },
+    {
+     "conceptId": "concept:tigerfin",
+     "displayName": "tigerfin",
+     "modifiers": [],
+     "occurrences": 52
+    },
+    {
+     "conceptId": "concept:sgolden-tigerfin",
+     "displayName": "sgolden tigerfin",
+     "modifiers": [
+      "sgolden"
+     ],
+     "occurrences": 33
+    }
+   ],
+   "dayCount": 5,
+   "kbCandidates": [
+    "fish:exotictigerfin",
+    "fish:golden",
+    "fish:goldentigerfin",
+    "fish:tigerfin"
+   ],
+   "modifierTotals": {
+    "exotic": 262,
+    "golden": 102,
+    "sgolden": 33
+   },
+   "occurrences": 449,
+   "occursBare": true,
+   "sessionCount": 45
+  },
+  {
+   "bareConcept": null,
+   "baseName": "angelfish",
+   "conceptCount": 7,
+   "concepts": [
+    {
+     "conceptId": "concept:zebra-ribbon-angelfish",
+     "displayName": "zebra ribbon angelfish",
+     "modifiers": [
+      "zebra",
+      "ribbon"
+     ],
+     "occurrences": 308
+    },
+    {
+     "conceptId": "concept:golden-ribbon-angelfish",
+     "displayName": "golden ribbon angelfish",
+     "modifiers": [
+      "golden",
+      "ribbon"
+     ],
+     "occurrences": 114
+    },
+    {
+     "conceptId": "concept:sgolden-ribbon-angelfish",
+     "displayName": "sgolden ribbon angelfish",
+     "modifiers": [
+      "sgolden",
+      "ribbon"
+     ],
+     "occurrences": 19
+    },
+    {
+     "conceptId": "concept:zzebra-ribbon-angelfish",
+     "displayName": "zzebra ribbon angelfish",
+     "modifiers": [
+      "zzebra",
+      "ribbon"
+     ],
+     "occurrences": 2
+    },
+    {
+     "conceptId": "concept:czebra-ribbon-angelfish",
+     "displayName": "czebra ribbon angelfish",
+     "modifiers": [
+      "czebra",
+      "ribbon"
+     ],
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-zebra-ribbon-angelfish",
+     "displayName": "spooksville astuo zebra ribbon angelfish",
+     "modifiers": [
+      "spooksville",
+      "astuo",
+      "zebra",
+      "ribbon"
+     ],
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stues-zebra-ribbon-angelfish",
+     "displayName": "spooksville stues zebra ribbon angelfish",
+     "modifiers": [
+      "spooksville",
+      "stues",
+      "zebra",
+      "ribbon"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "kbCandidates": [
+    "fish:angelfish",
+    "fish:golden",
+    "fish:goldenribbonangelfish",
+    "fish:zebraribbonangelfish"
+   ],
+   "modifierTotals": {
+    "astuo": 1,
+    "czebra": 1,
+    "golden": 114,
+    "ribbon": 446,
+    "sgolden": 19,
+    "spooksville": 2,
+    "stues": 1,
+    "zebra": 310,
+    "zzebra": 2
+   },
+   "occurrences": 446,
+   "occursBare": false,
+   "sessionCount": 53
+  },
+  {
+   "bareConcept": null,
+   "baseName": "puffer",
+   "conceptCount": 7,
+   "concepts": [
+    {
+     "conceptId": "concept:crimson-polka-puffer",
+     "displayName": "crimson polka puffer",
+     "modifiers": [
+      "crimson",
+      "polka"
+     ],
+     "occurrences": 280
+    },
+    {
+     "conceptId": "concept:golden-polka-puffer",
+     "displayName": "golden polka puffer",
+     "modifiers": [
+      "golden",
+      "polka"
+     ],
+     "occurrences": 111
+    },
+    {
+     "conceptId": "concept:sgolden-polka-puffer",
+     "displayName": "sgolden polka puffer",
+     "modifiers": [
+      "sgolden",
+      "polka"
+     ],
+     "occurrences": 12
+    },
+    {
+     "conceptId": "concept:ccrimson-polka-puffer",
+     "displayName": "ccrimson polka puffer",
+     "modifiers": [
+      "ccrimson",
+      "polka"
+     ],
+     "occurrences": 7
+    },
+    {
+     "conceptId": "concept:scrimson-polka-puffer",
+     "displayName": "scrimson polka puffer",
+     "modifiers": [
+      "scrimson",
+      "polka"
+     ],
+     "occurrences": 3
+    },
+    {
+     "conceptId": "concept:rimson-polka-puffer",
+     "displayName": "rimson polka puffer",
+     "modifiers": [
+      "rimson",
+      "polka"
+     ],
+     "occurrences": 2
+    },
+    {
+     "conceptId": "concept:golden-polko-puffer",
+     "displayName": "golden polko puffer",
+     "modifiers": [
+      "golden",
+      "polko"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "kbCandidates": [
+    "fish:crimsonpolkapuffer",
+    "fish:goldenpolkapuffer"
+   ],
+   "modifierTotals": {
+    "ccrimson": 7,
+    "crimson": 280,
+    "golden": 112,
+    "polka": 415,
+    "polko": 1,
+    "rimson": 2,
+    "scrimson": 3,
+    "sgolden": 12
+   },
+   "occurrences": 416,
+   "occursBare": false,
+   "sessionCount": 44
+  },
+  {
+   "bareConcept": "fangfish",
+   "baseName": "fangfish",
+   "conceptCount": 3,
+   "concepts": [
+    {
+     "conceptId": "concept:fangfish",
+     "displayName": "fangfish",
+     "modifiers": [],
+     "occurrences": 327
+    },
+    {
+     "conceptId": "concept:neitem-fangfish",
+     "displayName": "neitem fangfish",
+     "modifiers": [
+      "neitem"
+     ],
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stues-fangfish",
+     "displayName": "spooksville stues fangfish",
+     "modifiers": [
+      "spooksville",
+      "stues"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "kbCandidates": [
+    "fish:fangfish"
+   ],
+   "modifierTotals": {
+    "neitem": 1,
+    "spooksville": 1,
+    "stues": 1
+   },
+   "occurrences": 329,
+   "occursBare": true,
+   "sessionCount": 43
+  },
+  {
+   "bareConcept": "skeletalshark",
+   "baseName": "skeletalshark",
+   "conceptCount": 2,
+   "concepts": [
+    {
+     "conceptId": "concept:skeletalshark",
+     "displayName": "skeletalshark",
+     "modifiers": [],
+     "occurrences": 293
+    },
+    {
+     "conceptId": "concept:spooksville-stues-skeletalshark",
+     "displayName": "spooksville stues skeletalshark",
+     "modifiers": [
+      "spooksville",
+      "stues"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "kbCandidates": [
+    "fish:skeletalshark"
+   ],
+   "modifierTotals": {
+    "spooksville": 1,
+    "stues": 1
+   },
+   "occurrences": 294,
+   "occursBare": true,
+   "sessionCount": 44
+  },
+  {
+   "bareConcept": null,
+   "baseName": "snapper",
+   "conceptCount": 4,
+   "concepts": [
+    {
+     "conceptId": "concept:crimson-snapper",
+     "displayName": "crimson snapper",
+     "modifiers": [
+      "crimson"
+     ],
+     "occurrences": 276
+    },
+    {
+     "conceptId": "concept:rimson-snapper",
+     "displayName": "rimson snapper",
+     "modifiers": [
+      "rimson"
+     ],
+     "occurrences": 2
+    },
+    {
+     "conceptId": "concept:neylitem-crimson-snapper",
+     "displayName": "neylitem crimson snapper",
+     "modifiers": [
+      "neylitem",
+      "crimson"
+     ],
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-crimson-snapper",
+     "displayName": "spooksville astuo crimson snapper",
+     "modifiers": [
+      "spooksville",
+      "astuo",
+      "crimson"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "kbCandidates": [
+    "fish:crimson",
+    "fish:crimsonsnapper",
+    "fish:snapper"
+   ],
+   "modifierTotals": {
+    "astuo": 1,
+    "crimson": 278,
+    "neylitem": 1,
+    "rimson": 2,
+    "spooksville": 1
+   },
+   "occurrences": 280,
+   "occursBare": false,
+   "sessionCount": 42
+  },
+  {
+   "bareConcept": null,
+   "baseName": "squid",
+   "conceptCount": 7,
+   "concepts": [
+    {
+     "conceptId": "concept:candy-corn-squid",
+     "displayName": "candy corn squid",
+     "modifiers": [
+      "candy",
+      "corn"
+     ],
+     "occurrences": 241
+    },
+    {
+     "conceptId": "concept:candy-cormn-squid",
+     "displayName": "candy cormn squid",
+     "modifiers": [
+      "candy",
+      "cormn"
+     ],
+     "occurrences": 10
+    },
+    {
+     "conceptId": "concept:candy-con-squid",
+     "displayName": "candy con squid",
+     "modifiers": [
+      "candy",
+      "con"
+     ],
+     "occurrences": 7
+    },
+    {
+     "conceptId": "concept:scandy-corn-squid",
+     "displayName": "scandy corn squid",
+     "modifiers": [
+      "scandy",
+      "corn"
+     ],
+     "occurrences": 7
+    },
+    {
+     "conceptId": "concept:candy-corm-squid",
+     "displayName": "candy corm squid",
+     "modifiers": [
+      "candy",
+      "corm"
+     ],
+     "occurrences": 6
+    },
+    {
+     "conceptId": "concept:andy-con-squid",
+     "displayName": "andy con squid",
+     "modifiers": [
+      "andy",
+      "con"
+     ],
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:andycorn-squid",
+     "displayName": "andycorn squid",
+     "modifiers": [
+      "andycorn"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "kbCandidates": [
+    "fish:candycornsquid"
+   ],
+   "modifierTotals": {
+    "andy": 1,
+    "andycorn": 1,
+    "candy": 264,
+    "con": 8,
+    "corm": 6,
+    "cormn": 10,
+    "corn": 248,
+    "scandy": 7
+   },
+   "occurrences": 273,
+   "occursBare": false,
+   "sessionCount": 45
+  },
+  {
+   "bareConcept": null,
+   "baseName": "shark",
+   "conceptCount": 3,
+   "concepts": [
+    {
+     "conceptId": "concept:dark-skeletal-shark",
+     "displayName": "dark skeletal shark",
+     "modifiers": [
+      "dark",
+      "skeletal"
+     ],
+     "occurrences": 102
+    },
+    {
+     "conceptId": "concept:sdark-skeletal-shark",
+     "displayName": "sdark skeletal shark",
+     "modifiers": [
+      "sdark",
+      "skeletal"
+     ],
+     "occurrences": 16
+    },
+    {
+     "conceptId": "concept:keletal-shark",
+     "displayName": "keletal shark",
+     "modifiers": [
+      "keletal"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "kbCandidates": [
+    "fish:darkskeletalshark",
+    "fish:shark",
+    "fish:skeletalshark",
+    "fruit:dark"
+   ],
+   "modifierTotals": {
+    "dark": 102,
+    "keletal": 1,
+    "sdark": 16,
+    "skeletal": 118
+   },
+   "occurrences": 119,
+   "occursBare": false,
+   "sessionCount": 36
+  },
+  {
+   "bareConcept": "swordfish",
+   "baseName": "swordfish",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:swordfish",
+     "displayName": "swordfish",
+     "modifiers": [],
+     "occurrences": 114
+    }
+   ],
+   "dayCount": 5,
+   "kbCandidates": [
+    "fish:swordfish"
+   ],
+   "modifierTotals": {},
+   "occurrences": 114,
+   "occursBare": true,
+   "sessionCount": 39
+  },
+  {
+   "bareConcept": null,
+   "baseName": "bite",
+   "conceptCount": 2,
+   "concepts": [
+    {
+     "conceptId": "concept:jack-o-bite",
+     "displayName": "jack o bite",
+     "modifiers": [
+      "jack",
+      "o"
+     ],
+     "occurrences": 104
+    },
+    {
+     "conceptId": "concept:jack-0-bite",
+     "displayName": "jack 0 bite",
+     "modifiers": [
+      "jack",
+      "0"
+     ],
+     "occurrences": 8
+    }
+   ],
+   "dayCount": 5,
+   "kbCandidates": [
+    "fish:jackobite"
+   ],
+   "modifierTotals": {
+    "0": 8,
+    "jack": 112,
+    "o": 104
+   },
+   "occurrences": 112,
+   "occursBare": false,
+   "sessionCount": 34
+  },
+  {
+   "bareConcept": "anglerfish",
+   "baseName": "anglerfish",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:anglerfish",
+     "displayName": "anglerfish",
+     "modifiers": [],
+     "occurrences": 104
+    }
+   ],
+   "dayCount": 5,
+   "kbCandidates": [
+    "fish:anglerfish"
+   ],
+   "modifierTotals": {},
+   "occurrences": 104,
+   "occursBare": true,
+   "sessionCount": 36
+  },
+  {
+   "bareConcept": null,
+   "baseName": "lipgrouper",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:blve-lipgrouper",
+     "displayName": "blve lipgrouper",
+     "modifiers": [
+      "blve"
+     ],
+     "occurrences": 14
+    }
+   ],
+   "dayCount": 4,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "blve": 14
+   },
+   "occurrences": 14,
+   "occursBare": false,
+   "sessionCount": 5
+  },
+  {
+   "bareConcept": "tigerfinz",
+   "baseName": "tigerfinz",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:tigerfinz",
+     "displayName": "tigerfinz",
+     "modifiers": [],
+     "occurrences": 13
+    }
+   ],
+   "dayCount": 3,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 13,
+   "occursBare": true,
+   "sessionCount": 3
+  },
+  {
+   "bareConcept": null,
+   "baseName": "comsquid",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:candy-comsquid",
+     "displayName": "candy comsquid",
+     "modifiers": [
+      "candy"
+     ],
+     "occurrences": 8
+    }
+   ],
+   "dayCount": 2,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "candy": 8
+   },
+   "occurrences": 8,
+   "occursBare": false,
+   "sessionCount": 5
+  },
+  {
+   "bareConcept": "exotictigerfinz",
+   "baseName": "exotictigerfinz",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:exotictigerfinz",
+     "displayName": "exotictigerfinz",
+     "modifiers": [],
+     "occurrences": 7
+    }
+   ],
+   "dayCount": 4,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 7,
+   "occursBare": true,
+   "sessionCount": 5
+  },
+  {
+   "bareConcept": "sanglerfish",
+   "baseName": "sanglerfish",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:sanglerfish",
+     "displayName": "sanglerfish",
+     "modifiers": [],
+     "occurrences": 6
+    }
+   ],
+   "dayCount": 3,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 6,
+   "occursBare": true,
+   "sessionCount": 4
+  },
+  {
+   "bareConcept": "sswordfish",
+   "baseName": "sswordfish",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:sswordfish",
+     "displayName": "sswordfish",
+     "modifiers": [],
+     "occurrences": 6
+    }
+   ],
+   "dayCount": 4,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 6,
+   "occursBare": true,
+   "sessionCount": 6
+  },
+  {
+   "bareConcept": "exotietigerfin",
+   "baseName": "exotietigerfin",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:exotietigerfin",
+     "displayName": "exotietigerfin",
+     "modifiers": [],
+     "occurrences": 5
+    }
+   ],
+   "dayCount": 3,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 5,
+   "occursBare": true,
+   "sessionCount": 4
+  },
+  {
+   "bareConcept": null,
+   "baseName": "grovper",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:blve-lip-grovper",
+     "displayName": "blve lip grovper",
+     "modifiers": [
+      "blve",
+      "lip"
+     ],
+     "occurrences": 3
+    }
+   ],
+   "dayCount": 2,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "blve": 3,
+    "lip": 3
+   },
+   "occurrences": 3,
+   "occursBare": false,
+   "sessionCount": 2
+  },
+  {
+   "bareConcept": "neitemskeletalshark",
+   "baseName": "neitemskeletalshark",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:neitemskeletalshark",
+     "displayName": "neitemskeletalshark",
+     "modifiers": [],
+     "occurrences": 3
+    }
+   ],
+   "dayCount": 3,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 3,
+   "occursBare": true,
+   "sessionCount": 3
+  },
+  {
+   "bareConcept": null,
+   "baseName": "stues",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:spooksville-stues",
+     "displayName": "spooksville stues",
+     "modifiers": [
+      "spooksville"
+     ],
+     "occurrences": 3
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "spooksville": 3
+   },
+   "occurrences": 3,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "exotitigerfin",
+   "baseName": "exotitigerfin",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:exotitigerfin",
+     "displayName": "exotitigerfin",
+     "modifiers": [],
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 2,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "groper",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:blve-lip-groper",
+     "displayName": "blve lip groper",
+     "modifiers": [
+      "blve",
+      "lip"
+     ],
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 2,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "blve": 2,
+    "lip": 2
+   },
+   "occurrences": 2,
+   "occursBare": false,
+   "sessionCount": 2
+  },
+  {
+   "bareConcept": "neyitemskeletalshark",
+   "baseName": "neyitemskeletalshark",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:neyitemskeletalshark",
+     "displayName": "neyitemskeletalshark",
+     "modifiers": [],
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 2,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "protected",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:town-of-beginnings-safezone-protected",
+     "displayName": "town of beginnings safezone protected",
+     "modifiers": [
+      "town",
+      "of",
+      "beginnings",
+      "safezone"
+     ],
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "beginnings": 2,
+    "of": 2,
+    "safezone": 2,
+    "town": 2
+   },
+   "occurrences": 2,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "angelfisha",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:zebra-ribbon-angelfisha",
+     "displayName": "zebra ribbon angelfisha",
+     "modifiers": [
+      "zebra",
+      "ribbon"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "ribbon": 1,
+    "zebra": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "cornsquid",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:spooksville-astuo-candy-cornsquid",
+     "displayName": "spooksville astuo candy cornsquid",
+     "modifiers": [
+      "spooksville",
+      "astuo",
+      "candy"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [
+    "fish:squid",
+    "fruit:uo"
+   ],
+   "modifierTotals": {
+    "astuo": 1,
+    "candy": 1,
+    "spooksville": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "crimsonpolkapuffer",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:neyitem-crimsonpolkapuffer",
+     "displayName": "neyitem crimsonpolkapuffer",
+     "modifiers": [
+      "neyitem"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "neyitem": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "darkskeletalsharkmaskblveprint",
+   "baseName": "darkskeletalsharkmaskblveprint",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:darkskeletalsharkmaskblveprint",
+     "displayName": "darkskeletalsharkmaskblveprint",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [
+    "fish:shark",
+    "fruit:dark"
+   ],
+   "modifierTotals": {},
+   "occurrences": 1,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "darksketetalshark",
+   "baseName": "darksketetalshark",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:darksketetalshark",
+     "displayName": "darksketetalshark",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [
+    "fish:shark",
+    "fruit:dark"
+   ],
+   "modifierTotals": {},
+   "occurrences": 1,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "exotictigerfin",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:nevltem-exotictigerfin",
+     "displayName": "nevltem exotictigerfin",
+     "modifiers": [
+      "nevltem"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "nevltem": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "exotietigerfinz",
+   "baseName": "exotietigerfinz",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:exotietigerfinz",
+     "displayName": "exotietigerfinz",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 1,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "exotistigerfin",
+   "baseName": "exotistigerfin",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:exotistigerfin",
+     "displayName": "exotistigerfin",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 1,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "fangfishz",
+   "baseName": "fangfishz",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:fangfishz",
+     "displayName": "fangfishz",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 1,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "goldentigerfinz",
+   "baseName": "goldentigerfinz",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:goldentigerfinz",
+     "displayName": "goldentigerfinz",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [
+    "fish:golden",
+    "fish:tigerfin"
+   ],
+   "modifierTotals": {},
+   "occurrences": 1,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "minutes",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:droppedbomb-vill-despavnin10-minutes",
+     "displayName": "droppedbomb vill despavnin10 minutes",
+     "modifiers": [
+      "droppedbomb",
+      "vill",
+      "despavnin10"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "despavnin10": 1,
+    "droppedbomb": 1,
+    "vill": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "ne",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:nw-ne",
+     "displayName": "nw ne",
+     "modifiers": [
+      "nw"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "nw": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "nevitemskeletalshark",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:spooksville-stucs-nevitemskeletalshark",
+     "displayName": "spooksville stucs nevitemskeletalshark",
+     "modifiers": [
+      "spooksville",
+      "stucs"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "spooksville": 1,
+    "stucs": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "newitem",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:golden-tigerfinz-newitem",
+     "displayName": "golden tigerfinz newitem",
+     "modifiers": [
+      "golden",
+      "tigerfinz"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "golden": 1,
+    "tigerfinz": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "pyffer",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:crimson-polka-pyffer",
+     "displayName": "crimson polka pyffer",
+     "modifiers": [
+      "crimson",
+      "polka"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "crimson": 1,
+    "polka": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "ribbonangelfish",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:szebra-ribbonangelfish",
+     "displayName": "szebra ribbonangelfish",
+     "modifiers": [
+      "szebra"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "szebra": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "ribbonangetfish",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:sgolden-ribbonangetfish",
+     "displayName": "sgolden ribbonangetfish",
+     "modifiers": [
+      "sgolden"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "sgolden": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "scandyconsquid",
+   "baseName": "scandyconsquid",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:scandyconsquid",
+     "displayName": "scandyconsquid",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 1,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "sdarksketetalshark",
+   "baseName": "sdarksketetalshark",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:sdarksketetalshark",
+     "displayName": "sdarksketetalshark",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [
+    "fish:shark",
+    "fruit:dark"
+   ],
+   "modifierTotals": {},
+   "occurrences": 1,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "ssvordfish",
+   "baseName": "ssvordfish",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:ssvordfish",
+     "displayName": "ssvordfish",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 1,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "stigerfin",
+   "baseName": "stigerfin",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:stigerfin",
+     "displayName": "stigerfin",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 1,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "stucs",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:spooksville-stucs",
+     "displayName": "spooksville stucs",
+     "modifiers": [
+      "spooksville"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "spooksville": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": "svordfish",
+   "baseName": "svordfish",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:svordfish",
+     "displayName": "svordfish",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {},
+   "occurrences": 1,
+   "occursBare": true,
+   "sessionCount": 1
+  },
+  {
+   "bareConcept": null,
+   "baseName": "tradinghub",
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:agomu-has-spavned-at-tradinghub",
+     "displayName": "agomu has spavned at tradinghub",
+     "modifiers": [
+      "agomu",
+      "has",
+      "spavned",
+      "at"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "kbCandidates": [],
+   "modifierTotals": {
+    "agomu": 1,
+    "at": 1,
+    "has": 1,
+    "spavned": 1
+   },
+   "occurrences": 1,
+   "occursBare": false,
+   "sessionCount": 1
+  }
+ ],
+ "disclaimer": "Evidence only. A modifier recurring across bases shows a PATTERN, not a role. Whether it is a colour, a rarity, or a species is a human decision.",
+ "families": [
+  {
+   "baseName": "tigerfin",
+   "dayCount": 5,
+   "familyId": "family:tigerfin",
+   "isSingleton": false,
+   "memberCount": 4,
+   "members": [
+    {
+     "conceptId": "concept:exotic-tigerfin",
+     "displayName": "exotic tigerfin",
+     "modifiers": [
+      "exotic"
+     ],
+     "occurrences": 262
+    },
+    {
+     "conceptId": "concept:golden-tigerfin",
+     "displayName": "golden tigerfin",
+     "modifiers": [
+      "golden"
+     ],
+     "occurrences": 102
+    },
+    {
+     "conceptId": "concept:tigerfin",
+     "displayName": "tigerfin",
+     "modifiers": [],
+     "occurrences": 52
+    },
+    {
+     "conceptId": "concept:sgolden-tigerfin",
+     "displayName": "sgolden tigerfin",
+     "modifiers": [
+      "sgolden"
+     ],
+     "occurrences": 33
+    }
+   ],
+   "occurrences": 449,
+   "sessionCount": 45
+  },
+  {
+   "baseName": "angelfish",
+   "dayCount": 5,
+   "familyId": "family:angelfish",
+   "isSingleton": false,
+   "memberCount": 7,
+   "members": [
+    {
+     "conceptId": "concept:zebra-ribbon-angelfish",
+     "displayName": "zebra ribbon angelfish",
+     "modifiers": [
+      "zebra",
+      "ribbon"
+     ],
+     "occurrences": 308
+    },
+    {
+     "conceptId": "concept:golden-ribbon-angelfish",
+     "displayName": "golden ribbon angelfish",
+     "modifiers": [
+      "golden",
+      "ribbon"
+     ],
+     "occurrences": 114
+    },
+    {
+     "conceptId": "concept:sgolden-ribbon-angelfish",
+     "displayName": "sgolden ribbon angelfish",
+     "modifiers": [
+      "sgolden",
+      "ribbon"
+     ],
+     "occurrences": 19
+    },
+    {
+     "conceptId": "concept:zzebra-ribbon-angelfish",
+     "displayName": "zzebra ribbon angelfish",
+     "modifiers": [
+      "zzebra",
+      "ribbon"
+     ],
+     "occurrences": 2
+    },
+    {
+     "conceptId": "concept:czebra-ribbon-angelfish",
+     "displayName": "czebra ribbon angelfish",
+     "modifiers": [
+      "czebra",
+      "ribbon"
+     ],
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-zebra-ribbon-angelfish",
+     "displayName": "spooksville astuo zebra ribbon angelfish",
+     "modifiers": [
+      "spooksville",
+      "astuo",
+      "zebra",
+      "ribbon"
+     ],
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stues-zebra-ribbon-angelfish",
+     "displayName": "spooksville stues zebra ribbon angelfish",
+     "modifiers": [
+      "spooksville",
+      "stues",
+      "zebra",
+      "ribbon"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 446,
+   "sessionCount": 53
+  },
+  {
+   "baseName": "puffer",
+   "dayCount": 5,
+   "familyId": "family:puffer",
+   "isSingleton": false,
+   "memberCount": 7,
+   "members": [
+    {
+     "conceptId": "concept:crimson-polka-puffer",
+     "displayName": "crimson polka puffer",
+     "modifiers": [
+      "crimson",
+      "polka"
+     ],
+     "occurrences": 280
+    },
+    {
+     "conceptId": "concept:golden-polka-puffer",
+     "displayName": "golden polka puffer",
+     "modifiers": [
+      "golden",
+      "polka"
+     ],
+     "occurrences": 111
+    },
+    {
+     "conceptId": "concept:sgolden-polka-puffer",
+     "displayName": "sgolden polka puffer",
+     "modifiers": [
+      "sgolden",
+      "polka"
+     ],
+     "occurrences": 12
+    },
+    {
+     "conceptId": "concept:ccrimson-polka-puffer",
+     "displayName": "ccrimson polka puffer",
+     "modifiers": [
+      "ccrimson",
+      "polka"
+     ],
+     "occurrences": 7
+    },
+    {
+     "conceptId": "concept:scrimson-polka-puffer",
+     "displayName": "scrimson polka puffer",
+     "modifiers": [
+      "scrimson",
+      "polka"
+     ],
+     "occurrences": 3
+    },
+    {
+     "conceptId": "concept:rimson-polka-puffer",
+     "displayName": "rimson polka puffer",
+     "modifiers": [
+      "rimson",
+      "polka"
+     ],
+     "occurrences": 2
+    },
+    {
+     "conceptId": "concept:golden-polko-puffer",
+     "displayName": "golden polko puffer",
+     "modifiers": [
+      "golden",
+      "polko"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 416,
+   "sessionCount": 44
+  },
+  {
+   "baseName": "fangfish",
+   "dayCount": 5,
+   "familyId": "family:fangfish",
+   "isSingleton": false,
+   "memberCount": 3,
+   "members": [
+    {
+     "conceptId": "concept:fangfish",
+     "displayName": "fangfish",
+     "modifiers": [],
+     "occurrences": 327
+    },
+    {
+     "conceptId": "concept:neitem-fangfish",
+     "displayName": "neitem fangfish",
+     "modifiers": [
+      "neitem"
+     ],
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stues-fangfish",
+     "displayName": "spooksville stues fangfish",
+     "modifiers": [
+      "spooksville",
+      "stues"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 329,
+   "sessionCount": 43
+  },
+  {
+   "baseName": "skeletalshark",
+   "dayCount": 5,
+   "familyId": "family:skeletalshark",
+   "isSingleton": false,
+   "memberCount": 2,
+   "members": [
+    {
+     "conceptId": "concept:skeletalshark",
+     "displayName": "skeletalshark",
+     "modifiers": [],
+     "occurrences": 293
+    },
+    {
+     "conceptId": "concept:spooksville-stues-skeletalshark",
+     "displayName": "spooksville stues skeletalshark",
+     "modifiers": [
+      "spooksville",
+      "stues"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 294,
+   "sessionCount": 44
+  },
+  {
+   "baseName": "snapper",
+   "dayCount": 5,
+   "familyId": "family:snapper",
+   "isSingleton": false,
+   "memberCount": 4,
+   "members": [
+    {
+     "conceptId": "concept:crimson-snapper",
+     "displayName": "crimson snapper",
+     "modifiers": [
+      "crimson"
+     ],
+     "occurrences": 276
+    },
+    {
+     "conceptId": "concept:rimson-snapper",
+     "displayName": "rimson snapper",
+     "modifiers": [
+      "rimson"
+     ],
+     "occurrences": 2
+    },
+    {
+     "conceptId": "concept:neylitem-crimson-snapper",
+     "displayName": "neylitem crimson snapper",
+     "modifiers": [
+      "neylitem",
+      "crimson"
+     ],
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-crimson-snapper",
+     "displayName": "spooksville astuo crimson snapper",
+     "modifiers": [
+      "spooksville",
+      "astuo",
+      "crimson"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 280,
+   "sessionCount": 42
+  },
+  {
+   "baseName": "squid",
+   "dayCount": 5,
+   "familyId": "family:squid",
+   "isSingleton": false,
+   "memberCount": 7,
+   "members": [
+    {
+     "conceptId": "concept:candy-corn-squid",
+     "displayName": "candy corn squid",
+     "modifiers": [
+      "candy",
+      "corn"
+     ],
+     "occurrences": 241
+    },
+    {
+     "conceptId": "concept:candy-cormn-squid",
+     "displayName": "candy cormn squid",
+     "modifiers": [
+      "candy",
+      "cormn"
+     ],
+     "occurrences": 10
+    },
+    {
+     "conceptId": "concept:candy-con-squid",
+     "displayName": "candy con squid",
+     "modifiers": [
+      "candy",
+      "con"
+     ],
+     "occurrences": 7
+    },
+    {
+     "conceptId": "concept:scandy-corn-squid",
+     "displayName": "scandy corn squid",
+     "modifiers": [
+      "scandy",
+      "corn"
+     ],
+     "occurrences": 7
+    },
+    {
+     "conceptId": "concept:candy-corm-squid",
+     "displayName": "candy corm squid",
+     "modifiers": [
+      "candy",
+      "corm"
+     ],
+     "occurrences": 6
+    },
+    {
+     "conceptId": "concept:andy-con-squid",
+     "displayName": "andy con squid",
+     "modifiers": [
+      "andy",
+      "con"
+     ],
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:andycorn-squid",
+     "displayName": "andycorn squid",
+     "modifiers": [
+      "andycorn"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 273,
+   "sessionCount": 45
+  },
+  {
+   "baseName": "shark",
+   "dayCount": 5,
+   "familyId": "family:shark",
+   "isSingleton": false,
+   "memberCount": 3,
+   "members": [
+    {
+     "conceptId": "concept:dark-skeletal-shark",
+     "displayName": "dark skeletal shark",
+     "modifiers": [
+      "dark",
+      "skeletal"
+     ],
+     "occurrences": 102
+    },
+    {
+     "conceptId": "concept:sdark-skeletal-shark",
+     "displayName": "sdark skeletal shark",
+     "modifiers": [
+      "sdark",
+      "skeletal"
+     ],
+     "occurrences": 16
+    },
+    {
+     "conceptId": "concept:keletal-shark",
+     "displayName": "keletal shark",
+     "modifiers": [
+      "keletal"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 119,
+   "sessionCount": 36
+  },
+  {
+   "baseName": "swordfish",
+   "dayCount": 5,
+   "familyId": "family:swordfish",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:swordfish",
+     "displayName": "swordfish",
+     "modifiers": [],
+     "occurrences": 114
+    }
+   ],
+   "occurrences": 114,
+   "sessionCount": 39
+  },
+  {
+   "baseName": "bite",
+   "dayCount": 5,
+   "familyId": "family:bite",
+   "isSingleton": false,
+   "memberCount": 2,
+   "members": [
+    {
+     "conceptId": "concept:jack-o-bite",
+     "displayName": "jack o bite",
+     "modifiers": [
+      "jack",
+      "o"
+     ],
+     "occurrences": 104
+    },
+    {
+     "conceptId": "concept:jack-0-bite",
+     "displayName": "jack 0 bite",
+     "modifiers": [
+      "jack",
+      "0"
+     ],
+     "occurrences": 8
+    }
+   ],
+   "occurrences": 112,
+   "sessionCount": 34
+  },
+  {
+   "baseName": "anglerfish",
+   "dayCount": 5,
+   "familyId": "family:anglerfish",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:anglerfish",
+     "displayName": "anglerfish",
+     "modifiers": [],
+     "occurrences": 104
+    }
+   ],
+   "occurrences": 104,
+   "sessionCount": 36
+  },
+  {
+   "baseName": "lipgrouper",
+   "dayCount": 4,
+   "familyId": "family:lipgrouper",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:blve-lipgrouper",
+     "displayName": "blve lipgrouper",
+     "modifiers": [
+      "blve"
+     ],
+     "occurrences": 14
+    }
+   ],
+   "occurrences": 14,
+   "sessionCount": 5
+  },
+  {
+   "baseName": "tigerfinz",
+   "dayCount": 3,
+   "familyId": "family:tigerfinz",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:tigerfinz",
+     "displayName": "tigerfinz",
+     "modifiers": [],
+     "occurrences": 13
+    }
+   ],
+   "occurrences": 13,
+   "sessionCount": 3
+  },
+  {
+   "baseName": "comsquid",
+   "dayCount": 2,
+   "familyId": "family:comsquid",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:candy-comsquid",
+     "displayName": "candy comsquid",
+     "modifiers": [
+      "candy"
+     ],
+     "occurrences": 8
+    }
+   ],
+   "occurrences": 8,
+   "sessionCount": 5
+  },
+  {
+   "baseName": "exotictigerfinz",
+   "dayCount": 4,
+   "familyId": "family:exotictigerfinz",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:exotictigerfinz",
+     "displayName": "exotictigerfinz",
+     "modifiers": [],
+     "occurrences": 7
+    }
+   ],
+   "occurrences": 7,
+   "sessionCount": 5
+  },
+  {
+   "baseName": "sswordfish",
+   "dayCount": 4,
+   "familyId": "family:sswordfish",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:sswordfish",
+     "displayName": "sswordfish",
+     "modifiers": [],
+     "occurrences": 6
+    }
+   ],
+   "occurrences": 6,
+   "sessionCount": 6
+  },
+  {
+   "baseName": "sanglerfish",
+   "dayCount": 3,
+   "familyId": "family:sanglerfish",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:sanglerfish",
+     "displayName": "sanglerfish",
+     "modifiers": [],
+     "occurrences": 6
+    }
+   ],
+   "occurrences": 6,
+   "sessionCount": 4
+  },
+  {
+   "baseName": "exotietigerfin",
+   "dayCount": 3,
+   "familyId": "family:exotietigerfin",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:exotietigerfin",
+     "displayName": "exotietigerfin",
+     "modifiers": [],
+     "occurrences": 5
+    }
+   ],
+   "occurrences": 5,
+   "sessionCount": 4
+  },
+  {
+   "baseName": "neitemskeletalshark",
+   "dayCount": 3,
+   "familyId": "family:neitemskeletalshark",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:neitemskeletalshark",
+     "displayName": "neitemskeletalshark",
+     "modifiers": [],
+     "occurrences": 3
+    }
+   ],
+   "occurrences": 3,
+   "sessionCount": 3
+  },
+  {
+   "baseName": "grovper",
+   "dayCount": 2,
+   "familyId": "family:grovper",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:blve-lip-grovper",
+     "displayName": "blve lip grovper",
+     "modifiers": [
+      "blve",
+      "lip"
+     ],
+     "occurrences": 3
+    }
+   ],
+   "occurrences": 3,
+   "sessionCount": 2
+  },
+  {
+   "baseName": "stues",
+   "dayCount": 1,
+   "familyId": "family:stues",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:spooksville-stues",
+     "displayName": "spooksville stues",
+     "modifiers": [
+      "spooksville"
+     ],
+     "occurrences": 3
+    }
+   ],
+   "occurrences": 3,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "groper",
+   "dayCount": 2,
+   "familyId": "family:groper",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:blve-lip-groper",
+     "displayName": "blve lip groper",
+     "modifiers": [
+      "blve",
+      "lip"
+     ],
+     "occurrences": 2
+    }
+   ],
+   "occurrences": 2,
+   "sessionCount": 2
+  },
+  {
+   "baseName": "exotitigerfin",
+   "dayCount": 1,
+   "familyId": "family:exotitigerfin",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:exotitigerfin",
+     "displayName": "exotitigerfin",
+     "modifiers": [],
+     "occurrences": 2
+    }
+   ],
+   "occurrences": 2,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "neyitemskeletalshark",
+   "dayCount": 1,
+   "familyId": "family:neyitemskeletalshark",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:neyitemskeletalshark",
+     "displayName": "neyitemskeletalshark",
+     "modifiers": [],
+     "occurrences": 2
+    }
+   ],
+   "occurrences": 2,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "protected",
+   "dayCount": 1,
+   "familyId": "family:protected",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:town-of-beginnings-safezone-protected",
+     "displayName": "town of beginnings safezone protected",
+     "modifiers": [
+      "town",
+      "of",
+      "beginnings",
+      "safezone"
+     ],
+     "occurrences": 2
+    }
+   ],
+   "occurrences": 2,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "tradinghub",
+   "dayCount": 1,
+   "familyId": "family:tradinghub",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:agomu-has-spavned-at-tradinghub",
+     "displayName": "agomu has spavned at tradinghub",
+     "modifiers": [
+      "agomu",
+      "has",
+      "spavned",
+      "at"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "pyffer",
+   "dayCount": 1,
+   "familyId": "family:pyffer",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:crimson-polka-pyffer",
+     "displayName": "crimson polka pyffer",
+     "modifiers": [
+      "crimson",
+      "polka"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "darkskeletalsharkmaskblveprint",
+   "dayCount": 1,
+   "familyId": "family:darkskeletalsharkmaskblveprint",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:darkskeletalsharkmaskblveprint",
+     "displayName": "darkskeletalsharkmaskblveprint",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "darksketetalshark",
+   "dayCount": 1,
+   "familyId": "family:darksketetalshark",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:darksketetalshark",
+     "displayName": "darksketetalshark",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "minutes",
+   "dayCount": 1,
+   "familyId": "family:minutes",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:droppedbomb-vill-despavnin10-minutes",
+     "displayName": "droppedbomb vill despavnin10 minutes",
+     "modifiers": [
+      "droppedbomb",
+      "vill",
+      "despavnin10"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "exotietigerfinz",
+   "dayCount": 1,
+   "familyId": "family:exotietigerfinz",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:exotietigerfinz",
+     "displayName": "exotietigerfinz",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "exotistigerfin",
+   "dayCount": 1,
+   "familyId": "family:exotistigerfin",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:exotistigerfin",
+     "displayName": "exotistigerfin",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "fangfishz",
+   "dayCount": 1,
+   "familyId": "family:fangfishz",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:fangfishz",
+     "displayName": "fangfishz",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "newitem",
+   "dayCount": 1,
+   "familyId": "family:newitem",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:golden-tigerfinz-newitem",
+     "displayName": "golden tigerfinz newitem",
+     "modifiers": [
+      "golden",
+      "tigerfinz"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "goldentigerfinz",
+   "dayCount": 1,
+   "familyId": "family:goldentigerfinz",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:goldentigerfinz",
+     "displayName": "goldentigerfinz",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "exotictigerfin",
+   "dayCount": 1,
+   "familyId": "family:exotictigerfin",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:nevltem-exotictigerfin",
+     "displayName": "nevltem exotictigerfin",
+     "modifiers": [
+      "nevltem"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "crimsonpolkapuffer",
+   "dayCount": 1,
+   "familyId": "family:crimsonpolkapuffer",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:neyitem-crimsonpolkapuffer",
+     "displayName": "neyitem crimsonpolkapuffer",
+     "modifiers": [
+      "neyitem"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "ne",
+   "dayCount": 1,
+   "familyId": "family:ne",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:nw-ne",
+     "displayName": "nw ne",
+     "modifiers": [
+      "nw"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "scandyconsquid",
+   "dayCount": 1,
+   "familyId": "family:scandyconsquid",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:scandyconsquid",
+     "displayName": "scandyconsquid",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "sdarksketetalshark",
+   "dayCount": 1,
+   "familyId": "family:sdarksketetalshark",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:sdarksketetalshark",
+     "displayName": "sdarksketetalshark",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "ribbonangetfish",
+   "dayCount": 1,
+   "familyId": "family:ribbonangetfish",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:sgolden-ribbonangetfish",
+     "displayName": "sgolden ribbonangetfish",
+     "modifiers": [
+      "sgolden"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "cornsquid",
+   "dayCount": 1,
+   "familyId": "family:cornsquid",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:spooksville-astuo-candy-cornsquid",
+     "displayName": "spooksville astuo candy cornsquid",
+     "modifiers": [
+      "spooksville",
+      "astuo",
+      "candy"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "stucs",
+   "dayCount": 1,
+   "familyId": "family:stucs",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:spooksville-stucs",
+     "displayName": "spooksville stucs",
+     "modifiers": [
+      "spooksville"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "nevitemskeletalshark",
+   "dayCount": 1,
+   "familyId": "family:nevitemskeletalshark",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:spooksville-stucs-nevitemskeletalshark",
+     "displayName": "spooksville stucs nevitemskeletalshark",
+     "modifiers": [
+      "spooksville",
+      "stucs"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "ssvordfish",
+   "dayCount": 1,
+   "familyId": "family:ssvordfish",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:ssvordfish",
+     "displayName": "ssvordfish",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "stigerfin",
+   "dayCount": 1,
+   "familyId": "family:stigerfin",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:stigerfin",
+     "displayName": "stigerfin",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "svordfish",
+   "dayCount": 1,
+   "familyId": "family:svordfish",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:svordfish",
+     "displayName": "svordfish",
+     "modifiers": [],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "ribbonangelfish",
+   "dayCount": 1,
+   "familyId": "family:ribbonangelfish",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:szebra-ribbonangelfish",
+     "displayName": "szebra ribbonangelfish",
+     "modifiers": [
+      "szebra"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "baseName": "angelfisha",
+   "dayCount": 1,
+   "familyId": "family:angelfisha",
+   "isSingleton": true,
+   "memberCount": 1,
+   "members": [
+    {
+     "conceptId": "concept:zebra-ribbon-angelfisha",
+     "displayName": "zebra ribbon angelfisha",
+     "modifiers": [
+      "zebra",
+      "ribbon"
+     ],
+     "occurrences": 1
+    }
+   ],
+   "occurrences": 1,
+   "sessionCount": 1
+  }
+ ],
+ "kind": "ontology_review_structural",
+ "modifiers": [
+  {
+   "bases": [
+    "puffer",
+    "pyffer",
+    "snapper"
+   ],
+   "conceptCount": 5,
+   "concepts": [
+    {
+     "conceptId": "concept:crimson-polka-puffer",
+     "displayName": "crimson polka puffer",
+     "occurrences": 280
+    },
+    {
+     "conceptId": "concept:crimson-snapper",
+     "displayName": "crimson snapper",
+     "occurrences": 276
+    },
+    {
+     "conceptId": "concept:crimson-polka-pyffer",
+     "displayName": "crimson polka pyffer",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:neylitem-crimson-snapper",
+     "displayName": "neylitem crimson snapper",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-crimson-snapper",
+     "displayName": "spooksville astuo crimson snapper",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "crimson",
+   "occurrences": 559,
+   "sessionCount": 47
+  },
+  {
+   "bases": [
+    "angelfish",
+    "angelfisha"
+   ],
+   "conceptCount": 8,
+   "concepts": [
+    {
+     "conceptId": "concept:zebra-ribbon-angelfish",
+     "displayName": "zebra ribbon angelfish",
+     "occurrences": 308
+    },
+    {
+     "conceptId": "concept:golden-ribbon-angelfish",
+     "displayName": "golden ribbon angelfish",
+     "occurrences": 114
+    },
+    {
+     "conceptId": "concept:sgolden-ribbon-angelfish",
+     "displayName": "sgolden ribbon angelfish",
+     "occurrences": 19
+    },
+    {
+     "conceptId": "concept:zzebra-ribbon-angelfish",
+     "displayName": "zzebra ribbon angelfish",
+     "occurrences": 2
+    },
+    {
+     "conceptId": "concept:czebra-ribbon-angelfish",
+     "displayName": "czebra ribbon angelfish",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-zebra-ribbon-angelfish",
+     "displayName": "spooksville astuo zebra ribbon angelfish",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stues-zebra-ribbon-angelfish",
+     "displayName": "spooksville stues zebra ribbon angelfish",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:zebra-ribbon-angelfisha",
+     "displayName": "zebra ribbon angelfisha",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "ribbon",
+   "occurrences": 447,
+   "sessionCount": 53
+  },
+  {
+   "bases": [
+    "puffer",
+    "pyffer"
+   ],
+   "conceptCount": 7,
+   "concepts": [
+    {
+     "conceptId": "concept:crimson-polka-puffer",
+     "displayName": "crimson polka puffer",
+     "occurrences": 280
+    },
+    {
+     "conceptId": "concept:golden-polka-puffer",
+     "displayName": "golden polka puffer",
+     "occurrences": 111
+    },
+    {
+     "conceptId": "concept:sgolden-polka-puffer",
+     "displayName": "sgolden polka puffer",
+     "occurrences": 12
+    },
+    {
+     "conceptId": "concept:ccrimson-polka-puffer",
+     "displayName": "ccrimson polka puffer",
+     "occurrences": 7
+    },
+    {
+     "conceptId": "concept:scrimson-polka-puffer",
+     "displayName": "scrimson polka puffer",
+     "occurrences": 3
+    },
+    {
+     "conceptId": "concept:rimson-polka-puffer",
+     "displayName": "rimson polka puffer",
+     "occurrences": 2
+    },
+    {
+     "conceptId": "concept:crimson-polka-pyffer",
+     "displayName": "crimson polka pyffer",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "polka",
+   "occurrences": 416,
+   "sessionCount": 44
+  },
+  {
+   "bases": [
+    "angelfish",
+    "newitem",
+    "puffer",
+    "tigerfin"
+   ],
+   "conceptCount": 5,
+   "concepts": [
+    {
+     "conceptId": "concept:golden-ribbon-angelfish",
+     "displayName": "golden ribbon angelfish",
+     "occurrences": 114
+    },
+    {
+     "conceptId": "concept:golden-polka-puffer",
+     "displayName": "golden polka puffer",
+     "occurrences": 111
+    },
+    {
+     "conceptId": "concept:golden-tigerfin",
+     "displayName": "golden tigerfin",
+     "occurrences": 102
+    },
+    {
+     "conceptId": "concept:golden-polko-puffer",
+     "displayName": "golden polko puffer",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:golden-tigerfinz-newitem",
+     "displayName": "golden tigerfinz newitem",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "golden",
+   "occurrences": 329,
+   "sessionCount": 40
+  },
+  {
+   "bases": [
+    "angelfish",
+    "angelfisha"
+   ],
+   "conceptCount": 4,
+   "concepts": [
+    {
+     "conceptId": "concept:zebra-ribbon-angelfish",
+     "displayName": "zebra ribbon angelfish",
+     "occurrences": 308
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-zebra-ribbon-angelfish",
+     "displayName": "spooksville astuo zebra ribbon angelfish",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stues-zebra-ribbon-angelfish",
+     "displayName": "spooksville stues zebra ribbon angelfish",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:zebra-ribbon-angelfisha",
+     "displayName": "zebra ribbon angelfisha",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "zebra",
+   "occurrences": 311,
+   "sessionCount": 48
+  },
+  {
+   "bases": [
+    "comsquid",
+    "cornsquid",
+    "squid"
+   ],
+   "conceptCount": 6,
+   "concepts": [
+    {
+     "conceptId": "concept:candy-corn-squid",
+     "displayName": "candy corn squid",
+     "occurrences": 241
+    },
+    {
+     "conceptId": "concept:candy-cormn-squid",
+     "displayName": "candy cormn squid",
+     "occurrences": 10
+    },
+    {
+     "conceptId": "concept:candy-comsquid",
+     "displayName": "candy comsquid",
+     "occurrences": 8
+    },
+    {
+     "conceptId": "concept:candy-con-squid",
+     "displayName": "candy con squid",
+     "occurrences": 7
+    },
+    {
+     "conceptId": "concept:candy-corm-squid",
+     "displayName": "candy corm squid",
+     "occurrences": 6
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-candy-cornsquid",
+     "displayName": "spooksville astuo candy cornsquid",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "candy",
+   "occurrences": 273,
+   "sessionCount": 48
+  },
+  {
+   "bases": [
+    "tigerfin"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:exotic-tigerfin",
+     "displayName": "exotic tigerfin",
+     "occurrences": 262
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "exotic",
+   "occurrences": 262,
+   "sessionCount": 36
+  },
+  {
+   "bases": [
+    "squid"
+   ],
+   "conceptCount": 2,
+   "concepts": [
+    {
+     "conceptId": "concept:candy-corn-squid",
+     "displayName": "candy corn squid",
+     "occurrences": 241
+    },
+    {
+     "conceptId": "concept:scandy-corn-squid",
+     "displayName": "scandy corn squid",
+     "occurrences": 7
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "corn",
+   "occurrences": 248,
+   "sessionCount": 44
+  },
+  {
+   "bases": [
+    "shark"
+   ],
+   "conceptCount": 2,
+   "concepts": [
+    {
+     "conceptId": "concept:dark-skeletal-shark",
+     "displayName": "dark skeletal shark",
+     "occurrences": 102
+    },
+    {
+     "conceptId": "concept:sdark-skeletal-shark",
+     "displayName": "sdark skeletal shark",
+     "occurrences": 16
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "skeletal",
+   "occurrences": 118,
+   "sessionCount": 36
+  },
+  {
+   "bases": [
+    "bite"
+   ],
+   "conceptCount": 2,
+   "concepts": [
+    {
+     "conceptId": "concept:jack-o-bite",
+     "displayName": "jack o bite",
+     "occurrences": 104
+    },
+    {
+     "conceptId": "concept:jack-0-bite",
+     "displayName": "jack 0 bite",
+     "occurrences": 8
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "jack",
+   "occurrences": 112,
+   "sessionCount": 34
+  },
+  {
+   "bases": [
+    "bite"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:jack-o-bite",
+     "displayName": "jack o bite",
+     "occurrences": 104
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "o",
+   "occurrences": 104,
+   "sessionCount": 32
+  },
+  {
+   "bases": [
+    "shark"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:dark-skeletal-shark",
+     "displayName": "dark skeletal shark",
+     "occurrences": 102
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "dark",
+   "occurrences": 102,
+   "sessionCount": 35
+  },
+  {
+   "bases": [
+    "angelfish",
+    "puffer",
+    "ribbonangetfish",
+    "tigerfin"
+   ],
+   "conceptCount": 4,
+   "concepts": [
+    {
+     "conceptId": "concept:sgolden-tigerfin",
+     "displayName": "sgolden tigerfin",
+     "occurrences": 33
+    },
+    {
+     "conceptId": "concept:sgolden-ribbon-angelfish",
+     "displayName": "sgolden ribbon angelfish",
+     "occurrences": 19
+    },
+    {
+     "conceptId": "concept:sgolden-polka-puffer",
+     "displayName": "sgolden polka puffer",
+     "occurrences": 12
+    },
+    {
+     "conceptId": "concept:sgolden-ribbonangetfish",
+     "displayName": "sgolden ribbonangetfish",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "sgolden",
+   "occurrences": 65,
+   "sessionCount": 27
+  },
+  {
+   "bases": [
+    "groper",
+    "grovper",
+    "lipgrouper"
+   ],
+   "conceptCount": 3,
+   "concepts": [
+    {
+     "conceptId": "concept:blve-lipgrouper",
+     "displayName": "blve lipgrouper",
+     "occurrences": 14
+    },
+    {
+     "conceptId": "concept:blve-lip-grovper",
+     "displayName": "blve lip grovper",
+     "occurrences": 3
+    },
+    {
+     "conceptId": "concept:blve-lip-groper",
+     "displayName": "blve lip groper",
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 4,
+   "modifier": "blve",
+   "occurrences": 19,
+   "sessionCount": 5
+  },
+  {
+   "bases": [
+    "shark"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:sdark-skeletal-shark",
+     "displayName": "sdark skeletal shark",
+     "occurrences": 16
+    }
+   ],
+   "dayCount": 5,
+   "modifier": "sdark",
+   "occurrences": 16,
+   "sessionCount": 11
+  },
+  {
+   "bases": [
+    "angelfish",
+    "cornsquid",
+    "fangfish",
+    "nevitemskeletalshark",
+    "skeletalshark",
+    "snapper",
+    "stucs",
+    "stues"
+   ],
+   "conceptCount": 9,
+   "concepts": [
+    {
+     "conceptId": "concept:spooksville-stues",
+     "displayName": "spooksville stues",
+     "occurrences": 3
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-candy-cornsquid",
+     "displayName": "spooksville astuo candy cornsquid",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-crimson-snapper",
+     "displayName": "spooksville astuo crimson snapper",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-zebra-ribbon-angelfish",
+     "displayName": "spooksville astuo zebra ribbon angelfish",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stucs",
+     "displayName": "spooksville stucs",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stucs-nevitemskeletalshark",
+     "displayName": "spooksville stucs nevitemskeletalshark",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stues-fangfish",
+     "displayName": "spooksville stues fangfish",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stues-skeletalshark",
+     "displayName": "spooksville stues skeletalshark",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stues-zebra-ribbon-angelfish",
+     "displayName": "spooksville stues zebra ribbon angelfish",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "spooksville",
+   "occurrences": 11,
+   "sessionCount": 2
+  },
+  {
+   "bases": [
+    "squid"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:candy-cormn-squid",
+     "displayName": "candy cormn squid",
+     "occurrences": 10
+    }
+   ],
+   "dayCount": 4,
+   "modifier": "cormn",
+   "occurrences": 10,
+   "sessionCount": 6
+  },
+  {
+   "bases": [
+    "bite"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:jack-0-bite",
+     "displayName": "jack 0 bite",
+     "occurrences": 8
+    }
+   ],
+   "dayCount": 4,
+   "modifier": "0",
+   "occurrences": 8,
+   "sessionCount": 6
+  },
+  {
+   "bases": [
+    "squid"
+   ],
+   "conceptCount": 2,
+   "concepts": [
+    {
+     "conceptId": "concept:candy-con-squid",
+     "displayName": "candy con squid",
+     "occurrences": 7
+    },
+    {
+     "conceptId": "concept:andy-con-squid",
+     "displayName": "andy con squid",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 3,
+   "modifier": "con",
+   "occurrences": 8,
+   "sessionCount": 6
+  },
+  {
+   "bases": [
+    "puffer"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:ccrimson-polka-puffer",
+     "displayName": "ccrimson polka puffer",
+     "occurrences": 7
+    }
+   ],
+   "dayCount": 3,
+   "modifier": "ccrimson",
+   "occurrences": 7,
+   "sessionCount": 4
+  },
+  {
+   "bases": [
+    "squid"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:scandy-corn-squid",
+     "displayName": "scandy corn squid",
+     "occurrences": 7
+    }
+   ],
+   "dayCount": 2,
+   "modifier": "scandy",
+   "occurrences": 7,
+   "sessionCount": 2
+  },
+  {
+   "bases": [
+    "squid"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:candy-corm-squid",
+     "displayName": "candy corm squid",
+     "occurrences": 6
+    }
+   ],
+   "dayCount": 4,
+   "modifier": "corm",
+   "occurrences": 6,
+   "sessionCount": 5
+  },
+  {
+   "bases": [
+    "groper",
+    "grovper"
+   ],
+   "conceptCount": 2,
+   "concepts": [
+    {
+     "conceptId": "concept:blve-lip-grovper",
+     "displayName": "blve lip grovper",
+     "occurrences": 3
+    },
+    {
+     "conceptId": "concept:blve-lip-groper",
+     "displayName": "blve lip groper",
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 2,
+   "modifier": "lip",
+   "occurrences": 5,
+   "sessionCount": 2
+  },
+  {
+   "bases": [
+    "puffer",
+    "snapper"
+   ],
+   "conceptCount": 2,
+   "concepts": [
+    {
+     "conceptId": "concept:rimson-snapper",
+     "displayName": "rimson snapper",
+     "occurrences": 2
+    },
+    {
+     "conceptId": "concept:rimson-polka-puffer",
+     "displayName": "rimson polka puffer",
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 2,
+   "modifier": "rimson",
+   "occurrences": 4,
+   "sessionCount": 3
+  },
+  {
+   "bases": [
+    "angelfish",
+    "cornsquid",
+    "snapper"
+   ],
+   "conceptCount": 3,
+   "concepts": [
+    {
+     "conceptId": "concept:spooksville-astuo-candy-cornsquid",
+     "displayName": "spooksville astuo candy cornsquid",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-crimson-snapper",
+     "displayName": "spooksville astuo crimson snapper",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-astuo-zebra-ribbon-angelfish",
+     "displayName": "spooksville astuo zebra ribbon angelfish",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "astuo",
+   "occurrences": 3,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "puffer"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:scrimson-polka-puffer",
+     "displayName": "scrimson polka puffer",
+     "occurrences": 3
+    }
+   ],
+   "dayCount": 2,
+   "modifier": "scrimson",
+   "occurrences": 3,
+   "sessionCount": 3
+  },
+  {
+   "bases": [
+    "angelfish",
+    "fangfish",
+    "skeletalshark"
+   ],
+   "conceptCount": 3,
+   "concepts": [
+    {
+     "conceptId": "concept:spooksville-stues-fangfish",
+     "displayName": "spooksville stues fangfish",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stues-skeletalshark",
+     "displayName": "spooksville stues skeletalshark",
+     "occurrences": 1
+    },
+    {
+     "conceptId": "concept:spooksville-stues-zebra-ribbon-angelfish",
+     "displayName": "spooksville stues zebra ribbon angelfish",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "stues",
+   "occurrences": 3,
+   "sessionCount": 2
+  },
+  {
+   "bases": [
+    "protected"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:town-of-beginnings-safezone-protected",
+     "displayName": "town of beginnings safezone protected",
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "beginnings",
+   "occurrences": 2,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "protected"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:town-of-beginnings-safezone-protected",
+     "displayName": "town of beginnings safezone protected",
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "of",
+   "occurrences": 2,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "protected"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:town-of-beginnings-safezone-protected",
+     "displayName": "town of beginnings safezone protected",
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "safezone",
+   "occurrences": 2,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "protected"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:town-of-beginnings-safezone-protected",
+     "displayName": "town of beginnings safezone protected",
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "town",
+   "occurrences": 2,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "angelfish"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:zzebra-ribbon-angelfish",
+     "displayName": "zzebra ribbon angelfish",
+     "occurrences": 2
+    }
+   ],
+   "dayCount": 2,
+   "modifier": "zzebra",
+   "occurrences": 2,
+   "sessionCount": 2
+  },
+  {
+   "bases": [
+    "tradinghub"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:agomu-has-spavned-at-tradinghub",
+     "displayName": "agomu has spavned at tradinghub",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "agomu",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "squid"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:andy-con-squid",
+     "displayName": "andy con squid",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "andy",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "squid"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:andycorn-squid",
+     "displayName": "andycorn squid",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "andycorn",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "tradinghub"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:agomu-has-spavned-at-tradinghub",
+     "displayName": "agomu has spavned at tradinghub",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "at",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "angelfish"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:czebra-ribbon-angelfish",
+     "displayName": "czebra ribbon angelfish",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "czebra",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "minutes"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:droppedbomb-vill-despavnin10-minutes",
+     "displayName": "droppedbomb vill despavnin10 minutes",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "despavnin10",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "minutes"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:droppedbomb-vill-despavnin10-minutes",
+     "displayName": "droppedbomb vill despavnin10 minutes",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "droppedbomb",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "tradinghub"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:agomu-has-spavned-at-tradinghub",
+     "displayName": "agomu has spavned at tradinghub",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "has",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "shark"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:keletal-shark",
+     "displayName": "keletal shark",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "keletal",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "fangfish"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:neitem-fangfish",
+     "displayName": "neitem fangfish",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "neitem",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "exotictigerfin"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:nevltem-exotictigerfin",
+     "displayName": "nevltem exotictigerfin",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "nevltem",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "crimsonpolkapuffer"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:neyitem-crimsonpolkapuffer",
+     "displayName": "neyitem crimsonpolkapuffer",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "neyitem",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "snapper"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:neylitem-crimson-snapper",
+     "displayName": "neylitem crimson snapper",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "neylitem",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "ne"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:nw-ne",
+     "displayName": "nw ne",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "nw",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "puffer"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:golden-polko-puffer",
+     "displayName": "golden polko puffer",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "polko",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "tradinghub"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:agomu-has-spavned-at-tradinghub",
+     "displayName": "agomu has spavned at tradinghub",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "spavned",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "nevitemskeletalshark"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:spooksville-stucs-nevitemskeletalshark",
+     "displayName": "spooksville stucs nevitemskeletalshark",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "stucs",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "ribbonangelfish"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:szebra-ribbonangelfish",
+     "displayName": "szebra ribbonangelfish",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "szebra",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "newitem"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:golden-tigerfinz-newitem",
+     "displayName": "golden tigerfinz newitem",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "tigerfinz",
+   "occurrences": 1,
+   "sessionCount": 1
+  },
+  {
+   "bases": [
+    "minutes"
+   ],
+   "conceptCount": 1,
+   "concepts": [
+    {
+     "conceptId": "concept:droppedbomb-vill-despavnin10-minutes",
+     "displayName": "droppedbomb vill despavnin10 minutes",
+     "occurrences": 1
+    }
+   ],
+   "dayCount": 1,
+   "modifier": "vill",
+   "occurrences": 1,
+   "sessionCount": 1
+  }
+ ]
+}
