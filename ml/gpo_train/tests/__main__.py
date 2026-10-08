@@ -3,21 +3,34 @@
 Kept dependency-free on purpose: this project runs its Python checks with plain
 `python -m ...`, so adding a test framework would be a new install step on a
 machine that already has everything it needs.
+
+Discovers every ``test_*.py`` module beside this file and runs every module
+level ``test_*`` function, so a new suite is a new file and nothing else.
 """
 
 from __future__ import annotations
 
 import importlib
 import inspect
+import pkgutil
 import sys
 import traceback
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
 
 
 def main() -> int:
-    import test_candidates as mod
-
-    tests = [(n, f) for n, f in vars(mod).items()
-             if n.startswith("test_") and callable(f)]
+    sys.path.insert(0, str(HERE))
+    sys.path.insert(0, str(HERE.parents[2]))  # repo root, for `ml.gpo_train...`
+    tests: list[tuple[str, object]] = []
+    for info in sorted(pkgutil.iter_modules([str(HERE)]), key=lambda m: m.name):
+        if not info.name.startswith("test_"):
+            continue
+        mod = importlib.import_module(info.name)
+        for name, fn in sorted(vars(mod).items()):
+            if name.startswith("test_") and callable(fn):
+                tests.append((f"{info.name}::{name}", fn))
     passed = failed = 0
     for name, fn in tests:
         try:
@@ -38,5 +51,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent))
     sys.exit(main())

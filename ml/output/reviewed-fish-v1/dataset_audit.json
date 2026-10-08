@@ -1,0 +1,3845 @@
+{
+ "dataset_sha256": "5a1d75e29bb8905701bc42b8d3a430e7a7f449e9ecdb3551bded0902271801d8",
+ "dimensions": {
+  "589x199": 1852
+ },
+ "duplicates": {
+  "ahash_twin_groups": 228,
+  "ahash_twin_groups_cross_class": 180,
+  "ahash_twin_groups_cross_split": 17,
+  "byte_groups": 0,
+  "byte_groups_cross_split": 0,
+  "pixel_groups": 0,
+  "pixel_groups_cross_split": 0
+ },
+ "failures": [],
+ "groups": {
+  "ahash_cross_class": [
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020303c363e80",
+     "626020303c34be80"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "test"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "6020323d3e3ebe80",
+     "682030393e3ebe80"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "test"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606060e0fce0f0f0",
+     "606060e0fee0f0f0"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:goldenribbonangelfish",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "606020a0fee0f0f0",
+     "606020e0fee0f0f0"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3f3f3f1f07001f03",
+     "3f3f3f1f07801f03",
+     "3f3f3f1f17809f03"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:swordfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3f3f1e9e809ebfc1",
+     "3f3f1f9f808ebfc3"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "30301090bcfffff3",
+     "30301090beffffeb"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "30303010bc90ffeb",
+     "30303010bc90ffef",
+     "30303010bc94ffe3",
+     "30303010bc94ffeb",
+     "30303010bc94ffff",
+     "30303010bc9effe3"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 6,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3e121f0743424242",
+     "3e121f0f47424242"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "333f3f3e16001f47",
+     "333f3f3e1e001f47"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:fangfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "333f3f3f1e001f47",
+     "333f3f3f1f001f47"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "777e3e3e02013f07",
+     "777e3e3e06013f07"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:jackobite",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "677e3e3e06017f07",
+     "677e3e3e2e013f07"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:goldentigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3f3f3f3e0e3e003f",
+     "7f3f3f3e0e3e003f-2"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3f3f3f3e1e3e003f",
+     "3f3f3f3e3e3e003f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "7f3f3f3e063e003f",
+     "7f3f3f3e1e3e003f-1"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:jackobite",
+     "fish:tigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "7f3f3f3e263e003f-2",
+     "7f3f3f3e2e3e003f-1",
+     "7f3f3f3e2e3e003f-10",
+     "7f3f3f3e2e3e003f-2",
+     "7f3f3f3e2e3e003f-3",
+     "7f3f3f3e2e3e003f-4"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 6,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3f3f3f3f1f1f801f",
+     "3f3f3f3f1f1f801f-1"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3b373f1f1f9f801f",
+     "3f3f3f1f1f9f809f-1"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:darkskeletalshark",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "f0303033073f3f1f",
+     "f0303033173f3f1f",
+     "f0303433173f3f1f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303030303c9e809f-3",
+     "303030303c9e809f-4"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "20203c223ebe80df",
+     "60203c223e3e80df"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer",
+     "fish:exotictigerfin",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "30333f309e9f809f-1",
+     "30333f329e9f809f-1",
+     "30333f38969f809f",
+     "30333f3a9e9f809f-1"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "30333f3a1f9f809f",
+     "30333f3a1f9f809f-4"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "33333f1f1f9f809f-1",
+     "33373f1f1f9f809f-3"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:goldenribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "f13030303e3f1f9f-1",
+     "f13036313e3f1f9f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "f13036313e3f1f9f-4",
+     "f13036313f3f1f9f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:goldenribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e03030313f3f3f9f-1",
+     "e03030313f3f3f9f-2"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303030303e9e809f-15",
+     "303030303e9e809f-6"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303030303e9e809f-2",
+     "303030303e9e809f-8",
+     "303030303e9e809f-9"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303038303e9e80df",
+     "303038303e9e80df-1",
+     "303038303e9e80df-12",
+     "303038303e9e80df-4",
+     "303038303e9e80df-5",
+     "303038303e9e80df-6",
+     "303038303e9e90df-1"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 7,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper",
+     "fish:goldenpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303030303e9e809f-14",
+     "303030303e9e80df",
+     "303038103e9e80df",
+     "303038103e9e80df-1",
+     "303038103e9e80df-3",
+     "303038303e9e80df-10",
+     "303038303e9e80df-2",
+     "303038303e9e80df-3",
+     "303038303e9e80df-8",
+     "303038303e9e80df-9",
+     "303038303e9e90df"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 11,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "30303810be9e80df",
+     "30303810be9e80df-5"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:fangfish",
+     "fish:tigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "31373f3e3e3e007f-1",
+     "3b373f3e3e1e007f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "60633e32363e003f",
+     "60633e323e3e003f",
+     "60633f3a3e3e003f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "60633e323e3e007f-1",
+     "70673e3e3e3e003f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "7f3f3f3e263e003f",
+     "7f3f3f3e3e3e003f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:candycornsquid"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "60633f3a3e3e003f-1",
+     "61673e3a3e3e003f-1",
+     "70633e3a3e3e007f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:crimsonpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "70673e3e3e3e003f-1",
+     "70733e3e3e3e003f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:goldenpolkapuffer",
+     "fish:jackobite"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0303030323f3c3f",
+     "e0303030363f3e3f",
+     "f0303030363d383f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "373f1e1e1e801f3f",
+     "373f3e1e1e801f3f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0303f330f3f3f3f",
+     "e1343f37373f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e8383c3f173f3f3f",
+     "e8383c3f273f3f3f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0606023373f3e3f",
+     "e06060332f3f3f3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e02034333f3f3f3f",
+     "e0603033373f3f3f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:crimsonsnapper",
+     "fish:fangfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e02034233f3f3f3f",
+     "e0203c333f3f3f3f",
+     "e06078232f3f3f3e"
+    ],
+    "kind": "ahash",
+    "sessions": 3,
+    "size": 3,
+    "splits": [
+     "test",
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:skeletalshark"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303113170f1f9fbf",
+     "3039131f1f9f9fbf"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:jackobite",
+     "fish:swordfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203e3280ff",
+     "606020203e3680ff",
+     "606020303e3280ff"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:candycornsquid",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020303c3280ff-1",
+     "606020303e3280ff-1",
+     "606020303e3280ff-3",
+     "606020303e3280ff-4"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203e32007f",
+     "606020203e32007f-1",
+     "606020203e32007f-2"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "60673e363e3e007f",
+     "60673e363e3e007f-1",
+     "61673f323e3e007f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:crimsonpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203c3280ff-1",
+     "606020203cb280ff",
+     "606020203e3280ff-1",
+     "606020303c3280ff"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "602020203e3280ff",
+     "602020203e3280ff-1",
+     "602020203e3e80ff",
+     "602020203e3e80ff-1",
+     "606020203e3280ff-5",
+     "606020203e3e80ff"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 6,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:tigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020303eb280ff-1",
+     "606020303eb280ff-4",
+     "606020303eb280ff-6"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:tigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "602020303ebe80ff-5",
+     "606020303ebe80ff-1"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203cbe80ff",
+     "606020203eb280ff-1",
+     "606020303cb280ff",
+     "606020303cb280ff-2",
+     "606020303cb280ff-3",
+     "606020303cb280ff-4",
+     "606020303eb280ff"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 7,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "602020203e3e80ff-3",
+     "602020203eb680ff",
+     "602020203ebe80ff-1"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "602020203ebe80ff-2",
+     "602020203ebe80ff-5"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "602020203e3e80ff-2",
+     "602020203e3e80ff-4"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "202020303ebe80ff",
+     "20203e323ebe80ff-4",
+     "602020303ebe80ff-1",
+     "602020303ebe80ff-7"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "602020203ebe80ff",
+     "602020303ebe80ff-10",
+     "602020303ebe80ff-11"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "202038303e3e80ff",
+     "20203e323ebe80ff-1",
+     "20203e323ebe80ff-3"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:candycornsquid",
+     "fish:tigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "202038323ebe80ff",
+     "202038323ebe80ff-1",
+     "20203e323ebe80ff",
+     "60203e363ebe80ff-2"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "20203e323ebe80ff-2",
+     "20203e363ebe80ff-3"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "71273f3e3ebe80ff-1",
+     "71273f3e3ebe80ff-6"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:candycornsquid"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "202020203ebe80ff",
+     "602020303ebe80ff"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer",
+     "fish:jackobite"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "406060607c6401ff",
+     "606060607e6401ff",
+     "606070607c7c01ff"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:fangfish",
+     "fish:skeletalshark"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "313c3abe9e80dfff",
+     "333e3e3e86809f7f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:goldenpolkapuffer",
+     "fish:goldenribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "20303010be80dfff",
+     "203030b0be80dfff"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:goldenpolkapuffer",
+     "fish:goldentigerfin",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "20303030be80dfff",
+     "30303010be80dfff",
+     "30303030be80dfff",
+     "30383216be80dfff"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 4,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "20301090bc80ffff",
+     "20301090be80ffff"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:skeletalshark"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "00000003437fffff",
+     "01000003437fffff"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "test"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303030303e96809f",
+     "303030303e9680df"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3e3e013f03030000",
+     "3e3e013f07030000"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303010133f9fdfc0",
+     "303012133f9fdfc0",
+     "303032133f9fdfc0"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06060607c606020",
+     "e06060607c606034"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606060603c303e00",
+     "606060603e303e00",
+     "606060603e343e00"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "6060233f2e3e3e00",
+     "60606327263e3e00",
+     "6070333f2e3ebe80"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "test"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "6060333f363e3e00",
+     "60606337363e3e00",
+     "6060633f363e3e00",
+     "6060733f363e3e00"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "test"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606063223e3e3e80",
+     "606063243e3e3e00",
+     "606063243e3e3e80"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:jackobite"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606060203e3e3e00",
+     "606063263e3e3e80"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06060603e20303e",
+     "e06060603e223e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06060607c606060",
+     "e06060607c606064",
+     "e06060607c60607c"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 3,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:exotictigerfin",
+     "fish:skeletalshark"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3e109f4747424242",
+     "3e109f6f43424242",
+     "3e129f6743424242"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin",
+     "fish:goldenribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "308092e7ffc24242",
+     "308092f7ffc24242",
+     "30809ac7ffc24242",
+     "30809ae7ffc24242",
+     "30809ef7ffc24242"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 5,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3e009f6747424242",
+     "3e009f6f47424242",
+     "3e109f6f47424242"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "108090e7ffc24242",
+     "108092e7ffc24242"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin",
+     "fish:jackobite",
+     "fish:swordfish",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3e809fc743424242",
+     "3e809fc747424242",
+     "3e809fc747464646",
+     "3e809fc7c7464646",
+     "3e809fc7c74646c6",
+     "3e809fcf47424646",
+     "3e809fd743464646",
+     "3e809fd7434646c6"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 8,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper",
+     "fish:darkskeletalshark",
+     "fish:exotictigerfin",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "308080c7ffc64242",
+     "308080c7ffc64646",
+     "308080d7ffc6c646",
+     "308090c7ffc24242",
+     "308090c7ffc64242",
+     "308090c7ffc64646",
+     "308090c7ffc6c646",
+     "308090e7ffc64242",
+     "308090f7ffc64642",
+     "308090f7ffc6c642"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 10,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "2020007f7fc7c242",
+     "202000ffffc7c6c2"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203c34beb6",
+     "e06020203c343eb2",
+     "e06020303c343eb6"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:goldenpolkapuffer",
+     "fish:swordfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3f3e1e1e801f0300",
+     "3f3e1e9e841f0300",
+     "3f3e1e9e841f0700",
+     "3f3e1e9e841f8700"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3f1e1e9e801f0700",
+     "3f1e1e9e841f8f00"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203c3e809e",
+     "606020203c3e809f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:goldenribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203e32809e",
+     "606020203e3280de",
+     "606030203e3e80de"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203c303a90",
+     "606020203e30be90"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203e303a90",
+     "606020203e30ba90",
+     "606060303c30be90"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203e34be90",
+     "606020303c363e90"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "60602327263e3e90",
+     "60602337363ebe90"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "202020203e3ebe90",
+     "202030353e3ebe92"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203c34be90",
+     "606020203e36be90"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:exotictigerfin",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "008080d7ffd6c646",
+     "008080d7ffd6d646",
+     "008080d7ffdec646"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203e30b680",
+     "606060303c343e80"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "test"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:fangfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303030303c9e909f-1",
+     "30303030bc9680df-1"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303030303c9e909f-2",
+     "30303030bc9e90df",
+     "30303030be9680df"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "60632f3e363e001f",
+     "60632f3e3e3e001f",
+     "70633f3e3e3e001f",
+     "70733f3e363e001f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06060603e202034",
+     "e06060603e202036",
+     "e06060603e20203e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:goldenpolkapuffer",
+     "fish:goldenribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06060607e203420",
+     "e06060607e203422",
+     "e46060607e203c2a"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:darkskeletalshark",
+     "fish:exotictigerfin",
+     "fish:goldentigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "f03030303c303030-1",
+     "f03030303c303030-12",
+     "f03030303c303030-3",
+     "f03030303c303030-4",
+     "f03030303c303030-9",
+     "f03030303e3030b0"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 6,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:goldentigerfin",
+     "fish:jackobite"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "f03030303c303030-10",
+     "f03030303c303030-11",
+     "f03030303c303030-5",
+     "f03030303c303030-7",
+     "f03030303c303030-8"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 5,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:candycornsquid",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e02020203c30303e",
+     "e02020303c30303e",
+     "e06020203c3030b2",
+     "e06020203c3030b6",
+     "e06020303c303032"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 5,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0e060203c303034",
+     "e0e060203c303036"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06020203c303030",
+     "e06020203c303032",
+     "e06020203c30303e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:darkskeletalshark",
+     "fish:goldenribbonangelfish",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "f03030303e303010-1",
+     "f03030303e303010-2",
+     "f03030303e303030-1",
+     "f03030303e303030-2",
+     "f03030303e303030-3",
+     "f03030303e303030-6",
+     "f03030303e303030-8"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 7,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:darkskeletalshark",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06060203e203030",
+     "e06060203e203036",
+     "e06060203e303032",
+     "e06060203e303036",
+     "e06060203e30343e",
+     "e0e060203e303036"
+    ],
+    "kind": "ahash",
+    "sessions": 3,
+    "size": 6,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "f03030303e303010-3",
+     "f03030303e303030-4"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:goldenribbonangelfish",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06060603e203030",
+     "e06060603e203036",
+     "e0e060603e303030",
+     "e86060603e203030"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 4,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "60703337273e3e1e",
+     "60743737273e3e16"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203c3e80ff",
+     "606020303c3e809f"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303030303c9e809f",
+     "303030303c9e809f-1",
+     "303030303c9e809f-8",
+     "303030303c9e809f-9",
+     "303030303e9e809f-10",
+     "303030303e9e809f-11",
+     "303030303e9e809f-13"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 7,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303030303e9e809f-17",
+     "303030303e9e909f-1"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "602020203e3ebe9e",
+     "602020203f3e3e9e",
+     "602020203f3e3ebe",
+     "602430303f3ebebe"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "30393b1f1f1f9d89",
+     "38393f1f1f9f9d89"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:skeletalshark"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3c3b3f1f1f9f9980",
+     "3c3f3f1f1f9f9d80"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:swordfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303030303c9e80df-3",
+     "30303030bc9e80df-2",
+     "30303030bc9e80df-3"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "303030303c9e809f-12",
+     "303030303c9e80df",
+     "303030303c9e80df-1",
+     "303030303c9e80df-2"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "30303030bc9e80df-1",
+     "30303030bc9e80df-4",
+     "30303030bc9e80df-5",
+     "30303030bc9e80df-7",
+     "30303030be9080df",
+     "30303030be9480df",
+     "30303030be9e80df-7"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 7,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "30303030be9480df-1",
+     "30303030be9e80df-11",
+     "30303030be9e80df-2",
+     "30303030be9e80df-3",
+     "30303030be9e80df-9"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 5,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:fangfish",
+     "fish:skeletalshark"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0606060642a3c3e",
+     "e0606061643e3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:tigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06060203c20343e",
+     "e0e060203c383c3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0606060652f3e3e",
+     "e0606060672f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:tigerfin",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06030202d3e3ebe",
+     "e0603021373e3ebe"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:swordfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0602021253e3c3e",
+     "e0602021273e3cbe"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06060203e223e3e",
+     "e06060203e383e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:fangfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "60602021263e3ebe",
+     "606020212e3e3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:jackobite"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e0e060203c3b3e3e",
+     "e86060203c3a3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0602323263e3eb6",
+     "e0602323363e3e36"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06060213e3e3e3e",
+     "e06060613e3e3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer",
+     "fish:darkskeletalshark",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06020233c3e3e3e",
+     "e06060233c3e3e3e",
+     "e06062213e3e3e3e",
+     "e36062233e3e3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06060203c3e3e3e",
+     "e36067233c3e3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06060203e293e3e",
+     "e06060603c3d3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0e06020273f3e3e",
+     "e0e06060273f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:goldenribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0606163273e3e3e",
+     "e0606163373e3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:fangfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0607163273e3e3e",
+     "e0607963273e3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0606123273e3e3e",
+     "e06061232f3e3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0603d27273e3e3e",
+     "e0607f23273e3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0603323373e3e3e",
+     "e0783327273e3e1e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:jackobite",
+     "fish:swordfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06060203c3f3e3e",
+     "e06064203e3f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:jackobite"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06024203d3f3ebe",
+     "e06060303e3f3e3e",
+     "e06064303f3f3f3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 3,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:goldenpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06020203e3f3e3e",
+     "e06020203e3f3ebe",
+     "e06024203e3f3e3e",
+     "e06060203e3f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 3,
+    "size": 4,
+    "splits": [
+     "test",
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e06020203c3f3e3e",
+     "e16026233f3f3e3e",
+     "e16026303f3f3e3e",
+     "e16066203c3f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06060603e3d3e3e",
+     "e06060633e3f3e3e",
+     "e06066203c3f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 3,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e02026333d3f3ebe",
+     "e02026333f3f3ebe"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:goldenpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e0607833173f3e3e",
+     "e0e06c33273f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:fangfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0e06060672f3e3e",
+     "e0e06061633f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0607023373f3e3e",
+     "e0607c23273f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "test"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:fangfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0203023273e3e3e",
+     "e0203833273f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:candycornsquid",
+     "fish:goldenribbonangelfish",
+     "fish:tigerfin",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0203133273f3e3e",
+     "e0203133273f3ebe",
+     "e0303433273f3e3e",
+     "e0303833273e3e3e",
+     "e0303c33273f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 5,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0606033273f3e3e",
+     "e0e07033273f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:goldenpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0303933273f3ebe",
+     "e0303c33373f3ebe"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:fangfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e02037332f3f3e3e",
+     "e0303533273f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:skeletalshark"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e0607c3f073f3e3e",
+     "e0687c7f273f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e02030233f3f3ebe",
+     "e02035333f3f3ebe"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e02020203c3a3ebe",
+     "e02024203e3e3ebe"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "602020303e3ebebe",
+     "606020303e3e3ebe"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:jackobite",
+     "fish:tigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e02020203c3e3ebe",
+     "e02026223d3f3ebe",
+     "e02036323f3f3ebe",
+     "e02036333f3f3ebe"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:exotictigerfin",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "202020203e3ebe9e",
+     "606020203e3e3ebe",
+     "606020203f3e3ebe",
+     "606633333f3ebebe"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper",
+     "fish:goldenribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e02026203e3e3ebe",
+     "e02026303d3f3ebe",
+     "e02036223d3f3ebe"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606033273f3e3ebe",
+     "606033372f3ebebe",
+     "606033373f3ebebe"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "602020203e3e3ebe",
+     "602020303e3ebe9e"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "e02026303c3e3ebe",
+     "e32036333f3f3ebe"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e0606063677e7e7e",
+     "e06060636f7e7e7e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:goldentigerfin",
+     "fish:jackobite"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "2030f0f0fcf0e0ff",
+     "3030f0f0fcf0e0ff"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3f3f3e1e143f0101",
+     "3f3f3f1e043f0101",
+     "3f3f3f1e0c3f0101"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "test"
+    ]
+   },
+   {
+    "classes": [
+     "fish:skeletalshark",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3f3e3e14963f0100",
+     "3f3f3e14063f0101"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "test"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:crimsonpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020303c34be80",
+     "606020303e343e80",
+     "606020303e34be80"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "test"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:goldentigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "f03030303c303092",
+     "f03030303c303092-1",
+     "f03030303c3030b0-5",
+     "f03030303c3030b0-8"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 4,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:goldenpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020203e3030b2",
+     "606020203e3036be",
+     "606020203e30b0b2"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 3,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:jackobite"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "3f3e3e10943f0101",
+     "3f3e3e109c3f0101"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid",
+     "fish:crimsonpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": false,
+    "image_ids": [
+     "606020303c343eb2",
+     "e06020203e343eb2"
+    ],
+    "kind": "ahash",
+    "sessions": 1,
+    "size": 2,
+    "splits": [
+     "train"
+    ]
+   }
+  ],
+  "ahash_cross_split": [
+   {
+    "classes": [
+     "fish:candycornsquid"
+    ],
+    "cross_class": false,
+    "cross_split": true,
+    "image_ids": [
+     "606020303c3ebe80",
+     "6060243b3e3ebe80"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "test",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:goldenribbonangelfish",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "606020a0fee0f0f0",
+     "606020e0fee0f0f0"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "30301090bcfffff3",
+     "30301090beffffeb"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:bluelipgrouper",
+     "fish:crimsonsnapper",
+     "fish:fangfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e02034233f3f3f3f",
+     "e0203c333f3f3f3f",
+     "e06078232f3f3f3e"
+    ],
+    "kind": "ahash",
+    "sessions": 3,
+    "size": 3,
+    "splits": [
+     "test",
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:darkskeletalshark",
+     "fish:goldenpolkapuffer",
+     "fish:goldentigerfin",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "20303030be80dfff",
+     "30303010be80dfff",
+     "30303030be80dfff",
+     "30383216be80dfff"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 4,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06060607c606060",
+     "e06060607c606064",
+     "e06060607c60607c"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 3,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:candycornsquid"
+    ],
+    "cross_class": false,
+    "cross_split": true,
+    "image_ids": [
+     "e06060203c303032",
+     "e06060203c3030be"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:darkskeletalshark",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06060203e203030",
+     "e06060203e203036",
+     "e06060203e303032",
+     "e06060203e303036",
+     "e06060203e30343e",
+     "e0e060203e303036"
+    ],
+    "kind": "ahash",
+    "sessions": 3,
+    "size": 6,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:goldenribbonangelfish",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06060603e203030",
+     "e06060603e203036",
+     "e0e060603e303030",
+     "e86060603e203030"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 4,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:tigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06060203c20343e",
+     "e0e060203c383c3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:jackobite"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e0e060203c3b3e3e",
+     "e86060203c3a3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:jackobite"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06024203d3f3ebe",
+     "e06060303e3f3e3e",
+     "e06064303f3f3f3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 3,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonpolkapuffer",
+     "fish:goldenpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06020203e3f3e3e",
+     "e06020203e3f3ebe",
+     "e06024203e3f3e3e",
+     "e06060203e3f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 3,
+    "size": 4,
+    "splits": [
+     "test",
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:exotictigerfin",
+     "fish:goldenpolkapuffer"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e06060603e3d3e3e",
+     "e06060633e3f3e3e",
+     "e06066203c3f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 3,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:goldenpolkapuffer",
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e0607833173f3e3e",
+     "e0e06c33273f3e3e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "test",
+     "train"
+    ]
+   },
+   {
+    "classes": [
+     "fish:crimsonsnapper",
+     "fish:exotictigerfin"
+    ],
+    "cross_class": true,
+    "cross_split": true,
+    "image_ids": [
+     "e0606063677e7e7e",
+     "e06060636f7e7e7e"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "train",
+     "validation"
+    ]
+   },
+   {
+    "classes": [
+     "fish:zebraribbonangelfish"
+    ],
+    "cross_class": false,
+    "cross_split": true,
+    "image_ids": [
+     "606020203e34beb6",
+     "606020303e343eb4"
+    ],
+    "kind": "ahash",
+    "sessions": 2,
+    "size": 2,
+    "splits": [
+     "test",
+     "train"
+    ]
+   }
+  ],
+  "byte_cross_split": [],
+  "pixel_cross_split": []
+ },
+ "kind": "reviewed-fish-dataset-audit",
+ "quality_failures": [],
+ "rows_audited": 1852,
+ "verdict": "PASS"
+}

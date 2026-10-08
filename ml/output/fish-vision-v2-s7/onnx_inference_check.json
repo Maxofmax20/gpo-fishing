@@ -1,0 +1,29 @@
+{
+ "class_map_width": 15,
+ "deterministic": true,
+ "failures": [],
+ "input": {
+  "name": "pixels",
+  "shape": [
+   "batch",
+   "3",
+   "96",
+   "96"
+  ],
+  "type": "tensor(float)"
+ },
+ "kind": "onnx-inference-check",
+ "onnx_sha256": "77221dd536f339987e4f8b8a2d035f8f6085be737c2340016b4d35f0c1a16068",
+ "output": {
+  "name": "fish_logits",
+  "shape": [
+   "batch",
+   "15"
+  ],
+  "type": "tensor(float)"
+ },
+ "pass": true,
+ "run_dir": "ml\\output\\fish-vision-v2-s7",
+ "test_images_checked": 12,
+ "vocab_sha256": "f2ce3dd21f7b4039551be67e3f0b34bd5f103537fadc0d00ec5e6d2c6edb5958"
+}

@@ -1,0 +1,7 @@
+{
+  "threshold": 0.05,
+  "kept": 1.0,
+  "kept_accuracy": 0.9861111111111112,
+  "test_kept": 1.0,
+  "test_kept_accuracy": 0.9927536231884058
+}
