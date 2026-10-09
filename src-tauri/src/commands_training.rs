@@ -1411,22 +1411,37 @@ mod tests {
         d
     }
 
+    /// A class id that is actually IN the canonical vocabulary.
+    ///
+    /// The gate measures every canonical class and reports the ones that are
+    /// short. A fixture built on a bare stem (`fish:crimson`, `fish:golden`) is
+    /// no longer part of that set, so the gate reports EVERY class as short,
+    /// `not qualified` fires first, and the specific shortfall these tests are
+    /// about never appears. Deriving the id keeps the fixture honest whatever
+    /// the vocabulary contains.
+    fn a_canonical_class() -> String {
+        crate::core::class_vocab::fish_vocab()[0].to_string()
+    }
+
     /// THE HEADLINE TEST. The live file says `fish:crimson` has 224 rows in
     /// TRAIN; humans reviewed 211 of them as species that are not the stem, so
     /// the snapshot writes 13. The gate must report the 13 and refuse - never the
     /// 224 the trainer would never see.
     #[test]
     fn a_stem_the_humans_replaced_cannot_arm_the_train_button() {
-        let dir = tmp_dir("crimson");
+        let dir = tmp_dir("shortfall");
         let train = session_in("train");
         let mut rows: Vec<MlAnnotation> = Vec::new();
         let mut reviews: Vec<String> = Vec::new();
 
-        // Every canonical class except `fish:crimson` is comfortably supported.
+        // One canonical class is the victim; every other one is comfortably
+        // supported.
+        let victim = a_canonical_class();
+
         for c in crate::core::class_vocab::fish_vocab()
             .iter()
             .copied()
-            .filter(|c| *c != "fish:crimson")
+            .filter(|c| *c != victim)
         {
             for i in 0..25 {
                 let id = format!("{c}-row-{i}");
@@ -1434,13 +1449,23 @@ mod tests {
                 reviews.push(review_line(&id, true, Some(c), None));
             }
         }
-        // 224 collected rows for the stem...
+        // 224 collected rows for the victim...
+        //
+        // The collector put them all under one id. A human then decided they were
+        // actually two DIFFERENT species, both canonical, so the snapshot
+        // relabels 211 of them and the class that armed the button is left with
+        // 13 - below the floor. The two targets are derived from the vocabulary
+        // so they are real classes: a relabel to a non-canonical id would be
+        // discarded as out-of-scope and the count would stay 224.
+        let (a, b) = {
+            let v = crate::core::class_vocab::fish_vocab();
+            (v[1].to_string(), v[2].to_string())
+        };
         for i in 0..224 {
-            let id = format!("crimson-row-{i}");
-            rows.push(row(&id, &train, Some("fish:crimson")));
+            let id = format!("{victim}-row-{i}");
+            rows.push(row(&id, &train, Some(&victim)));
             if i < 211 {
-                // ...211 of them a human decided were two different species.
-                let human = if i % 2 == 0 { "fish:crimsonsnapper" } else { "fish:crimsonpolkapuffer" };
+                let human = if i % 2 == 0 { a.as_str() } else { b.as_str() };
                 reviews.push(review_line(&id, true, Some(human), None));
             }
             // The remaining 13 stay unreviewed and keep the collector's label.
@@ -1449,7 +1474,7 @@ mod tests {
 
         // The quantity the live file reports: enough to arm the button.
         let live_support = crate::core::training::train_support_per_class(&rows, "fish:");
-        assert_eq!(live_support.get("fish:crimson").copied(), Some(224));
+        assert_eq!(live_support.get(victim.as_str()).copied(), Some(224));
 
         let store = Store::new(dir.clone());
         let projected = projected_labels(&store, &rows);
@@ -1480,7 +1505,7 @@ mod tests {
             .find(|t| t.contains("projected TRAIN rows"))
             .unwrap_or_else(|| panic!("no train-support check reported: {failures:?}"));
         assert!(
-            sufficiency.contains("fish:crimson 13/20"),
+            sufficiency.contains(&format!("{victim} 13/20")),
             "the check must name the class and its PROJECTED count: {sufficiency}"
         );
         assert!(
@@ -1496,12 +1521,13 @@ mod tests {
     fn the_class_sufficiency_check_names_every_short_class() {
         let dir = tmp_dir("short");
         let train = session_in("train");
+        let supported = a_canonical_class();
         let mut rows = Vec::new();
         let mut reviews = Vec::new();
         for i in 0..25 {
-            let id = format!("golden-{i}");
-            rows.push(row(&id, &train, Some("fish:golden")));
-            reviews.push(review_line(&id, true, Some("fish:golden"), None));
+            let id = format!("supported-{i}");
+            rows.push(row(&id, &train, Some(&supported)));
+            reviews.push(review_line(&id, true, Some(&supported), None));
         }
         write_reviews(&dir, &reviews);
         let elig = family_eligibility(
@@ -1519,18 +1545,24 @@ mod tests {
             .find(|t| t.contains("projected TRAIN rows"))
             .unwrap_or_else(|| panic!("no train-support check reported: {failures:?}"));
         let short = crate::core::class_vocab::fish_vocab().len() - 1;
-        assert!(sufficiency.contains(&format!("{short} of 8")), "{sufficiency}");
+        assert!(
+            sufficiency.contains(&format!("{short} of {}", crate::core::class_vocab::fish_vocab_len())),
+            "the check must report the shortfall against the REAL vocabulary size: {sufficiency}"
+        );
         for c in crate::core::class_vocab::fish_vocab()
             .iter()
             .copied()
-            .filter(|c| *c != "fish:golden")
+            .filter(|c| *c != supported)
         {
             assert!(
                 sufficiency.contains(&format!("{c} 0/20")),
                 "{c} must be named with its count: {sufficiency}"
             );
         }
-        assert!(!sufficiency.contains("fish:golden"), "a supported class is not a shortfall: {sufficiency}");
+        assert!(
+            !sufficiency.contains(&supported),
+            "a supported class is not a shortfall: {sufficiency}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

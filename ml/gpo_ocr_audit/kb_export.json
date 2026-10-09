@@ -2,16 +2,23 @@
   "schema": 1,
   "kb_version": 1,
   "fish_vocab": [
-    "fish:angelfish",
-    "fish:crimson",
-    "fish:golden",
-    "fish:pufferfish",
-    "fish:shark",
-    "fish:snapper",
-    "fish:squid",
-    "fish:swordfish"
+    "fish:bluelipgrouper",
+    "fish:candycornsquid",
+    "fish:crimsonpolkapuffer",
+    "fish:crimsonsnapper",
+    "fish:darkskeletalshark",
+    "fish:exotictigerfin",
+    "fish:fangfish",
+    "fish:goldenpolkapuffer",
+    "fish:goldenribbonangelfish",
+    "fish:goldentigerfin",
+    "fish:jackobite",
+    "fish:skeletalshark",
+    "fish:swordfish",
+    "fish:tigerfin",
+    "fish:zebraribbonangelfish"
   ],
-  "fish_vocab_sha256": "256508a6e89ed593832e2d79ebc48e423b2fa3bc531d6ec8ca56facccef0ef10",
+  "fish_vocab_sha256": "f2ce3dd21f7b4039551be67e3f0b34bd5f103537fadc0d00ec5e6d2c6edb5958",
   "entity_count": 156,
   "entities": [
     {

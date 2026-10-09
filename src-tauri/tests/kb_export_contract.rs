@@ -31,13 +31,35 @@ fn fish_entities() -> Vec<&'static gpo_autofish_lib::core::knowledge::GpoEntity>
 
 #[test]
 fn exported_fish_vocab_is_exactly_the_canonical_file() {
-    // Compared as SETS. The KB has no notion of class order, while
-    // `FISH_VOCAB.txt` order is load-bearing because line position IS the output
-    // logit index. The exporter copies that order verbatim from
-    // `class_vocab`, so the correct assertion is membership, not sequence.
-    let in_vocab: std::collections::BTreeSet<String> = fish_entities()
+    // Read the EFFECTIVE export the OCR audit actually consumes
+    // (`ml/gpo_ocr_audit/kb_export.json`, produced by
+    // `cargo run --example kb_export -- --effective`), not the bundled KB.
+    //
+    // This distinction is the whole point: the 15 confirmed species are OVERLAY
+    // entities, added by KB patch a8bce5c through
+    // `knowledge_custom.json`. Only `fish:swordfish` of the 15 is bundled. So
+    // comparing the canonical vocabulary against `KnowledgeBase::bundled()`
+    // asserted that 14 real, documented, human-reviewed species were missing
+    // from the KB - when they are present in the KB the audit reads.
+    let export_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("ml")
+        .join("gpo_ocr_audit")
+        .join("kb_export.json");
+    let Some(export) = std::fs::read_to_string(&export_path).ok().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()) else {
+        eprintln!(
+            "SKIP: no effective export at {}; run \
+             `cargo run --example kb_export -- --effective ml/gpo_ocr_audit/kb_export.json`",
+            export_path.display()
+        );
+        return;
+    };
+    let exported: std::collections::BTreeSet<String> = export["entities"]
+        .as_array()
+        .expect("export entities")
         .iter()
-        .map(|e| e.id.clone())
+        .filter_map(|e| e["id"].as_str().map(str::to_string))
+        .filter(|id| id.starts_with("fish:"))
         .filter(|id| class_vocab::fish_vocab().contains(&id.as_str()))
         .collect();
     let canonical: std::collections::BTreeSet<String> = class_vocab::fish_vocab()
@@ -46,22 +68,70 @@ fn exported_fish_vocab_is_exactly_the_canonical_file() {
         .collect();
 
     assert_eq!(
-        in_vocab, canonical,
-        "the KB's 8-class projection diverges from FISH_VOCAB.txt: the audit \
-         resolves OCR text against the KB, so a class present in one and not the \
-         other would make every occurrence of it UNKNOWN_ENTITY"
+        exported, canonical,
+        "the EFFECTIVE KB the audit resolves OCR against does not carry exactly \
+         FISH_VOCAB.txt. A class present in one and not the other makes every \
+         occurrence of it UNKNOWN_ENTITY - the audit cannot name a fish it has \
+         never heard of, and a training class the runtime cannot resolve is a \
+         class that can never be confirmed in the field."
     );
-    assert_eq!(in_vocab.len(), class_vocab::fish_vocab_len());
+    assert_eq!(exported.len(), class_vocab::fish_vocab_len());
+
+    // And the export must carry the canonical ORDER verbatim, because line
+    // position IS the output-logit index. The exporter copies it from
+    // `class_vocab`, so this must agree with the embedded vocabulary, not with
+    // a literal written out here.
+    assert_eq!(
+        export["fish_vocab"]
+            .as_array()
+            .expect("export fish_vocab")
+            .iter()
+            .map(|s| s.as_str().unwrap_or_default().to_string())
+            .collect::<Vec<_>>(),
+        class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect::<Vec<_>>(),
+        "the export's fish_vocab must be FISH_VOCAB.txt in canonical order"
+    );
+    assert_eq!(
+        export["fish_vocab_sha256"].as_str().unwrap_or(""),
+        class_vocab::fish_vocab_sha(),
+        "the export's class-map fingerprint must match the canonical one"
+    );
 
     // And the exporter's ordering is the canonical file's ordering, not the KB's.
+    //
+    // This test used to spell the expected order out as a literal, which is how
+    // it stayed green for one vocabulary change and silently wrong for the next:
+    // two copies of one list, and the only signal that disagreed was a red test
+    // nobody could interpret. It now reads the file and checks the PROPERTY the
+    // ordering is supposed to guarantee - ascending id order - so a reordered
+    // file fails for the right reason and a re-sorted one still passes.
+    let order = class_vocab::fish_vocab();
+    let mut sorted: Vec<&str> = order.to_vec();
+    sorted.sort_unstable();
     assert_eq!(
-        class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect::<Vec<_>>(),
-        vec![
-            "fish:angelfish", "fish:crimson", "fish:golden", "fish:pufferfish",
-            "fish:shark", "fish:snapper", "fish:squid", "fish:swordfish",
-        ],
-        "FISH_VOCAB.txt order changed; the deployed fish_v1 manifest pins a \
-         vocab_sha over this exact order and must be re-exported with it"
+        order, sorted,
+        "FISH_VOCAB.txt is not in ascending id order; the file header defines \
+         lexicographic order as the class-map rule"
+    );
+    // The order must also be the file's own byte order, not a coincidence of the
+    // compiler's iteration: read the file directly and compare beyond the
+    // embedded embedding.
+    let raw = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("FISH_VOCAB.txt"),
+    )
+    .expect("FISH_VOCAB.txt must be readable beside the crate");
+    let from_file: Vec<String> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(
+        from_file,
+        order.iter().map(|c| c.to_string()).collect::<Vec<_>>(),
+        "the embedded vocabulary must be exactly the file on disk, in file order"
     );
 }
 

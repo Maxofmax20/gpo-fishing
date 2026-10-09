@@ -21,13 +21,13 @@
     "fish:zebraribbonangelfish"
   ],
   "vocab_sha256": "f2ce3dd21f7b4039551be67e3f0b34bd5f103537fadc0d00ec5e6d2c6edb5958",
-  "dataset_sha256": "5a1d75e29bb8905701bc42b8d3a430e7a7f449e9ecdb3551bded0902271801d8",
+  "dataset_sha256": "59d43289bff72791859cb3c9134ef4620c70faf7a858f6d96974db242d16b05e",
   "dataset_manifest": "output\\reviewed-fish-v1\\dataset_manifest.json",
   "created_from": {
     "kb_export": "D:\\AI Projects\\04_Apps_and_Code\\apps\\desktop\\gpo-fishing-macro\\ml\\gpo_ocr_audit\\kb_export.json",
-    "kb_export_sha256": "c424f8e5238bdd600f1fb53bab27b256c6c0ae24f65a3d23dcc2bf12d3fe79b6",
+    "kb_export_sha256": "f1adb09e6663abece60d2e40eefaba70d9627f3b25c76a264c59ca29a37ca6dd",
     "labels": "C:\\Users\\xsmsm\\AppData\\Roaming\\gpo-autofish\\datasets\\gpo-vision\\v1\\labels.jsonl",
-    "labels_sha256": "a6fac80bd41202fae0352a1c1c6e03265233c4ba26e9dc8ccb69e6cbdbfb82de",
+    "labels_sha256": "f7a962a98d03e2579bba523f9296d6b5fb08bbe03e9a651f8d3be68dd5a8055d",
     "reviews": "C:\\Users\\xsmsm\\AppData\\Roaming\\gpo-autofish\\reviews.jsonl",
     "reviews_sha256": "df4c482f84e89dbdbe724666d1aeca772eed9be070ab902a57eff872994d76f8"
   },
@@ -38,19 +38,19 @@
       "sessions": 9
     }
   },
-  "source_commit": "a8bce5cb1523735f137a60241951138a5031110c",
+  "source_commit": "b3e3f42b5b870c0ae29a0a4544be5af08689fe1c",
   "architecture": "GpoVisionNet backbone + single 15-class head",
   "input_size": 96,
   "normalization": {
     "mean": [
-      0.0505056971092134,
-      0.11271425453032403,
-      0.19068026956447823
+      0.05088824629190444,
+      0.11342330846840624,
+      0.191155994203612
     ],
     "std": [
-      0.12283899869180111,
-      0.18756508573403563,
-      0.28998504633770045
+      0.1235188529096497,
+      0.18876574841571864,
+      0.29056757204441347
     ]
   },
   "loss": "class-weighted CE",
@@ -65,5 +65,5 @@
   "python": "3.14.7",
   "onnxruntime_version": "1.26.0",
   "device": "cpu",
-  "training_duration_seconds": 1343.7
+  "training_duration_seconds": 2728.6
 }

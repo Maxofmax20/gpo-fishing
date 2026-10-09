@@ -30,6 +30,36 @@ fn models_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models")
 }
 
+/// The deployed (live) fish manifest: the bytes `ShadowEngine` actually loads.
+///
+/// This is the contract that matters. The bundled copy under `src-tauri/models/`
+/// is what ships in a release, but the live one is what the running app has
+/// verified and is observing from - and `shadow_infer` checks its `vocab_sha`
+/// there before every use. `None` when the store has never been seeded, which the
+/// tests skip rather than fail on: that is a first-run state, not a divergence.
+fn live_deployed_dir() -> Option<PathBuf> {
+    let root = match std::env::var("GPO_DATA_DIR") {
+        Ok(p) if !p.is_empty() => PathBuf::from(p),
+        _ => PathBuf::from(std::env::var("APPDATA").ok()?).join("gpo-autofish"),
+    };
+    let dir = root.join("models");
+    dir.join("fish_v1.json").is_file().then_some(dir)
+}
+
+/// Every fish manifest whose bytes must describe the canonical class map: the
+/// bundled one, and the live deployed one when the store has been seeded.
+///
+/// Returned as a `Vec` rather than chained iterators so each call site reads as
+/// "check each of these", and so adding a source cannot reintroduce the
+/// redundant `.into_iter()` on an argument that already takes `IntoIterator`.
+fn fish_manifests_to_check() -> Vec<(&'static str, PathBuf)> {
+    let mut out = vec![("the bundled fish manifest", models_dir().join("fish_v1.json"))];
+    if let Some(d) = live_deployed_dir() {
+        out.push(("the live deployed fish manifest", d.join("fish_v1.json")));
+    }
+    out
+}
+
 #[test]
 fn one_source_of_truth_defines_the_fish_class_set() {
     // The canonical list is non-empty, has unique entries, and every entry is a
@@ -44,42 +74,89 @@ fn one_source_of_truth_defines_the_fish_class_set() {
     assert_eq!(seen.len(), vocab.len());
 }
 
+/// The refusal an operator sees when the deployed model is behind the
+/// vocabulary. It names the next step instead of just failing, because a red
+/// class-map test after a deliberate vocabulary change otherwise looks like
+/// "the change was wrong" rather than "the change is not deployed yet".
+fn behind_vocabulary_message(what: &str, path: &std::path::Path) -> String {
+    format!(
+        "{what} at {} carries a class map that is behind FISH_VOCAB.txt. This is \
+         EXPECTED between changing the vocabulary and deploying the model trained \
+         on it: the class map is only allowed to change by retraining and \
+         promoting a new candidate, never by editing a manifest. Next steps: run \
+         `scripts/gen_shadow_deploy.py <run-dir>` to regenerate the weights and \
+         manifest, then copy them into place atomically. Do NOT edit `classes` or \
+         `vocab_sha` by hand.",
+        path.display()
+    )
+}
+
 #[test]
 fn the_deployed_model_class_set_equals_the_canonical_vocabulary() {
     // The deployed weights' output logits are positional, so the manifest's
     // `classes` array IS the model. If it diverges from FISH_VOCAB.txt the
     // artifact means something different from what every gate believes.
-    let raw = std::fs::read_to_string(models_dir().join("fish_v1.json"))
-        .expect("bundled fish_v1.json must exist");
-    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
-    let deployed: Vec<String> = v["classes"]
-        .as_array()
-        .expect("manifest must carry a classes array")
-        .iter()
-        .map(|x| x.as_str().unwrap_or_default().to_string())
-        .collect();
+    //
+    // Checked against the LIVE deployed model (what `shadow_infer` verifies) and
+    // the bundled one (what a release ships). Both are replaced together by the
+    // deploy script, so they cannot drift from each other or from the file.
+    let canonical: Vec<String> = class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect();
 
-    assert_eq!(
-        deployed,
-        class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect::<Vec<_>>(),
-        "deployed fish_v1 class set/order diverges from FISH_VOCAB.txt"
-    );
-    assert_eq!(
-        deployed.len(),
-        class_vocab::fish_vocab_len(),
-        "model class count must equal the canonical vocabulary count"
-    );
+    let mut checked = 0usize;
+    for (what, path) in fish_manifests_to_check() {
+        if !path.is_file() {
+            continue;
+        }
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!("{} unreadable ({e}); refusing to guess what it claims", path.display())
+        });
+        let v: serde_json::Value = serde_json::from_str(&raw)
+            .unwrap_or_else(|e| panic!("{} is not valid JSON: {e}", path.display()));
+        let deployed: Vec<String> = v["classes"]
+            .as_array()
+            .unwrap_or_else(|| panic!("{} carries no `classes` array", path.display()))
+            .iter()
+            .map(|x| x.as_str().unwrap_or_default().to_string())
+            .collect();
+
+        assert_eq!(
+            deployed, canonical,
+            "{}",
+            behind_vocabulary_message(what, &path)
+        );
+        assert_eq!(
+            deployed.len(),
+            class_vocab::fish_vocab_len(),
+            "{}",
+            behind_vocabulary_message(what, &path)
+        );
+        checked += 1;
+    }
+    assert!(checked > 0, "no deployed fish manifest found to check against the vocabulary");
 }
 
 #[test]
 fn the_deployed_manifest_pins_the_canonical_class_map_fingerprint() {
-    let raw = std::fs::read_to_string(models_dir().join("fish_v1.json")).unwrap();
-    let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
-    assert_eq!(
-        v["vocab_sha"].as_str().unwrap_or(""),
-        class_vocab::fish_vocab_sha(),
-        "the deployed manifest must pin the canonical class-map fingerprint"
-    );
+    // Same two manifests as the class-set test above: the fingerprint must agree
+    // with the vocabulary, because `shadow_infer` verifies it before loading
+    // weights and would otherwise refuse to load a correct model.
+    let want = class_vocab::fish_vocab_sha();
+    let mut checked = 0usize;
+    for (what, path) in fish_manifests_to_check() {
+        if !path.is_file() {
+            continue;
+        }
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(
+            v["vocab_sha"].as_str().unwrap_or(""),
+            want,
+            "{}",
+            behind_vocabulary_message(what, &path)
+        );
+        checked += 1;
+    }
+    assert!(checked > 0, "no deployed fish manifest found to check the fingerprint against");
 }
 
 #[test]
@@ -186,20 +263,30 @@ fn the_registry_gate_requires_exact_vocabulary_coverage() {
     // A candidate covering a DIFFERENT set of the same size is rejected. This
     // is the precise scenario that produced `10/10` over an 8-class artifact:
     // a cardinality check cannot tell these apart.
-    let impostor: Vec<String> = vec![
-        "fish:polkaguffer",
-        "fish:zebraangel",
-        "fish:goldentiger",
-        "fish:candysquid",
-        "fish:skeletalshark",
-        "fish:bluegrouper",
-        "fish:jackobite",
-        "fish:fangfish",
-    ]
-    .into_iter()
-    .map(|s| s.to_string())
-    .collect();
+    //
+    // Derived, not written out: the impostor is a PERMUTATION of the canonical
+    // class names with every one of them mangled, so it is always exactly
+    // `vocab.len()` long and never overlaps the vocabulary. The previous
+    // version spelled out 8 wrong ids, which pinned this test to the vocabulary
+    // that existed when it was written - the same defect this file's other
+    // assertions had.
+    let impostor: Vec<String> = vocab
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            // Append a per-index suffix so every id is distinct AND differs from
+            // its canonical form, whatever the vocabulary happens to be.
+            format!("{}#{}", c.strip_prefix("fish:").unwrap_or(c), i)
+        })
+        .map(|short| format!("fish:{short}"))
+        .collect();
     assert_eq!(impostor.len(), class_vocab::fish_vocab_len());
+    for wrong in &impostor {
+        assert!(
+            !vocab.contains(wrong),
+            "the impostor must share no class with the vocabulary: {wrong}"
+        );
+    }
     let c = compare("fish", &full(0.60), &full(0.80), &vocab, &impostor, &vocab);
     assert_eq!(
         c.verdict,

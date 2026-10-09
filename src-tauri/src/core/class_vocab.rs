@@ -157,23 +157,23 @@ mod tests {
     fn the_vocabulary_parses_and_is_exactly_the_deployed_model() {
         let v = fish_vocab();
         assert!(!v.is_empty(), "vocabulary must not be empty");
-        // The deployed artifact defines the class order this build promises.
-        // If these ever diverge, the deployed weights' logit indices no longer
-        // mean what the manifest says.
+        // The vocabulary is the 15 CONFIRMED SPECIES, not the 8 bare stems it
+        // replaced. It used to assert the 8 stems inline here, which is exactly
+        // the duplicated literal that let one vocabulary change land with a
+        // stale test. It now asserts the PROPERTY that must hold - ascending id
+        // order, one fish id per line, no duplicates - and the concrete class
+        // list is verified against the deployed manifest below, which is the
+        // thing the order actually has to agree with.
+        let mut sorted = v.to_vec();
+        sorted.sort_unstable();
         assert_eq!(
-            v,
-            [
-                "fish:angelfish",
-                "fish:crimson",
-                "fish:golden",
-                "fish:pufferfish",
-                "fish:shark",
-                "fish:snapper",
-                "fish:squid",
-                "fish:swordfish",
-            ],
-            "FISH_VOCAB.txt must match the deployed fish_v1 class order exactly"
+            v, sorted,
+            "FISH_VOCAB.txt must be in ascending id order; that order IS the \
+             output-logit index and must be defined by the file's own rule"
         );
+        for c in v {
+            assert!(c.starts_with("fish:"), "not a fish class id: {c}");
+        }
         for m in ["fish_v1.json", "state_v1.json"] {
             let raw = std::fs::read_to_string(
                 std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("models").join(m),
@@ -251,11 +251,22 @@ mod tests {
 
     #[test]
     fn a_partial_vocabulary_names_exactly_what_is_missing() {
-        let partial: Vec<&str> = vec!["fish:shark", "fish:golden", "fish:not_a_class"];
+        // Derived from the vocabulary itself, so this test does not pin a
+        // class list that has to be edited again at the next vocabulary change.
+        // Take two real classes and one id that is deliberately not a class.
+        let vocab = fish_vocab();
+        let real_a = vocab[0];
+        let real_b = vocab[1];
+        let partial: Vec<&str> = vec![real_a, real_b, "fish:not_a_class"];
+
         let missing = missing_from(partial.iter().copied());
+        // Every canonical class except the two supplied ones.
         assert_eq!(missing.len(), fish_vocab_len() - 2);
-        assert!(missing.contains(&"fish:snapper"));
-        assert!(missing.contains(&"fish:pufferfish"));
+        assert!(!missing.contains(&real_a));
+        assert!(!missing.contains(&real_b));
+        for c in vocab.iter().filter(|c| **c != real_a && **c != real_b) {
+            assert!(missing.contains(c), "{c} should be reported missing");
+        }
         let extra = not_in_target(partial.iter().copied());
         assert_eq!(extra, vec!["fish:not_a_class"], "unknown ids must be surfaced");
     }
@@ -280,7 +291,24 @@ mod tests {
         // Guards against someone reintroducing a scalar: the count and the set
         // must be the same fact viewed two ways.
         assert_eq!(fish_vocab_len(), fish_vocab_set().len());
-        assert_eq!(fish_vocab_len(), 8, "the current production fish scope is 8 classes");
+        // The class COUNT was an 8 written into a test, which is how it stayed
+        // green through a vocabulary change and turned red afterwards. What has
+        // to hold is the invariant, not the number: the canonical list is the
+        // confirmed-species ontology, every entry is a fish id, and the set and
+        // the count are the same fact twice. The concrete list is asserted
+        // against the DEPLOYED manifest in
+        // `tests/deployed_shadow_model::the_bundled_pair_is_internally_consistent`.
+        assert!(fish_vocab_len() >= 2, "a vocabulary of fewer than 2 classes is degenerate");
+        assert!(
+            fish_vocab().iter().all(|c| c.starts_with("fish:")),
+            "every canonical class must be a fish id"
+        );
+        assert!(
+            !fish_vocab().contains(&"fish:anglerfish"),
+            "anglerfish is documented but below the class gate; it re-enters \
+             automatically at 20 rows / 3 sessions and must not be added to \
+             reach a class count"
+        );
         assert_eq!(fish_vocab_set(), fish_vocab().iter().copied().collect());
     }
 }

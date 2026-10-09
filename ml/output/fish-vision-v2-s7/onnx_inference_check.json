@@ -13,7 +13,7 @@
   "type": "tensor(float)"
  },
  "kind": "onnx-inference-check",
- "onnx_sha256": "77221dd536f339987e4f8b8a2d035f8f6085be737c2340016b4d35f0c1a16068",
+ "onnx_sha256": "5d49eb063ff209566152d000707f064299d1d92a477bbf4ab5f67f718508014a",
  "output": {
   "name": "fish_logits",
   "shape": [

@@ -1079,15 +1079,27 @@ mod tests {
 
     #[test]
     fn better_candidate_passes_with_reasons() {
-        let cur = fish_metrics(8, &[("fish:shark", 0.70), ("fish:golden", 0.50)]);
-        let mut cand = fish_metrics(8, &[("fish:shark", 0.80), ("fish:golden", 0.65)]);
+        // Two REAL canonical classes. This used to name `fish:shark` and
+        // `fish:golden`, which are not in the vocabulary any more, so
+        // `compare` skipped them as classes the incumbent did not carry and
+        // silently recorded zero improvements - the assertion then failed for
+        // a reason that had nothing to do with what it was testing.
+        let cls = fish_classes();
+        let (a, b) = (cls[0].clone(), cls[1].clone());
+        let cur = fish_metrics(8, &[(a.as_str(), 0.70), (b.as_str(), 0.50)]);
+        let mut cand = fish_metrics(8, &[(a.as_str(), 0.80), (b.as_str(), 0.65)]);
         cand.macro_f1 = 0.80; // clear the +0.01 promotion bar
         cand.accuracy = 0.84;
-        let cls = fish_classes();
         let c = compare("fish", &cur, &cand, &cls, &cls, &cls);
         assert_eq!(c.verdict, ComparisonVerdict::Pass, "{:?}", c.reasons);
         assert!(!c.reasons.is_empty());
-        assert_eq!(c.improvements.len(), 2);
+        assert_eq!(c.improvements.len(), 2, "both classes improved: {:?}", c.improvements);
+        assert!(
+            c.improvements.iter().any(|(x, _, _)| x == &a)
+                && c.improvements.iter().any(|(x, _, _)| x == &b),
+            "the improvements must be the classes that moved: {:?}",
+            c.improvements
+        );
     }
 
     #[test]

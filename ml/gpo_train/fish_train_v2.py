@@ -133,8 +133,21 @@ def main() -> int:
     vocab: list[str] = manifest["class_map"]
     if len(vocab) != manifest["class_map_width"] or len(set(vocab)) != len(vocab):
         raise SystemExit("class map corrupt: width mismatch or duplicate classes")
-    if len(vocab) != 15:
-        raise SystemExit(f"expected the approved 15-class map, got {len(vocab)}")
+    # The width is read from the manifest's own declared width, NOT hardcoded.
+    #
+    # This used to read `if len(vocab) != 15`, which pinned the trainer to the
+    # vocabulary that happened to be approved when it was written: add or remove
+    # a species in FISH_VOCAB.txt and the trainer would refuse a perfectly good
+    # class map with a message that did not say why. It stays fail-CLOSED - a
+    # class map whose width disagrees with its own declaration still aborts - and
+    # the authoritative contract is now the set comparison in
+    # `registry::compare`, not a magic number repeated here.
+    declared_width = manifest["class_map_width"]
+    if len(vocab) != declared_width:
+        raise SystemExit(
+            f"class map corrupt: {len(vocab)} classes declared but "
+            f"class_map_width says {declared_width}"
+        )
     ent_index = {e: i for i, e in enumerate(vocab)}
 
     set_seed(args.seed)

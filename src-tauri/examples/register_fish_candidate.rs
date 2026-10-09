@@ -6,11 +6,12 @@
 //!
 //! It never promotes. Promotion for family "fish" goes through
 //! `registry::compare`, which requires the candidate's class set to equal
-//! `FISH_VOCAB.txt` exactly. This candidate's vocabulary is the 15-class
-//! human-reviewed ontology - a DIFFERENT class set by design - so promotion is
-//! not applicable and production stays exactly where it was
-//! (`MODEL_NOT_READY`). The candidate is registered as `Evaluated`: trained,
-//! measured, traceable, and nothing more.
+//! `FISH_VOCAB.txt` exactly. Since `FISH_VOCAB.txt` now IS the 15-class
+//! human-reviewed ontology (see the dated note in that file's header), a
+//! candidate trained on that ontology is a DIRECT successor to the incumbent —
+//! so `registry::compare` is applicable and this example refuses to call it.
+//! Promotion is still a deliberate human decision: run the comparison, read the
+//! verdict, and only then deploy.
 //!
 //! Usage:
 //!   cargo run --example register_fish_candidate -- <run-dir> <job-id>
@@ -189,9 +190,7 @@ fn main() {
     println!("  dataset fingerprint : {}", rec.dataset_fingerprint);
     println!("  test: acc={:.4} macroF1={:.4} n={} sessions={}",
         rec.metrics.accuracy, rec.metrics.macro_f1, rec.metrics.test_n, rec.metrics.test_sessions);
-    println!();
-    println!("  NOT promoted. This candidate's 15-class vocabulary is a different class");
-    println!("  set than the deployed FISH_VOCAB contract, so promotion via compare() is");
-    println!("  not applicable. Production stays MODEL_NOT_READY until a person decides");
-    println!("  what the production vocabulary should be.");
+    println!("  NOT promoted. `compare()` is not called here: promotion is a");
+    println!("  human decision, and this example's job ends at REGISTERED. Run the");
+    println!("  comparison, read the verdict, and only then deploy.");
 }

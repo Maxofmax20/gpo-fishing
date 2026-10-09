@@ -4,7 +4,7 @@
 #
 # This file is the ONLY place the fish target class list is defined.
 #
-#   Python trainer : ml/gpo_train/fish_train.py reads this file at runtime
+#   Python trainer : ml/gpo_train/fish_train_v2.py reads this file at runtime
 #   Rust backend   : src-tauri/src/core/class_vocab.rs embeds this file at
 #                    COMPILE TIME via include_str!
 #
@@ -12,9 +12,9 @@
 # deployment all derive their expected class set from this list. There is no
 # scalar anywhere else that counts fish classes.
 #
-# ---------------------------------------------------------------------------
-# ORDER IS PART OF THE CONTRACT
-# ---------------------------------------------------------------------------
+# ============================================================================
+# ORDER IS THE CONTRACT
+# ============================================================================
 # The position of a line IS its output-logit index. The deployed model's
 # `classes` array must match this order exactly.
 #
@@ -28,44 +28,104 @@
 # edit a deployed manifest's `classes` array to match.
 #
 # ---------------------------------------------------------------------------
+# ORDER RULE (v5.7.2) - unchanged, and now the only rule
+# ---------------------------------------------------------------------------
+# Classes are listed in ASCENDING LEXICOGRAPHIC ORDER of the class id.
+#
+# It is not alphabetical by species name, it is not by rarity, and it is not by
+# how much data each class has: it is `sort()` over the id strings. This is the
+# same rule `ml/gpo_train/reviewed_dataset.py` applies to its `class_map`
+# (`class_map = sorted(qualified)`), so the trainer's head, the Rust gate and the
+# candidate registry cannot disagree about which logit is which.
+#
+# A class added later goes in its sorted position, NOT at the end. Appending a
+# class permutes every subsequent index, which is why `vocab_sha` exists.
+#
+# ---------------------------------------------------------------------------
 # SCOPE - READ BEFORE ADDING A LINE
 # ---------------------------------------------------------------------------
-# A class belongs here only if BOTH are true:
+# A class belongs here only if ALL are true:
 #
-#   1. It is a verified canonical entity in the project's knowledge base
-#      (src-tauri/src/core/knowledge.rs / DEFAULT_FISH).
-#   2. Real gameplay frames of it can actually be collected and human-reviewed.
+#   1. It is a documented fish in the game's own bestiary
+#      (reports/ontology_review/wiki_fish.json).
+#   2. It is a verified canonical entity in the effective knowledge base
+#      (bundled + knowledge_custom.json overlay).
+#   3. It has at least 20 human-reviewed examples across at least 3 sessions,
+#      and at least one held-out TEST example.
 #
 # Do NOT add an entity to reach a class count. Do NOT add a name that only
-# appears in OCR text but is not a KB entity. The following were deliberately
-# excluded because the project has no authoritative evidence they are distinct
-# entities, and adding them would fabricate ground truth:
-#
-#   Blue-Lip Grouper, Tigerfin, Exotic Tigerfin, Golden Tigerfin,
-#   Skeletal Shark, Dark Skeletal Shark, Candy Corn Squid, Jack-O'-Bite,
-#   Fangfish, Anglerfish, Polka Puffer variants, Ribbon Angelfish variants,
-#   Sunken Armor, Sunken Anchor, Sunken Helmet
-#
-# `Crimson Snapper` is NOT a class: the KB holds `fish:crimson` and
-# `fish:snapper` as two separate entities and has never had a combined one.
+# appears in OCR text but is not a KB entity. Condition 3 is enforced by the
+# class gate in `ml/gpo_train/reviewed_dataset.py` and by the eligibility check
+# in `commands_training::family_eligibility`, not by this file.
 #
 # ---------------------------------------------------------------------------
-# KNOWN DATA HAZARD (measured 2026-10)
+# WHY THE LIST CHANGED (2026-10-09)
 # ---------------------------------------------------------------------------
-# 24.4% of the 1,453 collected fish rows have OCR text naming an entity that is
-# NOT in the KB (Crimson Snapper, Candy Corn Squid, Exotic Tigerfin, Dark
-# Skeletal Shark, Tigerfin) while `entity_id` was assigned to one of the classes
-# below. Those labels are contaminated and must be resolved by human review
-# before they can train anything. `fish:snapper` is worst affected (157 of 212
-# rows), then `fish:squid` (134 of 236).
+# The previous list was 8 bare legacy STEMS:
+#
+#     fish:angelfish  fish:crimson  fish:golden  fish:pufferfish
+#     fish:shark      fish:snapper  fish:squid   fish:swordfish
+#
+# Seven of those eight are not fish. They are the collector's truncated guess of
+# whatever word the OCR banner happened to make legible, and the human review
+# proved it row by row: of the rows the collector labelled `fish:crimson`,
+# 211 of 224 were re-labelled by a human to a real species
+# (168 fish:crimsonpolkapuffer, 13 fish:crimsonsnapper, and 29 more across five
+# other species). The same pattern holds for all seven stems - measured in
+# `reports/resolution/vocab_decision.json`, Option A, `contradicted_by_reviews`:
+#
+#     fish:snapper    231 of 271 rows moved (199 -> fish:crimsonsnapper)
+#     fish:squid      235 of 301 rows moved (200 -> fish:candycornsquid)
+#     fish:angelfish  228 of 285 rows moved (186 -> fish:zebraribbonangelfish)
+#     fish:golden     202 of 287 rows moved (74 fish:goldenpolkapuffer,
+#                                              69 fish:goldenribbonangelfish)
+#     fish:crimson    211 of 224 rows moved
+#     fish:shark       84 of 254 rows moved (29 -> fish:skeletalshark)
+#     fish:pufferfish  65 of 103 rows moved (34 -> fish:crimsonpolkapuffer)
+#
+# KB patch a8bce5c added the 15 confirmed species the humans were actually
+# choosing, and the review store now holds 1,865 human verdicts, of which 1,864
+# are training-eligible after the projection. Only `fish:swordfish` of the old
+# eight was ever a real fish, and it survives in this list for that reason.
+#
+# Why the change is safe to make now, and what it costs, are both argued with
+# measured numbers in `reports/resolution/vocab_decision.json` (Option A vs
+# Option B). The operator accepted Option B. Requirements carried forward:
+#
+#   * 15/15 classes clear 20 rows / 3 sessions on the projected set.
+#   * 11 of 15 classes sit below PER_CLASS_MIN_TEST_SUPPORT (10) on their
+#     natural session-split TEST rows; `fish:goldentigerfin` has 0.
+#     `reports/resolution/split_overrides.json` is the deterministic stratified
+#     group assignment that fixes this, and the operator applies it.
+#   * The change REQUIRES retraining and a new candidate: the deployed
+#     `fish_v1.json` pins `vocab_sha` 256508a6... over the old 8-class map and
+#     `shadow_infer` verifies it at load.
+#
+# ---------------------------------------------------------------------------
+# `fish:anglerfish` IS DOCUMENTED, AND IS DELIBERATELY ABSENT
+# ---------------------------------------------------------------------------
+# It is in the wiki and in the KB, and a human has already reviewed 12 frames
+# of it over 9 sessions - short of the 20-row / 3-session gate by 8 rows.
+#
+# It re-enters AUTOMATICALLY, with no code change and no edit to this file, as
+# soon as it reaches the gate. That is the mechanism working as designed: this
+# file lists the vocabulary, and the DATA decides which documented species are
+# ready to be classes. Do not add it to reach a class count.
 #
 # ============================================================================
 
-fish:angelfish
-fish:crimson
-fish:golden
-fish:pufferfish
-fish:shark
-fish:snapper
-fish:squid
+fish:bluelipgrouper
+fish:candycornsquid
+fish:crimsonpolkapuffer
+fish:crimsonsnapper
+fish:darkskeletalshark
+fish:exotictigerfin
+fish:fangfish
+fish:goldenpolkapuffer
+fish:goldenribbonangelfish
+fish:goldentigerfin
+fish:jackobite
+fish:skeletalshark
 fish:swordfish
+fish:tigerfin
+fish:zebraribbonangelfish

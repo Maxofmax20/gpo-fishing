@@ -135,14 +135,103 @@ def load_wiki_fish_ids(wiki_path: Path = WIKI_SNAPSHOT) -> set[str]:
     return {f"fish:{e['matchKey']}" for e in snap["entries"]}
 
 
+def load_split_overrides(appdata: Path) -> dict[str, str]:
+    """`split_overrides` from the dataset manifest, EXACTLY as
+    `ml/gpo_train/dataset.py::DatasetSnapshot.split_of` reads them.
+
+    This used to be absent: `build()` called `fnv1a_session_split` directly, so
+    the reviewed manifest's `split` field ignored an operator's stratified
+    reassignment while the Rust path and `dataset.py` honoured it. Two split
+    answers for one split decision is the drift this closes.
+
+    An unreadable manifest is NOT "no overrides": it raises, so a session never
+    silently lands in a different split than the dataset store believes.
+    """
+    manifest_path = appdata / "datasets" / "gpo-vision" / "v1" / "manifest.json"
+    if not manifest_path.is_file():
+        # A store that was never initialised has no manifest and no overrides.
+        # `init()` writes one on first use, so this is the pre-init state.
+        return {}
+    raw = manifest_path.read_text(encoding="utf-8")
+    manifest = json.loads(raw)  # a corrupt manifest must not read as "no overrides"
+    overrides = manifest.get("split_overrides") or {}
+    if not isinstance(overrides, dict):
+        raise SystemExit(
+            f"{manifest_path}: split_overrides must be an object, got "
+            f"{type(overrides).__name__}; refusing to build a manifest whose "
+            "splits would disagree with the dataset store"
+        )
+    return {str(k): str(v) for k, v in overrides.items()}
+
+
+def split_of_with(appdata: Path, session_id: str, overrides: dict[str, str]) -> str:
+    """The override map wins; otherwise the FNV-1a session hash. Both answer the
+    same question `MlDatasetStore::split_of` answers."""
+    if session_id in overrides:
+        return overrides[session_id]
+    return fnv1a_session_split(session_id)
+
+
+def reviewed_included_rows(appdata: Path, kb_path: Path = KB_EXPORT,
+                            wiki_path: Path = WIKI_SNAPSHOT) -> list[dict[str, Any]]:
+    """The exact rows `build()` includes, as `(review, label, entity)` triples.
+
+    Extracted so the stratified split assignment can route the SAME universe the
+    trainer will train on. Routing a wider set (e.g. every projected row) would
+    place sessions whose rows are then filtered out, and the per-class TEST
+    support the assignment optimises would not be the support the registry
+    measures.
+
+    Read-only. This mirrors `build()`'s first pass and must stay in step with it.
+    """
+    reviews_path = appdata / "reviews.jsonl"
+    labels_path = appdata / "datasets" / "gpo-vision" / "v1" / "labels.jsonl"
+    images_dir = appdata / "datasets" / "gpo-vision" / "v1" / "images"
+
+    reviews = _load_jsonl(reviews_path)
+    labels = _load_jsonl(labels_path)
+    labels_by_image = {l["image_id"]: l for l in labels if l.get("image_id")}
+    kb_ids = load_effective_kb_ids(kb_path)
+    wiki_ids = load_wiki_fish_ids(wiki_path)
+
+    out: list[dict[str, Any]] = []
+    for r in reviews:
+        image_id = r.get("image_id", "")
+        status = r.get("review_status", "")
+        entity = r.get("human_entity_id")
+        if status not in TRAINABLE_STATUSES:
+            continue
+        if not r.get("training_eligible"):
+            continue
+        if not entity:
+            continue
+        if entity not in kb_ids or entity not in wiki_ids:
+            continue
+        lab = labels_by_image.get(image_id)
+        if lab is None or lab.get("game_state") != "catch_result":
+            continue
+        if not (images_dir / f"{image_id}.png").is_file():
+            continue
+        out.append({"review": r, "label": lab, "entity": entity,
+                    "session_id": r.get("session_id", "")})
+    return out
+
+
 def build(appdata: Path, kb_path: Path = KB_EXPORT,
           wiki_path: Path = WIKI_SNAPSHOT,
-          thresholds: dict[str, int] | None = None) -> dict[str, Any]:
-    """Build the deterministic dataset manifest. Pure: writes nothing."""
+          thresholds: dict[str, int] | None = None,
+          overrides: dict[str, str] | None = None) -> dict[str, Any]:
+    """Build the deterministic dataset manifest. Pure: writes nothing.
+
+    `overrides` defaults to reading the dataset manifest, so a caller can pass a
+    computed map in (tests, the split tool) without touching app state.
+    """
     th = thresholds or load_thresholds()
     reviews_path = appdata / "reviews.jsonl"
     labels_path = appdata / "datasets" / "gpo-vision" / "v1" / "labels.jsonl"
     images_dir = appdata / "datasets" / "gpo-vision" / "v1" / "images"
+    if overrides is None:
+        overrides = load_split_overrides(appdata)
 
     reviews = _load_jsonl(reviews_path)
     labels = _load_jsonl(labels_path)
@@ -227,7 +316,7 @@ def build(appdata: Path, kb_path: Path = KB_EXPORT,
             "session_id": r.get("session_id", ""),
             "timestamp_ms": lab.get("timestamp_ms", 0),
             "entity_id": entity,
-            "split": fnv1a_session_split(r.get("session_id", "")),
+            "split": split_of_with(appdata, r.get("session_id", ""), overrides),
             "review_id": r.get("review_id", ""),
             "review_status": r.get("review_status", ""),
             "dataset_version": r.get("dataset_version", 0),
