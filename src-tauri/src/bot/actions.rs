@@ -1083,7 +1083,19 @@ pub fn store_fruit(ctx: &Ctx, fruit_name: &str, protect_drop: bool, is_high_tier
             outcome_evidence = Some("store clicks sent, no failure banner (game UI contract)".to_string());
         }
         if !s.webhook.legendary_only || is_high_tier {
-            ctx.webhook.fruit_stored(fruit_name, None, custom_tg);
+            // Send the photo here too. This was the one path that discarded it:
+            // every failure and drop branch above passes `photo` to
+            // `fruit_storage_failed`, so the notification naming the fruit for
+            // the two cases you most want a record of - "stored" and "dropped" -
+            // went out with no image at all, while the fruit name was on screen.
+            //
+            // `photo` is captured at the end of the banner loop, after the store
+            // clicks and after any banner was read. It is gated identically to
+            // this webhook call (`send_screenshot`, `send_drop_screenshot`,
+            // `legendary_only`) inside `capture_drop_screenshot`, so passing it
+            // cannot widen what is captured or sent - it only uses the frame
+            // already taken for the failure paths.
+            ctx.webhook.fruit_stored(fruit_name, photo, custom_tg);
         }
     }
 
