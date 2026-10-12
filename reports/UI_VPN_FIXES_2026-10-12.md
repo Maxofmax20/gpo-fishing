@@ -1,6 +1,6 @@
 # Desktop, web dashboard and German relay repairs
 
-The panel had a transparent six-pixel outer margin, a translated startup animation and a native shadow on an undecorated window. The repaired panel has an opaque native and document background, fills the client area, and has no surface translation or outer shadow/border. Transparent HUD and selection windows retain their intended transparency.
+The panel had a transparent six-pixel outer margin, a translated startup animation and a native shadow on an undecorated window. The repaired panel has an opaque native and document background, fills the client area, and has no surface translation or outer shadow/border. Transparent HUD and selection windows retain their intended transparency and render no placeholder text while loading.
 
 The web dashboard now shares responsive layout rules across its five pages. The header stays in document flow, content accounts for bottom safe areas, common phone widths show both control pads together, labels are more readable, keyboard focus is visible and browser zoom is available. Offline warnings occupy their own row instead of covering controls. Connection and stream labels use backend evidence, hide stale pixels and explain unavailable streams. Offline macro/power buttons are disabled. The static "Safe Loop 99.8%" claim was removed.
 
@@ -8,4 +8,4 @@ Validation completed before publication: 137 frontend tests; 11 dashboard/gestur
 
 For the locally installed VPN, the existing Frankfurt server expects VLESS over WebSocket, but the saved Windows configuration omitted the WebSocket transport and Host header. A backup was saved outside the repository before correcting that configuration. The relay was first tested through an isolated local proxy, then enabled with administrator permissions. Independent HTTPS traces on the PC verified `loc=DE` and `warp=off` after enabling the full tunnel. WARP was disconnected to avoid competing routes. Existing Roblox connections were not restarted or inspected; reopening Roblox establishes new connections through the current route. No Cloudflare credentials were printed, committed or changed. Ordinary WARP cannot select an exit country, so the German relay supplies the requested German IP route.
 
-The signed v5.8.1 release is subject to the repository's frontend, dashboard, Python, Rust, Clippy and dependency-audit gates before publication.
+The signed v5.8.2 release is subject to the repository's frontend, dashboard, Python, Rust, Clippy and dependency-audit gates before publication.

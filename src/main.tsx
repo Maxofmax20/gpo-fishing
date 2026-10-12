@@ -111,9 +111,9 @@ function Root() {
     view === "hud" ? Hud : view === "overlay" ? Overlay : view === "guide" ? Guide : Panel;
   return (
     <Suspense
-      fallback={
-        <div className="h-full w-full bg-bg-glass p-4 text-[12px] text-fg-mute">Loading window…</div>
-      }
+      fallback={view === "panel" || view === "guide" ? (
+        <div className="h-full w-full bg-bg-glass grid place-items-center text-[12px] text-fg-mute">Starting…</div>
+      ) : null}
     >
       <Window />
     </Suspense>
