@@ -6,6 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import './gpo-gesture.js';
+import './gpo-dashboard.test.mjs';
 
 const core = globalThis.GpoGesture;
 assert.ok(core, 'gpo-gesture.js must expose globalThis.GpoGesture');

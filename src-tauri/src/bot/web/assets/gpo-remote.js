@@ -5,6 +5,7 @@
   let streamScale = 720;
   let tapMode = true;     // TAP = tap-to-click, PAD = drag camera on stream
   let lastStatus = null;
+  let streamFailed = false;
 
   function toast(m) {
     if (typeof showToast === 'function') { try { showToast(m); return; } catch (e) {} }
@@ -24,7 +25,7 @@
     if (!ov) {
       ov = document.createElement('div');
       ov.id = 'gpo-stream-overlay';
-      ov.className = 'absolute inset-0 z-10 flex-col items-center justify-center gap-2 bg-surface-dim/85 backdrop-blur-sm';
+      ov.className = 'absolute inset-0 z-10 pointer-events-none flex-col items-center justify-center gap-2 bg-surface-dim/85 backdrop-blur-sm';
       ov.style.display = 'none';
       ov.innerHTML =
         '<span class="material-symbols-outlined text-[#f59e0b] text-[28px]">videocam_off</span>' +
@@ -32,6 +33,11 @@
         '<span class="font-body-sm text-body-sm text-on-surface-variant px-6 text-center">Start Roblox on the PC — showing last captured frame.</span>';
       img.parentElement.appendChild(ov);
     }
+    const title = ov.querySelector('.font-label-md');
+    const detail = ov.querySelector('.font-body-sm');
+    const failed = streamFailed && !!lastStatus?.stream_live;
+    if (title) title.textContent = !gpoIsOnline() ? 'Dashboard disconnected' : failed ? 'Stream unavailable' : 'Roblox not detected';
+    if (detail) detail.textContent = !gpoIsOnline() ? 'Waiting for the PC to reconnect.' : failed ? 'Refresh the stream to try again.' : 'Start Roblox on the PC to see the live view.';
     ov.style.display = live ? 'none' : 'flex';
   }
 
@@ -39,6 +45,7 @@
     const img = document.getElementById('gpo-stream');
     if (!img) return;
     img.style.display = '';
+    streamFailed = false;
     img.src = streamUrl();
   }
 
@@ -48,7 +55,11 @@
     // Empty or failed source: hide the broken-image glyph (the
     // not-detected overlay covers the area with a real explanation).
     if (!img.getAttribute('src')) img.style.display = 'none';
-    img.addEventListener('error', () => { img.style.display = 'none'; });
+    img.addEventListener('error', () => {
+      img.style.display = 'none';
+      streamFailed = true;
+      paintStreamLabels();
+    });
   }
 
   async function sendKey(key, down, tap) {
@@ -243,7 +254,20 @@
     gpoSetText('stream-fps-label', streamFps + ' FPS');
     gpoSetText('quality-label', streamScale + 'p');
     const pill = document.getElementById('header-live-pill');
-    if (pill) pill.textContent = 'LIVE ' + streamFps + ' FPS • ' + streamScale + 'p';
+    const live = gpoIsOnline() && !!lastStatus?.stream_live && !streamFailed;
+    if (pill) pill.textContent = (live ? 'LIVE ' + streamFps + ' FPS' : gpoIsOnline() ? 'NO STREAM' : 'OFFLINE') + ' • ' + streamScale + 'p';
+    const badge = document.getElementById('stream-fps-label');
+    if (badge?.previousElementSibling) badge.previousElementSibling.textContent = live ? 'LIVE' : 'OFFLINE';
+    paintStreamOverlay(live);
+    const online = gpoIsOnline();
+    const pwr = document.getElementById('pwr-btn');
+    if (pwr) {
+      pwr.disabled = !online;
+      if (!online) pwr.textContent = 'OFFLINE';
+    }
+    const macro = document.getElementById('main-macro-btn');
+    if (macro) macro.disabled = !online;
+    if (!online) gpoSetText('macro-status-text', 'Disconnected — awaiting PC');
     document.querySelectorAll('#fps-menu [data-fps]').forEach((b) => {
       const on = parseInt(b.getAttribute('data-fps'), 10) === streamFps;
       b.classList.toggle('bg-primary-container', on);
@@ -435,7 +459,7 @@
 
   function paint(d, ms) {
     lastStatus = d;
-    paintStreamOverlay(!!d.stream_live);
+    paintStreamLabels();
     if (ms != null) gpoSetText('stream-rtt', ms + 'ms');
     const running = d.is_running && !d.paused;
     paintMacroBtn(running);
@@ -459,6 +483,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    document.addEventListener('gpo:online', paintStreamLabels);
     hideBrokenStream();
     reloadStream();
     paintStreamLabels();

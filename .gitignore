@@ -82,3 +82,4 @@ reports/fruit_name_review_candidates.json
 reports/name_vocabulary_2026-10-12.json
 reports/ui-preview.html
 reports/ui-preview.tsx
+.playwright-cli/

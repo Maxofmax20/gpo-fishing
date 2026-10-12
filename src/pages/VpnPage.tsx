@@ -274,7 +274,7 @@ export default function VpnPage() {
         />
         <Row
           title="German Dedicated Relay"
-          sub="Private VLESS-WS-TLS over Port 443 to Frankfurt (92.5.127.89). Zero throttling, low latency, full Roblox UDP pass-through."
+          sub="Routes traffic through your Frankfurt VPS in Germany. Requires administrator permissions; check the exit country above after connecting."
           right={
             <input
               type="radio"
@@ -288,7 +288,7 @@ export default function VpnPage() {
         />
         <Row
           title="Cloudflare WARP (Edge Client)"
-          sub="Official Cloudflare WARP client tunnel for resilient routing when dedicated relay is in maintenance."
+          sub="Cloudflare routing and encryption. Ordinary WARP does not let you select an exit country; use the Frankfurt relay for a German exit."
           right={
             <input
               type="radio"

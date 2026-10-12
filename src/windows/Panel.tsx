@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useUpdater } from "../lib/updater";
-import { api, on } from "../lib/ipc";
+import { api } from "../lib/ipc";
 import { showToast, useStore } from "../lib/store";
 import Toasts from "../components/Toasts";
 import { cx, Dot } from "../components/primitives";
@@ -40,19 +40,6 @@ export default function Panel() {
   const version = useStore((s) => s.version);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [skipGate, setSkipGate] = useState(false);
-  const [appear, setAppear] = useState(0);
-  const visibleRef = useRef(true);
-
-  useEffect(() => {
-    const un = on("ui:visibility", (v) => {
-      if (v && !visibleRef.current) setAppear((n) => n + 1);
-      visibleRef.current = v;
-    });
-    return () => {
-      un.then((u) => u());
-    };
-  }, []);
-
   useEffect(() => {
     init().finally(() => api.panelShow());
   }, [init]);
@@ -104,8 +91,8 @@ export default function Panel() {
   const gated = ready && !roblox && !skipGate && tab !== "vpn" && tab !== "multi";
 
   return (
-    <div className="h-full w-full p-1.5">
-      <div key={appear} className="glass rounded-2xl h-full w-full flex overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.5)] rise">
+    <div className="h-full w-full bg-bg-glass">
+      <div className="h-full w-full flex overflow-hidden">
         <nav className="w-14 shrink-0 flex flex-col items-center py-3 border-r border-line bg-black/20">
           <img src={logo} alt="" draggable={false} className="w-9 h-9 rounded-xl mb-4 drag shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
           {TABS.map((t) => (
@@ -179,7 +166,7 @@ export default function Panel() {
               </button>
             </div>
           </header>
-          <main className="flex-1 overflow-y-auto relative">
+          <main className="flex-1 min-h-0 overflow-y-auto relative">
             {!ready && <Booting error={error} />}
             {gated && <ConnectGate onSkip={() => setSkipGate(true)} />}
             {ready && !gated && (

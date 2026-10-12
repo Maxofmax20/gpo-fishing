@@ -55,6 +55,14 @@ body,
   border: 1px solid var(--color-line-strong);
 }
 
+/* The settings panel fills its native client area, including while lazy loading.
+   HUD and selection overlays retain their transparent window surfaces. */
+html[data-view="panel"],
+html[data-view="panel"] body,
+html[data-view="panel"] #root {
+  background: var(--color-bg-glass);
+}
+
 .drag {
   -webkit-app-region: drag;
   cursor: grab;

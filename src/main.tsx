@@ -47,6 +47,7 @@ const Guide = lazy(() => import("./windows/Guide"));
  */
 const viewParam = new URLSearchParams(window.location.search).get("view");
 const view = viewParam ?? "panel";
+document.documentElement.dataset.view = view;
 
 /**
  * Path-based routing, for the one page with a real browser URL.
@@ -111,7 +112,7 @@ function Root() {
   return (
     <Suspense
       fallback={
-        <div className="p-4 text-[12px] text-fg-mute">Loading window…</div>
+        <div className="h-full w-full bg-bg-glass p-4 text-[12px] text-fg-mute">Loading window…</div>
       }
     >
       <Window />

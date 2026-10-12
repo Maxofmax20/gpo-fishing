@@ -1476,6 +1476,7 @@ const WEB_SYSTEM_HTML: &str = include_str!("web/system.html");
 
 const ASSET_TAILWIND_JS: &[u8] = include_bytes!("web/assets/tailwind.js");
 const ASSET_FONTS_CSS: &str = include_str!("web/assets/fonts.css");
+const ASSET_LAYOUT_CSS: &str = include_str!("web/assets/gpo-layout.css");
 const ASSET_GPO_CORE_JS: &str = include_str!("web/assets/gpo-core.js");
 const ASSET_GPO_REMOTE_JS: &str = include_str!("web/assets/gpo-remote.js");
 const ASSET_GPO_STATS_JS: &str = include_str!("web/assets/gpo-stats.js");
@@ -1569,6 +1570,7 @@ fn serve_asset(stream: &mut TcpStream, raw_path: &str) -> bool {
     match name {
         "tailwind.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_TAILWIND_JS),
         "fonts.css" => send_bytes(stream, "text/css; charset=utf-8", ASSET_FONTS_CSS.as_bytes()),
+        "gpo-layout.css" => send_bytes(stream, "text/css; charset=utf-8", ASSET_LAYOUT_CSS.as_bytes()),
         "gpo-core.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_CORE_JS.as_bytes()),
         "gpo-remote.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_REMOTE_JS.as_bytes()),
         "gpo-stats.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_STATS_JS.as_bytes()),
@@ -2032,6 +2034,11 @@ mod tests {
         let font = serve("/assets/fonts/w1.woff2");
         assert!(font.starts_with("HTTP/1.1 200 OK"));
         assert!(font.contains("font/woff2"));
+
+        let layout = serve("/assets/gpo-layout.css");
+        assert!(layout.starts_with("HTTP/1.1 200 OK"));
+        assert!(layout.contains("text/css"));
+        assert!(layout.contains("#gpo-offline-banner"));
 
         let missing = serve("/assets/fonts/nope.woff2");
         assert!(missing.starts_with("HTTP/1.1 404"));

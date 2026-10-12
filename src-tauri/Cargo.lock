@@ -1560,7 +1560,7 @@ dependencies = [
 
 [[package]]
 name = "gpo-autofish"
-version = "5.8.0"
+version = "5.8.1"
 dependencies = [
  "base64 0.22.1",
  "crossbeam-channel",

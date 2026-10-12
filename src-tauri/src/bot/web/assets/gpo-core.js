@@ -73,23 +73,26 @@ function gpoWireNav() {
 // backend answers; on failure the last-known UI would otherwise freeze on
 // stale "RECORDING/ACTIVE" states. This banner makes disconnects obvious.
 let _gpoOnlineEl = null;
-let _gpoOnline = true;
+let _gpoOnline = null;
 function gpoNoteOnline(ok) {
+  const changed = _gpoOnline !== !!ok;
   _gpoOnline = !!ok;
   if (!_gpoOnlineEl) {
     const d = document.createElement('div');
     d.id = 'gpo-offline-banner';
-    d.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:76px;z-index:9998;padding:6px 14px;border-radius:9999px;background:rgba(147,0,10,.92);border:1px solid #ffb4ab;color:#ffdad6;font:700 11px "Space Mono",monospace;letter-spacing:.08em;display:none;max-width:88vw;text-align:center;pointer-events:none;';
+    d.setAttribute('role', 'status');
+    d.setAttribute('aria-live', 'polite');
     d.textContent = 'OFFLINE — BACKEND UNREACHABLE, RETRYING…';
-    document.body.appendChild(d);
+    document.body.insertBefore(d, document.querySelector('body > main'));
     _gpoOnlineEl = d;
   }
   _gpoOnlineEl.style.display = _gpoOnline ? 'none' : 'block';
+  if (changed) document.dispatchEvent(new CustomEvent('gpo:online', { detail: _gpoOnline }));
   try {
     if (typeof gpoPaintLivePills === 'function') gpoPaintLivePills(_gpoOnline);
   } catch (e) { /* decorative only */ }
 }
-function gpoIsOnline() { return _gpoOnline; }
+function gpoIsOnline() { return _gpoOnline === true; }
 
 // Header LIVE pills (stats/studio/craft/system): static markup claims
 // "LIVE 60 FPS" unconditionally. Repaint from real poll health instead —
@@ -98,7 +101,7 @@ function gpoPaintLivePills(ok) {
   document.querySelectorAll('[data-live-pill]').forEach((pill) => {
     const spans = pill.querySelectorAll('span');
     for (const s of spans) {
-      if (/LIVE|OFFLINE/.test(s.textContent)) {
+      if (/LIVE|OFFLINE|CONNECTING/.test(s.textContent)) {
         s.textContent = ok ? '● LIVE' : '○ OFFLINE';
       }
     }
