@@ -765,7 +765,7 @@ pub fn play_macro(
                             finished_steps = false;
                             break;
                         }
-                        ctx.ensure_roblox_focus();
+                        if !ctx.ensure_roblox_focus() { finished_steps = false; break; }
                         if let Some(rect) = ctx.roblox_rect() {
                             let px = rect.x + (rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
                             let py = rect.y + (ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
@@ -796,7 +796,7 @@ pub fn play_macro(
                             finished_steps = false;
                             break;
                         }
-                        ctx.ensure_roblox_focus();
+                        if !ctx.ensure_roblox_focus() { finished_steps = false; break; }
                         if let Some(rect) = ctx.roblox_rect() {
                             let start_px = rect.x + (start_rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
                             let start_py = rect.y + (start_ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
@@ -817,7 +817,8 @@ pub fn play_macro(
                             let num_steps = if sp >= 50.0 { 2 } else if sp >= 10.0 { 4 } else { ((scaled_duration as f32 / 12.0).round() as i32).clamp(4, 30) };
                             let step_delay = if sp >= 20.0 { 1 } else { (scaled_duration / num_steps as u64).max(2) };
                             for i in 1..=num_steps {
-                                if STOP_PLAYBACK_REQUESTED.load(Ordering::SeqCst) {
+                                if STOP_PLAYBACK_REQUESTED.load(Ordering::SeqCst) || !ctx.roblox_in_front() {
+                                    finished_steps = false;
                                     break;
                                 }
                                 let t = i as f32 / num_steps as f32;
@@ -829,7 +830,7 @@ pub fn play_macro(
                             }
 
                             // 4. Ensure at target position
-                            ctx.platform.input.move_to(PxPoint { x: end_px, y: end_py });
+                            if ctx.roblox_in_front() && finished_steps { ctx.platform.input.move_to(PxPoint { x: end_px, y: end_py }); }
                             let post_drag = if sp >= 20.0 { 1 } else { (40.0 / sp).round().max(6.0) as u64 };
                             std::thread::sleep(Duration::from_millis(post_drag));
 
@@ -845,7 +846,7 @@ pub fn play_macro(
                             finished_steps = false;
                             break;
                         }
-                        ctx.ensure_roblox_focus();
+                        if !ctx.ensure_roblox_focus() { finished_steps = false; break; }
                         if let Some(k) = parse_key(key) {
                             ctx.platform.input.key(k, true);
                             let tap_dur = if sp >= 50.0 { 1 } else if sp >= 10.0 { 3 } else { (50.0 / sp).round().max(5.0) as u64 };
@@ -860,7 +861,7 @@ pub fn play_macro(
                             finished_steps = false;
                             break;
                         }
-                        ctx.ensure_roblox_focus();
+                        if !ctx.ensure_roblox_focus() { finished_steps = false; break; }
                         if let Some(k) = parse_key(key) {
                             ctx.platform.input.key(k, true);
                             if scaled_duration > 0 && !sleep_responsive(scaled_duration) {
@@ -877,7 +878,7 @@ pub fn play_macro(
                             finished_steps = false;
                             break;
                         }
-                        ctx.ensure_roblox_focus();
+                        if !ctx.ensure_roblox_focus() { finished_steps = false; break; }
                         if let Some(rect) = ctx.roblox_rect() {
                             let px = rect.x + (rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
                             let py = rect.y + (ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;

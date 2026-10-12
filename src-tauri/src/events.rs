@@ -39,6 +39,7 @@ impl BotState {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Lifetime {
+    pub unverified: u32,
     pub fish: u32,
     pub failed: u32,
     pub fruits: u32,
@@ -55,6 +56,8 @@ pub struct Lifetime {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Stats {
+    #[serde(default)]
+    pub unverified: u32,
     pub fish: u32,
     pub failed: u32,
     pub fruits: u32,

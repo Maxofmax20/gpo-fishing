@@ -58,10 +58,11 @@ export default function Dashboard({
       return;
     }
     const traceOn = settings?.fishing.trace ?? false;
-    if (!traceOn) {
+    if (!traceOn && localStorage.getItem("collection-off-acknowledged") !== "yes") {
       setCollectGate(true);
       return;
     }
+    if (!traceOn) { await doStart(); return; }
     setStarting(true);
     try {
       const pf = await api.mlPreflight();
@@ -138,7 +139,7 @@ export default function Dashboard({
                 <Button size="sm" onClick={() => setCollectGate(false)}>
                   Cancel
                 </Button>
-                <Button size="sm" onClick={() => { setCollectGate(false); void doStart(); }}>
+                <Button size="sm" onClick={() => { setCollectGate(false); localStorage.setItem("collection-off-acknowledged", "yes"); void doStart(); }}>
                   Start without recording
                 </Button>
               </div>
@@ -201,7 +202,8 @@ export default function Dashboard({
         <Stat label="Bait bought" value={total.bait_purchased} sub={sessionNote(stats.bait_purchased)} />
         <Stat label="Time fishing" value={fmtRuntime(totalRuntime)} sub={active || state === "paused" ? `this run ${fmtRuntime(runtime)}` : undefined} />
         <Stat label="Sessions" value={total.sessions} />
-        <Stat label="Bite rate" value={`${Math.round(stats.success_rate * 100)}%`} extra={<Bar pct={stats.success_rate} />} />
+        <Stat label="Unverified reels" value={total.unverified ?? 0} sub={sessionNote(stats.unverified ?? 0)} />
+        <Stat label="Confirmed catch rate" value={`${Math.round(stats.success_rate * 100)}%`} extra={<Bar pct={stats.success_rate} />} />
         {stats.restarts > 0 && <Stat label="Recoveries" value={stats.restarts} />}
         {total.last_spawn && <Stat label="Last spawn" value={total.last_spawn} />}
       </Section>

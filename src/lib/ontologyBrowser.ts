@@ -85,12 +85,11 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const { token } = await getJson<{ token: string }>("/api/csrf");
   const res = await fetch(url, {
     method: "POST",
-    // `application/json` forces a CORS preflight for any cross-origin attempt,
-    // which the local server never answers. That is the CSRF defence, and it comes
-    // from the content type rather than from a bespoke check.
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    // Server checks the token, local Host, Origin and JSON before any write.
+    headers: { "Content-Type": "application/json", Accept: "application/json", "X-GPO-CSRF": token },
     body: JSON.stringify(body),
     credentials: "omit",
   });

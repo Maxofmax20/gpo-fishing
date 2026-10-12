@@ -1,0 +1,6 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+-r requirements-test.txt
+torch==2.14.1+cpu
+onnx==1.22.0
+onnxruntime==1.26.0
+onnxscript==0.7.2

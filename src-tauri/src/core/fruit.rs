@@ -289,7 +289,10 @@ pub fn first_fruit<'a>(lex: &Lexicon, words: impl Iterator<Item = &'a str>) -> O
 }
 
 pub fn extract_pity_text(raw: &str) -> Option<String> {
-    let lower = raw.to_lowercase();
+    let lower = normalize(raw);
+    let lower = lower.replace(" /", "/").replace("/ ", "/");
+    // A named pity counter takes precedence over unrelated fractions.
+    let lower = lower.find("pity").map(|i| &lower[i + 4..]).unwrap_or(&lower);
     for word in lower.split_whitespace() {
         if word.contains('/') {
             let clean: String = word
@@ -400,7 +403,34 @@ pub fn is_pity_zero(pity_opt: Option<&str>, raw_text: &str) -> bool {
     false
 }
 
+/// Isolate a caught item from unrelated fruit-spawn announcements in the
+/// same OCR crop. Spawn names are read independently by `detect_spawn`.
+pub fn catch_name_text(lex: &Lexicon, raw: &str) -> String {
+    let normalized = normalize(raw);
+    let words: Vec<_> = normalized.split_whitespace().collect();
+    let threshold = lex.fuzzy_threshold.min(0.8);
+    if let Some(i) = word_at(&words, "item", threshold) {
+        let tail: Vec<_> = words[i + 1..].iter().copied()
+            .take_while(|word| !matches!(*word, "has" | "spawned" | "spawn"))
+            .collect();
+        return format!("new item {}", tail.join(" "));
+    }
+    if mentions_spawn(lex, &words, threshold) {
+        // Retain a separate explicit catch line, never the spawn message.
+        return raw.lines().filter(|line| {
+            let line = normalize(line);
+            let line_words: Vec<_> = line.split_whitespace().collect();
+            !mentions_spawn(lex, &line_words, threshold)
+        }).collect::<Vec<_>>().join("\n");
+    }
+    raw.to_string()
+}
+
 pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
+    let pity = extract_pity_text(raw);
+    let zero_pity = is_pity_zero(pity.as_deref(), raw);
+    let scoped = catch_name_text(lex, raw);
+    let raw = scoped.as_str();
     let text = normalize(raw);
     if text.is_empty() {
         return None;
@@ -414,16 +444,14 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
     if mentions_spawn(lex, &words, thr) {
         return None;
     }
-    let pity = extract_pity_text(raw);
-    let zero_pity = is_pity_zero(pity.as_deref(), raw);
-
     if let Some(i) = word_at(&words, "item", thr) {
-        let fruit_name = first_fruit(lex, words[i + 1..].iter().copied()).or_else(|| first_fruit(lex, words.iter().copied()))?;
-        let rarity = fruit_rarity(&fruit_name);
+        let fruit_name = first_fruit(lex, words[i + 1..].iter().copied()).or_else(|| first_fruit(lex, words.iter().copied()));
+        if fruit_name.is_none() && !text.contains("devil fruit") { return None; }
+        let rarity = fruit_name.as_deref().map(fruit_rarity).unwrap_or(FruitRarity::Unknown);
         return Some(DropInfo {
             is_legendary: rarity == FruitRarity::Legendary || rarity == FruitRarity::Mythical || zero_pity,
             text,
-            name: Some(fruit_name),
+            name: fruit_name,
             pity,
             custom_telegram_message: None,
         });
@@ -481,6 +509,8 @@ pub fn detect_catch(lex: &Lexicon, raw: &str) -> CatchVerdict {
 
 /// Extracts the category ("fish" | "fruit") and specific item name from catch OCR text.
 pub fn parse_catch_item(lex: &Lexicon, raw: &str) -> (String, String) {
+    let scoped = catch_name_text(lex, raw);
+    let raw = scoped.as_str();
     let clean = raw.trim();
     if clean.is_empty() {
         return ("fish".into(), "Fish".into());
@@ -558,6 +588,15 @@ pub fn parse_catch_item(lex: &Lexicon, raw: &str) -> (String, String) {
 }
 
 pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
+    let announcement_context = raw;
+    // A crop can contain both a catch banner and a spawn announcement.
+    // Bracketed caught-item names must not win the spawn-name lookup.
+    let spawn_line = raw.lines().find(|line| {
+        let normalized = normalize(line);
+        let words: Vec<_> = normalized.split_whitespace().collect();
+        mentions_spawn(lex, &words, lex.fuzzy_threshold.min(0.8))
+    });
+    let raw = spawn_line.unwrap_or(raw);
     let text = normalize(raw);
     if text.is_empty() {
         return None;
@@ -568,7 +607,7 @@ pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
         return None;
     }
 
-    let lower_raw = raw.to_lowercase();
+    let lower_raw = announcement_context.to_lowercase();
     let is_ase = lower_raw.contains("all-seeing")
         || lower_raw.contains("all seeing")
         || lower_raw.contains("allseeing")
@@ -690,6 +729,8 @@ pub fn parse_disconnect_text(raw: &str) -> Option<String> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StorageBannerResult {
+    Stored,
+    Duplicate { fruit_name: String },
     /// Fruit cannot be stored because player already has one (e.g. "You can only store one of each fruit! Dropped Heal will despawn in 10 minutes.")
     DuplicateDropped { fruit_name: String },
     /// Fruit was dropped on the ground (e.g. "Dropped Heal will despawn in 10 minutes.")
@@ -711,7 +752,16 @@ pub fn parse_storage_banner(lex: &Lexicon, raw: &str) -> Option<StorageBannerRes
 
     let is_dropped = lower.contains("dropped") && (lower.contains("despawn") || lower.contains("minute") || lower.contains("ground"));
 
+    if lower.contains("successfully stored") || lower.contains("stored successfully") {
+        return Some(StorageBannerResult::Stored);
+    }
     if !is_duplicate && !is_dropped {
+        if lower.contains("storage full") || lower.contains("bag is full") || lower.contains("inventory full") {
+            return Some(StorageBannerResult::Duplicate { fruit_name: "Devil Fruit".into() });
+        }
+        if lower.contains("cannot store") || lower.contains("failed to store") {
+            return Some(StorageBannerResult::Failed { reason: raw.trim().into() });
+        }
         return None;
     }
 
@@ -749,8 +799,10 @@ pub fn parse_storage_banner(lex: &Lexicon, raw: &str) -> Option<StorageBannerRes
 
     let fruit_name = detected_fruit.unwrap_or_else(|| "Devil Fruit".into());
 
-    if is_duplicate {
+    if is_duplicate && is_dropped {
         Some(StorageBannerResult::DuplicateDropped { fruit_name })
+    } else if is_duplicate {
+        Some(StorageBannerResult::Duplicate { fruit_name })
     } else {
         Some(StorageBannerResult::Dropped { fruit_name })
     }
@@ -762,6 +814,49 @@ mod tests {
 
     fn lex() -> Lexicon {
         Lexicon::default()
+    }
+
+    #[test]
+    fn pity_is_not_lost_before_item_or_in_spaced_ratios() {
+        for raw in ["Legendary pity: 0 / 40\nNew Item <Devil Fruit>", "Legendary pity 0  /   100\nNew Item <Pika>\nA SUKE has spawned at Trading Hub"] {
+            let d = detect_drop(&lex(), raw).unwrap();
+            assert!(is_pity_zero(d.pity.as_deref(), &d.text));
+        }
+        assert_eq!(extract_pity_text("Level 3/20 Pity 0 / 40 New Item Pika"), Some("0/40".into()));
+    }
+    #[test]
+    fn duplicate_is_not_a_drop_confirmation() {
+        assert!(matches!(parse_storage_banner(&lex(), "You can only store one of each fruit!"), Some(StorageBannerResult::Duplicate { .. })));
+        assert_eq!(parse_storage_banner(&lex(), "Successfully stored Pika"), Some(StorageBannerResult::Stored));
+        assert!(matches!(parse_storage_banner(&lex(), "Bag is full"), Some(StorageBannerResult::Duplicate { .. })));
+    }
+
+    #[test]
+    fn overlapping_catch_and_spawn_names_are_independent() {
+        let raw = "New Item <Pika>\nA SUKE has spawned at TRADING HUB";
+        assert_eq!(parse_catch_item(&lex(), raw), ("fruit".into(), "Pika".into()));
+        let spawn = detect_spawn(&lex(), raw).unwrap();
+        assert_eq!(spawn.name.as_deref(), Some("Suke"));
+        assert_eq!(spawn.location.as_deref(), Some("Trading Hub"));
+        let raw = "A HORO has spawned at TRADING HUB\nNew Item <Dark Skeletal Shark>";
+        assert_eq!(parse_catch_item(&lex(), raw), ("fish".into(), "Dark Skeletal Shark".into()));
+        assert!(detect_drop(&lex(), raw).is_none());
+        assert_eq!(detect_spawn(&lex(), raw).unwrap().name.as_deref(), Some("Horo"));
+        assert!(catch_name_text(&lex(), "A SUKE has spawned at TRADING HUB").is_empty());
+        assert!(detect_spawn(&lex(), "[All-Seeing Eye]\nA MOCHI has spawned at TRADING HUB").unwrap().is_ase);
+    }
+
+    #[test]
+    fn wiki_fish_names_do_not_become_fruit_names() {
+        for name in ["Anglerfish", "Dark Skeletal Shark", "Jack-O'-Bite", "Swordfish",
+                     "Golden Polka Puffer", "Golden Ribbon Angelfish", "Golden Tigerfin",
+                     "Skeletal Shark", "Candy Corn Squid", "Crimson Polka Puffer",
+                     "Crimson Snapper", "Exotic Tigerfin", "Fangfish", "Zebra Ribbon Angelfish",
+                     "Blue-Lip Grouper", "Tigerfin"] {
+            let text = format!("A HORO has spawned at TRADING HUB\nNew Item <{name}>");
+            assert_eq!(parse_catch_item(&lex(), &text).0, "fish", "{name}");
+            assert!(detect_drop(&lex(), &text).is_none(), "{name}");
+        }
     }
 
     #[test]

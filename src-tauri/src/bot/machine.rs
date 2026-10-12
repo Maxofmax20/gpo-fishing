@@ -103,7 +103,7 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
                     rod_equipped = true;
                 }
 
-                let (verdict, text) = verify_catch(ctx);
+                let (verdict, text, result_frame) = verify_catch(ctx);
                 // Training-data collection: one sample per ended reel, only
                 // when the user enabled trace recording. Best-effort and
                 // never on the timing-critical path (single grab + write).
@@ -114,8 +114,17 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
                         ctx.emit_stats();
                         ctx.log_warn(&format!("Reel failed: {}", text.trim()));
                     }
-                    verdict => {
-                        let (kind, item_name) = fruit::parse_catch_item(&ctx.settings.read().lexicon, &text);
+                    fruit::CatchVerdict::Unknown => {
+                        ctx.session.lock().record_unverified();
+                        ctx.record_catch("unverified", "Unverified reel", &text);
+                        ctx.log_warn("Reel completed; catch could not be verified. Confirmed catch and pity counters unchanged.");
+                        ctx.emit_stats();
+                    }
+                    fruit::CatchVerdict::Caught => {
+                        let (kind, mut item_name) = fruit::parse_catch_item(&ctx.settings.read().lexicon, &text);
+                        if let Some(frame) = result_frame.as_ref() {
+                            if let Some(name) = recognize_fish_name(ctx, frame, &text) { item_name = name; }
+                        }
                         let is_fruit = kind == "fruit";
                         {
                             let mut s = ctx.session.lock();
@@ -127,7 +136,7 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
                                 s.last_fish = Some(item_name.clone());
                             }
                             let n = s.fish;
-                            let tag = if verdict == fruit::CatchVerdict::Caught { "" } else { " (unverified)" };
+                            let tag = "";
                             ctx.log_info(&format!("Caught {kind}: {item_name} (#{n}){tag}"));
                         }
                         ctx.record_catch(&kind, &item_name, &text);
@@ -194,7 +203,8 @@ pub fn validate_vip_server_url(raw: &str) -> Result<String, String> {
     if !url.starts_with("https://") {
         return Err("must be https".to_string());
     }
-    if !url.contains("roblox.com") {
+    let parsed = reqwest::Url::parse(url).map_err(|_| "invalid URL".to_string())?;
+    if parsed.username() != "" || parsed.password().is_some() || !parsed.host_str().is_some_and(|h| h == "roblox.com" || h.ends_with(".roblox.com")) {
         return Err("must be a roblox.com URL".to_string());
     }
     // Belt and braces: even with the prefix checks above, refuse any character
@@ -499,6 +509,10 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_check
             return Outcome::Stopped;
         }
         ctx.touch();
+        if !ctx.roblox_in_front() {
+            ctx.release_mouse();
+            return Outcome::Lost;
+        }
         let s = ctx.settings.read();
         let scan_timeout = ctx.session.lock().adaptive_timeout(s.fishing.scan_timeout_s);
         let track_timeout = s.fishing.track_timeout_s;
@@ -783,9 +797,10 @@ fn maybe_collect_ml_sample(ctx: &Ctx, verdict: &fruit::CatchVerdict, text: &str)
         None => return,
     };
     let kb = ctx.store.effective_knowledge();
+    let catch_text = fruit::catch_name_text(&lex, text);
     let obs = crate::core::perception::correlate_text(
         &kb,
-        text,
+        &catch_text,
         "drop",
         crate::core::perception::ScreenKind::Fishing,
         fuzzy_threshold,
@@ -842,10 +857,35 @@ fn maybe_collect_ml_sample(ctx: &Ctx, verdict: &fruit::CatchVerdict, text: &str)
     crate::bot::shadow::observe_fish(ctx, &frame, entity.as_deref(), text);
 }
 
-fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String) {
+/// The same OCR-verified result crop feeds the trained model; no extra capture,
+/// tracing requirement, network request, or gameplay input is involved.
+fn recognize_fish_name(ctx: &Ctx, frame: &crate::core::types::Frame, text: &str) -> Option<String> {
+    let settings = ctx.settings();
+    if !settings.features.ml_fish_recognition || fruit::parse_catch_item(&settings.lexicon, text).0 != "fish" { return None; }
+    let kb = crate::core::fish_recognition::with_model_names(ctx.store.effective_knowledge());
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let models_dir = ctx.store.dir().join("models");
+        let engine = crate::core::shadow_infer::engine(&models_dir)?;
+        let model = engine.models.get("fish_v1")?;
+        if !crate::core::fish_recognition::eligible(&settings.lexicon, text, &model.classes, &kb) { return None; }
+        let tensor = crate::core::shadow_infer::preprocess_rgba(&frame.rgba, frame.w, frame.h, &model.spec)?;
+        let probabilities = engine.infer_probs("fish_v1", &tensor)?;
+        let (id, confidence) = probabilities.iter().max_by(|a, b| a.1.total_cmp(&b.1))?;
+        let name = crate::core::fish_recognition::prediction_name(&kb, id, *confidence)?;
+        // Confidence is reported, not a validated rejection threshold.
+        ctx.log_info(&format!("AI fish: {name} ({:.1}% confidence; {})", confidence * 100.0, model.identity()));
+        Some(name)
+    }));
+    match result {
+        Ok(name) => name,
+        Err(_) => { ctx.log_warn("Fish vision failed; using OCR name"); None }
+    }
+}
+
+fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::types::Frame>) {
     ctx.set_state(BotState::PostCatch, None);
     if !ctx.platform.ocr.available() {
-        return (fruit::CatchVerdict::Unknown, String::new());
+        return (fruit::CatchVerdict::Unknown, String::new(), None);
     }
     let s = ctx.settings();
     let wants_ocr = s.features.fruit_storage || (s.webhook.enabled && s.webhook.fruit_drop);
@@ -859,7 +899,7 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String) {
                     ctx.log_info(&format!("Reel text: {}", text.trim()));
                     let v = fruit::detect_catch(&s.lexicon, &text);
                     if v != fruit::CatchVerdict::Unknown {
-                        return (v, text);
+                        return (v, text, Some(frame));
                     }
                 }
             }
@@ -871,7 +911,7 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String) {
     if last.is_empty() {
         ctx.log_info("Reel text: (nothing read in drop area)");
     }
-    (fruit::CatchVerdict::Unknown, last)
+    (fruit::CatchVerdict::Unknown, last, None)
 }
 
 fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
@@ -902,62 +942,22 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         }
     }
     if let Some(mut d) = drop {
-        // 1. Instantly snap character orientation to camera look direction
-        actions::align_camera_shift_lock(ctx);
-
-        // Enhance drop detection and message with Gemini if enabled and configured
-        if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
-            if let Some(frame) = grab_region(ctx, s.regions.drop) {
-                if let Ok(analysis) = crate::core::gemini::analyze_fruit_event_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
-                    ctx.log_info(&format!("✨ Gemini Drop Analysis: pity={:?}, fruit={:?}", analysis.pity, analysis.fruit_name));
-                    if let Some(p) = analysis.pity {
-                        d.pity = Some(p);
-                    }
-                    if let Some(fn_name) = analysis.fruit_name {
-                        d.name = Some(fn_name);
-                    }
-                    if let Some(msg) = analysis.telegram_message {
-                        d.custom_telegram_message = Some(msg);
-                    }
-                }
-            }
-            if d.custom_telegram_message.is_none() {
-                let temp_name = d.name.as_deref().unwrap_or("Devil Fruit");
-                let rarity = fruit::fruit_rarity(temp_name);
-                let pity_str = d.pity.as_deref().unwrap_or("Check backpack");
-                if let Ok(rewritten) = crate::core::gemini::rewrite_fruit_message_gemini(
-                    temp_name,
-                    rarity.as_str(),
-                    pity_str,
-                    "Caught from fishing",
-                    &s.gemini.api_key,
-                    &s.gemini.model,
-                ) {
-                    ctx.log_info("✨ Generated accurate fruit Telegram message via Gemini");
-                    d.custom_telegram_message = Some(rewritten);
-                }
-            }
-        }
-
-        let fruit_name = d.name.clone().unwrap_or_else(|| {
-            fruit::parse_catch_item(&s.lexicon, &d.text).1
-        });
-        let rarity = fruit::fruit_rarity(&fruit_name);
-
-        let is_pity_zero = fruit::is_pity_zero(d.pity.as_deref(), &d.text);
-        let is_known_legendary_or_mythical = rarity == fruit::FruitRarity::Legendary
-            || rarity == fruit::FruitRarity::Mythical;
-
-        let is_high_tier = is_known_legendary_or_mythical || is_pity_zero;
-        // v5.3.0: single source of truth for the protection rule (proven
-        // equivalent to the legacy inline computation by policy tests).
-        let policy = crate::core::policy::decide_fruit_policy(
-            rarity,
-            is_pity_zero,
-            s.fruit_storage.never_drop_legendary_or_mythical,
-            s.fruit_storage.keep_pity_zero_fruit,
+        let catch = crate::core::fruit_storage::FruitCatchContext::new(
+            &d, first_text, s.fruit_storage.never_drop_legendary_or_mythical, s.fruit_storage.keep_pity_zero_fruit,
         );
-        let is_protected = policy.protects_valuable;
+        let fruit_name = catch.name.clone();
+        let rarity = fruit::fruit_rarity(&fruit_name);
+        let is_pity_zero = catch.pity_zero;
+        let is_known_legendary_or_mythical = rarity.is_high_tier();
+        let is_high_tier = catch.high_tier();
+        let policy = &catch.policy;
+        let is_protected = !policy.action.drop_permitted();
+        // Reuse latched evidence for the catch notification.
+        if is_pity_zero && !fruit::is_pity_zero(d.pity.as_deref(), "") {
+            d.pity = fruit::extract_pity_text(first_text)
+                .filter(|p| fruit::is_pity_zero(Some(p), ""))
+                .or_else(|| Some(format!("0/{}", s.fruit_storage.pity_cap)));
+        }
 
         // Correlate this RESULT into the workflow event stream
         // (observation + logging only — never influences control flow).
@@ -1006,17 +1006,15 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         } else {
             format!("Devil fruit ({fruit_name})")
         };
-        ctx.log_info(&format!("{label} dropped"));
+        ctx.log_info(&format!("Caught {label}"));
         {
             let mut sess = ctx.session.lock();
-            sess.fruits += 1;
             sess.last_fruit = Some(fruit_name.clone());
             sess.pity_fruit = 0;
             if is_pity_zero {
                 sess.pity_legendary = 0;
             }
         }
-        ctx.record_catch("fruit", &fruit_name, &d.text);
         ctx.emit_stats();
         ctx.emit(BotEvent::FruitDrop(d.clone()));
 
@@ -1042,13 +1040,24 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
                 ctx.log_info(&format!("🛡️ Protected {label} - preventing drop"));
             }
         }
-        if !actions::store_fruit(ctx, &fruit_name, is_protected, is_high_tier, &workflow_id) {
-            return false;
-        }
-        *rod_equipped = true;
-
-        if s.fruit_storage.pause_on_protected_fruit && is_protected {
-            ctx.log_info(&format!("🚨 Macro paused: Protected {label} caught! Safely inspect your inventory."));
+        if s.features.fruit_storage {
+            let outcome = actions::store_fruit(ctx, &catch, &workflow_id);
+            if !outcome.may_continue() || (is_protected && outcome == crate::core::fruit_storage::StorageOutcome::Dropped) {
+                if ctx.alive() { ctx.set_state(BotState::Paused, Some(format!("{}: {}", fruit_name, outcome.detail()))); }
+                return false;
+            }
+            if s.fruit_storage.pause_on_protected_fruit && is_protected {
+                ctx.set_state(BotState::Paused, Some(format!("Protected {fruit_name}: {}", outcome.detail())));
+                return false;
+            }
+            if !actions::key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(150) {
+                if ctx.alive() { ctx.set_state(BotState::Paused, Some("Fruit workflow finished; rod could not be re-equipped".into())); }
+                return false;
+            }
+            if let Some(fp) = actions::fishing_point(ctx) { ctx.platform.input.move_to(fp); }
+            *rod_equipped = true;
+        } else if s.fruit_storage.pause_on_protected_fruit && is_protected {
+            ctx.set_state(BotState::Paused, Some(format!("Protected {fruit_name} caught — inspect inventory")));
             return false;
         }
         }
@@ -1126,7 +1135,12 @@ mod tests {
         settings.fishing.track_hz = 200;
         settings.fishing.min_track_s = 0.0;
         let platform = Platform {
-            window: Arc::new(crate::core::platform::mock::MockWindow::default()),
+            window: Arc::new(crate::core::platform::mock::MockWindow {
+                info: parking_lot::Mutex::new(Some(WindowInfo {
+                    client: PxRect { x: 0, y: 0, w: 1920, h: 1080 },
+                    is_foreground: true, visible: true, dpi: 96,
+                })),
+            }),
             capture: cap,
             input,
             ocr: Arc::new(ScriptedOcr::default()),
@@ -1141,6 +1155,29 @@ mod tests {
         let ctx = Arc::new(Ctx::new(platform, Arc::new(RwLock::new(settings)), roblox, tx, Arc::new(WebhookQueue::disabled()), store));
         ctx.running.store(true, std::sync::atomic::Ordering::SeqCst);
         (ctx, rx)
+    }
+
+    #[test]
+    fn post_catch_does_not_count_or_record_the_same_fruit_twice() {
+        let input = Arc::new(RecordingInput::default());
+        let cap = Arc::new(ScriptedCapture::default()); cap.push(blank());
+        let (seed, _) = make_ctx(cap, input);
+        let dir = std::env::temp_dir().join(format!("gpo-fruit-count-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let mut settings = seed.settings(); settings.features.fruit_storage = true; settings.webhook.send_screenshot = false;
+        let ctx = Ctx::new(seed.platform.clone(), Arc::new(RwLock::new(settings)), seed.roblox.clone(), tx, Arc::new(WebhookQueue::disabled()), Arc::new(crate::config::Store::new(dir.clone())));
+        ctx.running.store(true, std::sync::atomic::Ordering::SeqCst);
+        // These are the confirmed-catch accounting operations performed by run().
+        { let mut session = ctx.session.lock(); session.record(true); session.fruits += 1; }
+        ctx.record_catch("fruit", "Pika", "New Item Pika Legendary pity 0/100");
+        let mut equipped = false;
+        assert!(!post_catch(&ctx, "New Item Pika Legendary pity 0/100", &mut equipped)); // no store point => pause
+        assert_eq!(ctx.session.lock().fruits, 1);
+        let csv = std::fs::read_to_string(dir.join("catches.csv")).unwrap();
+        assert_eq!(csv.lines().count(), 2); // header + exactly one catch
+        assert_eq!(ctx.state(), BotState::Paused);
+        assert!(rx.try_iter().any(|event| matches!(event, BotEvent::FruitDrop(ref d) if d.pity.as_deref() == Some("0/100"))));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -1208,7 +1245,12 @@ mod tests {
             ocr.texts.lock().push_back(t);
         }
         let platform = Platform {
-            window: Arc::new(crate::core::platform::mock::MockWindow::default()),
+            window: Arc::new(crate::core::platform::mock::MockWindow {
+                info: parking_lot::Mutex::new(Some(WindowInfo {
+                    client: PxRect { x: 0, y: 0, w: 1920, h: 1080 },
+                    is_foreground: true, visible: true, dpi: 96,
+                })),
+            }),
             capture: cap,
             input: Arc::new(RecordingInput::default()),
             ocr,
@@ -1262,7 +1304,7 @@ mod tests {
         let mut t = Instant::now();
         let out = fish_cycle(&ctx, &mut tracker, &mut hash, &mut t);
         assert!(matches!(out, Outcome::Ended), "scripted reel must end");
-        let (verdict, text) = verify_catch(&ctx);
+        let (verdict, text, _) = verify_catch(&ctx);
         maybe_collect_ml_sample(&ctx, &verdict, &text);
         let summary = ctx.ml.end_session().expect("session summary");
         assert!(summary.samples >= 2, "WAITING + RESULT samples expected, got {:?}", summary);
@@ -1301,7 +1343,7 @@ mod tests {
         let mut t = Instant::now();
         let out = fish_cycle(&ctx, &mut tracker, &mut hash, &mut t);
         assert!(matches!(out, Outcome::Ended));
-        let (verdict, text) = verify_catch(&ctx);
+        let (verdict, text, _) = verify_catch(&ctx);
         assert_eq!(verdict, fruit::CatchVerdict::Unknown);
         maybe_collect_ml_sample(&ctx, &verdict, &text);
         ctx.ml.end_session().expect("summary");
@@ -1343,7 +1385,12 @@ mod tests {
             cap.push(blank());
         }
         let platform = Platform {
-            window: Arc::new(crate::core::platform::mock::MockWindow::default()),
+            window: Arc::new(crate::core::platform::mock::MockWindow {
+                info: parking_lot::Mutex::new(Some(WindowInfo {
+                    client: PxRect { x: 0, y: 0, w: 1920, h: 1080 },
+                    is_foreground: true, visible: true, dpi: 96,
+                })),
+            }),
             capture: cap,
             input: Arc::new(RecordingInput::default()),
             ocr: Arc::new(ScriptedOcr::default()),
@@ -1437,7 +1484,12 @@ mod tests {
             cap.push(blank());
         }
         let platform = Platform {
-            window: Arc::new(crate::core::platform::mock::MockWindow::default()),
+            window: Arc::new(crate::core::platform::mock::MockWindow {
+                info: parking_lot::Mutex::new(Some(WindowInfo {
+                    client: PxRect { x: 0, y: 0, w: 1920, h: 1080 },
+                    is_foreground: true, visible: true, dpi: 96,
+                })),
+            }),
             capture: cap,
             input: Arc::new(RecordingInput::default()),
             ocr: Arc::new(ScriptedOcr::default()),

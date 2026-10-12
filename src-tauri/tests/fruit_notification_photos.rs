@@ -1,39 +1,6 @@
-//! A fruit notification must not discard the screenshot it already took.
-//!
-//! # The defect this pins
-//!
-//! `store_fruit` captures `photo` at the end of its banner loop and hands it to
-//! every `fruit_storage_failed` call - six of them, covering duplicate, dropped,
-//! protected, failed and unconfirmed outcomes. Exactly one call site passed a
-//! hardcoded `None`: the success branch, `fruit_stored(fruit_name, None, ...)`.
-//!
-//! The visible effect was that the two outcomes you most want a picture of -
-//! the fruit was STORED, and the fruit was DROPPED - were the only ones reported
-//! as bare text, at the moment the fruit's name is on screen and the frame is
-//! already in hand. The catch-time screenshot worked throughout, which is why
-//! the gap looked like a settings problem rather than a lost argument.
-//!
-//! # Why this is asserted structurally
-//!
-//! The alternative is a behavioural test that drives `store_fruit` through a
-//! mocked capture backend and asserts on the outbound webhook payload. That
-//! harness does not exist, and building one to check a single argument is a poor
-//! trade against a rule that is decidable from the source: **no fruit
-//! notification may be constructed with a literal `None` where a photo was
-//! available.**
-//!
-//! This is deliberately a weak check - it can be fooled by rebinding - and it is
-//! stated as such rather than dressed up as a behavioural guarantee. It fails
-//! loudly and names the call site, which is the failure that actually happened.
-//!
-//! What the change did NOT do is worth stating too, because it is the part that
-//! could have been wrong: it did not add a capture. `photo` is bound before this
-//! point on every path, and `capture_drop_screenshot` applies the same
-//! `send_screenshot` / `send_drop_screenshot` / `legendary_only` gates that the
-//! webhook call itself applies, so no new frame is taken and no new setting is
-//! bypassed. This test also checks that the gating is still in place.
-//!
-//! Read-only: no store, no files, no network.
+//! Structural screenshot capture guards. Behavioural storage/notification
+//! replays live in actions::storage_replay_tests and webhook::fruit_delivery_tests.
+//! No game inputs or external network requests are used.
 
 use std::path::PathBuf;
 
@@ -137,10 +104,8 @@ fn no_fruit_notification_drops_a_photo_it_already_had() {
     // must be there.
     let actions = source("src/bot/actions.rs");
     assert!(
-        actions.contains("ctx.webhook.fruit_stored(fruit_name, photo, custom_tg)"),
-        "the stored notification must pass the captured `photo`, not a literal \
-         `None`. Re-check actions.rs: the call was `fruit_stored(fruit_name, \
-         None, custom_tg)`."
+        actions.contains("ctx.webhook.fruit_storage_outcome(catch, &outcome, photo)"),
+        "the storage outcome notification must pass the captured photo."
     );
 }
 

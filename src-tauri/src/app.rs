@@ -16,6 +16,7 @@ use crate::webhook::WebhookQueue;
 use crate::{hotkeys, tray, windows};
 
 pub struct AppState {
+    pub settings_transaction: Mutex<()>,
     pub platform: Platform,
     pub settings: Arc<RwLock<Settings>>,
     pub roblox: Arc<RwLock<Option<WindowInfo>>>,
@@ -47,13 +48,13 @@ pub fn build_state() -> AppState {
     let settings = Arc::new(RwLock::new(store.load()));
     let platform = platform::build();
     let roblox = Arc::new(RwLock::new(platform.window.find()));
-    let webhook = WebhookQueue::start(Arc::clone(&settings));
+    let (tx, rx) = unbounded::<BotEvent>();
+    let webhook = WebhookQueue::start(Arc::clone(&settings), tx.clone());
     let vpn = crate::vpn::VpnManager::new();
     let multi_roblox = Arc::new(crate::multi_roblox::MultiRobloxManager::new(dir.clone()));
     if settings.read().features.multi_roblox {
         let _ = multi_roblox.set_enabled(true);
     }
-    let (tx, rx) = unbounded::<BotEvent>();
     let bot = Bot::new(platform.clone(), Arc::clone(&settings), Arc::clone(&roblox), tx.clone(), Arc::clone(&webhook), Arc::clone(&store));
     crate::bot::recorder::init_roblox_ref(Arc::clone(&roblox), Arc::clone(&store));
     crate::bot::recorder::set_vpn_provider(Arc::clone(&vpn) as Arc<dyn crate::vpn::VpnControl>);
@@ -71,6 +72,7 @@ pub fn build_state() -> AppState {
         );
     }
     AppState {
+        settings_transaction: Mutex::new(()),
         platform,
         settings,
         roblox,

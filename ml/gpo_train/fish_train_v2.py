@@ -126,10 +126,13 @@ def main() -> int:
     ap.add_argument("--appdata", type=Path,
                     default=Path(os.environ.get("APPDATA", "")) / "gpo-autofish")
     args = ap.parse_args()
-    outdir = os.path.join(OUTPUT_DIR, args.run_id)
-    os.makedirs(os.path.join(outdir, "checkpoints"), exist_ok=True)
+    from .evaluation_contract import new_run_directory, holdout_fingerprint
+    outdir = new_run_directory(OUTPUT_DIR, args.run_id)
 
     manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    from .evaluation_contract import validate_reviewed_manifest
+    from .fish_train import FISH_VOCAB
+    validate_reviewed_manifest(manifest, FISH_VOCAB)
     vocab: list[str] = manifest["class_map"]
     if len(vocab) != manifest["class_map_width"] or len(set(vocab)) != len(vocab):
         raise SystemExit("class map corrupt: width mismatch or duplicate classes")
@@ -292,13 +295,14 @@ def main() -> int:
     # TEST exactly once, with the frozen weights + frozen calibration.
     yt_t, yl_t, yp_t, _, test_eval = full_eval(test_loader)
     probs_t = apply_temperature(yl_t, cal["temperature"])
+    test_eval["ece"] = expected_calibration_error(probs_t, yt_t)
     kt, kp = [], []
     for p, y in zip(probs_t, yt_t):
-        if max(p) >= rej["threshold"]:
+        if rej["threshold"] is not None and max(p) >= rej["threshold"]:
             kt.append(y)
             kp.append(p.index(max(p)))
     rej["test_kept"] = len(kt) / max(1, len(yt_t))
-    rej["test_kept_accuracy"] = accuracy(kt, kp) if kt else 0.0
+    rej["test_kept_accuracy"] = accuracy(kt, kp) if kt else None
     with open(os.path.join(outdir, "rejection.json"), "w", encoding="utf-8") as f:
         json.dump(rej, f, indent=2)
 
@@ -309,6 +313,7 @@ def main() -> int:
             ocr_empty_n += 1
             ocr_empty_hit += int(y == p)
     test_eval["ocr_empty_accuracy"] = {"n": ocr_empty_n, "accuracy": ocr_empty_hit / max(1, ocr_empty_n)}
+    test_eval["holdout_fingerprint"] = holdout_fingerprint(snap, te, vocab)
     test_eval["test_used_count"] = 1  # this run is the only time TEST was evaluated
     with open(os.path.join(outdir, "evaluation_test.json"), "w", encoding="utf-8") as f:
         json.dump(test_eval, f, indent=2)
@@ -321,7 +326,7 @@ def main() -> int:
     dummy = torch.randn(1, 3, INPUT_SIZE, INPUT_SIZE)
     onnx_path = os.path.join(outdir, ONNX_NAME)
     torch.onnx.export(model, dummy, onnx_path, input_names=["pixels"], output_names=["fish_logits"],
-                      dynamic_axes={"pixels": {0: "batch"}, "fish_logits": {0: "batch"}}, opset_version=18)
+                      dynamic_axes={"pixels": {0: "batch"}, "fish_logits": {0: "batch"}}, opset_version=18, dynamo=False)
     import onnx
     m = onnx.load(onnx_path)
     onnx.save(m, onnx_path)  # single-file

@@ -11,7 +11,7 @@ pub mod web_server;
 pub mod recorder;
 pub mod shadow;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::thread::JoinHandle;
 
@@ -30,6 +30,8 @@ pub struct Bot {
     thread: Mutex<Option<JoinHandle<()>>>,
     watchdog: Mutex<Option<JoinHandle<()>>>,
     paused: AtomicBool,
+    lifecycle: Mutex<()>,
+    generation: AtomicU64,
 }
 
 fn join_unless_self(h: JoinHandle<()>) {
@@ -53,6 +55,8 @@ impl Bot {
             thread: Mutex::new(None),
             watchdog: Mutex::new(None),
             paused: AtomicBool::new(false),
+            lifecycle: Mutex::new(()),
+            generation: AtomicU64::new(0),
         })
     }
 
@@ -73,9 +77,32 @@ impl Bot {
     }
 
     pub fn start(self: &Arc<Self>) {
-        if self.is_running() {
-            return;
+        if let Err(error) = self.start_checked() {
+            self.ctx.log_error(&error);
+            self.ctx.set_state(BotState::Stopped, Some(error));
         }
+    }
+
+    pub fn start_checked(self: &Arc<Self>) -> Result<(), String> {
+        self.start_at_generation(None)
+    }
+
+    fn start_at_generation(self: &Arc<Self>, expected: Option<u64>) -> Result<(), String> {
+        let _lifecycle = self.lifecycle.lock();
+        if expected.is_some_and(|g| self.generation.load(Ordering::SeqCst) != g) {
+            return Ok(());
+        }
+        if self.is_running() {
+            return Ok(());
+        }
+        if self.ctx.settings.read().fishing.trace {
+            let preflight = crate::commands::collection_preflight(&self.ctx);
+            if !preflight.ok {
+                return Err(format!("Collection preflight failed: {}", preflight.checks.iter().filter(|c| !c.ok).map(|c| c.detail.as_str()).collect::<Vec<_>>().join("; ")));
+            }
+        }
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        self.halt();
         let resume = self.paused.swap(false, Ordering::SeqCst);
         if resume {
             self.ctx.session.lock().resume();
@@ -94,11 +121,11 @@ impl Bot {
         // Warm up shadow inference off the hot loop (observation-only
         // models load once into a process-global engine; first use after
         // this thread finishes pays nothing).
-        if self.ctx.settings.read().features.ml_shadow {
+        if { let settings = self.ctx.settings.read(); settings.features.ml_shadow || settings.features.ml_fish_recognition } {
             let models_dir = self.ctx.store.dir().join("models");
             std::thread::spawn(move || {
                 if crate::core::shadow_infer::engine(&models_dir).is_some() {
-                    tracing::info!("shadow inference warmed up (observation only, macro control OFF)");
+                    tracing::info!("local models warmed up; fish name recognition available");
                 }
             });
         }
@@ -119,10 +146,13 @@ impl Bot {
                 if trace_on { "RECORDING" } else { "collection OFF — trace recording disabled" }
             )
         });
+        Ok(())
     }
 
     pub fn pause(&self) {
-        if !self.is_running() {
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        let _lifecycle = self.lifecycle.lock();
+        if !self.is_running() && self.state() != BotState::Recovering {
             return;
         }
         self.paused.store(true, Ordering::SeqCst);
@@ -137,7 +167,11 @@ impl Bot {
     }
 
     pub fn stop(&self) {
-        let was = self.is_running() || self.is_paused();
+        self.generation.fetch_add(1, Ordering::SeqCst);
+        self.ctx.running.store(false, Ordering::SeqCst);
+        self.ctx.release_mouse();
+        let _lifecycle = self.lifecycle.lock();
+        let was = self.state() != BotState::Stopped || self.is_paused();
         self.paused.store(false, Ordering::SeqCst);
         self.ctx.running.store(false, Ordering::SeqCst);
         self.ctx.set_state(BotState::Stopped, None);
@@ -147,9 +181,9 @@ impl Bot {
         self.halt();
         crate::laptop_fan::on_bot_state_changed(false);
         self.ctx.session.lock().pause();
-        if was {
-            self.finalize_ml_session("stopped");
-        }
+        // A stop can precede the loop's first state event. Close an active
+        // collection shell even when the visible state still says Stopped.
+        self.finalize_ml_session("stopped");
         self.ctx.emit_stats();
     }
 
@@ -210,13 +244,15 @@ impl Bot {
 
     pub fn recast(self: &Arc<Self>) {
         self.stop();
+        let generation = self.generation.load(Ordering::SeqCst);
         std::thread::sleep(std::time::Duration::from_millis(400));
-        self.start();
+        if let Err(error) = self.start_at_generation(Some(generation)) { self.ctx.log_error(&error); }
         self.ctx.log_info("Remotely recasting rod");
     }
 
     fn halt(&self) {
         self.ctx.running.store(false, Ordering::SeqCst);
+        self.ctx.platform.input.release_all();
         if let Some(h) = self.watchdog.lock().take() {
             join_unless_self(h);
         }
@@ -226,10 +262,11 @@ impl Bot {
         self.ctx.release_mouse();
     }
 
-    fn spawn_loop(&self, skip_setup: bool) {
+    fn spawn_loop(self: &Arc<Self>, skip_setup: bool) {
         self.ctx.running.store(true, Ordering::SeqCst);
         self.ctx.touch();
         let ctx = Arc::clone(&self.ctx);
+        let weak = Arc::downgrade(self);
         let h = std::thread::Builder::new()
             .name("bot-loop".into())
             .spawn(move || {
@@ -237,6 +274,19 @@ impl Bot {
                     machine::run(&ctx, skip_setup);
                 }));
                 ctx.release_mouse();
+                // All natural exits stop the watchdog and close collection. A
+                // requested halt has already cleared running and owns cleanup.
+                if ctx.running.swap(false, Ordering::SeqCst) {
+                    if let Some(bot) = weak.upgrade() {
+                        let paused = ctx.state() == BotState::Paused;
+                        bot.paused.store(paused, Ordering::SeqCst);
+                        if !paused { ctx.set_state(BotState::Stopped, None); }
+                        ctx.session.lock().pause();
+                        bot.finalize_ml_session("loop exited");
+                        ctx.emit_stats();
+                        crate::laptop_fan::on_bot_state_changed(false);
+                    }
+                }
                 if result.is_err() {
                     ctx.log_error("Bot loop panicked; stopped");
                     ctx.running.store(false, Ordering::SeqCst);
@@ -266,6 +316,10 @@ impl Bot {
     }
 
     pub fn restart_loop(self: &Arc<Self>, reason: &str) {
+        // A stop may be joining this watchdog. Never wait on its lifecycle lock.
+        let Some(lifecycle) = self.lifecycle.try_lock() else { return };
+        if !self.is_running() { return; }
+        let generation = self.generation.load(Ordering::SeqCst);
         let attempt = {
             let mut s = self.ctx.session.lock();
             s.restarts += 1;
@@ -279,6 +333,7 @@ impl Bot {
         self.ctx.webhook.recovery(attempt, reason);
         if attempt > max {
             self.ctx.log_error(&format!("Restart limit reached ({max}); stopping"));
+            drop(lifecycle);
             self.stop();
             return;
         }
@@ -292,8 +347,62 @@ impl Bot {
             join_unless_self(h);
         }
         self.ctx.release_mouse();
-        std::thread::sleep(std::time::Duration::from_secs_f32(backoff));
+        drop(lifecycle);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f32(backoff);
+        while std::time::Instant::now() < deadline {
+            if self.generation.load(Ordering::SeqCst) != generation { return; }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+        let _lifecycle = self.lifecycle.lock();
+        if self.generation.load(Ordering::SeqCst) != generation { return; }
         self.spawn_loop(true);
         self.spawn_watchdog();
+    }
+}
+
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+    fn bot(tag: &str) -> Arc<Bot> {
+        let dir = std::env::temp_dir().join(format!("gpo-lifecycle-{}-{}-{tag}", std::process::id(), crate::events::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut settings = Settings::default();
+        settings.watchdog.enabled = false;
+        settings.watchdog.restart_backoff_s = 0.3;
+        settings.features.ml_shadow = false;
+        let (tx, _) = crossbeam_channel::unbounded();
+        Bot::new(crate::core::platform::mock::platform(), Arc::new(RwLock::new(settings)),
+            Arc::new(RwLock::new(None)), tx, Arc::new(WebhookQueue::disabled()), Arc::new(Store::new(dir)))
+    }
+    #[test]
+    fn simultaneous_starts_create_one_session() {
+        let bot = bot("start");
+        let barrier = Arc::new(std::sync::Barrier::new(3));
+        let threads: Vec<_> = (0..2).map(|_| {
+            let bot = bot.clone(); let barrier = barrier.clone();
+            std::thread::spawn(move || { barrier.wait(); bot.start_checked().unwrap(); })
+        }).collect();
+        barrier.wait();
+        for thread in threads { thread.join().unwrap(); }
+        assert!(bot.is_running());
+        assert_eq!(bot.ctx.session.lock().lifetime().sessions, 1);
+        bot.stop();
+    }
+    #[test]
+    fn stop_during_backoff_cannot_restart() {
+        let bot = bot("backoff");
+        bot.start_checked().unwrap();
+        let recovery = { let bot = bot.clone(); std::thread::spawn(move || bot.restart_loop("test")) };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while bot.state() != BotState::Recovering && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert_eq!(bot.state(), BotState::Recovering);
+        bot.stop();
+        recovery.join().unwrap();
+        assert!(!bot.is_running());
+        assert!(!bot.is_paused());
+        assert_eq!(bot.state(), BotState::Stopped);
     }
 }

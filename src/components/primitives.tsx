@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown } from "lucide-react";
+
+const FieldLabel = createContext<string | undefined>(undefined);
 
 export function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -22,6 +24,7 @@ export function Row({
   onToggle?: () => void;
   disabled?: boolean;
 }) {
+  const titleId = useId();
   const expandable = children != null && onToggle != null;
   return (
     <div className={cx("border-b border-line", disabled && "opacity-50")}>
@@ -47,12 +50,12 @@ export function Row({
         }
       >
         <div className="flex-1 min-w-0">
-          <div className="font-medium leading-tight truncate">{title}</div>
+          <div id={titleId} className="font-medium leading-tight truncate">{title}</div>
           {sub && <div className="text-fg-dim text-[12px] leading-snug mt-0.5">{sub}</div>}
         </div>
         {right && (
           <div className="shrink-0 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            {right}
+            <FieldLabel.Provider value={titleId}>{right}</FieldLabel.Provider>
           </div>
         )}
         {expandable && (
@@ -118,11 +121,14 @@ export function Step({
   );
 }
 
-export function Toggle({ value, onChange, disabled }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+export function Toggle({ value, onChange, disabled, label }: { value: boolean; onChange: (v: boolean) => void; disabled?: boolean; label?: string }) {
+  const labelledBy = useContext(FieldLabel);
   return (
     <button
       type="button"
       role="switch"
+      aria-label={label ?? (labelledBy ? undefined : "Enable option")}
+      aria-labelledby={label ? undefined : labelledBy}
       aria-checked={value}
       disabled={disabled}
       onClick={() => onChange(!value)}
@@ -321,6 +327,7 @@ export function CustomSelect<T extends string>({
   className,
   disabled,
   align = "left",
+  label,
 }: {
   value: T;
   options: { value: T; label: ReactNode; sub?: ReactNode }[];
@@ -329,7 +336,11 @@ export function CustomSelect<T extends string>({
   className?: string;
   disabled?: boolean;
   align?: "left" | "right";
+  label?: string;
 }) {
+  const listId = useId();
+  const labelledBy = useContext(FieldLabel);
+  const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [dropdownAlign, setDropdownAlign] = useState<"left" | "right">(align);
@@ -368,12 +379,33 @@ export function CustomSelect<T extends string>({
     }
   }, [open, align]);
 
+  useEffect(() => {
+    if (open) (ref.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]') ?? ref.current?.querySelector<HTMLElement>('[role="option"]'))?.focus();
+  }, [open]);
+  const keyboard = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape" && open) { e.preventDefault(); e.stopPropagation(); setOpen(false); trigger.current?.focus(); return; }
+    if (e.key === "Tab") { setOpen(false); return; }
+    if (["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) {
+      e.preventDefault();
+      if (!open) { setOpen(true); return; }
+      const items = Array.from(ref.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? []);
+      const current = items.findIndex((item) => item === document.activeElement);
+      const index = e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : (current + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+      items[index]?.focus();
+    }
+  };
   const selected = options.find((o) => o.value === value);
 
   return (
-    <div ref={ref} className={cx("relative inline-block", className)}>
+    <div ref={ref} onKeyDown={keyboard} className={cx("relative inline-block", className)}>
       <button
+        ref={trigger}
         type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listId : undefined}
+        aria-label={label ?? (labelledBy ? undefined : placeholder ?? "Select option")}
+        aria-labelledby={label ? undefined : labelledBy}
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
         className={cx(
@@ -388,6 +420,9 @@ export function CustomSelect<T extends string>({
 
       {open && (
         <div
+          id={listId}
+          role="listbox"
+          aria-label={label ?? "Options"}
           className={cx(
             "absolute z-50 mt-1 min-w-[160px] max-w-[280px] max-h-56 overflow-y-auto py-1 rounded-xl",
             dropdownAlign === "right" ? "right-0" : "left-0",
@@ -397,10 +432,14 @@ export function CustomSelect<T extends string>({
           {options.map((o) => (
             <button
               key={o.value}
+              role="option"
+              tabIndex={-1}
+              aria-selected={o.value === value}
               type="button"
               onClick={() => {
                 onChange(o.value);
                 setOpen(false);
+                trigger.current?.focus();
               }}
               className={cx(
                 "w-full px-3 py-1.5 text-left text-[12px] flex items-center justify-between gap-2.5",

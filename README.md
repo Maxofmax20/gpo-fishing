@@ -2,15 +2,15 @@
 
 # 🎣 GPO Autofish - GUIDE
 
-**Current release: v5.7.0 — final feature release. See [FINAL_FEATURE_FREEZE.md](FINAL_FEATURE_FREEZE.md).**
-**Model status: fish is NOT READY (8/10 classes, 1 reviewed row out of 8,609, no candidate).** See
+**Current source version: v5.8.0.**
+**Model status: bundled fish revision 4 covers 15 canonical classes; recorded held-out accuracy is 98.89%. The trained fish model now names confirmed fish catches locally; fruit names use OCR.** See
 [Where the model actually stands](#-where-the-model-actually-stands).
 
 **💬 Join our Discord server:** https://discord.gg/unPZxXAtfb
 
 ## 🆕 What's New in v5.7.0?
 
-**The real data pipeline is now trustworthy end to end.** Collection can capture
+**The data pipeline supports collection, human review and frozen training inputs.** Collection can capture
 real gameplay samples, a human reviews them, and only reviewed-and-eligible rows
 ever reach a trainer. See
 [v5.7.0](#-v570--final-feature-release) for what was fixed, and
@@ -20,7 +20,7 @@ ever reach a trainer. See
 
 **Complete Rewrite - Native, Fast & Tiny:**
 
-- ⚡ **Native Windows app** - Rewritten in Rust with Tauri. One installer under 10 MB, no Python
+- ⚡ **Native Windows app** - Rewritten in Rust with Tauri. A native installer; fishing runs without Python
 - 🧠 **Built-in text recognition** - Uses the OCR that ships with Windows 10/11. No 1 GB download
 - 📌 **HUD pill + tray icon** - A small always-on-top pill sits on the Roblox window. No big window in the way
 - 📐 **Resolution independent** - Every area and click point is saved relative to the Roblox window
@@ -31,14 +31,9 @@ ever reach a trainer. See
 
 ## What is this?
 
-This is the **open-source version** of the GPO fishing macro that everyone uses. Unlike the closed-source version that gets flagged as a virus and isn't trustworthy, this version is:
-
-- ✅ **Fully open source** - You can see and verify all the code
-- ✅ **No viruses** - Clean, transparent, and safe
-- ✅ **Improved** - Better features and reliability
-- ✅ **Community-driven** - Open for contributions and review
-
-The original closed-source macro is sketchy and often flagged by antivirus software because you can't verify what it's actually doing. This open-source version solves that problem.
+This is an open-source Windows fishing macro. You can inspect the code, build it
+locally and report problems. Source availability does not guarantee correctness
+or that an antivirus will accept a particular installer.
 
 **🛡️ Concerned about safety?** The whole source is here. Build it yourself with the steps below and compare. Antivirus heuristics dislike programs that send mouse input and read the screen; that is what a fishing macro does.
 
@@ -83,7 +78,7 @@ The original closed-source macro is sketchy and often flagged by antivirus softw
 
 ### ⚡ Performance
 
-- **Fast Detection**: Bar tracking runs in microseconds, not Python pixel loops
+- **Fast Detection**: Bar tracking runs in the Rust backend
 - **Tiny Footprint**: One small installer, no runtime to install
 - **Logging**: Live activity feed in the Dashboard plus a log file in the data folder
 
@@ -230,13 +225,13 @@ Auto-update checks GitHub Releases on launch and can be turned off in Settings.
 - **GPO Wiki sync (opt-in)**: Setup › Devil fruits › GPO knowledge base can import devil-fruit pages from the public Grand Piece Online Wiki API. Imports are validated, keep provenance, and never overwrite curated entries. No automatic syncing happens.
 - **Learning dataset**: with trace recording on, uncertain observations are saved to `%AppData%\gpo-autofish\dataset` for later labeling (Setup › Learning dataset). Nothing trains a model automatically.
 - **VPN honesty**: the VPN page shows the evidence-based state (`disconnected/connecting/verifying/connected/disconnecting/error/unknown`) with process/tunnel evidence. `Connected` appears only after a verified tunnel. Macros never touch VPN unless you append an explicit VPN step (Macros › VPN Steps); verification timeouts stop the macro unless the step is marked optional.
-- **Vision models (shadow only)**: two tract-powered ONNX models ship and run observation-only — `state_v1` (WAITING/BITE/RESULT, held-out 1.0000) and `fish_v1` (8 well-supported fish, held-out 0.58; everything else resolves UNKNOWN). Predictions are logged with OCR+KB agreement telemetry and can never drive the macro (`vision_to_macro = FORBIDDEN`, production control OFF). Capability gates, manifests, and the dashboard report per-entity evidence honestly; fruit/action/confirmation coverage is still collecting.
+- **Vision models**: local `fish_v1` revision 4 names independently confirmed fish catches (15 species, original held-out accuracy 98.89% through the corrected Rust runtime). Features → AI fish recognition controls live naming. `state_v1` remains an observation model. Neither model establishes catch success, pity, storage, or drop decisions; those use the controller and OCR. Fruit catches and spawn names use OCR.
 - **ML Training Center** (Panel › Training): real dataset explorer (per-fish/per-fruit coverage with qualification reasons), training eligibility with structured blockers, manual training jobs against frozen dataset snapshots (existing Python pipeline, streamed progress, cancellation), candidate registry with deterministic current-vs-candidate comparison, promotion to shadow only on Pass (rollback preserved), review queue for uncertain rows, learning history, and opt-in automatic retraining (candidates only — production control stays OFF and has no switch).
 - **Human review** (Training › Review): every PNG reviewable with its actual pixels, model/OCR context, and canonical entity search (exact / ambiguous-pick-one / no-match-never-invent). Reviews persist with full audit trail; conflicts require explicit resolution with a reason and stay out of training until resolved; training eligibility is recomputed from real checks (PNG decodes, canonical id exists in KB, provenance present). Undo is available and append-only — undoing never deletes history. The audit log carries the full record, so the effective state can be rebuilt from it (`review_rebuild`).
 - **Reviews actually exclude data** (v5.6.1): a frozen training snapshot writes a **filtered** `labels.jsonl`. Anything you skipped, called unknown, flagged as a conflict, or that failed the bad-image / canonical-id gate is physically absent from what the trainer reads — not merely marked. The snapshot fails closed rather than producing an empty training set, and its fingerprint/row counts describe exactly what trains.
 - **Canonical entities** (Training › Drops): stable KB-derived entity IDs are the only training labels; display names are metadata. The resolver never merges similar names (Skeletal Shark ≠ Dark Skeletal Shark ≠ shark) and short model strings never become canonical names. Substring matching is word-anchored with a length floor, and a lossy OCR-variant retry can only ever return a single unambiguous entity. Entities whose name is already claimed by another KB entry are shown as `alias of …` rather than hidden — Wet-fish rarity tiers and sunken items claimed by example drop lists were NOT added because they do not exist in the project's KB.
-- **Model readiness** (Training › Readiness): deterministic, differentiated statuses per family — `NOT_ENOUGH_DATA`, `NOT_ENOUGH_CLASSES`, `NOT_ENOUGH_SESSIONS`, `NOT_ENOUGH_REVIEW`, `NOT_ENOUGH_TEST`, `DATA_READY`, `TRAINING`, `EVALUATING`, `CANDIDATE_READY`, `SHADOW_READY`. Every gate reports actual / required / difference / next action. The shadow gate requires event volume **and** measured agreement **and** session spread. PRODUCTION_READY is structurally unreachable (no authorization mechanism exists) and reported as a design note, not an actionable blocker. Reviewed ≠ trained ≠ evaluated ≠ shadow-validated ≠ production-enabled.
-- **Hermes interface**: no Hermes code exists in this repo (verified). External orchestration uses the read-only `hermes_tasks` view (triggers + readiness + history) and the existing training commands; lessons are factual history records. Gates cannot be bypassed because no bypass path exists.
+- **Model readiness** (Training › Readiness): deterministic, differentiated statuses per family — `NOT_ENOUGH_DATA`, `NOT_ENOUGH_CLASSES`, `NOT_ENOUGH_SESSIONS`, `NOT_ENOUGH_REVIEW`, `NOT_ENOUGH_TEST`, `DATA_READY`, `TRAINING`, `EVALUATING`, `CANDIDATE_READY`, `SHADOW_READY`. Every gate reports actual / required / difference / next action. The shadow gate requires event volume **and** measured agreement **and** session spread. The readiness lifecycle measures candidate admission and shadow validation, not the live fish-naming toggle in Features. ML input control remains disabled.
+- **Hermes interface**: no Hermes code exists in this repo (verified). External orchestration uses the read-only `hermes_tasks` view (triggers + readiness + history) and the existing training commands; lessons are factual history records. These command paths apply the training and model-admission checks.
 
 ### 🧊 v5.7.0 — final feature release
 
@@ -317,26 +312,42 @@ be acted on.
 
 ### 🚦 Where the model actually stands
 
-```
-SOFTWARE COMPLETE
-MODEL NOT READY
-```
+The bundled manifests, inspected on 12 October 2026, record:
 
-| | |
+| Model | Recorded evaluation |
 |---|---|
-| `state_v1` | solved, 1.0000 — protected, do not retrain without cause |
-| `fish_v1` | 0.5824 deployed — **8/10 classes, 1 reviewed row of 8,609, no candidate, no soak** |
-| fruit | 1/10 qualified, no trainer exists — `NOT_ENOUGH_DATA` |
-| sunken | `UNVERIFIED / NOT IN KB` — not invented |
-| production | `NOT READY`, by design; no production-control switch exists |
+| `state_v1` revision 1 | 3 states; macro-F1 1.0000; 391 test examples |
+| `fish_v1` revision 4 | 15 canonical classes; accuracy 0.9889197; macro-F1 0.9866436; 361 examples across 7 test sessions |
+| fruit | OCR names for catches and spawn announcements; no trained fruit image model |
+| macro control | Uses the existing controller/OCR; model observations cannot drive input |
 
-Live dataset: 8,609 rows, 8,609 images, 1 review record (0 training-eligible),
-0 registered candidates, 23,448 shadow telemetry lines.
+These are saved held-out results, not live-game accuracy. A local candidate
+registry exists on the audited installation; review counts and readiness change
+as you collect data. Use Training → Overview and Jobs & models for current state.
 
-**There is no "fish v2 candidate ready".** No such candidate has ever existed —
-`registry.json` does not exist. Fish cannot train until ten classes each have ≥20
-human-reviewed examples across ≥3 independent sessions with a held-out TEST
-example.
+Candidate admission requires complete per-class support and matching frozen
+holdout fingerprints. Older manifests without that identity need both models
+evaluated on the same holdout before improvement can be confirmed. Missing
+confidence evidence is shown as unavailable, never accepted as a successful gate.
+
+For Python tests install `ml/requirements-test.txt`; for training use
+`ml/requirements-training.txt`. Run trainers from the repository root with
+`python -m ml.gpo_train.fish_train`. Run IDs cannot overwrite existing artifacts.
+State jobs use `python -m ml.gpo_train.state_train`, which completes calibration,
+TEST evaluation and a verified single-output ONNX export.
+
+To measure an older deployed model against a candidate's frozen snapshot, run
+`python -m ml.gpo_train.reevaluate_holdout --help` for the required model,
+manifest, snapshot, image-root and output paths. The default writes a separate
+report. With the desktop app closed, `--write-manifest` explicitly updates its
+verified evaluation metadata; weights stay unchanged. A comparison still
+requires matching fingerprints and enough examples per class. Test results
+must not be used to tune a candidate.
+
+The review frontend ships in the installer. Generated review reports belong in
+`%APPDATA%/gpo-autofish/reports/ontology_review/` (or set
+`GPO_ONTOLOGY_REVIEW_DIR`); absent reports display an unavailable state.
+Update checks only discover updates; choose Install to download and install.
 
 ## 📁 Project Structure
 
@@ -372,3 +383,11 @@ This is an open-source project! Feel free to:
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+### Local AI fish recognition (v5.8.0)
+
+Features → **AI fish recognition** uses the bundled model trained on 1,852 reviewed samples from the collected dataset to name 15 fish species. It is enabled by default and runs locally on the same verified catch image, independently of trace recording. Corrected image preprocessing matches the training pipeline; the existing weights achieved 357/361 (98.89%) on their original frozen holdout through the Rust runtime. This does not establish live-game accuracy.
+
+A separate OCR catch check establishes success and fish evidence before the closed-set classifier runs. Fruit catches, fruit-spawn announcements, unknown item banners and Anglerfish retain OCR recognition. AI predictions never decide pity, storage or drops. Confidence in the app log is informational, not a validated rejection cutoff. Fruit images have no trained classifier yet.
+
+Fruit storage uses local OCR, honors settling delays, sends at most one drop input for an unprotected leftover and latches pity-zero protection for the catch. Pity-zero catches qualify for enabled legendary-only fruit alerts, even with an unreadable name. Unreadable pity means nonzero; unresolved storage/drop outcomes pause with an explanation. Existing settings, samples and model weights are preserved.

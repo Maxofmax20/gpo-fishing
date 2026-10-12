@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { useUpdater } from "../lib/updater";
 import { api, on } from "../lib/ipc";
 import { showToast, useStore } from "../lib/store";
 import Toasts from "../components/Toasts";
@@ -57,49 +57,24 @@ export default function Panel() {
     init().finally(() => api.panelShow());
   }, [init]);
 
-  const [update, setUpdate] = useState<Update | null>(null);
-  const [updating, setUpdating] = useState<string | null>(null);
-  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const update = useUpdater((s) => s.available);
+  const updating = useUpdater((s) => s.busy);
+  const updateMessage = useUpdater((s) => s.message);
+  const dismissedVersion = useUpdater((s) => s.dismissedVersion);
+  const checkUpdate = useUpdater((s) => s.check);
+  const installUpdate = useUpdater((s) => s.install);
+  const dismissUpdate = useUpdater((s) => s.dismiss);
+  const updateDismissed = update?.version === dismissedVersion;
   const autoUpdate = useStore((s) => s.settings?.auto_update ?? true);
   // Startup check is delayed (never blocks launch) and repeats every 6h.
   // Offline/network failures toast once and never break the bot. Honors the
   // Settings › auto-update toggle (manual Check still works when off).
   useEffect(() => {
     if (!ready || !autoUpdate) return;
-    let alive = true;
-    let timer: number | undefined;
-    let interval: number | undefined;
-    const runCheck = (quiet: boolean) => {
-      check()
-        .then((u) => {
-          if (alive && u) setUpdate(u);
-        })
-        .catch((e) => {
-          if (!quiet) showToast("warn", `Update check failed (offline?): ${String(e)}`);
-        });
-    };
-    timer = window.setTimeout(() => runCheck(true), 30_000);
-    interval = window.setInterval(() => {
-      if (!document.hidden) runCheck(true);
-    }, 6 * 3600_000);
-    return () => {
-      alive = false;
-      window.clearTimeout(timer);
-      window.clearInterval(interval);
-    };
-  }, [ready, autoUpdate]);
-  const installUpdate = async () => {
-    if (!update) return;
-    setUpdating("Downloading…");
-    try {
-      await update.downloadAndInstall();
-      setUpdating("Installing, the app will restart.");
-    } catch (e) {
-      const msg = `Update failed — current version stays intact: ${String(e)}`;
-      setUpdating(msg);
-      showToast("error", msg);
-    }
-  };
+    const timer = window.setTimeout(() => { void checkUpdate(true); }, 30_000);
+    const interval = window.setInterval(() => { if (!document.hidden) void checkUpdate(true); }, 6 * 3600_000);
+    return () => { window.clearTimeout(timer); window.clearInterval(interval); };
+  }, [ready, autoUpdate, checkUpdate]);
 
   useEffect(() => {
     if (roblox) setSkipGate(false);
@@ -137,7 +112,7 @@ export default function Panel() {
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              title={t.label}
+              title={t.label} aria-label={t.label} aria-current={tab === t.id ? "page" : undefined}
               className={cx(
                 "w-10 h-10 rounded-xl grid place-items-center mb-1 transition-colors",
                 tab === t.id ? "bg-white/[0.1] text-fg" : "text-fg-mute hover:text-fg hover:bg-white/[0.05]",
@@ -178,7 +153,7 @@ export default function Panel() {
                     title={update.body ? `Update ${update.version}\n\n${update.body.slice(0, 400)}` : `Update ${update.version}`}
                   >
                     <Download size={12} />
-                    {updating ?? `Update ${update.version}`}
+                    {updating ? updateMessage : `Install ${update.version}`}
                   </button>
                   <button
                     className="h-7 px-2 rounded-lg text-[11px] text-fg-mute hover:text-fg hover:bg-white/[0.06]"
@@ -189,17 +164,17 @@ export default function Panel() {
                   </button>
                   <button
                     className="h-7 w-6 rounded-lg grid place-items-center text-fg-mute hover:text-fg hover:bg-white/[0.06]"
-                    onClick={() => setUpdateDismissed(true)}
+                    onClick={() => dismissUpdate()}
                     title="Later"
                   >
                     <X size={12} />
                   </button>
                 </span>
               )}
-              <button className="w-8 h-8 rounded-lg grid place-items-center text-fg-mute hover:bg-white/[0.06] hover:text-fg" onClick={() => getCurrentWindow().minimize()}>
+              <button className="w-8 h-8 rounded-lg grid place-items-center text-fg-mute hover:bg-white/[0.06] hover:text-fg" aria-label="Minimize window" onClick={() => getCurrentWindow().minimize()}>
                 <Minus size={15} />
               </button>
-              <button className="w-8 h-8 rounded-lg grid place-items-center text-fg-mute hover:bg-bad-soft hover:text-bad" onClick={() => api.panelHide()}>
+              <button className="w-8 h-8 rounded-lg grid place-items-center text-fg-mute hover:bg-bad-soft hover:text-bad" aria-label="Hide window" onClick={() => api.panelHide()}>
                 <X size={15} />
               </button>
             </div>

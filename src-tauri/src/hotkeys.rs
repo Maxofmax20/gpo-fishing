@@ -15,6 +15,32 @@ enum Action {
 }
 
 pub fn register(app: &AppHandle, keys: &Hotkeys) -> Result<(), String> {
+    static REGISTERED: std::sync::Mutex<Option<Hotkeys>> = std::sync::Mutex::new(None);
+    let mut previous = REGISTERED.lock().map_err(|_| "hotkey lock poisoned")?;
+    validate(keys)?;
+    if let Err(error) = bind(app, keys) {
+        if let Some(old) = previous.as_ref() {
+            if let Err(rollback) = bind(app, old) {
+                return Err(format!("{error}; restoring previous shortcuts failed: {rollback}"));
+            }
+        } else { let _ = app.global_shortcut().unregister_all(); }
+        return Err(error);
+    }
+    *previous = Some(keys.clone());
+    Ok(())
+}
+
+fn validate(keys: &Hotkeys) -> Result<(), String> {
+    let mut seen = std::collections::HashSet::new();
+    for combo in [&keys.toggle, &keys.overlay, &keys.quit, &keys.hide_hud, &keys.record_toggle] {
+        if combo.trim().is_empty() { continue; }
+        let shortcut: Shortcut = combo.parse().map_err(|_| format!("Invalid hotkey: {combo}"))?;
+        if !seen.insert(shortcut.id()) { return Err(format!("Duplicate hotkey: {combo}")); }
+    }
+    Ok(())
+}
+
+fn bind(app: &AppHandle, keys: &Hotkeys) -> Result<(), String> {
     let gs = app.global_shortcut();
     gs.unregister_all().map_err(|e| e.to_string())?;
     let bindings = [
@@ -59,12 +85,9 @@ fn dispatch(app: &AppHandle, action: Action) {
             app.exit(0);
         }
         Action::HideHud => {
-            let mut s = st.settings.read().clone();
-            s.ui.hud_visible = !s.ui.hud_visible;
-            let v = s.ui.hud_visible;
-            *st.settings.write() = s.clone();
-            let _ = st.store.save(&s);
-            windows::set_hud_visible(app, v);
+            if let Err(e) = crate::commands::hud_toggle(app.clone(), st) {
+                tracing::warn!("HUD settings save failed: {e}");
+            }
         }
         Action::RecordToggle => {
             let res = crate::bot::recorder::toggle_recording();
@@ -78,5 +101,19 @@ fn dispatch(app: &AppHandle, action: Action) {
             }
             let _ = app.emit("macro:status_changed", ());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn validates_every_binding_and_detects_duplicate_shortcuts() {
+        let mut keys = Hotkeys::default();
+        assert!(validate(&keys).is_ok());
+        keys.record_toggle = "DefinitelyNotAKey".into();
+        assert!(validate(&keys).unwrap_err().contains("Invalid hotkey"));
+        keys.record_toggle = keys.toggle.clone();
+        assert!(validate(&keys).unwrap_err().contains("Duplicate hotkey"));
     }
 }

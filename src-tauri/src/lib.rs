@@ -44,6 +44,9 @@ pub fn run() {
             // review page works whether or not fishing is running. Its address is
             // also exposed as a command, so the UI can show the URL instead of a
             // human having to guess the port.
+            if let Ok(resources) = app.path().resource_dir() {
+                ontology_web::set_bundled_frontend(resources.join("review-frontend"));
+            }
             ontology_web::spawn();
             Ok(())
         })

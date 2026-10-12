@@ -705,6 +705,7 @@ mod tests {
             manifest_sha: None,
             eval_sha: "e".into(),
             metrics: super::super::registry::ModelMetrics {
+                holdout_fingerprint: None,
                 accuracy: 0.8,
                 macro_f1: f1,
                 ece: None,

@@ -1150,15 +1150,7 @@ impl VpnManager {
             let snap = Self::collect_snapshot();
             // Disconnected when NEITHER this engine's processes NOR any
             // tunnel interface remain.
-            let engine_procs = match engine.as_str() {
-                "dedicated" => vec!["sing-box.exe"],
-                "warp" => vec!["warp-svc.exe"],
-                "psiphon" => vec!["psiphon3.exe", "psiphond.exe"],
-                _ => vec![],
-            };
-            let procs_left = Self::snap_has_proc(&snap, &engine_procs);
-            let no_tunnel = !Self::snap_has_tunnel(&snap, None);
-            if !procs_left && (no_tunnel || engine_procs.is_empty()) {
+            if Self::disconnected_evidence(&engine, &snap) {
                 self.managed.store(false, Ordering::SeqCst);
                 *self.engine.lock() = "none".to_string();
                 *self.engine_name.lock() = "Offline".to_string();
@@ -1180,13 +1172,24 @@ impl VpnManager {
         Err(reason)
     }
 
+    fn disconnected_evidence(engine: &str, snap: &EvidenceSnapshot) -> bool {
+        let (processes, keyword): (&[&str], Option<&str>) = match engine {
+            "dedicated" => (&["sing-box.exe"], Some("sing-box")),
+            "warp" => (&[], Some("warp")), // WARP's service remains alive when disconnected.
+            "psiphon" => (&["psiphon3.exe", "psiphond.exe"], Some("psiphon")),
+            _ => (&[], None),
+        };
+        let cli_disconnected = engine != "warp" || snap.warp_status.as_ref().is_some_and(|s| s.to_ascii_lowercase().contains("disconnected"));
+        !Self::snap_has_proc(snap, processes) && !Self::snap_has_tunnel(snap, keyword) && cli_disconnected
+    }
+
     /// Block until `want_connected` matches verified reality, or timeout.
     /// Side-effect free (never connects/disconnects by itself).
     pub fn wait_for(&self, want_connected: bool, timeout: Duration) -> Result<VpnStatus, String> {
         let deadline = Instant::now() + timeout;
         loop {
             let st = self.get_status();
-            if st.connected == want_connected {
+            if (want_connected && st.state == VpnState::Connected) || (!want_connected && st.state == VpnState::Disconnected) {
                 return Ok(st);
             }
             if Instant::now() >= deadline {
@@ -1336,6 +1339,16 @@ mod tests {
     const WARP_LINE: &str = "Connected  Dedicated  CloudflareWARP";
     const WIFI_LINE: &str = "Connected  Dedicated  Wi-Fi";
     const DIS_LINE: &str = "Disconnected  Dedicated  sing-box TUN";
+
+    #[test]
+    fn warp_disconnect_uses_cli_and_tunnel_not_service_lifetime() {
+        let disconnected = snap(&["warp-svc.exe"], &[], Some("Status update: Disconnected"));
+        assert!(VpnManager::disconnected_evidence("warp", &disconnected));
+        let connected = snap(&["warp-svc.exe"], &[WARP_LINE], Some("Status update: Connected"));
+        assert!(!VpnManager::disconnected_evidence("warp", &connected));
+        let external = snap(&[], &[WARP_LINE], None);
+        assert!(!VpnManager::disconnected_evidence("external", &external));
+    }
 
     #[test]
     fn fresh_state_is_disconnected() {

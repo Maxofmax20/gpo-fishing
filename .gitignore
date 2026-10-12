@@ -13,6 +13,8 @@ docs/*
 !docs/capability_matrix_v1.json
 !docs/ML_REVIEW_AND_READINESS.md
 ml/output/*/checkpoints/
+# Local app-state backups may contain credentials; never version them.
+ml/output/*/backups/
 __pycache__/
 legacy/
 *.key
@@ -71,3 +73,12 @@ reports/ocr_audit/.cache/
 reports/ocr_audit/evidence.jsonl
 reports/ocr_audit/contact_sheets/
 reports/_smoke/
+
+# Local collected-data evaluations and screenshots (never published with code).
+ml/output/readiness-20261012/
+reports/UI_TRAINING_VERIFIED.png
+reports/fruit-candidate-inspection.png
+reports/fruit_name_review_candidates.json
+reports/name_vocabulary_2026-10-12.json
+reports/ui-preview.html
+reports/ui-preview.tsx

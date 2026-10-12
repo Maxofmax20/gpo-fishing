@@ -305,6 +305,10 @@ pub fn set_auto_turbo(enabled: bool) -> FanStatus {
     get_fan_status()
 }
 
+#[cfg(test)]
+pub fn on_bot_state_changed(_is_active: bool) {}
+
+#[cfg(not(test))]
 pub fn on_bot_state_changed(is_active: bool) {
     let persist = load_persist_state();
     if !persist.auto_turbo {

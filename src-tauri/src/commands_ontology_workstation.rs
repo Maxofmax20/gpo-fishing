@@ -151,6 +151,8 @@ pub fn find_report_dir() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("GPO_ONTOLOGY_REVIEW_DIR") {
         return Some(PathBuf::from(p));
     }
+    let local = crate::app::data_dir().join("reports").join("ontology_review");
+    if local.join("workstation").join("index.json").is_file() { return Some(local); }
     if let Ok(root) = std::env::var("GPO_REPO_ROOT") {
         let c = PathBuf::from(root).join("reports").join("ontology_review");
         if c.join("workstation").join("index.json").is_file() {

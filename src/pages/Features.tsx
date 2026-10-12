@@ -13,6 +13,15 @@ export default function Features() {
   const ocrAvailable = useStore((st) => st.ocrAvailable);
   const [open, setOpen] = useState<string | null>(null);
   const [whTest, setWhTest] = useState<"idle" | "ok" | string>("idle");
+  const [baitScanState, setBaitScanState] = useState<{
+    loading: boolean;
+    result: { legendary: number | null; rare: number | null; common: number | null } | null;
+    error: string | null;
+  }>({ loading: false, result: null, error: null });
+
+  const [geminiTesting, setGeminiTesting] = useState(false);
+  const [geminiTestMsg, setGeminiTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   if (!s) {
     return (
       <div className="pb-4 pt-2">
@@ -24,15 +33,6 @@ export default function Features() {
   const baitReady = !!s.points.bait[0];
   const shopReady = !!s.points.purchase[0] && !!s.points.purchase[1];
   const fruitReady = !!s.points.fruit[0];
-
-  const [baitScanState, setBaitScanState] = useState<{
-    loading: boolean;
-    result: { legendary: number | null; rare: number | null; common: number | null } | null;
-    error: string | null;
-  }>({ loading: false, result: null, error: null });
-
-  const [geminiTesting, setGeminiTesting] = useState(false);
-  const [geminiTestMsg, setGeminiTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const handleTestGemini = async () => {
     if (!s?.gemini?.api_key) {
@@ -75,6 +75,11 @@ export default function Features() {
   return (
     <div className="pb-4 pt-2">
       <Section title="Fishing">
+        <Row
+          title="AI fish recognition"
+          sub="Uses your trained local model for 15 fish species. Reads the same catch image without cloud requests. Fruit catches and spawn names use OCR; Anglerfish keeps its OCR name."
+          right={<Toggle value={s.features.ml_fish_recognition ?? true} onChange={(v) => update((x) => void (x.features.ml_fish_recognition = v))} />}
+        />
         <Row
           title="Auto zoom"
           sub="Resets the camera to a known zoom before fishing so the bar lands in the same place."
@@ -426,7 +431,7 @@ export default function Features() {
             <div className="text-[11px] text-fg-dim pb-1.5 leading-normal">
               🛡️ Never presses Backspace on high-tier fruits (Tori, Mochi, Ope, Venom, Buddha, Dragon, Pika, Magu, Goro, etc.). Keeps them safely in your hotbar/inventory if storage fails or backpack is full.
             </div>
-            <Field wide label="Pause macro on Legendary / Mythical">
+            <Field wide label="Pause after storing a protected fruit">
               <Toggle
                 value={s.fruit_storage.pause_on_protected_fruit ?? false}
                 onChange={(v) => update((x) => void (x.fruit_storage.pause_on_protected_fruit = v))}
@@ -442,7 +447,7 @@ export default function Features() {
               />
             </Field>
             <div className="text-[11px] text-fg-dim pb-1.5 leading-normal">
-              ⚡ If pity went to 0 or reset to 0, never drop the fruit even if storage is full. Keeps it safely in your hotbar/inventory.
+              ⚡ If pity is detected as 0, never press Backspace on that catch. If storage fails, keep the fruit and pause. Unreadable pity is treated as nonzero: store, drop an ordinary leftover once, and continue.
             </div>
             <Field wide label="All-Seeing Eye (ASE - 40 Pity Cap)">
               <Toggle
@@ -614,7 +619,7 @@ export default function Features() {
             ))}
             {s.webhook.fruit_drop && ocrAvailable && (
               <div className="flex items-center h-10 border-b border-line pl-4">
-                <div className="text-fg-dim">Legendary drops only</div>
+                <div className="text-fg-dim">Legendary / Mythical + Pity 0</div>
                 <div className="ml-auto">
                   <Toggle value={s.webhook.legendary_only} onChange={(v) => update((x) => void (x.webhook.legendary_only = v))} />
                 </div>

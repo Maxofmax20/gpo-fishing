@@ -5,21 +5,27 @@ import { useEffect, useRef } from "react";
  * return to visibility. Saves CPU/wakeups for background tabs; never gates
  * time-critical bot behavior (bot runs in the Rust backend regardless).
  */
-export function useVisiblePoll(fn: () => void, ms: number, active = true) {
+export function useVisiblePoll(fn: () => void | Promise<unknown>, ms: number, active = true) {
   const ref = useRef(fn);
   ref.current = fn;
+  const flight = useRef(false);
   useEffect(() => {
     if (!active) return;
-    ref.current();
-    const tick = () => {
-      if (!document.hidden) ref.current();
+    let disposed = false;
+    const tick = async () => {
+      if (disposed || document.hidden || flight.current) return;
+      flight.current = true;
+      try { await ref.current(); } catch (e) { console.error("Polling failed", e); }
+      finally { flight.current = false; }
     };
+    void tick();
     const t = window.setInterval(tick, ms);
     const onVis = () => {
-      if (!document.hidden) ref.current();
+      void tick();
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {
+      disposed = true;
       window.clearInterval(t);
       document.removeEventListener("visibilitychange", onVis);
     };

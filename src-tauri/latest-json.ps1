@@ -13,9 +13,11 @@ $sigPath = $exe.FullName + ".sig"
 if (-not (Test-Path $sigPath)) { exit 1 }
 $sig = (Get-Content $sigPath -Raw).Trim()
 $asset = [uri]::EscapeDataString($exe.Name) -replace "%20", "."
+$notesFile = Join-Path $root "reports/RELEASE_NOTES_v$version.md"
+$notes = if (Test-Path -LiteralPath $notesFile) { Get-Content -LiteralPath $notesFile -Raw } else { "" }
 $json = [ordered]@{
   version  = $version
-  notes    = ""
+  notes    = $notes
   pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   platforms = [ordered]@{
     "windows-x86_64" = [ordered]@{

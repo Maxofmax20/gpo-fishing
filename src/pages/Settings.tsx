@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { check } from "@tauri-apps/plugin-updater";
+import { useUpdater } from "../lib/updater";
 import { Download, FolderOpen, Globe, RotateCcw, Save, Trash2, Upload } from "lucide-react";
 import { api } from "../lib/ipc";
 import { showToast, useStore } from "../lib/store";
@@ -14,7 +14,11 @@ export default function SettingsPage() {
   const [open, setOpen] = useState<string | null>(null);
   const [presets, setPresets] = useState<string[]>([]);
   const [presetName, setPresetName] = useState("");
-  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const updateMsg = useUpdater((s) => s.message);
+  const updateAvailable = useUpdater((s) => s.available);
+  const updateBusy = useUpdater((s) => s.busy);
+  const checkUpdate = useUpdater((s) => s.check);
+  const installUpdate = useUpdater((s) => s.install);
   const [dataDir, setDataDir] = useState("");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -60,21 +64,6 @@ export default function SettingsPage() {
     }
   };
 
-  const checkUpdate = async () => {
-    setUpdateMsg("Checking…");
-    try {
-      const u = await check();
-      if (!u) {
-        setUpdateMsg("You're on the latest version.");
-        return;
-      }
-      setUpdateMsg(`Downloading ${u.version}…`);
-      await u.downloadAndInstall();
-      setUpdateMsg("Installing, the app will restart.");
-    } catch (e) {
-      setUpdateMsg(String(e));
-    }
-  };
 
   const importLegacy = async () => {
     const input = document.createElement("input");
@@ -378,12 +367,16 @@ export default function SettingsPage() {
           right={
             <>
               <Toggle value={s.auto_update} onChange={(v) => update((x) => void (x.auto_update = v))} />
-              <Button size="sm" onClick={checkUpdate} icon={<Download size={13} />}>
+              <Button size="sm" disabled={updateBusy} onClick={() => { void checkUpdate(); }} icon={<Download size={13} />}>
                 Check
               </Button>
             </>
           }
         >
+          {updateAvailable && <div className="px-4 py-2">
+            <Button size="sm" kind="primary" disabled={updateBusy} onClick={() => { void installUpdate(); }}>Install {updateAvailable.version}</Button>
+            {updateAvailable.body && <p className="mt-2 text-fg-dim whitespace-pre-wrap select-text">{updateAvailable.body}</p>}
+          </div>}
           {updateMsg && <Pill tone="mute">{updateMsg}</Pill>}
         </Row>
         <Row

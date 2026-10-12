@@ -2,12 +2,11 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
-use windows::Win32::System::Threading::GetCurrentProcessId;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VK_MENU,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, GetClientRect, GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindow,
+    FindWindowW, GetClientRect, GetForegroundWindow, IsIconic, IsWindow,
     IsWindowVisible, SetForegroundWindow, ShowWindow, SW_RESTORE,
 };
 
@@ -103,13 +102,10 @@ impl GameWindow for Win32Window {
                 return None;
             }
             let fg = GetForegroundWindow();
-            let mut fg_pid = 0u32;
-            GetWindowThreadProcessId(fg, Some(&mut fg_pid));
-            let ours = fg_pid == GetCurrentProcessId();
             let dpi = GetDpiForWindow(h);
             Some(WindowInfo {
                 client,
-                is_foreground: fg == h || ours,
+                is_foreground: fg == h,
                 visible: !minimized,
                 dpi: if dpi == 0 { 96 } else { dpi },
             })

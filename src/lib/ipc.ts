@@ -88,7 +88,8 @@ export const api = {
   // wrapped here. The backend commands stay registered.
   botStop: () => invoke<void>("bot_stop"),
   botToggle: () => invoke<void>("bot_toggle"),
-  settingsSet: (settings: Settings) => invoke<void>("settings_set", { settings }),
+  settingsGet: () => invoke<Settings>("settings_get"),
+  settingsSet: (settings: Settings, expectedSettings?: Settings) => invoke<Settings>("settings_set", { settings, expectedSettings }),
   settingsReset: () => invoke<Settings>("settings_reset"),
   presetList: () => invoke<string[]>("preset_list"),
   presetSave: (name: string) => invoke<void>("preset_save", { name }),

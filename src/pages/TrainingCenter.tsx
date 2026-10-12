@@ -304,7 +304,7 @@ function FinalStatus({
       {row(
         "System",
         overview?.backend_available ? "ok" : "warn",
-        overview ? "Healthy" : "Loading",
+        overview ? (overview.backend_available ? "Ready" : "Setup needed") : "Loading",
         overview?.backend_available
           ? overview.backend_detail
           : overview?.backend_detail ?? undefined,
@@ -312,13 +312,13 @@ function FinalStatus({
       {row(
         "Data",
         fish?.status === "NOT_ENOUGH_DATA" ? "bad" : "warn",
-        `Fish ${fish?.status === "NOT_ENOUGH_DATA" ? "0/10" : classes?.actual ?? "?"}`,
+        `Fish ${classes?.actual ?? "unknown"}`,
         classes?.detail,
       )}
       {row(
         "",
         fruit?.status === "NOT_ENOUGH_DATA" ? "bad" : "warn",
-        `Fruit ${fruit ? fruit.evidence.qualified_classes ?? "?" : "?"}/10`,
+        `Fruit ${fruit?.checks.find((c) => c.name === "qualified_classes")?.actual ?? "unknown"}`,
         fruit?.checks.find((c) => c.name === "qualified_classes")?.detail,
       )}
       {row(
@@ -348,14 +348,14 @@ function FinalStatus({
       {revChk?.passed === false
         ? row("Evidence", "bad", "MISMATCH", revChk.detail)
         : null}
-      {row("Production", "bad", "NOT READY", "by design — no production-control switch exists")}
+      {row("Input control", "mute", "Controller + OCR", "AI fish names are available in Features; models do not decide storage or drops")}
       <div className="mt-1 pt-1 border-t border-line/50 text-[11px] text-fg">
         <span className="text-fg-dim">Next: </span>
         {nextAction}
       </div>
       <div className="text-[10px] text-fg-mute">
-        Reviewed is not trained. Trained is not evaluated. Evaluated is not shadow-validated. Shadow-validated is
-        not production-enabled.
+        These gates measure candidate admission and shadow observation. Live fish naming is controlled by
+        AI fish recognition in Features; fruit names use OCR.
       </div>
     </div>
   );
@@ -416,7 +416,18 @@ const CLASS_TONE: Record<ClassReadinessStatus, "ok" | "warn" | "bad" | "mute"> =
 };
 
 export default function TrainingCenter() {
-  const [tab, setTab] = useState<SubTab>("overview");
+  const [tab, setTab] = useState<SubTab>(() => {
+    const saved = sessionStorage.getItem("training-tab");
+    return TABS.some((t) => t.id === saved) ? saved as SubTab : "overview";
+  });
+  const groups: { label: string; tabs: SubTab[] }[] = [
+    { label: "Overview", tabs: ["overview", "readiness", "history"] },
+    { label: "Data & review", tabs: ["dataset", "fish", "fruits", "review", "ontology", "coverage", "drops"] },
+    { label: "Jobs & models", tabs: ["jobs", "candidates", "models", "compare"] },
+    { label: "Settings", tabs: ["settings"] },
+  ];
+  const group = groups.find((g) => g.tabs.includes(tab)) ?? groups[0];
+  useEffect(() => { sessionStorage.setItem("training-tab", tab); }, [tab]);
   const [overview, setOverview] = useState<TrainingOverview | null>(null);
   const [explorer, setExplorer] = useState<DatasetExplorer | null>(null);
   const [jobs, setJobs] = useState<TrainingJob[]>([]);
@@ -487,16 +498,17 @@ export default function TrainingCenter() {
   // -------------------------------------------------------------------------
   const refreshAll = useCallback(async () => {
     try {
-      const [o, j, c, h] = await Promise.all([
+      const [o, j, c, h] = await Promise.allSettled([
         api.trainingOverview(),
         api.trainingJobs(),
         api.trainingCandidates(),
         api.trainingHistory(100),
       ]);
-      setOverview(o);
-      setJobs(j);
-      setCandidates(c);
-      setHistory(h);
+      if (o.status === "fulfilled") setOverview(o.value);
+      if (j.status === "fulfilled") setJobs(j.value);
+      if (c.status === "fulfilled") setCandidates(c.value);
+      if (h.status === "fulfilled") setHistory(h.value);
+      for (const result of [o, j, c, h]) if (result.status === "rejected") showToast("warn", `Training refresh: ${String(result.reason)}`);
     } catch (e) {
       showToast("error", "Training Center refresh" + ": " + String(e));
     }
@@ -551,7 +563,7 @@ export default function TrainingCenter() {
 
   const refreshSlow = useCallback(async () => {
     try {
-      const [e, s, b, cov, dr, rd, ig, ts] = await Promise.all([
+      const [e, s, b, cov, dr, rd, ig, ts] = await Promise.allSettled([
         api.datasetExplorer(),
         api.trainingSettingsGet(),
         api.trainingBackend(),
@@ -563,14 +575,15 @@ export default function TrainingCenter() {
         // the Training Center look broken, so it resolves to null on failure.
         api.semanticTeacherStatus().catch(() => null),
       ]);
-      setExplorer(e);
-      setSettings(s);
-      setBackend(b);
-      setCoverage(cov);
-      setDrops(dr);
-      setReadiness(rd);
-      setIntegrity(ig);
-      setTeacher(ts);
+      if (e.status === "fulfilled") setExplorer(e.value);
+      if (s.status === "fulfilled") setSettings(s.value);
+      if (b.status === "fulfilled") setBackend(b.value);
+      if (cov.status === "fulfilled") setCoverage(cov.value);
+      if (dr.status === "fulfilled") setDrops(dr.value);
+      if (rd.status === "fulfilled") setReadiness(rd.value);
+      if (ig.status === "fulfilled") setIntegrity(ig.value);
+      if (ts.status === "fulfilled") setTeacher(ts.value);
+      for (const result of [e, s, b, cov, dr, rd, ig]) if (result.status === "rejected") showToast("warn", `Training details: ${String(result.reason)}`);
     } catch (e) {
       showToast("error", "Training Center details" + ": " + String(e));
     }
@@ -981,13 +994,16 @@ export default function TrainingCenter() {
         </Pill>
       </div>
 
-      <div className="flex gap-1.5 flex-wrap">
-        {TABS.map((t) => (
+      <nav aria-label="Training sections" className="flex gap-1 flex-wrap">
+        {groups.map((g) => <Button key={g.label} size="sm" kind={group.label === g.label ? "primary" : "ghost"} onClick={() => setTab(g.tabs[0])}>{g.label}</Button>)}
+      </nav>
+      <nav aria-label={`${group.label} pages`} className="flex gap-1.5 flex-wrap border-b border-line pb-2">
+        {TABS.filter((t) => group.tabs.includes(t.id)).map((t) => (
           <Button key={t.id} size="sm" kind={tab === t.id ? "primary" : "ghost"} onClick={() => setTab(t.id)}>
             {t.label}
           </Button>
         ))}
-      </div>
+      </nav>
 
       {tab === "overview" && (
         <Section title="Learning status">
@@ -1020,7 +1036,7 @@ export default function TrainingCenter() {
                 {overview.backend_available ? "ready" : overview.backend_detail}
               </div>
               <div className="flex gap-2 flex-wrap mt-1 items-center">
-                <Button size="sm" kind="primary" disabled={busy !== null} onClick={() => startTrain("fish")}>
+                <Button size="sm" kind="primary" disabled={busy !== null || !overview.backend_available || !overview.eligibility.some((e) => e.family === "fish" && e.eligible)} onClick={() => startTrain("fish")}>
                   Train Fish
                 </Button>
                 {/* `Button` has no "disabled" kind, and `pointer-events-none`
@@ -1034,7 +1050,7 @@ export default function TrainingCenter() {
                     Train Fruit
                   </Button>
                 </span>
-                <Button size="sm" disabled={busy !== null} onClick={() => startTrain("state")}>
+                <Button size="sm" disabled={busy !== null || !overview.backend_available || !overview.eligibility.some((e) => e.family === "state" && e.eligible)} onClick={() => startTrain("state")}>
                   Train State
                 </Button>
               </div>
@@ -1239,7 +1255,7 @@ export default function TrainingCenter() {
               </div>
               <div>
                 Verdict:{" "}
-                <span className={compare.comparison.verdict === "Pass" ? "text-ok" : compare.comparison.verdict === "Reject" ? "text-bad" : "text-warn"}>
+                <span className={compare.comparison.verdict === "PASS" ? "text-ok" : compare.comparison.verdict === "REJECT" ? "text-bad" : "text-warn"}>
                   {compare.comparison.verdict}
                 </span>
               </div>

@@ -3,12 +3,12 @@
 @theme {
   --color-bg: #0b0d12;
   --color-bg-elev: #12151c;
-  --color-bg-glass: rgba(18, 21, 28, 0.86);
+  --color-bg-glass: #12151c;
   --color-line: rgba(255, 255, 255, 0.07);
   --color-line-strong: rgba(255, 255, 255, 0.14);
   --color-fg: #e8eaf0;
   --color-fg-dim: #9aa1b2;
-  --color-fg-mute: #5f6675;
+  --color-fg-mute: #929bad;
   --color-accent: #4f8cff;
   --color-accent-soft: rgba(79, 140, 255, 0.16);
   --color-ok: #22c55e;
@@ -125,4 +125,12 @@ input[type="number"] {
 }
 .rise {
   animation: rise 160ms ease-out;
+}
+
+/* Readable dense metadata and a consistent keyboard focus indicator. */
+.text-\[10px\], .text-\[11px\] { font-size: 12px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

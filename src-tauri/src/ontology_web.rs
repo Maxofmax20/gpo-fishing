@@ -25,8 +25,8 @@
 //! * **No CORS header is ever sent.** The page is served by this same server, so
 //!   every request is same-origin and none is needed. Omitting it means another
 //!   origin cannot script this API even from the user's own browser.
-//! * **No CSRF exposure.** A cross-site POST would need `application/json`, which
-//!   forces a CORS preflight that is never answered.
+//! * **CSRF protection.** Writes require a process token, JSON content type,
+//!   a local Host and a same-origin Origin; foreign preflights are refused.
 //! * **A restrictive CSP** is sent on the HTML, mirroring the desktop app's.
 //! * **No arbitrary filesystem access.** Image requests are matched against the
 //!   ontology index's known evidence ids, and those ids must look like a hex id,
@@ -61,6 +61,8 @@ pub const PORT: u16 = 17890;
 const BIND_ADDR: &str = "127.0.0.1";
 
 /// Idempotence guard: the desktop app may call the start command more than once.
+static CSRF: LazyLock<String> = LazyLock::new(|| crate::core::secrets::generate_token_hex(32));
+
 static STARTED: AtomicBool = AtomicBool::new(false);
 
 /// The built frontend, resolved once.
@@ -68,7 +70,11 @@ static STARTED: AtomicBool = AtomicBool::new(false);
 /// Looks for `dist/` relative to the running executable first (the packaged layout,
 /// where the binary sits next to the bundle), then by walking up from the current
 /// directory (the development layout).
+static BUNDLED_FRONTEND: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+pub fn set_bundled_frontend(path: PathBuf) { let _ = BUNDLED_FRONTEND.set(path); }
+
 static DIST_DIR: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
+    if let Some(path) = BUNDLED_FRONTEND.get().filter(|p| p.join("index.html").is_file()) { return Some(path.clone()); }
     let mut roots: Vec<PathBuf> = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         let mut p = exe.as_path().parent();
@@ -135,16 +141,28 @@ pub fn spawn() {
         }
     };
     tracing::info!("Ontology review: {} (loopback only)", review_url());
-    let _ = std::thread::Builder::new()
-        .name("ontology-review-web".into())
-        .spawn(move || {
-            for stream in listener.incoming() {
-                let Ok(stream) = stream else { continue };
-                std::thread::spawn(move || {
-                    let _ = handle(stream);
-                });
-            }
-        });
+    if let Err(error) = spawn_listener(listener) {
+        STARTED.store(false, Ordering::SeqCst);
+        tracing::warn!("Ontology review listener failed: {error}");
+    }
+}
+
+/// Accept an already-bound loopback listener (also isolates HTTP contract tests).
+pub fn spawn_listener(listener: TcpListener) -> std::io::Result<()> {
+    if !listener.local_addr()?.ip().is_loopback() {
+        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "review listener must use loopback"));
+    }
+    std::thread::Builder::new().name("ontology-review-web".into()).spawn(move || {
+        let (tx, rx) = crossbeam_channel::bounded::<TcpStream>(16);
+        for _ in 0..4 {
+            let rx = rx.clone();
+            std::thread::spawn(move || { for stream in rx { let _ = handle(stream); } });
+        }
+        for result in listener.incoming() {
+            let Ok(stream) = result else { break };
+            let _ = tx.try_send(stream);
+        }
+    }).map(|_| ())
 }
 
 /// The review workstation's address, for the desktop UI to display.
@@ -178,6 +196,10 @@ struct Request {
     path: String,
     query: String,
     body: String,
+    host: String,
+    origin: Option<String>,
+    content_type: String,
+    csrf: String,
 }
 
 fn header_value(head: &str, name: &str) -> Option<String> {
@@ -226,19 +248,23 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
         None => (target.clone(), String::new()),
     };
 
+    let host = header_value(&head, "host").unwrap_or_default();
+    let origin = header_value(&head, "origin");
+    let content_type = header_value(&head, "content-type").unwrap_or_default();
+    let csrf = header_value(&head, "x-gpo-csrf").unwrap_or_default();
     let mut body = String::new();
     if method == "POST" {
         // Cap the declared length BEFORE reading it. A client that claims a
         // gigabyte must not be believed into an allocation.
         let len = content_length(&head).unwrap_or(0);
         if len > MAX_BODY_BYTES {
-            return Some(Request { method, path, query, body: String::new() });
+            return None;
         }
         let mut raw = vec![0u8; len];
         stream.read_exact(&mut raw).ok()?;
         body = String::from_utf8_lossy(&raw).to_string();
     }
-    Some(Request { method, path, query, body })
+    Some(Request { method, path, query, body, host, origin, content_type, csrf })
 }
 
 fn respond(stream: &mut TcpStream, status: &str, content_type: &str, bytes: &[u8], extra: &[(&str, &str)]) {
@@ -284,11 +310,29 @@ fn bad_request(stream: &mut TcpStream, msg: &str) {
 // ===========================================================================
 
 fn handle(mut stream: TcpStream) -> std::io::Result<()> {
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(5)))?;
+    stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
     let Some(req) = read_request(&mut stream) else {
         // An unparseable or oversized request gets a bare 400 and no further work.
         respond(&mut stream, "400 Bad Request", "text/plain; charset=utf-8", b"bad request", &[]);
         return Ok(());
     };
+
+    let port = stream.local_addr()?.port();
+    let local_host = format!("{BIND_ADDR}:{port}");
+    let localhost = format!("localhost:{port}");
+    let valid_host = req.host == local_host || req.host == localhost;
+    let valid_origin = req.origin.as_deref().map_or(true, |o| o == format!("http://{local_host}") || o == format!("http://{localhost}"));
+    if !valid_host || !valid_origin || (req.method == "POST" &&
+        (!req.content_type.split(';').next().is_some_and(|t| t.trim().eq_ignore_ascii_case("application/json")) ||
+         !crate::core::secrets::tokens_equal(&req.csrf, &CSRF))) {
+        json(&mut stream, "403 Forbidden", &serde_json::json!({"error": "Local host, same origin, JSON and CSRF token required"}));
+        return Ok(());
+    }
+    if req.method == "GET" && req.path == "/api/csrf" {
+        json(&mut stream, "200 OK", &serde_json::json!({"token": CSRF.as_str()}));
+        return Ok(());
+    }
 
     if let Some(rest) = req.path.strip_prefix("/api/ontology") {
         return route_api(&mut stream, &req, rest);

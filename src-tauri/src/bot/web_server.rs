@@ -29,14 +29,15 @@ fn ensure_key_watchdog(bot: &Arc<Bot>) {
     thread::Builder::new()
         .name("key-watchdog".into())
         .spawn(move || loop {
-            thread::sleep(Duration::from_millis(500));
+            thread::sleep(Duration::from_millis(25));
             let quiet_30s = |last: &parking_lot::RwLock<Option<std::time::Instant>>| {
                 last.read()
                     .map(|t| t.elapsed() >= Duration::from_secs(30))
                     .unwrap_or(false)
             };
-            // Stuck keys: browser vanished while held.
-            if !HELD_KEYS.read().is_empty() && quiet_30s(&LAST_KEY_ACTIVITY) {
+            let lost_focus = !bot_clone.ctx().roblox_in_front();
+            // Release immediately when focus leaves, or if the browser vanishes.
+            if !HELD_KEYS.read().is_empty() && (lost_focus || quiet_30s(&LAST_KEY_ACTIVITY)) {
                 let mut keys = HELD_KEYS.write();
                 for &k in keys.iter() {
                     bot_clone.ctx().platform.input.key(k, false);
@@ -45,7 +46,7 @@ fn ensure_key_watchdog(bot: &Arc<Bot>) {
                 tracing::info!("Auto-released held keys after 30s inactivity");
             }
             // Stuck mouse buttons: browser vanished between down/up.
-            if !HELD_MOUSE.read().is_empty() && quiet_30s(&LAST_MOUSE_ACTIVITY) {
+            if !HELD_MOUSE.read().is_empty() && (lost_focus || quiet_30s(&LAST_MOUSE_ACTIVITY)) {
                 let mut btns = HELD_MOUSE.write();
                 for &b in btns.iter() {
                     bot_clone.ctx().platform.input.button(b, false);
@@ -85,9 +86,6 @@ pub fn get_local_ip() -> Option<String> {
     let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("8.8.8.8:80").ok()?;
     let ip = socket.local_addr().ok()?.ip().to_string();
-    if ip.starts_with("172.16.") || ip.starts_with("172.17.") || ip.starts_with("169.254.") {
-        return Some("192.168.1.3".into());
-    }
     Some(ip)
 }
 
@@ -116,13 +114,15 @@ pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
                 }
             };
 
-            for stream in listener.incoming() {
-                let Ok(stream) = stream else { continue };
+            let (tx, rx) = crossbeam_channel::bounded::<TcpStream>(16);
+            for _ in 0..8 {
+                let rx = rx.clone();
                 let bot = Arc::clone(&bot);
                 let settings = Arc::clone(&settings);
-                thread::spawn(move || {
-                    handle_client(stream, &bot, &settings);
-                });
+                thread::spawn(move || { for stream in rx { handle_client(stream, &bot, &settings); } });
+            }
+            for stream in listener.incoming() {
+                if let Ok(stream) = stream { let _ = tx.try_send(stream); }
             }
         })
         .expect("spawn web-server thread");
@@ -130,14 +130,9 @@ pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
 
 /// Extract a header value (case-insensitive name) from a raw HTTP request.
 fn header_value(req: &str, name: &str) -> Option<String> {
-    let prefix = format!("{}:", name.to_ascii_lowercase());
-    req.lines().skip(1).find_map(|l| {
-        let t = l.trim();
-        if t.len() > prefix.len() && t[..prefix.len()].to_ascii_lowercase() == prefix {
-            Some(t[prefix.len()..].trim().to_string())
-        } else {
-            None
-        }
+    req.lines().skip(1).take_while(|l| !l.is_empty()).find_map(|line| {
+        let (key, value) = line.split_once(':')?;
+        key.trim().eq_ignore_ascii_case(name).then(|| value.trim().to_string())
     })
 }
 
@@ -168,17 +163,14 @@ fn is_authorized(
 /// `Access-Control-Allow-Origin` (same-origin dashboard needs none).
 fn cors_origin_for(req: &str, allow_lan: bool) -> Option<String> {
     let origin = header_value(req, "origin")?;
-    let low = origin.to_ascii_lowercase();
-    if low.starts_with("http://localhost") || low.starts_with("http://127.0.0.1") {
-        return Some(origin);
+    let parsed = reqwest::Url::parse(&origin).ok()?;
+    if parsed.scheme() != "http" || parsed.username() != "" || parsed.password().is_some()
+        || parsed.path() != "/" || parsed.query().is_some() || parsed.fragment().is_some() {
+        return None;
     }
-    if allow_lan
-        && (low.starts_with("http://192.168.")
-            || low.starts_with("http://10.")
-            || low.starts_with("http://172.16.")
-            || low.starts_with("http://172.17.")
-            || low.starts_with("http://172.18"))
-    {
+    let host = parsed.host_str()?;
+    let ip = host.parse::<std::net::Ipv4Addr>().ok();
+    if host == "localhost" || ip.is_some_and(|ip| ip.is_loopback() || (allow_lan && ip.is_private())) {
         return Some(origin);
     }
     None
@@ -229,12 +221,14 @@ fn read_full_request(stream: &mut TcpStream) -> Option<String> {
     let text = String::from_utf8_lossy(&buf).into_owned();
     let split = text.find("\r\n\r\n")?;
     let (head, mut body) = (text[..split].to_string(), text[split + 4..].as_bytes().to_vec());
-    let want = content_length(&head).unwrap_or(0).min(1 << 20);
+    if header_value(&head, "transfer-encoding").is_some() { return None; }
+    let want = match header_value(&head, "content-length") { Some(value) => value.parse::<usize>().ok()?, None => 0 };
+    if want > 1 << 20 { return None; }
     while body.len() < want {
         match stream.read(&mut tmp) {
-            Ok(0) => break,
+            Ok(0) => return None,
             Ok(n) => body.extend_from_slice(&tmp[..n]),
-            Err(_) => break,
+            Err(_) => return None,
         }
         if body.len() > 1 << 20 {
             break;
@@ -244,16 +238,6 @@ fn read_full_request(stream: &mut TcpStream) -> Option<String> {
     Some(format!("{head}\r\n\r\n{}", String::from_utf8_lossy(&body)))
 }
 
-fn content_length(head: &str) -> Option<usize> {
-    head.lines().skip(1).find_map(|l| {
-        let t = l.trim();
-        if t.len() > 15 && t[..15].eq_ignore_ascii_case("content-length:") {
-            t[15..].trim().parse::<usize>().ok()
-        } else {
-            None
-        }
-    })
-}
 
 fn handle_client(mut stream: TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Settings>>) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));

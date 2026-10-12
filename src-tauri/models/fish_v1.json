@@ -29,7 +29,7 @@
   "temperature": 0.75,
   "test_accuracy": 0.9889196675900277,
   "macro_f1": 0.9866435998762046,
-  "ece": 0.08431772757461282,
+  "ece": 0.10055340902473292,
   "test_sessions": 7,
   "test_n": 361,
   "per_class_f1": {
@@ -80,5 +80,12 @@
       0.18876574841571864,
       0.29056757204441347
     ]
+  },
+  "holdout_fingerprint": "df595c5817f5d0ec4ca59f08e6e3b12c901542dfc7582bb676bcbbf1703ee27d",
+  "evaluation_provenance": {
+    "evaluated_at": "2026-10-12T15:18:03.266876+00:00",
+    "split": "original reviewed-fish-v1 TEST",
+    "runtime_verified_accuracy": 0.9889196675900277,
+    "weights_retrained": false
   }
 }

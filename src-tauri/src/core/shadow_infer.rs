@@ -175,6 +175,7 @@ impl ShadowEngine {
     /// are skipped (engine still usable with the rest); corrupt files are
     /// errors (never silently run wrong weights).
     pub fn load(models_dir: &Path) -> Result<Self, String> {
+        recover_model_pairs(models_dir)?;
         let mut models = HashMap::new();
         let mut missing = 0;
         for (onnx, json) in SHADOW_MODEL_FILES {
@@ -234,8 +235,8 @@ impl ShadowEngine {
     }
 }
 
-/// RGBA frame -> CHW model input. Manual bilinear with PIL-compatible
-/// center mapping: src=(dst+0.5)*scale-0.5, edge-clamped.
+/// RGBA frame -> CHW model input with Pillow-compatible separable
+/// bilinear antialiasing and uint8 rounding, matching the trainer.
 pub fn preprocess_rgba(rgba: &[u8], w: usize, h: usize, spec: &PreprocessSpec) -> Option<Vec<f32>> {
     if rgba.len() < w * h * 4 || w == 0 || h == 0 {
         return None;
@@ -254,28 +255,46 @@ pub fn preprocess_rgba(rgba: &[u8], w: usize, h: usize, spec: &PreprocessSpec) -
             sq[d + 2] = rgba[s + 2];
         }
     }
-    // Bilinear resize to size x size, per channel.
+    // Pillow BILINEAR uses a widened antialiasing kernel when shrinking,
+    // and rounds each separable pass to uint8. Point interpolation aliases
+    // the result-screen text and is not the preprocessing used in training.
     let n = spec.size;
+    if n == 0 || spec.std.iter().any(|v| !v.is_finite() || *v <= 0.0) {
+        return None;
+    }
+    let scale = side as f64 / n as f64;
+    let filter_scale = scale.max(1.0);
+    let weights: Vec<(usize, Vec<i64>)> = (0..n).map(|destination| {
+        let center = (destination as f64 + 0.5) * scale;
+        let first = ((center - filter_scale + 0.5) as isize).max(0) as usize;
+        let end = ((center + filter_scale + 0.5) as usize).min(side);
+        let raw: Vec<f64> = (first..end).map(|source| {
+            (1.0 - ((source as f64 - center + 0.5) / filter_scale).abs()).max(0.0)
+        }).collect();
+        let sum: f64 = raw.iter().sum();
+        let fixed = raw.iter().map(|weight| (weight / sum * (1u64 << 22) as f64 + 0.5) as i64).collect();
+        (first, fixed)
+    }).collect();
+    let mut horizontal = vec![0u8; side * n * 3];
+    for y in 0..side {
+        for (x, (first, kernel)) in weights.iter().enumerate() {
+            for c in 0..3 {
+                let sum = kernel.iter().enumerate().fold(1i64 << 21, |sum, (k, weight)| {
+                    sum + sq[(y * side + first + k) * 3 + c] as i64 * weight
+                });
+                horizontal[(y * n + x) * 3 + c] = (sum >> 22).clamp(0, 255) as u8;
+            }
+        }
+    }
     let mut out = vec![0f32; 3 * n * n];
-    let sx = side as f32 / n as f32;
-    let sy = side as f32 / n as f32;
-    for c in 0..3 {
-        for dy in 0..n {
-            let src_y = (dy as f32 + 0.5) * sy - 0.5;
-            let y0 = (src_y.floor() as isize).clamp(0, side as isize - 1) as usize;
-            let y1 = (y0 + 1).min(side - 1);
-            let fy = (src_y - y0 as f32).clamp(0.0, 1.0);
-            for dx in 0..n {
-                let src_x = (dx as f32 + 0.5) * sx - 0.5;
-                let x0 = (src_x.floor() as isize).clamp(0, side as isize - 1) as usize;
-                let x1 = (x0 + 1).min(side - 1);
-                let fx = (src_x - x0 as f32).clamp(0.0, 1.0);
-                let at = |xx: usize, yy: usize| sq[(yy * side + xx) * 3 + c] as f32 / 255.0;
-                let v = at(x0, y0) * (1.0 - fx) * (1.0 - fy)
-                    + at(x1, y0) * fx * (1.0 - fy)
-                    + at(x0, y1) * (1.0 - fx) * fy
-                    + at(x1, y1) * fx * fy;
-                out[(c * n + dy) * n + dx] = (v - spec.mean[c]) / spec.std[c];
+    for (y, (first, kernel)) in weights.iter().enumerate() {
+        for x in 0..n {
+            for c in 0..3 {
+                let sum = kernel.iter().enumerate().fold(1i64 << 21, |sum, (k, weight)| {
+                    sum + horizontal[((first + k) * n + x) * 3 + c] as i64 * weight
+                });
+                let value = (sum >> 22).clamp(0, 255) as f32 / 255.0;
+                out[(c * n + y) * n + x] = (value - spec.mean[c]) / spec.std[c];
             }
         }
     }
@@ -340,6 +359,7 @@ pub fn invalidate_engine() {
 pub fn seed_shadow_models(candidates: &[PathBuf], models_dir: &Path) -> Vec<String> {
     let _ = std::fs::create_dir_all(models_dir);
     let mut seeded = Vec::new();
+    if let Err(e) = recover_model_pairs(models_dir) { tracing::warn!("model recovery failed: {e}"); return seeded; }
     for (onnx, json) in SHADOW_MODEL_FILES {
         let src_json = candidates.iter().map(|c| c.join(json)).find(|p| p.exists());
         let src_onnx = candidates.iter().map(|c| c.join(onnx)).find(|p| p.exists());
@@ -361,7 +381,9 @@ pub fn seed_shadow_models(candidates: &[PathBuf], models_dir: &Path) -> Vec<Stri
         if !same {
             if let Some(existing) = manifest_version(&dj) {
                 let bundled = manifest_version(&sj).unwrap_or(0);
-                if existing > bundled {
+                if existing > bundled || (existing == bundled
+                    && std::fs::read(&do_).is_ok_and(|bytes| bytes == want_onnx)
+                    && load_one(models_dir, onnx, json).is_ok()) {
                     tracing::info!(
                         "shadow seed: keeping deployed {onnx} v{existing} (bundled is v{bundled})"
                     );
@@ -385,8 +407,7 @@ pub fn seed_shadow_models(candidates: &[PathBuf], models_dir: &Path) -> Vec<Stri
                 );
                 continue;
             }
-            if std::fs::write(&dj, &want_json).is_err()
-                || std::fs::write(&do_, &want_onnx).is_err()
+            if deploy_model_pair(models_dir, onnx.trim_end_matches(".onnx"), &want_onnx, &want_json).is_err()
             {
                 tracing::warn!("shadow seed: write failed for {onnx}");
                 continue;
@@ -403,6 +424,45 @@ pub fn seed_shadow_models(candidates: &[PathBuf], models_dir: &Path) -> Vec<Stri
     }
     seeded
 }
+
+
+static PAIR_TRANSACTION: Mutex<()> = Mutex::new(());
+
+/// Stage and verify both files before making the transaction replayable.
+pub fn deploy_model_pair(models_dir: &Path, stem: &str, onnx: &[u8], json: &[u8]) -> Result<(), String> {
+    let _guard = PAIR_TRANSACTION.lock().map_err(|_| "model transaction lock poisoned")?;
+    if !["fish_v1", "state_v1"].contains(&stem) { return Err("unknown model slot".into()); }
+    std::fs::create_dir_all(models_dir).map_err(|e| e.to_string())?;
+    recover_model_pairs_locked(models_dir)?;
+    let pending = models_dir.join(format!("{stem}.pending"));
+    std::fs::create_dir_all(&pending).map_err(|e| e.to_string())?;
+    crate::core::registry::write_atomic(&pending.join(format!("{stem}.onnx")), onnx)?;
+    crate::core::registry::write_atomic(&pending.join(format!("{stem}.json")), json)?;
+    let staged = load_one(&pending, &format!("{stem}.onnx"), &format!("{stem}.json"))?;
+    if staged.name != stem { return Err("staged model family does not match its slot".into()); }
+    crate::core::registry::write_atomic(&pending.join("ready"), b"1")?;
+    recover_model_pairs_locked(models_dir)
+}
+pub fn recover_model_pairs(models_dir: &Path) -> Result<(), String> {
+    let _guard = PAIR_TRANSACTION.lock().map_err(|_| "model transaction lock poisoned")?;
+    recover_model_pairs_locked(models_dir)
+}
+fn recover_model_pairs_locked(models_dir: &Path) -> Result<(), String> {
+    for stem in ["fish_v1", "state_v1"] {
+        let pending = models_dir.join(format!("{stem}.pending"));
+        if !pending.join("ready").is_file() { continue; }
+        let staged = load_one(&pending, &format!("{stem}.onnx"), &format!("{stem}.json"))?;
+    if staged.name != stem { return Err("staged model family does not match its slot".into()); }
+        for extension in ["onnx", "json"] {
+            let name = format!("{stem}.{extension}");
+            let bytes = std::fs::read(pending.join(&name)).map_err(|e| e.to_string())?;
+            crate::core::registry::write_atomic(&models_dir.join(name), &bytes)?;
+        }
+        std::fs::remove_file(pending.join("ready")).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -439,6 +499,40 @@ mod tests {
     }
 
     #[test]
+    fn reevaluated_metadata_survives_seeding_at_the_same_version() {
+        let dir = std::env::temp_dir().join(format!("gpo-seed-metrics-{}-{}", std::process::id(), crate::events::now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
+        std::fs::copy(bundled.join("state_v1.onnx"), dir.join("state_v1.onnx")).unwrap();
+        let mut manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(bundled.join("state_v1.json")).unwrap()).unwrap();
+        manifest["holdout_fingerprint"] = serde_json::json!("a".repeat(64));
+        let bytes = serde_json::to_vec(&manifest).unwrap();
+        std::fs::write(dir.join("state_v1.json"), &bytes).unwrap();
+        seed_shadow_models(&[bundled], &dir);
+        assert_eq!(std::fs::read(dir.join("state_v1.json")).unwrap(), bytes);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn interrupted_pair_commit_recovers_both_verified_files() {
+        let dir = std::env::temp_dir().join(format!("gpo-pair-{}-{}", std::process::id(), crate::events::now_ms()));
+        let pending = dir.join("state_v1.pending");
+        std::fs::create_dir_all(&pending).unwrap();
+        let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
+        for name in ["state_v1.onnx", "state_v1.json"] {
+            std::fs::copy(bundled.join(name), pending.join(name)).unwrap();
+        }
+        std::fs::write(pending.join("ready"), b"1").unwrap();
+        std::fs::write(dir.join("state_v1.onnx"), b"interrupted live file").unwrap();
+        recover_model_pairs(&dir).unwrap();
+        for name in ["state_v1.onnx", "state_v1.json"] {
+            assert_eq!(std::fs::read(dir.join(name)).unwrap(), std::fs::read(bundled.join(name)).unwrap());
+        }
+        assert!(!pending.join("ready").exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn preprocess_matches_python_fixture() {
         let png = std::fs::read(fixture_dir().join("fixture.png")).unwrap();
         let img = image::load_from_memory(&png).unwrap().to_rgba8();
@@ -459,6 +553,18 @@ mod tests {
             let worst = got.iter().zip(want.iter()).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
             let tol = meta["tolerance_max_abs_diff"].as_f64().unwrap() as f32;
             assert!(worst < tol, "{model} preprocess drift: worst {worst} >= tol {tol}");
+        }
+    }
+
+    #[test]
+    fn downsampled_result_text_matches_pillow() {
+        let img = image::open(fixture_dir().join("downsample.png")).unwrap().to_rgba8();
+        for model in ["state_v1", "fish_v1"] {
+            let got = preprocess_rgba(img.as_raw(), img.width() as usize, img.height() as usize, &spec_for(model)).unwrap();
+            let want = read_f32(&format!("downsample_{model}.f32"));
+            let worst = got.iter().zip(&want).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
+            assert_eq!(got.len(), want.len());
+            assert!(worst < 1e-5, "{model} downsampling differs from training: {worst}");
         }
     }
 

@@ -36,6 +36,8 @@ pub fn shadow_stem(family: &str) -> Option<&'static str> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelMetrics {
+    #[serde(default)]
+    pub holdout_fingerprint: Option<String>,
     pub accuracy: f32,
     pub macro_f1: f32,
     pub ece: Option<f32>,
@@ -84,25 +86,27 @@ impl ModelMetrics {
                 }
             }
         }
-        let ece = calibration.and_then(|c| c.get("ece")).and_then(|v| v.as_f64()).map(|v| v as f32);
+        let ece = evaluation_test.get("ece").or_else(|| calibration.and_then(|c| c.get("ece"))).and_then(|v| v.as_f64()).map(|v| v as f32);
         let kept_accuracy =
             rejection.and_then(|r| r.get("test_kept_accuracy")).and_then(|v| v.as_f64()).map(|v| v as f32);
         let test_n = evaluation_test.get("n").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-        // Test support per class, when the trainer recorded it. Absent is not
-        // zero: an unknown support must not be treated as "too thin to judge",
-        // so it stays out of the map and the floor does not apply.
-        let per_class_test_support: HashMap<String, usize> = evaluation_test
-            .get("per_entity")
-            .and_then(|m| m.as_object())
-            .map(|m| {
-                m.iter()
-                    .filter_map(|(k, v)| {
-                        v.get("support").and_then(|s| s.as_u64()).map(|n| (k.clone(), n as usize))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let mut per_class_test_support = HashMap::new();
+        for shape in ["per_entity", "per_class"] {
+            if let Some(map) = evaluation_test.get(shape).and_then(|m| m.as_object()) {
+                for (class, value) in map {
+                    if let Some(n) = value.get("support").and_then(|s| s.as_u64()) {
+                        per_class_test_support.insert(class.clone(), n as usize);
+                    }
+                }
+            }
+        }
+        let valid = |v: f32| v.is_finite() && (0.0..=1.0).contains(&v);
+        if !valid(accuracy) || !valid(macro_f1) || ece.is_some_and(|v| !valid(v))
+            || kept_accuracy.is_some_and(|v| !valid(v)) || per_class_f1.values().any(|v| !valid(*v)) {
+            return None;
+        }
         Some(Self {
+            holdout_fingerprint: evaluation_test.get("holdout_fingerprint").and_then(|v| v.as_str()).map(str::to_string),
             accuracy,
             macro_f1,
             ece,
@@ -552,7 +556,7 @@ pub fn compare(
                     .get(cls.as_str())
                     .copied()
                     .unwrap_or(0);
-                if support > 0 && support < PER_CLASS_MIN_TEST_SUPPORT {
+                if support < PER_CLASS_MIN_TEST_SUPPORT || current.per_class_test_support.get(cls).copied().unwrap_or(0) < PER_CLASS_MIN_TEST_SUPPORT {
                     thin_support.push(format!("{cls} ({support} test example(s))"));
                     continue;
                 }
@@ -615,6 +619,20 @@ pub fn compare(
             )};
         }
     }
+    let valid = |v: f32| v.is_finite() && (0.0..=1.0).contains(&v);
+    let metrics_valid = [current, candidate].iter().all(|m| valid(m.accuracy) && valid(m.macro_f1)
+        && m.ece.is_some_and(valid) && m.test_sessions > 0 && m.test_n > 0
+        && candidate_classes.iter().all(|c| m.per_class_f1.get(c).is_some_and(|v| valid(*v))
+            && m.per_class_test_support.get(c).copied().unwrap_or(0) >= PER_CLASS_MIN_TEST_SUPPORT));
+    let same_holdout = current.holdout_fingerprint.as_ref().is_some_and(|f| f.len() == 64
+        && f.chars().all(|c| c.is_ascii_hexdigit()) && candidate.holdout_fingerprint.as_ref() == Some(f));
+    let evidence_valid = metrics_valid && same_holdout;
+    if !metrics_valid { inconclusive!("Missing or invalid metrics, calibration, session evidence or per-class support"); }
+    if !same_holdout { inconclusive!("Holdout fingerprints missing or different; evaluate both models on the same frozen test set"); }
+    // Rejection is advisory for the state model; fish admission requires a measured operating point.
+    if family == "fish" && !candidate.kept_accuracy.is_some_and(valid) {
+        inconclusive!("Fish rejection operating point is unavailable; evaluate calibrated retention before admission");
+    }
     if !thin_support.is_empty() {
         inconclusive! {format!(
             "per-class metrics too thin to judge (need >={PER_CLASS_MIN_TEST_SUPPORT} test examples each): {}",
@@ -630,13 +648,13 @@ pub fn compare(
     if candidate.test_n == 0 || current.test_n == 0 {
         inconclusive! {"empty test slice on either side".to_string()};
     }
-    if f1_delta < 0.01 {
+    if evidence_valid && f1_delta < 0.01 {
         reject! {format!("macro-F1 delta {f1_delta:+.4} below +0.01 promotion bar")};
     }
-    if acc_delta < -0.005 {
+    if evidence_valid && acc_delta < -0.005 {
         reject! {format!("accuracy regression {acc_delta:+.4}")};
     }
-    if !regressions.is_empty() {
+    if evidence_valid && !regressions.is_empty() {
         reject! {format!(
             "{} per-class regression(s) > 0.05: {}",
             regressions.len(),
@@ -644,12 +662,12 @@ pub fn compare(
         )};
     }
     if let Some(d) = ece_delta {
-        if d > 0.05 {
+        if evidence_valid && d > 0.05 {
             reject! {format!("calibration regression ECE {d:+.4}")};
         }
     }
     match (current.kept_accuracy, candidate.kept_accuracy) {
-        (Some(_), Some(kept)) if kept < 0.9 => {
+        (_, Some(kept)) if evidence_valid && kept < 0.9 => {
             reject! {format!("candidate rejection operating point kept-accuracy {kept:.3} < 0.90")};
         }
         _ => {}
@@ -720,7 +738,7 @@ pub fn promote_to_shadow(
     // cannot parse, that used to leave the app with no usable shadow model AND
     // no automatic recovery - a self-inflicted lockout, fixable only by
     // deleting files by hand.
-    copy_atomic(&art, &live_onnx)?;
+
     let manifest = serde_json::json!({
         "name": stem,
         "version": records[idx].model_version.to_string(),
@@ -735,13 +753,15 @@ pub fn promote_to_shadow(
         // permutation of `classes` is detectable; the weights checksum alone
         // cannot catch it (the array lives in the manifest, not the .onnx).
         "vocab_sha": records[idx].vocab_sha,
-        "sha256": sha_file(&live_onnx)?,
+        "sha256": sha_file(&art)?,
         "temperature": records[idx].temperature,
         "test_accuracy": records[idx].metrics.accuracy,
         "macro_f1": records[idx].metrics.macro_f1,
         "ece": records[idx].metrics.ece,
         "test_sessions": records[idx].metrics.test_sessions,
         "test_n": records[idx].metrics.test_n,
+        "holdout_fingerprint": records[idx].metrics.holdout_fingerprint,
+        "kept_accuracy": records[idx].metrics.kept_accuracy,
         // MANDATORY. v5.6.x omitted these, and `current_metrics_for` rebuilds
         // the incumbent's metrics FROM THIS FILE on the next comparison. With
         // `per_class_f1` empty, the per-class regression gate could never fire
@@ -753,7 +773,8 @@ pub fn promote_to_shadow(
                        "mean": records[idx].mean, "std": records[idx].std},
     });
     let manifest_body = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
-    write_atomic(&live_json, manifest_body.as_bytes())?;
+    let onnx_bytes = std::fs::read(&art).map_err(|e| e.to_string())?;
+    super::shadow_infer::deploy_model_pair(models_dir, &stem, &onnx_bytes, manifest_body.as_bytes())?;
     // Re-verify the deployed bytes through the real loader path.
     let load_err = super::shadow_infer::ShadowEngine::load(models_dir).err();
     if let Some(e) = load_err {
@@ -786,13 +807,9 @@ pub fn rollback_family(data_dir: &Path, models_dir: &Path, family: &str) -> Resu
     cands.sort();
     let newest = cands.pop().ok_or_else(|| format!("archive for '{family}' is empty"))?;
     let (_live_onnx, live_json) = shadow_paths(models_dir, stem);
-    for name in [format!("{stem}.onnx"), format!("{stem}.json")] {
-        let src = newest.join(&name);
-        if !src.exists() {
-            return Err(format!("archive is missing {name}: refusing partial rollback"));
-        }
-        std::fs::copy(&src, models_dir.join(&name)).map_err(|e| e.to_string())?;
-    }
+    let onnx_bytes = std::fs::read(newest.join(format!("{stem}.onnx"))).map_err(|e| e.to_string())?;
+    let json_bytes = std::fs::read(newest.join(format!("{stem}.json"))).map_err(|e| e.to_string())?;
+    super::shadow_infer::deploy_model_pair(models_dir, stem, &onnx_bytes, &json_bytes)?;
     // The restored files must verify, or the rollback itself is refused.
     super::shadow_infer::ShadowEngine::load(models_dir)
         .map_err(|e| format!("restored archive failed to load: {e}"))?;
@@ -972,14 +989,15 @@ mod tests {
 
     fn metrics(acc: f32, f1: f32, sessions: usize, per: &[(&str, f32)]) -> ModelMetrics {
         ModelMetrics {
+            holdout_fingerprint: Some("a".repeat(64)),
             accuracy: acc,
             macro_f1: f1,
             ece: Some(0.1),
             test_sessions: sessions,
             test_n: 100,
             per_class_f1: per.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
-            per_class_test_support: Default::default(),
-            kept_accuracy: None,
+            per_class_test_support: crate::core::class_vocab::fish_vocab().iter().map(|c| (c.to_string(), 40)).chain(per.iter().map(|(c, _)| (c.to_string(), 40))).collect(),
+            kept_accuracy: Some(0.95),
         }
     }
 
@@ -991,6 +1009,7 @@ mod tests {
         per: &[(&str, f32, usize)],
     ) -> ModelMetrics {
         ModelMetrics {
+            holdout_fingerprint: Some("a".repeat(64)),
             accuracy: acc,
             macro_f1: f1,
             ece: Some(0.1),
@@ -1001,7 +1020,7 @@ mod tests {
                 .iter()
                 .map(|(k, _, n)| (k.to_string(), *n))
                 .collect(),
-            kept_accuracy: None,
+            kept_accuracy: Some(0.95),
         }
     }
 
@@ -1024,14 +1043,15 @@ mod tests {
             }
         }
         ModelMetrics {
+            holdout_fingerprint: Some("a".repeat(64)),
             accuracy: 0.77,
             macro_f1: 0.72,
             ece: Some(0.1),
             test_sessions: sessions,
             test_n: 100,
             per_class_f1: per.into_iter().collect(),
-            per_class_test_support: Default::default(),
-            kept_accuracy: None,
+            per_class_test_support: crate::core::class_vocab::fish_vocab().iter().map(|c| (c.to_string(), 40)).collect(),
+            kept_accuracy: Some(0.95),
         }
     }
 
@@ -1062,6 +1082,7 @@ mod tests {
             }
         }
         ModelMetrics {
+            holdout_fingerprint: Some("a".repeat(64)),
             accuracy: 0.77,
             macro_f1: 0.72,
             ece: Some(0.1),
@@ -1069,12 +1090,38 @@ mod tests {
             test_n: 100,
             per_class_f1: per.into_iter().collect(),
             per_class_test_support: sup.into_iter().collect(),
-            kept_accuracy: None,
+            kept_accuracy: Some(0.95),
         }
     }
 
     fn classes(names: &[&str]) -> Vec<String> {
         names.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn missing_support_or_holdout_never_passes() {
+        let current = fish_metrics_with_support(4, &[]);
+        let mut candidate = current.clone();
+        candidate.macro_f1 += 0.03;
+        candidate.per_class_test_support.clear();
+        let classes = fish_classes();
+        assert_eq!(compare("fish", &current, &candidate, &classes, &classes, &classes).verdict, ComparisonVerdict::Inconclusive);
+        candidate.per_class_test_support = current.per_class_test_support.clone();
+        candidate.holdout_fingerprint = Some("b".repeat(64));
+        assert_eq!(compare("fish", &current, &candidate, &classes, &classes, &classes).verdict, ComparisonVerdict::Inconclusive);
+        candidate.holdout_fingerprint = current.holdout_fingerprint.clone();
+        candidate.accuracy = f32::NAN;
+        assert_eq!(compare("fish", &current, &candidate, &classes, &classes, &classes).verdict, ComparisonVerdict::Inconclusive);
+    }
+    #[test]
+    fn support_is_parsed_from_both_trainer_shapes_and_invalid_numbers_refuse() {
+        let eval = serde_json::json!({"accuracy": 0.9, "macro_f1": 0.9, "n": 40,
+            "per_class": {"bite": {"f1": 0.9, "support": 40}}});
+        let metrics = ModelMetrics::from_trainer_files(&eval, None, None, 3).unwrap();
+        assert_eq!(metrics.per_class_test_support["bite"], 40);
+        let mut invalid = eval;
+        invalid["accuracy"] = serde_json::json!(1.5);
+        assert!(ModelMetrics::from_trainer_files(&invalid, None, None, 3).is_none());
     }
 
     #[test]

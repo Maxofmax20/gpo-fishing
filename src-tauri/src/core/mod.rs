@@ -7,6 +7,8 @@ pub mod clipboard;
 pub mod controller;
 pub mod digit_model;
 pub mod fruit;
+pub mod fruit_storage;
+pub mod fish_recognition;
 pub mod platform;
 pub mod types;
 pub mod vision;

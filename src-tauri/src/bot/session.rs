@@ -5,6 +5,7 @@ use crate::events::{Lifetime, Stats};
 
 #[derive(Debug)]
 pub struct Session {
+    pub unverified: u32,
     pub fish: u32,
     pub failed: u32,
     pub fruits: u32,
@@ -32,6 +33,7 @@ impl Session {
 
     pub fn with_base(base: Lifetime) -> Self {
         Self {
+            unverified: 0,
             fish: 0,
             failed: 0,
             fruits: 0,
@@ -56,6 +58,7 @@ impl Session {
     pub fn lifetime(&self) -> Lifetime {
         let total_fish = self.base.fish + self.fish;
         Lifetime {
+            unverified: self.base.unverified + self.unverified,
             fish: total_fish,
             failed: self.base.failed + self.failed,
             fruits: self.base.fruits + self.fruits,
@@ -89,6 +92,12 @@ impl Session {
             self.pity_fruit += 1;
             self.pity_legendary += 1;
         }
+    }
+
+    /// Restocking uses completed reels; catch, pity and income counters require confirmation.
+    pub fn record_unverified(&mut self) {
+        self.unverified += 1;
+        self.since_purchase += 1;
     }
 
     pub fn record_failed(&mut self) {
@@ -141,6 +150,7 @@ impl Session {
         let estimated_peli = (self.fish as u64) * 95;
 
         Stats {
+            unverified: self.unverified,
             fish: self.fish,
             failed: self.failed,
             fruits: self.fruits,
@@ -171,6 +181,20 @@ impl Default for Session {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unverified_reels_do_not_inflate_confirmed_catches_or_pity() {
+        let mut session = Session::new();
+        session.record_unverified();
+        let stats = session.stats();
+        assert_eq!(stats.unverified, 1);
+        assert_eq!(stats.fish, 0);
+        assert_eq!(stats.failed, 0);
+        assert_eq!(stats.estimated_peli, 0);
+        assert_eq!(stats.pity_fruit, 0);
+        assert_eq!(stats.pity_legendary, 0);
+        assert_eq!(stats.since_purchase, 1);
+    }
 
     #[test]
     fn adaptive_timeout_scales() {

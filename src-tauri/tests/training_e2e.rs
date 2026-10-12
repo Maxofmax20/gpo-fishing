@@ -71,21 +71,20 @@ fn mini_dataset(dir: &PathBuf) -> (String, String) {
 }
 
 fn current_metrics(acc: f32, f1: f32) -> (ModelMetrics, Vec<String>) {
-    let mut per = std::collections::HashMap::new();
-    per.insert("fish:shark".to_string(), 0.7f32);
-    per.insert("fish:golden".to_string(), 0.6f32);
+    let per: std::collections::HashMap<String, f32> = gpo_autofish_lib::core::class_vocab::fish_vocab().iter().map(|c| (c.to_string(), 0.65)).collect();
     (
         ModelMetrics {
+            holdout_fingerprint: Some("a".repeat(64)),
             accuracy: acc,
             macro_f1: f1,
             ece: Some(0.1),
             test_sessions: 2,
             test_n: 20,
             per_class_f1: per,
-            per_class_test_support: Default::default(),
-            kept_accuracy: None,
+            per_class_test_support: gpo_autofish_lib::core::class_vocab::fish_vocab().iter().map(|c| (c.to_string(), 20)).collect(),
+            kept_accuracy: Some(0.95),
         },
-        vec!["fish:shark".to_string(), "fish:golden".to_string()],
+        gpo_autofish_lib::core::class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect(),
     )
 }
 
@@ -173,6 +172,10 @@ fn candidate_inputs_from_stub(
         per.insert(c.clone(), 0.85);
     }
     metrics.per_class_f1 = per;
+    metrics.per_class_test_support = classes.iter().map(|c| (c.clone(), 20)).collect();
+    metrics.holdout_fingerprint = Some("a".repeat(64));
+    metrics.ece = Some(0.1);
+    metrics.kept_accuracy = Some(0.95);
     let vocab_sha = gpo_autofish_lib::core::class_vocab::fish_vocab_sha();
 registry::CandidateInputs {
         onnx_path: out.join("model.onnx"),

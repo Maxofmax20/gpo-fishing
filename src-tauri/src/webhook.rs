@@ -7,7 +7,8 @@ use serde_json::{json, Value};
 
 use crate::config::Settings;
 use crate::core::fruit::{DropInfo, SpawnInfo};
-use crate::events::Stats;
+use crate::events::{Stats, BotEvent, LogLine};
+use crate::core::fruit_storage::{FruitCatchContext, StorageOutcome};
 
 const COLOR_BLUE: u32 = 0x3B82F6;
 const COLOR_PURPLE: u32 = 0x8B5CF6;
@@ -35,12 +36,12 @@ impl WebhookQueue {
         Self { tx: None, settings: None }
     }
 
-    pub fn start(settings: Arc<RwLock<Settings>>) -> Arc<Self> {
+    pub fn start(settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) -> Arc<Self> {
         let (tx, rx) = unbounded::<Notification>();
         let s2 = Arc::clone(&settings);
         std::thread::Builder::new()
             .name("webhook".into())
-            .spawn(move || worker(rx, s2))
+            .spawn(move || worker(rx, s2, events))
             .expect("spawn webhook worker");
         Arc::new(Self { tx: Some(tx), settings: Some(settings) })
     }
@@ -157,15 +158,15 @@ impl WebhookQueue {
         };
 
         let (title, desc, color) = if rarity == crate::core::fruit::FruitRarity::Mythical {
-            ("🔥 MYTHICAL DEVIL FRUIT DROPPED!", format!("🎉 Extraordinary luck! You got a Mythical Devil Fruit: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
+            ("🔥 MYTHICAL DEVIL FRUIT CAUGHT!", format!("🎉 Extraordinary luck! You got a Mythical Devil Fruit: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
         } else if rarity == crate::core::fruit::FruitRarity::Legendary {
-            ("🌟 Legendary Devil Fruit Dropped!", format!("You got a legendary devil fruit: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
+            ("🌟 Legendary Devil Fruit Caught!", format!("You got a legendary devil fruit: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
         } else if is_pity_zero {
-            ("🌟 Pity 0 Devil Fruit Dropped!", format!("Pity reset to 0! Guaranteed drop: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
+            ("🌟 Pity 0 Devil Fruit Caught!", format!("Pity reset to 0! Pity-zero catch: {fruit_name}!\n\n{pity_info}"), COLOR_GOLD)
         } else if rarity != crate::core::fruit::FruitRarity::Unknown {
-            ("🍇 Devil Fruit Dropped!", format!("You got a {} devil fruit: {fruit_name}.\n\n{pity_info}", rarity.as_str()), COLOR_PURPLE)
+            ("🍇 Devil Fruit Caught!", format!("You got a {} devil fruit: {fruit_name}.\n\n{pity_info}", rarity.as_str()), COLOR_PURPLE)
         } else {
-            ("🍇 Devil Fruit Dropped!", format!("You got a devil fruit drop!\n\n{pity_info}"), COLOR_PURPLE)
+            ("🍇 Devil Fruit Caught!", format!("You caught a devil fruit!\n\n{pity_info}"), COLOR_PURPLE)
         };
         self.send(Notification {
             title: title.into(),
@@ -181,64 +182,13 @@ impl WebhookQueue {
         });
     }
 
-    pub fn fruit_stored(&self, fruit_name: &str, photo: Option<Vec<u8>>, custom_tg: Option<String>) {
-        let rarity = crate::core::fruit::fruit_rarity(fruit_name);
-        let legendary_only = self.settings.as_ref().map(|s| s.read().webhook.legendary_only).unwrap_or(true);
-        if legendary_only && !rarity.is_high_tier() {
-            return;
+    pub fn fruit_storage_outcome(&self, catch: &FruitCatchContext, outcome: &StorageOutcome, photo: Option<Vec<u8>>) {
+        let Some(settings) = &self.settings else { return; };
+        let settings = settings.read();
+        if let Some(notification) = storage_notification(&settings, catch, outcome, photo) {
+            drop(settings);
+            self.send(notification);
         }
-
-        let title = if rarity == crate::core::fruit::FruitRarity::Mythical {
-            "🔥 Mythical Devil Fruit Stored!"
-        } else if rarity == crate::core::fruit::FruitRarity::Legendary {
-            "🌟 Legendary Devil Fruit Stored!"
-        } else {
-            "📦 Devil Fruit Stored!"
-        };
-        let desc = if rarity != crate::core::fruit::FruitRarity::Unknown {
-            format!("Successfully stored <b>{fruit_name}</b> ({}) into your inventory/bag.", rarity.as_str())
-        } else {
-            format!("Successfully stored <b>{fruit_name}</b> into your inventory/bag.")
-        };
-        self.send(Notification {
-            title: title.into(),
-            desc,
-            color: COLOR_GREEN,
-            fields: vec![
-                ("Fruit Name".into(), fruit_name.to_string()),
-                ("Rarity".into(), rarity.as_str().to_string()),
-                ("Status".into(), "Stored safely in inventory".into()),
-            ],
-            photo,
-            custom_telegram_html: custom_tg,
-        });
-    }
-
-    pub fn fruit_storage_failed(&self, fruit_name: &str, reason: &str, photo: Option<Vec<u8>>, custom_tg: Option<String>) {
-        let rarity = crate::core::fruit::fruit_rarity(fruit_name);
-        let legendary_only = self.settings.as_ref().map(|s| s.read().webhook.legendary_only).unwrap_or(true);
-        if legendary_only && !rarity.is_high_tier() {
-            return;
-        }
-
-        let title = "⚠️ Devil Fruit Storage Full / Dropped!";
-        let desc = if rarity != crate::core::fruit::FruitRarity::Unknown {
-            format!("Could not store <b>{fruit_name}</b> ({})!\n\n<b>Reason:</b> {reason}", rarity.as_str())
-        } else {
-            format!("Could not store <b>{fruit_name}</b>!\n\n<b>Reason:</b> {reason}")
-        };
-        self.send(Notification {
-            title: title.into(),
-            desc,
-            color: COLOR_GOLD,
-            fields: vec![
-                ("Fruit Name".into(), fruit_name.to_string()),
-                ("Rarity".into(), rarity.as_str().to_string()),
-                ("Status".into(), "Dropped on ground / Bag full".into()),
-            ],
-            photo,
-            custom_telegram_html: custom_tg,
-        });
     }
 
     pub fn disconnect(&self, reason: &str, photo: Option<Vec<u8>>) {
@@ -582,7 +532,27 @@ pub fn post_telegram_photo(token: &str, chat_id: &str, photo: &[u8], caption: &s
     }
 }
 
-fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>) {
+fn storage_notification(settings: &Settings, catch: &FruitCatchContext, outcome: &StorageOutcome, photo: Option<Vec<u8>>) -> Option<Notification> {
+    if !settings.webhook.enabled || !settings.webhook.fruit_drop || (settings.webhook.legendary_only && !catch.high_tier()) { return None; }
+    let status = outcome.label();
+    let detail = if let StorageOutcome::Failed(reason) = outcome { format!("{status}: {reason}") } else { status.into() };
+    Some(Notification {
+        title: format!("{} — {status}", catch.name), desc: detail,
+        color: if matches!(outcome, StorageOutcome::Stored) { COLOR_GREEN } else { COLOR_GOLD },
+        fields: vec![
+            ("Fruit Name".into(), catch.name.clone()),
+            ("Pity".into(), if catch.pity_zero { "0 — pity-zero catch".into() } else { catch.pity.clone().unwrap_or_else(|| "Unreadable — treated as nonzero".into()) }),
+            ("Protection".into(), catch.policy.reason.clone()), ("Status".into(), status.into()),
+        ], photo, custom_telegram_html: None,
+    })
+}
+
+fn delivery_log(events: &Sender<BotEvent>, message: String) {
+    tracing::warn!("{message}");
+    let _ = events.send(BotEvent::Log(LogLine { ts: crate::events::now_ms(), level: crate::events::LogLevel::Warn, msg: message }));
+}
+
+fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) {
     for notif in rx.iter() {
         let (provider, url, tg_token, tg_chat) = {
             let s = settings.read();
@@ -615,7 +585,7 @@ fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>) {
                         // reqwest errors echo the request URL, which IS the
                         // secret webhook URL — redact before logging.
                         let safe = crate::core::secrets::redact(&e, &[&url]);
-                        tracing::warn!("discord webhook attempt {} failed: {safe}", attempt + 1);
+                        delivery_log(&events, format!("Discord notification attempt {} failed: {safe}", attempt + 1));
                         std::thread::sleep(delay);
                         delay *= 2;
                     }
@@ -645,22 +615,76 @@ fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>) {
             };
             let mut delay = Duration::from_secs(1);
             for attempt in 0..3 {
-                let res = if let Some(ref bytes) = notif.photo {
-                    post_telegram_photo(&tg_token, &tg_chat, bytes, &tg_text)
-                } else {
-                    post_telegram(&tg_token, &tg_chat, &tg_text)
-                };
+                let res = deliver_telegram(&tg_text, notif.photo.as_deref(),
+                    |photo, caption| {
+                        let result = post_telegram_photo(&tg_token, &tg_chat, photo, caption);
+                        if let Err(error) = &result {
+                            let safe = crate::core::secrets::redact(error, &[&tg_token, &tg_chat]);
+                            delivery_log(&events, format!("Telegram photo could not be delivered; sending text details: {safe}"));
+                        }
+                        result
+                    },
+                    |text| post_telegram(&tg_token, &tg_chat, text));
                 match res {
                     Ok(_) => break,
                     Err(e) => {
                         // Telegram API URLs embed the bot token — redact it.
                         let safe = crate::core::secrets::redact(&e, &[&tg_token, &tg_chat]);
-                        tracing::warn!("telegram attempt {} failed: {safe}", attempt + 1);
+                        delivery_log(&events, format!("Telegram notification attempt {} failed: {safe}", attempt + 1));
                         std::thread::sleep(delay);
                         delay *= 2;
                     }
                 }
             }
         }
+    }
+}
+
+// Keep captions comfortably below Telegram's limit, including UTF-16 emoji units.
+fn deliver_telegram(text: &str, photo: Option<&[u8]>, mut send_photo: impl FnMut(&[u8], &str) -> Result<u16, String>, mut send_text: impl FnMut(&str) -> Result<u16, String>) -> Result<u16, String> {
+    if let Some(photo) = photo {
+        if text.encode_utf16().count() > 900 {
+            // Text first: retry cannot duplicate an already-sent photo if text fails.
+            let delivered = send_text(text)?;
+            let _ = send_photo(photo, "Fruit event — details in the message above.");
+            return Ok(delivered);
+        }
+        if let Ok(status) = send_photo(photo, text) { return Ok(status); }
+    }
+    send_text(text)
+}
+
+#[cfg(test)]
+mod fruit_delivery_tests {
+    use super::*;
+    fn catch(raw: &str) -> FruitCatchContext {
+        let d = DropInfo { name: None, pity: None, text: raw.into(), is_legendary: false, custom_telegram_message: None };
+        FruitCatchContext::new(&d, raw, true, true)
+    }
+    #[test] fn pity_zero_unknown_name_bypasses_rarity_filter() {
+        let mut s = Settings::default(); s.webhook.enabled = true;
+        for outcome in [StorageOutcome::Stored, StorageOutcome::ProtectedKept, StorageOutcome::Dropped, StorageOutcome::Unknown] {
+            let n = storage_notification(&s, &catch("0/40"), &outcome, Some(vec![1])).unwrap();
+            assert_eq!(n.photo, Some(vec![1])); assert!(n.title.contains(outcome.label()));
+        }
+        assert!(storage_notification(&s, &catch("4/40"), &StorageOutcome::Stored, None).is_none());
+        s.webhook.fruit_drop = false;
+        assert!(storage_notification(&s, &catch("0/40"), &StorageOutcome::Stored, None).is_none());
+        s.webhook.fruit_drop = true; s.webhook.enabled = false;
+        assert!(storage_notification(&s, &catch("0/40"), &StorageOutcome::Stored, None).is_none());
+    }
+    #[test] fn photo_failure_falls_back_to_text() {
+        let mut text_calls = 0;
+        assert_eq!(deliver_telegram("Stored", Some(&[1]), |_, _| Err("photo failed".into()), |_| { text_calls += 1; Ok(200) }), Ok(200));
+        assert_eq!(text_calls, 1);
+    }
+    #[test] fn long_caption_is_separate_text() {
+        let long = "🌟".repeat(500);
+        let mut photos = 0; let mut texts = 0;
+        assert_eq!(deliver_telegram(&long, Some(&[1]), |_, caption| { photos += 1; assert!(caption.len() < 100); Ok(200) }, |text| { texts += 1; assert_eq!(text, long); Ok(200) }), Ok(200));
+        assert_eq!((photos, texts), (1, 1));
+    }
+    #[test] fn delivery_failure_is_returned() {
+        assert!(deliver_telegram("Stored", None, |_, _| Ok(200), |_| Err("offline".into())).is_err());
     }
 }

@@ -150,6 +150,9 @@ pub struct Features {
     /// Never influences macro control; see core::shadow_infer.
     #[serde(default = "default_true")]
     pub ml_shadow: bool,
+    /// Use the local trained fish model for independently confirmed fish names.
+    #[serde(default = "default_true")]
+    pub ml_fish_recognition: bool,
 }
 
 fn default_true() -> bool {
@@ -176,6 +179,7 @@ impl Default for Features {
             rejoin_macro_name: String::new(),
             sound_alerts: true,
             ml_shadow: true,
+            ml_fish_recognition: true,
         }
     }
 }
@@ -1032,6 +1036,17 @@ pub fn clamp_safety_settings(s: &mut Settings) {
         }
         out
     }
+    s.fishing.scan_timeout_s = clamp_f32(s.fishing.scan_timeout_s, 1.0, 600.0, 15.0);
+    s.fishing.track_timeout_s = clamp_f32(s.fishing.track_timeout_s, 1.0, 600.0, 30.0);
+    s.fishing.min_track_s = clamp_f32(s.fishing.min_track_s, 0.0, 60.0, 0.8);
+    s.fishing.wait_after_catch_s = clamp_f32(s.fishing.wait_after_catch_s, 0.0, 60.0, 0.3);
+    s.fishing.scan_hz = s.fishing.scan_hz.clamp(1, 240);
+    s.fishing.track_hz = s.fishing.track_hz.clamp(1, 240);
+    s.fishing.cast_hold_ms = s.fishing.cast_hold_ms.clamp(1, 10_000);
+    s.watchdog.heartbeat_timeout_s = clamp_f32(s.watchdog.heartbeat_timeout_s, 1.0, 600.0, 30.0);
+    s.watchdog.restart_backoff_s = clamp_f32(s.watchdog.restart_backoff_s, 0.0, 300.0, 2.0);
+    s.ocr.spawn_check_interval_s = clamp_f32(s.ocr.spawn_check_interval_s, 0.1, 600.0, 4.0);
+    s.ocr.spawn_cooldown_s = clamp_f32(s.ocr.spawn_cooldown_s, 0.0, 86_400.0, 60.0);
     let t = &mut s.training;
     t.readiness_min_macro_f1 = clamp_f32(t.readiness_min_macro_f1, 0.30, 1.0, 0.70);
     t.readiness_min_worst_f1 = clamp_f32(t.readiness_min_worst_f1, 0.10, 1.0, 0.50);
@@ -1049,7 +1064,9 @@ pub fn clamp_safety_settings(s: &mut Settings) {
         if p.chars().any(|c| matches!(c, ';' | '&' | '|' | '`' | '$' | '\n' | '\r')) {
             p.clear();
         }
-        p.truncate(512);
+        let mut boundary = p.len().min(512);
+        while !p.is_char_boundary(boundary) { boundary -= 1; }
+        p.truncate(boundary);
     }
 }
 
@@ -1152,9 +1169,19 @@ pub fn save(&self, s: &Settings) -> Result<(), ConfigError> {
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
-    let tmp = path.with_extension("json.tmp");
-    fs::write(&tmp, bytes)?;
-    fs::rename(&tmp, path)?;
+    use std::io::Write;
+    static NEXT_TMP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let id = NEXT_TMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = path.with_extension(format!("tmp-{}-{id}", std::process::id()));
+    let result = (|| -> Result<(), std::io::Error> {
+        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&tmp, path)
+    })();
+    if result.is_err() { let _ = fs::remove_file(&tmp); }
+    result?;
     Ok(())
 }
 
@@ -1346,6 +1373,24 @@ pub fn import_legacy(json: &str, roblox: PxRect) -> Result<Settings, ConfigError
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtime_settings_cannot_create_busy_loops_or_infinite_deadlines() {
+        let mut settings = Settings::default();
+        settings.fishing.scan_hz = 0;
+        settings.fishing.track_hz = u32::MAX;
+        settings.fishing.scan_timeout_s = f32::NAN;
+        settings.fishing.track_timeout_s = f32::INFINITY;
+        settings.watchdog.restart_backoff_s = -1.0;
+        settings.fishing.cast_hold_ms = 0;
+        Store::clamp_safety_settings(&mut settings);
+        assert_eq!(settings.fishing.scan_hz, 1);
+        assert_eq!(settings.fishing.track_hz, 240);
+        assert!(settings.fishing.scan_timeout_s.is_finite());
+        assert!(settings.fishing.track_timeout_s.is_finite());
+        assert!(settings.watchdog.restart_backoff_s >= 0.0);
+        assert_eq!(settings.fishing.cast_hold_ms, 1);
+    }
 
     #[test]
     fn round_trip_defaults() {

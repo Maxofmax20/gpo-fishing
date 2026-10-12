@@ -35,9 +35,9 @@ pub fn snapshot(app: AppHandle, st: State<'_, AppState>) -> Snapshot {
 }
 
 #[tauri::command]
-pub fn bot_start(st: State<'_, AppState>) {
+pub async fn bot_start(st: State<'_, AppState>) -> Result<(), String> {
     let bot = Arc::clone(&st.bot);
-    std::thread::spawn(move || bot.start());
+    tauri::async_runtime::spawn_blocking(move || bot.start_checked()).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -53,9 +53,11 @@ pub fn bot_stop(st: State<'_, AppState>) {
 }
 
 #[tauri::command]
-pub fn bot_toggle(st: State<'_, AppState>) {
+pub async fn bot_toggle(st: State<'_, AppState>) -> Result<(), String> {
     let bot = Arc::clone(&st.bot);
-    std::thread::spawn(move || bot.toggle());
+    tauri::async_runtime::spawn_blocking(move || {
+        if bot.is_running() { bot.pause(); Ok(()) } else { bot.start_checked() }
+    }).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -64,9 +66,19 @@ pub fn settings_get(st: State<'_, AppState>) -> Settings {
 }
 
 #[tauri::command]
-pub fn settings_set(app: AppHandle, st: State<'_, AppState>, mut settings: Settings) -> Result<(), String> {
+pub fn settings_set(app: AppHandle, st: State<'_, AppState>, mut settings: Settings, expected_settings: Option<Settings>) -> Result<Settings, String> {
+    let _transaction = st.settings_transaction.lock();
+    let mut current = st.settings.write();
+    let previous = current.clone();
+    if let Some(mut expected) = expected_settings {
+        expected.ui.panel_offset = previous.ui.panel_offset;
+        expected.ui.panel_size = previous.ui.panel_size;
+        if serde_json::to_value(&expected).ok() != serde_json::to_value(&previous).ok() {
+            return Err("Settings changed in another window. Please retry your edit.".into());
+        }
+    }
     let (hotkeys_changed, hud_changed) = {
-        let cur = st.settings.read();
+        let cur = &current;
         settings.ui.panel_offset = cur.ui.panel_offset;
         settings.ui.panel_size = cur.ui.panel_size;
         (cur.hotkeys != settings.hotkeys, cur.ui.hud_visible != settings.ui.hud_visible || cur.ui.hud_offset != settings.ui.hud_offset)
@@ -83,16 +95,22 @@ pub fn settings_set(app: AppHandle, st: State<'_, AppState>, mut settings: Setti
     // is one field away from every settings write. Clamp here and there is
     // nowhere left to bypass it.
     crate::config::Store::clamp_safety_settings(&mut settings);
-    *st.settings.write() = settings.clone();
-    st.store.save(&settings).map_err(|e| e.to_string())?;
     if hotkeys_changed {
         hotkeys::register(&app, &settings.hotkeys)?;
     }
+    if let Err(e) = st.store.save(&settings) {
+        if hotkeys_changed {
+            let _ = hotkeys::register(&app, &previous.hotkeys);
+        }
+        return Err(e.to_string());
+    }
+    *current = settings.clone();
+    drop(current);
     if hud_changed {
         windows::reposition(&app);
     }
     let _ = app.emit("settings:changed", &settings);
-    Ok(())
+    Ok(settings)
 }
 
 #[tauri::command]
@@ -107,7 +125,7 @@ pub fn settings_reset(app: AppHandle, st: State<'_, AppState>) -> Result<Setting
     if s.web.token.is_empty() {
         s.ensure_web_token();
     }
-    settings_set(app, st, s.clone())?;
+    settings_set(app, st, s.clone(), None)?;
     if let Some(p) = backup {
         tracing::info!("settings reset; pre-reset backup at {}", p.display());
     }
@@ -134,7 +152,7 @@ pub fn preset_save(st: State<'_, AppState>, name: String) -> Result<(), String> 
 #[tauri::command]
 pub fn preset_load(app: AppHandle, st: State<'_, AppState>, name: String) -> Result<Settings, String> {
     let s = st.store.load_preset(&name).map_err(|e| e.to_string())?;
-    settings_set(app, st, s.clone())?;
+    settings_set(app, st, s.clone(), None)?;
     Ok(s)
 }
 
@@ -147,7 +165,7 @@ pub fn preset_delete(st: State<'_, AppState>, name: String) -> Result<(), String
 pub fn legacy_import(app: AppHandle, st: State<'_, AppState>, json: String) -> Result<Settings, String> {
     let rect = st.roblox.read().map(|w| w.client).ok_or("Open Roblox first so coordinates can be converted")?;
     let s = import_legacy(&json, rect).map_err(|e| e.to_string())?;
-    settings_set(app, st, s.clone())?;
+    settings_set(app, st, s.clone(), None)?;
     Ok(s)
 }
 
@@ -247,7 +265,7 @@ pub fn overlay_commit(app: AppHandle, st: State<'_, AppState>, commit: OverlayCo
         OverlayTarget::RodSlot => s.points.rod_slot = commit.point,
     }
     windows::hide_overlay(&app);
-    settings_set(app, st, s.clone())?;
+    settings_set(app, st, s.clone(), None)?;
     Ok(s)
 }
 
@@ -311,7 +329,7 @@ pub fn overlay_commit_regions(app: AppHandle, st: State<'_, AppState>, commit: R
     s.regions.server_time = commit.server_time;
     s.regions.bait_menu = commit.bait_menu;
     windows::hide_overlay(&app);
-    settings_set(app, st, s.clone())?;
+    settings_set(app, st, s.clone(), None)?;
     Ok(s)
 }
 
@@ -694,7 +712,7 @@ pub async fn health_check(st: State<'_, AppState>) -> Result<HealthCheck, String
 pub fn hud_set_offset(app: AppHandle, st: State<'_, AppState>, offset: RelPoint) -> Result<(), String> {
     let mut s = st.settings.read().clone();
     s.ui.hud_offset = offset;
-    settings_set(app, st, s)
+    settings_set(app, st, s, None).map(|_| ())
 }
 
 #[tauri::command]
@@ -702,7 +720,7 @@ pub fn hud_toggle(app: AppHandle, st: State<'_, AppState>) -> Result<bool, Strin
     let mut s = st.settings.read().clone();
     s.ui.hud_visible = !s.ui.hud_visible;
     let v = s.ui.hud_visible;
-    settings_set(app.clone(), st, s)?;
+    settings_set(app.clone(), st, s, None)?;
     windows::set_hud_visible(&app, v);
     Ok(v)
 }
@@ -769,7 +787,7 @@ pub fn web_dashboard_url(st: State<'_, AppState>) -> String {
 pub fn web_set_allow_lan(app: AppHandle, st: State<'_, AppState>, allow: bool) -> Result<Settings, String> {
     let mut s = st.settings.read().clone();
     s.web.allow_lan = allow;
-    settings_set(app, st, s.clone())?;
+    settings_set(app, st, s.clone(), None)?;
     Ok(s)
 }
 
@@ -778,7 +796,7 @@ pub fn web_set_allow_lan(app: AppHandle, st: State<'_, AppState>, allow: bool) -
 pub fn web_regenerate_token(app: AppHandle, st: State<'_, AppState>) -> Result<Settings, String> {
     let mut s = st.settings.read().clone();
     s.web.token = crate::core::secrets::generate_token_hex(32);
-    settings_set(app, st, s.clone())?;
+    settings_set(app, st, s.clone(), None)?;
     Ok(s)
 }
 
@@ -1163,7 +1181,11 @@ pub struct MlPreflight {
 
 #[tauri::command]
 pub fn ml_preflight(st: State<'_, AppState>) -> MlPreflight {
-    let trace_on = st.settings.read().fishing.trace;
+    collection_preflight(st.bot.ctx())
+}
+
+pub(crate) fn collection_preflight(ctx: &crate::bot::ctx::Ctx) -> MlPreflight {
+    let trace_on = ctx.settings.read().fishing.trace;
     let mut checks = Vec::new();
 
     checks.push(PreflightCheck {
@@ -1176,7 +1198,7 @@ pub fn ml_preflight(st: State<'_, AppState>) -> MlPreflight {
         },
     });
 
-    let store = ml_store(&st);
+    let store = crate::core::ml_dataset::MlDatasetStore::new(ctx.store.dir().to_path_buf());
     match store.init() {
         Ok(()) => checks.push(PreflightCheck {
             name: "dataset_layout".to_string(),
@@ -1191,7 +1213,7 @@ pub fn ml_preflight(st: State<'_, AppState>) -> MlPreflight {
     }
 
     // Write-permission probe (temp file, removed immediately — never a sample).
-    let probe = store.root().join("images").join(".write_probe");
+    let probe = store.root().join("images").join(format!(".write_probe-{}", crate::core::secrets::generate_token_hex(16)));
     let write_ok = std::fs::write(&probe, b"probe")
         .and_then(|_| std::fs::remove_file(&probe))
         .is_ok();

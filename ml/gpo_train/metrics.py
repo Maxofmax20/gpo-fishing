@@ -119,3 +119,27 @@ def fit_temperature(val_logits: list[list[float]], val_true: list[int]) -> dict:
         if ll < best["log_loss"]:
             best = {"temperature": round(t, 4), "log_loss": ll}
     return best
+
+
+def pick_rejection_threshold(probs, val_true, target=0.90):
+    """Fit only on calibrated VAL probabilities; no second softmax.
+
+    None denotes an unavailable operating point and retains no test rows.
+    """
+    import math
+    if not 0 < target <= 1 or len(probs) != len(val_true):
+        raise ValueError("invalid rejection calibration inputs")
+    for p, y in zip(probs, val_true):
+        if (not p or not 0 <= y < len(p) or
+                any(not math.isfinite(v) or not 0 <= v <= 1 for v in p) or
+                abs(sum(p) - 1) > 1e-5):
+            raise ValueError("expected normalized probabilities and valid labels")
+    thresholds = sorted({0.0, *(max(p) for p in probs)})
+    for threshold in thresholds:
+        kept = [(p, y) for p, y in zip(probs, val_true) if max(p) >= threshold]
+        if kept:
+            acc = sum(p.index(max(p)) == y for p, y in kept) / len(kept)
+            if acc >= target:
+                return {"threshold": threshold, "kept": len(kept) / len(probs),
+                        "kept_accuracy": acc, "available": True}
+    return {"threshold": None, "kept": 0.0, "kept_accuracy": None, "available": False}

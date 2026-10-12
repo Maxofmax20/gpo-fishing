@@ -134,7 +134,8 @@ impl Ctx {
     }
 
     pub fn roblox_in_front(&self) -> bool {
-        self.roblox.read().map(|w| w.visible && w.is_foreground).unwrap_or(false)
+        // Query the foreground now; the UI's cached window poll can be stale.
+        self.platform.window.find().is_some_and(|w| w.visible && w.is_foreground)
     }
 
     pub fn ensure_roblox_focus(&self) -> bool {
@@ -158,7 +159,8 @@ impl Ctx {
             if !self.alive() {
                 return false;
             }
-            let left = end - Instant::now();
+            if !self.roblox_in_front() { self.release_mouse(); }
+            let left = end.saturating_duration_since(Instant::now());
             std::thread::sleep(left.min(Duration::from_millis(25)));
             self.touch();
         }
@@ -170,6 +172,8 @@ impl Ctx {
     }
 
     pub fn hold_mouse(&self, down: bool) {
+        let down = down && self.alive() && self.roblox_in_front();
+        let down = down && self.alive() && self.roblox_in_front();
         if self.mouse_held.swap(down, Ordering::SeqCst) != down {
             self.platform.input.button(MouseButton::Left, down);
         }

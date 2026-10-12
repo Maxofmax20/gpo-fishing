@@ -1,9 +1,7 @@
-"""Scoped fish-vision trainer: 8 well-supported fish, session-isolated.
+"""Fish-vision trainer for the canonical FISH_VOCAB.txt classes.
 
-Scope justification (v5.4.0 gate review): exactly the 8 fish entities with
->=20 real examples AND held-out TEST coverage are trained. Nothing else is
-claimed. All other 33 KB fish + all fruits resolve to UNKNOWN at runtime
-until their own gates pass. No synthetic data, no Wiki-as-pixels.
+Every class requires TRAIN support and held-out coverage. The frozen vocabulary
+records the logits-to-label mapping; unsupported classes stay unknown.
 
 Pipeline (mirrors gpo-vision-v1-s7 conventions):
   session-pure FNV-1a splits (shared dataset.py) -> pad-to-square + 96px +
@@ -15,7 +13,7 @@ Writes ml/output/<run-id>/: config, dataset_snapshot, training_log.jsonl,
 checkpoints, best.pt, evaluation_val/test.json, calibration.json,
 rejection.json, fish_vision_v1.onnx, onnx_check.json.
 
-Usage: python -m gpo_train.fish_train --epochs 40 --seed 7 --run-id fish-vision-v1-s7
+Usage: python -m ml.gpo_train.fish_train --epochs 40 --seed 7 --run-id fish-vision-v1-s7
 """
 
 from __future__ import annotations
@@ -164,25 +162,7 @@ def evaluate_logits(model, loader, device):
     return true, logits
 
 
-def pick_rejection_threshold(val_logits, val_true):
-    """Lowest max-prob threshold with kept-accuracy >= 0.90 on VAL.
-    Documented, single-parameter, fit on validation only."""
-    probs = apply_temperature(val_logits, 1.0)
-    best = {"threshold": 0.0, "kept": 1.0, "kept_accuracy": accuracy(val_true, [p.index(max(p)) for p in probs])}
-    t = 0.05
-    while t <= 0.95:
-        kept_t, kept_p = [], []
-        for p, y in zip(probs, val_true):
-            if max(p) >= t:
-                kept_t.append(y)
-                kept_p.append(p.index(max(p)))
-        if kept_t:
-            acc = accuracy(kept_t, kept_p)
-            if acc >= 0.90:
-                best = {"threshold": round(t, 2), "kept": len(kept_t) / len(val_true), "kept_accuracy": acc}
-                break
-        t += 0.05
-    return best
+from .metrics import pick_rejection_threshold
 
 
 def _ort_version() -> str:
@@ -206,8 +186,8 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--run-id", default="fish-vision-v1-s7")
     args = ap.parse_args()
-    outdir = os.path.join(OUTPUT_DIR, args.run_id)
-    os.makedirs(os.path.join(outdir, "checkpoints"), exist_ok=True)
+    from .evaluation_contract import new_run_directory, holdout_fingerprint
+    outdir = new_run_directory(OUTPUT_DIR, args.run_id)
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -337,6 +317,7 @@ def main() -> int:
         yp = [r.index(max(r)) for r in apply_temperature(yl, 1.0)]
         prf = per_class_prf(yt, yp, len(FISH_VOCAB))
         results[split] = {
+            "holdout_fingerprint": holdout_fingerprint(snap, te if split == "test" else va, FISH_VOCAB),
             "n": len(yt), "accuracy": accuracy(yt, yp), "macro_f1": macro_f1(yt, yp, len(FISH_VOCAB)),
             "balanced_accuracy": balanced_accuracy(yt, yp, len(FISH_VOCAB)),
             "per_entity": {FISH_VOCAB[i]: prf[i] for i in range(len(FISH_VOCAB))},
@@ -354,13 +335,14 @@ def main() -> int:
     # apply frozen threshold to TEST once
     yt_t, yl_t = evaluate_logits(model, test_loader, device)
     probs_t = apply_temperature(yl_t, cal["temperature"])
+    results["test"]["ece"] = expected_calibration_error(probs_t, yt_t)
     kt, kp = [], []
     for p, y in zip(probs_t, yt_t):
-        if max(p) >= rej["threshold"]:
+        if rej["threshold"] is not None and max(p) >= rej["threshold"]:
             kt.append(y)
             kp.append(p.index(max(p)))
     rej["test_kept"] = len(kt) / max(1, len(yt_t))
-    rej["test_kept_accuracy"] = accuracy(kt, kp) if kt else 0.0
+    rej["test_kept_accuracy"] = accuracy(kt, kp) if kt else None
     with open(os.path.join(outdir, "rejection.json"), "w", encoding="utf-8") as f:
         json.dump(rej, f, indent=2)
 
@@ -384,7 +366,7 @@ def main() -> int:
     with open(os.path.join(outdir, "evaluation_test.json"), "w", encoding="utf-8") as f:
         json.dump(results["test"], f, indent=2)
     print(f"[val] F1={results['val']['macro_f1']:.4f} [test] acc={results['test']['macro_f1']:.4f} "
-          f"rej_thr={rej['threshold']} kept={rej['test_kept']:.2f}@{rej['test_kept_accuracy']:.3f} "
+          f"rej_thr={rej['threshold']} kept={rej['test_kept']:.2f}@{rej['test_kept_accuracy']} "
           f"ocr_empty={results['test']['ocr_empty_accuracy']} verified={results['test']['verified_accuracy']}", flush=True)
 
     # ---- ONNX export + verify ----
@@ -392,7 +374,7 @@ def main() -> int:
     dummy = torch.randn(1, 3, INPUT_SIZE, INPUT_SIZE)
     onnx_path = os.path.join(outdir, "fish_vision_v1.onnx")
     torch.onnx.export(model, dummy, onnx_path, input_names=["pixels"], output_names=["fish_logits"],
-                      dynamic_axes={"pixels": {0: "batch"}, "fish_logits": {0: "batch"}}, opset_version=18)
+                      dynamic_axes={"pixels": {0: "batch"}, "fish_logits": {0: "batch"}}, opset_version=18, dynamo=False)
     import onnx
     m = onnx.load(onnx_path)
     onnx.save(m, onnx_path)  # single-file (inline any external data)

@@ -8,7 +8,7 @@ export default function Toasts() {
   const dismiss = useStore((s) => s.dismissToast);
   if (toasts.length === 0) return null;
   return (
-    <div className="pointer-events-none absolute inset-x-3 bottom-3 z-50 flex flex-col gap-2">
+    <div role="status" aria-live="polite" aria-atomic="false" className="pointer-events-none absolute inset-x-3 bottom-3 z-50 flex flex-col gap-2">
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -24,6 +24,7 @@ export default function Toasts() {
             className="shrink-0 opacity-70 hover:opacity-100"
             onClick={() => dismiss(t.id)}
             title="Dismiss"
+            aria-label="Dismiss notification"
           >
             <X size={13} />
           </button>

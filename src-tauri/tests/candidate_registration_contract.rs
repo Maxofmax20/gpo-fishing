@@ -47,6 +47,7 @@ fn metrics_with_support(
     let per_class_test_support: Vec<(String, usize)> =
         fish_classes().iter().map(|c| (c.clone(), 40usize)).collect();
     let mut m = ModelMetrics {
+        holdout_fingerprint: Some("a".repeat(64)),
         accuracy: 0.80,
         macro_f1,
         ece: Some(0.1),
@@ -54,7 +55,7 @@ fn metrics_with_support(
         test_n: 100,
         per_class_f1: per_class_f1.into_iter().collect(),
         per_class_test_support: per_class_test_support.into_iter().collect(),
-        kept_accuracy: None,
+        kept_accuracy: Some(0.95),
     };
     for (k, v, n) in over {
         m.per_class_f1.insert((*k).to_string(), *v);

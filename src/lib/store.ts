@@ -30,6 +30,8 @@ type Store = {
 };
 
 let toastId = 1;
+let settingsQueue: Promise<void> = Promise.resolve();
+let pendingSaves = 0;
 
 /** Surface a backend/UI error to the global toast stack (auto-expires). */
 export function showToast(kind: Toast["kind"], msg: string) {
@@ -47,6 +49,7 @@ export async function toastOnError<T>(p: Promise<T>, context: string): Promise<T
 }
 
 const EMPTY_STATS: Stats = {
+  unverified: 0,
   fish: 0,
   failed: 0,
   fruits: 0,
@@ -63,7 +66,7 @@ const EMPTY_STATS: Stats = {
   estimated_peli: 0,
   since_purchase: 0,
   since_progress: 0,
-  total: { fish: 0, failed: 0, fruits: 0, bait_purchased: 0, runtime_s: 0, sessions: 0, last_fish: null, last_fruit: null, last_spawn: null, pity_fruit: 0, pity_legendary: 0, estimated_peli: 0 },
+  total: { unverified: 0, fish: 0, failed: 0, fruits: 0, bait_purchased: 0, runtime_s: 0, sessions: 0, last_fish: null, last_fruit: null, last_spawn: null, pity_fruit: 0, pity_legendary: 0, estimated_peli: 0 },
 };
 
 let subscribed = false;
@@ -158,19 +161,29 @@ export const useStore = create<Store>((set, get) => ({
     });
   },
 
-  update: async (mutate) => {
-    const cur = get().settings;
-    if (!cur) return;
-    const next = structuredClone(cur);
-    mutate(next);
-    set({ settings: next, saving: true });
-    try {
-      await api.settingsSet(next);
-    } catch (e) {
-      set({ error: String(e) });
-    } finally {
-      set({ saving: false });
-    }
+  update: (mutate) => {
+    pendingSaves++;
+    set({ saving: true });
+    const operation = settingsQueue.then(async () => {
+      // Read after previous acknowledgements, so unrelated edits are retained.
+      let cur = get().settings;
+      try {
+        cur = await api.settingsGet();
+        const next = structuredClone(cur);
+        mutate(next);
+        const acknowledged = await api.settingsSet(next, cur);
+        set({ settings: acknowledged, error: null });
+      } catch (e) {
+        set({ settings: cur, error: String(e) });
+        get().toast("error", `Settings were not saved: ${String(e)}`);
+        throw e;
+      }
+    }).finally(() => {
+      pendingSaves--;
+      set({ saving: pendingSaves > 0 });
+    });
+    settingsQueue = operation.catch(() => {});
+    return operation;
   },
 
   setSettings: (s) => set({ settings: s }),

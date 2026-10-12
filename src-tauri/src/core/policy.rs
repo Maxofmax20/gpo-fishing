@@ -12,8 +12,10 @@
 //! with the feature on or off so pause-on-protected keeps working.
 //!
 //! Hard safety invariants (tested):
-//! - UNKNOWN entity -> NEVER auto-drop (NeedsReview).
-//! - Drop is allowed only for a KNOWN, non-protected entity.
+//! - Generic UNKNOWN result entities require review. The fruit-catch workflow
+//!   separately follows the configured rarity/pity policy, including the user
+//!   preference to treat unreadable pity as nonzero.
+//! - A fruit-catch drop requires an unprotected policy decision and confirmation.
 //! - Missing confirmation is not success (see workflow.rs + actions.rs).
 
 use serde::{Deserialize, Serialize};

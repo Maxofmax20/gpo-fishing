@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::core::types::{Frame, Key, MouseButton, PxPoint, PxRect, WindowInfo};
 
 pub mod mock;
+pub mod guarded_input;
 #[cfg(windows)]
 pub mod windows;
 
@@ -32,6 +33,7 @@ pub trait Capture: Send + Sync {
 }
 
 pub trait Input: Send + Sync {
+    fn release_all(&self) {}
     fn move_to(&self, p: PxPoint);
     fn button(&self, b: MouseButton, down: bool);
     fn key(&self, k: Key, down: bool);
@@ -56,10 +58,13 @@ pub struct Platform {
 
 #[cfg(windows)]
 pub fn build() -> Platform {
+    let window: Arc<dyn GameWindow> = Arc::new(windows::window::Win32Window::new("Roblox"));
+    let input = Arc::new(guarded_input::GuardedInput::new(Arc::clone(&window), Arc::new(windows::input::SendInputBackend::new())));
+    guarded_input::GuardedInput::watch(&input);
     Platform {
-        window: Arc::new(windows::window::Win32Window::new("Roblox")),
+        window,
         capture: Arc::new(windows::capture_dxgi::DxgiCapture::new()),
-        input: Arc::new(windows::input::SendInputBackend::new()),
+        input,
         ocr: build_ocr(),
     }
 }

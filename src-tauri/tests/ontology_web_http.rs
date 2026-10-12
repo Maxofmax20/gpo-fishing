@@ -140,14 +140,19 @@ impl Res {
     }
 }
 
+static TEST_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
+fn test_port() -> u16 { TEST_PORT.load(std::sync::atomic::Ordering::SeqCst) }
+
 fn request(method: &str, path: &str, body: Option<&str>) -> Res {
-    let mut s = TcpStream::connect(("127.0.0.1", gpo_autofish_lib::ontology_web::PORT))
+    let mut s = TcpStream::connect(("127.0.0.1", test_port()))
         .expect("connect to the review server");
     s.set_read_timeout(Some(std::time::Duration::from_secs(10)))
         .unwrap();
     let body = body.unwrap_or("");
+    let port = test_port();
+    let csrf = if method == "POST" { jget("/api/csrf")["token"].as_str().unwrap().to_string() } else { String::new() };
     let req = format!(
-        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Length: {}\r\n\
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nX-GPO-CSRF: {csrf}\r\nContent-Length: {}\r\n\
          Content-Type: application/json\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
@@ -198,12 +203,35 @@ fn the_review_server_answers_real_http() {
         resolved, sandbox_dir
     );
 
-    gpo_autofish_lib::ontology_web::spawn();
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+    TEST_PORT.store(listener.local_addr().unwrap().port(), std::sync::atomic::Ordering::SeqCst);
+    gpo_autofish_lib::ontology_web::spawn_listener(listener).unwrap();
     // Give the listener thread a moment; binding happens synchronously in `spawn`,
     // but the accept loop is a thread.
     std::thread::sleep(std::time::Duration::from_millis(120));
 
-    let port = gpo_autofish_lib::ontology_web::PORT;
+    let port = test_port();
+
+    // Cross-site forms and rebinding hosts cannot mutate the decision log.
+    let before = std::fs::read(sandbox_dir.join("ontology_decisions.jsonl")).unwrap();
+    let token = jget("/api/csrf")["token"].as_str().unwrap().to_string();
+    let local_host = format!("127.0.0.1:{port}");
+    for (host, origin, content_type, csrf) in [
+        ("evil.example:17890", "", "application/json", token.as_str()),
+        (local_host.as_str(), "https://evil.example", "application/json", token.as_str()),
+        (local_host.as_str(), "", "text/plain", token.as_str()),
+        (local_host.as_str(), "", "application/json", ""),
+    ] {
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        let origin_header = if origin.is_empty() { String::new() } else { format!("Origin: {origin}\r\n") };
+        let raw = format!("POST /api/ontology/decision HTTP/1.1\r\nHost: {host}\r\n{origin_header}Content-Type: {content_type}\r\nX-GPO-CSRF: {csrf}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}");
+        stream.write_all(raw.as_bytes()).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        assert!(response.starts_with("HTTP/1.1 403"), "{response}");
+    }
+    assert_eq!(before, std::fs::read(sandbox_dir.join("ontology_decisions.jsonl")).unwrap());
 
     // ---------------------------------------------------------------------
     // Deep link. This is the requirement that most often silently fails.

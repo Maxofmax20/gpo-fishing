@@ -173,9 +173,9 @@ def main() -> int:
     set_seed(args.seed)
 
     run_id = args.run_id or ("run-" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + f"-s{args.seed}")
-    outdir = os.path.join(OUTPUT_DIR, run_id)
+    from .evaluation_contract import new_run_directory
+    outdir = str(new_run_directory(OUTPUT_DIR, run_id))
     ckptdir = os.path.join(outdir, "checkpoints")
-    os.makedirs(ckptdir, exist_ok=True)
 
     snap = load_snapshot()
     splits = build_splits(snap)
@@ -186,7 +186,8 @@ def main() -> int:
     # Entity vocabulary: sorted project entity ids present in TRAIN ONLY
     # (test entities must not shape the vocabulary).
     vocab = sorted({snap.rows[i].entity_id for i in splits.train if snap.rows[i].entity_id})
-    assert len(vocab) >= 2, "need entity vocabulary"
+    # State training must also work when reviewed frames have no entity labels.
+    vocab = vocab or ["__no_entity__"]
 
     mean, std = compute_mean_std(snap, splits.train)
     train_ds = VisionDataset(snap, splits.train, vocab, mean, std, augment=True)

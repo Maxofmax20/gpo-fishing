@@ -1065,9 +1065,9 @@ pub const DEFAULT_BACKEND_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 /// `training_overview` is polled every few seconds. Without this, a slow
 /// probe stacks up: each poll starts another `python`, and they pile up until
 /// the machine is saturated. One probe at a time; overlapping callers get the
-/// cached result of the most recent completed probe instead of spawning a
+/// completed result (or wait for the in-flight result) instead of spawning a
 /// second process.
-static BACKEND_PROBE: Mutex<Option<(String, String, BackendStatus)>> = Mutex::new(None);
+static BACKEND_PROBE: Mutex<Option<(String, String, BackendStatus, std::time::Instant)>> = Mutex::new(None);
 
 /// Run `python -c <code>`, killing it after `timeout`.
 ///
@@ -1075,21 +1075,26 @@ static BACKEND_PROBE: Mutex<Option<(String, String, BackendStatus)>> = Mutex::ne
 /// has no timeout at all) and then `kill`s + `wait`s so no orphan interpreter
 /// is left behind. stdout/stderr are piped and read on the helper threads, so
 /// a chatty interpreter cannot deadlock us by filling a pipe buffer.
-fn probe_python(python_path: &str, code: &str, timeout: Duration) -> Result<std::process::Output, String> {
-    probe_program(python_path, &["-c", code], timeout)
-}
-
 /// Bounded subprocess run: spawn, poll until `timeout`, kill + reap on expiry.
 ///
 /// Split from [`probe_python`] so the timeout/reap behaviour is testable
 /// without needing a Python interpreter present.
+#[cfg(test)]
 fn probe_program(
     program: &str,
     args: &[&str],
     timeout: Duration,
 ) -> Result<std::process::Output, String> {
-    let mut child = std::process::Command::new(program)
+    probe_program_in(program, args, timeout, None)
+}
+
+fn probe_program_in(program: &str, args: &[&str], timeout: Duration, cwd: Option<&Path>) -> Result<std::process::Output, String> {
+    let mut command = std::process::Command::new(program);
+    if let Some(cwd) = cwd { command.current_dir(cwd); }
+    let mut child = command
         .args(args)
+        .env_remove("PYTHONOPTIMIZE")
+        .env("PYTHONUTF8", "1")
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -1143,20 +1148,13 @@ pub fn check_backend_with_timeout(
     trainer_dir: &str,
     timeout: Duration,
 ) -> BackendStatus {
-    // Single-flight: reuse the last result for the same configuration rather
-    // than spawning a second interpreter.
-    {
-        let cached = BACKEND_PROBE.lock().ok().and_then(|g| g.clone());
-        if let Some((p, t, st)) = cached {
-            if p == python_path && t == trainer_dir {
-                return st;
-            }
-        }
+    // Keep the guard through the probe so overlapping calls cannot spawn peers.
+    let mut cached = BACKEND_PROBE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((p, t, status, completed)) = cached.as_ref() {
+        if p == python_path && t == trainer_dir && completed.elapsed() < Duration::from_secs(60) { return status.clone(); }
     }
     let status = check_backend_uncached(python_path, trainer_dir, timeout);
-    if let Ok(mut g) = BACKEND_PROBE.lock() {
-        *g = Some((python_path.to_string(), trainer_dir.to_string(), status.clone()));
-    }
+    *cached = Some((python_path.to_string(), trainer_dir.to_string(), status.clone(), std::time::Instant::now()));
     status
 }
 
@@ -1185,10 +1183,11 @@ fn check_backend_uncached(
         st.detail = "python_path is not configured (Training settings)".to_string();
         return st;
     }
-    match probe_python(
+    match probe_program_in(
         python_path,
-        "import sys, torch; print(torch.__version__)",
+        &["-c", "import torch, numpy, PIL, onnx, onnxruntime, onnxscript; import ml.gpo_train.fish_train, ml.gpo_train.state_train; print(torch.__version__)"],
         timeout,
+        Some(Path::new(trainer_dir)),
     ) {
         Err(e) => {
             // Distinguish "cannot run at all" from "ran but hung": the second
@@ -1206,7 +1205,7 @@ fn check_backend_uncached(
         Ok(out) if !out.status.success() => {
             let err = String::from_utf8_lossy(&out.stderr);
             st.python_ok = true;
-            st.detail = format!("python runs but torch import failed: {}", err.chars().take(300).collect::<String>());
+            st.detail = format!("python runs but trainer/dependency import failed: {}", err.chars().take(300).collect::<String>());
             return st;
         }
         Ok(out) => {
@@ -1264,7 +1263,7 @@ pub fn save_trigger_state(data_dir: &Path, state: &TriggerState) {
     let dir = data_dir.join(TRAINING_SUBDIR);
     let _ = std::fs::create_dir_all(&dir);
     if let Ok(body) = serde_json::to_string_pretty(state) {
-        let _ = std::fs::write(trigger_state_path(data_dir), body);
+        let _ = super::registry::write_atomic(&trigger_state_path(data_dir), body.as_bytes());
     }
 }
 

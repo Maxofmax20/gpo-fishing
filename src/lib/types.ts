@@ -20,6 +20,7 @@ export type BotState =
   | "paused";
 
 export type Lifetime = {
+  unverified?: number;
   fish: number;
   failed: number;
   fruits: number;
@@ -35,6 +36,7 @@ export type Lifetime = {
 };
 
 export type Stats = {
+  unverified?: number;
   fish: number;
   failed: number;
   fruits: number;
@@ -117,6 +119,7 @@ export type Settings = {
     trace: boolean;
   };
   features: {
+    ml_fish_recognition?: boolean;
     auto_zoom: boolean;
     auto_mouse_position: boolean;
     auto_bait: boolean;
@@ -748,7 +751,7 @@ export type CandidateRecord = {
   decision_reason: string | null;
 };
 
-export type ComparisonVerdict = "Pass" | "Reject" | "Inconclusive";
+export type ComparisonVerdict = "PASS" | "REJECT" | "INCONCLUSIVE";
 
 export type Comparison = {
   acc_delta: number;

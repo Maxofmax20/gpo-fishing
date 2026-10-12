@@ -61,11 +61,7 @@ export default function VpnPage() {
     try {
       const s = await api.vpnGetStatus();
       setStatus(s);
-      // Sync the engine selector with the backend while disconnected, so the
-      // radio group always reflects reality instead of a stale local choice.
-      if (!s.connected && s.engine && s.engine !== "none") {
-        setSelectedEngine((prev) => (prev === s.engine ? prev : (s.engine as VpnEngine)));
-      }
+
     } catch (e) {
       showToast("warn", `VPN status unavailable: ${String(e)}`);
     }
@@ -75,7 +71,7 @@ export default function VpnPage() {
 
   useVisiblePoll(
     () => {
-      api
+      return api
         .vpnGetLogs(40)
         .then((l) => {
           setLogs(l);

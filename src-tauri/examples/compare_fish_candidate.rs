@@ -69,6 +69,7 @@ fn incumbent_from_deployed(live: bool) -> (ModelMetrics, Vec<String>, String) {
         .filter_map(|x| x.as_str().map(str::to_string))
         .collect();
     let metrics = ModelMetrics {
+        holdout_fingerprint: m["holdout_fingerprint"].as_str().map(str::to_string),
         accuracy: m["test_accuracy"].as_f64().unwrap_or(0.0) as f32,
         macro_f1: m["macro_f1"].as_f64().unwrap_or(0.0) as f32,
         ece: m["ece"].as_f64().map(|v| v as f32),
@@ -82,7 +83,7 @@ fn incumbent_from_deployed(live: bool) -> (ModelMetrics, Vec<String>, String) {
             .as_object()
             .map(|o| o.iter().filter_map(|(k, v)| v.as_u64().map(|n| (k.clone(), n as usize))).collect())
             .unwrap_or_default(),
-        kept_accuracy: None,
+        kept_accuracy: m["kept_accuracy"].as_f64().map(|v| v as f32),
     };
     (metrics, classes, path.display().to_string())
 }

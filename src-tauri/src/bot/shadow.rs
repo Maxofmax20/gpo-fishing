@@ -22,10 +22,7 @@ pub const STATE_SAMPLE_EVERY: u64 = 30;
 /// Agreement is coarse by design: production sees bar/no-bar, vision names
 /// waiting_for_bite/bite/catch_result. Agreement = (vision in
 /// {waiting,bite}) == bar_present.
-pub fn observe_state(ctx: &super::ctx::Ctx, frame: &crate::core::types::Frame, production_bar_present: bool) {
-    if !ctx.settings.read().features.ml_shadow {
-        return;
-    }
+fn infer_state(ctx: &Observation, frame: &crate::core::types::Frame, production_bar_present: bool) {
     let t0 = Instant::now();
     let models_dir = ctx.store.dir().join("models");
     let Some(eng) = crate::core::shadow_infer::engine(&models_dir) else { return };
@@ -42,8 +39,8 @@ pub fn observe_state(ctx: &super::ctx::Ctx, frame: &crate::core::types::Frame, p
         .map(|(c, p)| (c.clone(), *p))
         .unwrap_or_default();
     let vision_is_live = top == "waiting_for_bite" || top == "bite";
-    let session = ctx.ml.active_session_id().unwrap_or_else(|| "no-session".to_string());
-    let now = crate::events::now_ms();
+    let session = ctx.session.clone();
+    let now = ctx.timestamp_ms;
     let ev = ShadowEvent {
         session_id: session.clone(),
         event_id: format!("{session}#sh{now}"),
@@ -74,15 +71,12 @@ pub fn observe_state(ctx: &super::ctx::Ctx, frame: &crate::core::types::Frame, p
 /// Shadow FISH inference on a RESULT drop frame.
 /// `ocr_entity`: the OCR+KB entity id (if any) for agreement scoring.
 /// `ocr_none_agreement` is None (nothing to agree with) — logged, not hidden.
-pub fn observe_fish(
-    ctx: &super::ctx::Ctx,
+fn infer_fish(
+    ctx: &Observation,
     frame: &crate::core::types::Frame,
     ocr_entity: Option<&str>,
     ocr_text: &str,
 ) {
-    if !ctx.settings.read().features.ml_shadow {
-        return;
-    }
     let t0 = Instant::now();
     let models_dir = ctx.store.dir().join("models");
     let Some(eng) = crate::core::shadow_infer::engine(&models_dir) else { return };
@@ -98,8 +92,8 @@ pub fn observe_fish(
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
         .map(|(c, p)| (c.clone(), *p))
         .unwrap_or_default();
-    let session = ctx.ml.active_session_id().unwrap_or_else(|| "no-session".to_string());
-    let now = crate::events::now_ms();
+    let session = ctx.session.clone();
+    let now = ctx.timestamp_ms;
     let agreement = ocr_entity.map(|o| o == top);
     let ev = ShadowEvent {
         session_id: session.clone(),
@@ -126,4 +120,49 @@ pub fn observe_fish(
         model_revision: Some(m.identity_revision()),
     };
     let _ = append_shadow_event(ctx.store.dir(), &ev);
+}
+
+
+struct Observation {
+    store: std::sync::Arc<crate::config::Store>,
+    session: String,
+    timestamp_ms: u64,
+}
+enum Sample {
+    State(Observation, crate::core::types::Frame, bool),
+    Fish(Observation, crate::core::types::Frame, Option<String>, String),
+}
+fn queue() -> &'static crossbeam_channel::Sender<Sample> {
+    static QUEUE: std::sync::OnceLock<crossbeam_channel::Sender<Sample>> = std::sync::OnceLock::new();
+    QUEUE.get_or_init(|| {
+        let (tx, rx) = crossbeam_channel::bounded::<Sample>(2);
+        std::thread::Builder::new().name("shadow-observation".into()).spawn(move || {
+            for sample in rx {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match sample {
+                    Sample::State(ctx, frame, bar) => infer_state(&ctx, &frame, bar),
+                    Sample::Fish(ctx, frame, entity, text) => infer_fish(&ctx, &frame, entity.as_deref(), &text),
+                }));
+                if result.is_err() { tracing::warn!("shadow observation failed; macro unaffected"); }
+            }
+        }).expect("spawn shadow observation worker");
+        tx
+    })
+}
+fn observation(ctx: &super::ctx::Ctx) -> Observation {
+    Observation { store: std::sync::Arc::clone(&ctx.store),
+        session: ctx.ml.active_session_id().unwrap_or_else(|| "no-session".into()),
+        timestamp_ms: crate::events::now_ms() }
+}
+fn enqueue(sample: Sample) {
+    static DROPPED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    if queue().try_send(sample).is_err() {
+        let count = DROPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        if count == 1 || count % 100 == 0 { tracing::warn!("shadow queue busy: {count} observations dropped"); }
+    }
+}
+pub fn observe_state(ctx: &super::ctx::Ctx, frame: &crate::core::types::Frame, bar: bool) {
+    if ctx.settings.read().features.ml_shadow { enqueue(Sample::State(observation(ctx), frame.clone(), bar)); }
+}
+pub fn observe_fish(ctx: &super::ctx::Ctx, frame: &crate::core::types::Frame, entity: Option<&str>, text: &str) {
+    if ctx.settings.read().features.ml_shadow { enqueue(Sample::Fish(observation(ctx), frame.clone(), entity.map(str::to_string), text.to_string())); }
 }

@@ -196,15 +196,17 @@ describe("HTTP transport", () => {
     expect(fetchMock().mock.calls[0][0]).toBe("/api/ontology/status");
   });
 
-  it("POSTs decisions as JSON, which forces a CORS preflight for a foreign origin", async () => {
+  it("obtains a process CSRF token and POSTs JSON with the token header", async () => {
     fetchMock().mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ ok: true }),
+      json: async () => ({ ok: true, token: "test-csrf-token" }),
     } as Response);
     await browserOrInvokePost("/decision", "ontology_decide", {}, { decision: "UNKNOWN" });
-    const [, init] = fetchMock().mock.calls[0];
+    expect(fetchMock().mock.calls[0][0]).toBe("/api/csrf");
+    const [, init] = fetchMock().mock.calls[1];
     expect(init?.method).toBe("POST");
+    expect((init?.headers as Record<string, string>)["X-GPO-CSRF"]).toBe("test-csrf-token");
     expect((init?.headers as Record<string, string>)["Content-Type"]).toBe(
       "application/json",
     );
