@@ -20,6 +20,30 @@ static HELD_MOUSE: parking_lot::RwLock<Vec<crate::core::types::MouseButton>> =
 static LAST_MOUSE_ACTIVITY: parking_lot::RwLock<Option<std::time::Instant>> =
     parking_lot::RwLock::new(None);
 static KEY_WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
+static TELEMETRY_STARTED: AtomicBool = AtomicBool::new(false);
+static LOCAL_IP: RwLock<Option<String>> = RwLock::new(None);
+static FAN_STATUS: RwLock<Option<crate::laptop_fan::FanStatus>> = RwLock::new(None);
+
+// WMI, PowerShell and GPU queries must never occupy HTTP request workers.
+// Publish the last completed observation; control/status requests stay fast
+// even when a hardware provider is slow or unavailable.
+fn ensure_telemetry_worker() {
+    if TELEMETRY_STARTED.swap(true, Ordering::SeqCst) { return; }
+    thread::Builder::new().name("web-telemetry".into()).spawn(|| {
+        let mut ip_checked = None::<std::time::Instant>;
+        loop {
+            if ip_checked.is_none_or(|at| at.elapsed() >= Duration::from_secs(60)) {
+                let observed_ip = get_local_ip();
+                *LOCAL_IP.write() = observed_ip;
+                ip_checked = Some(std::time::Instant::now());
+            }
+            let _ = crate::core::brightness::get_brightness();
+            let observed_fan = crate::laptop_fan::get_fan_status();
+            *FAN_STATUS.write() = Some(observed_fan);
+            thread::sleep(Duration::from_secs(5));
+        }
+    }).expect("spawn web telemetry worker");
+}
 
 fn ensure_key_watchdog(bot: &Arc<Bot>) {
     if KEY_WATCHDOG_STARTED.swap(true, Ordering::SeqCst) {
@@ -90,6 +114,7 @@ pub fn get_local_ip() -> Option<String> {
 }
 
 pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
+    ensure_telemetry_worker();
     thread::Builder::new()
         .name("web-server".into())
         .spawn(move || {
@@ -481,8 +506,9 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
     let stats = bot.ctx().session.lock().stats();
     let vol = (crate::core::audio::get_volume().unwrap_or(0.5) * 100.0).round() as u32;
     let muted = crate::core::audio::is_muted().unwrap_or(false);
-    let brightness = crate::core::brightness::get_brightness().unwrap_or(80);
-    let local_ip = get_local_ip().unwrap_or_else(|| "127.0.0.1".into());
+    let brightness = crate::core::brightness::cached_brightness();
+    let local_ip = LOCAL_IP.read().clone();
+    let fan = FAN_STATUS.read().clone();
 
     let state_str = if paused {
         "Paused"
@@ -502,7 +528,7 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
 
     let now = crate::core::boss_tracker::now_sec();
     let mut tracker = crate::core::boss_tracker::BossTracker::default();
-    let s = settings.read();
+    let s = settings.read().clone();
     if let Some(off) = s.boss_tracker.hawkeye_offset {
         tracker.set_offset(crate::core::boss_tracker::BossId::HawkEye, off);
     }
@@ -564,7 +590,7 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "recorder": crate::bot::recorder::get_status(),
         "macros": crate::bot::recorder::load_macros(&bot.ctx().store),
         "keyboard_light": crate::laptop_light::get_keyboard_light_status(),
-        "fan": crate::laptop_fan::get_fan_status(),
+        "fan": fan,
         "auto_reconnect": s.features.auto_reconnect,
         "vip_server_url": s.features.vip_server_url.clone(),
         "private_server_code": s.features.private_server_code.clone(),
@@ -1452,6 +1478,7 @@ fn handle_fan_set(stream: &mut TcpStream, body: &str) {
     } else {
         crate::laptop_fan::get_fan_status()
     };
+    *FAN_STATUS.write() = Some(st.clone());
     let out = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -1569,7 +1596,7 @@ fn serve_asset(stream: &mut TcpStream, raw_path: &str) -> bool {
     }
     match name {
         "tailwind.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_TAILWIND_JS),
-        "fonts.css" => send_bytes(stream, "text/css; charset=utf-8", ASSET_FONTS_CSS.as_bytes()),
+        "fonts.css" => send_bytes(stream, "text/css; charset=utf-8", ASSET_FONTS_CSS.replace("%%V%%", env!("CARGO_PKG_VERSION")).as_bytes()),
         "gpo-layout.css" => send_bytes(stream, "text/css; charset=utf-8", ASSET_LAYOUT_CSS.as_bytes()),
         "gpo-core.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_CORE_JS.as_bytes()),
         "gpo-remote.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_REMOTE_JS.as_bytes()),
@@ -1721,6 +1748,7 @@ mod tests {
             "clipboard_set" => handle_clipboard_set(&mut server, body),
             "clipboard_get" => handle_clipboard_get(&mut server),
             "ml" => handle_ml_status(&mut server, bot),
+            "status" => send_status(&mut server, bot, &bot.ctx().settings),
             other => panic!("unknown test route {other}"),
         }
         drop(server);
@@ -1737,6 +1765,20 @@ mod tests {
             }
         }
         String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    #[test]
+    fn status_uses_cached_hardware_without_blocking_or_input() {
+        let (bot, input, dir) = input_test_bot();
+        let started = std::time::Instant::now();
+        for _ in 0..3 {
+            let response = drive(&bot, "status", "");
+            assert!(response.starts_with("HTTP/1.1 200"));
+            assert!(response.contains("\"fish\":0"));
+        }
+        assert!(started.elapsed() < Duration::from_secs(1), "status must not launch hardware query processes");
+        assert!(input.events.lock().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
@@ -1952,6 +1994,7 @@ mod tests {
             let url = cap[..end].trim_matches(|c| c == '\'' || c == '"' || c == ' ');
             if let Some(file) = url.strip_prefix("fonts/") {
                 count += 1;
+                let file = file.split('?').next().unwrap();
                 if font_bytes(file).is_none() {
                     missing.push(file.to_string());
                 }

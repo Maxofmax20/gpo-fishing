@@ -2,6 +2,11 @@ use std::sync::atomic::AtomicU32;
 
 static CACHED_BRIGHTNESS: AtomicU32 = AtomicU32::new(80);
 
+/// Last observed or successfully set value, without starting a WMI process.
+pub fn cached_brightness() -> u32 {
+    CACHED_BRIGHTNESS.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 #[cfg(windows)]
 pub mod windows_brightness {
     use std::os::windows::process::CommandExt;

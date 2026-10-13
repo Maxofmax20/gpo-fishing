@@ -21,6 +21,39 @@ async function dashboard(streamLive = true) {
 afterEach(() => { open.splice(0).forEach((dom) => dom.window.close()); });
 
 describe("remote dashboard connection evidence", () => {
+  it("shares slow reads, passes a deadline, and allows a fresh read after completion", async () => {
+    const dom = new JSDOM("<main></main>", { url: "http://localhost/", runScripts: "outside-only" });
+    open.push(dom);
+    const win = dom.window;
+    let complete;
+    let calls = 0;
+    win.fetch = async (_url, options) => {
+      calls++;
+      assert.ok(options.signal, "slow requests need an abort deadline");
+      return new Promise(resolve => { complete = () => resolve({ ok: true, json: async () => ({ fish: calls }) }); });
+    };
+    runInContext(asset("assets/gpo-core.js"), dom.getInternalVMContext());
+    const first = win.gpoGet("/api/status");
+    const second = win.gpoGet("/api/status");
+    assert.equal(calls, 1);
+    complete();
+    const results = await Promise.all([first, second]);
+    assert.equal(results[0].data.fish, 1);
+    assert.equal(results[1].data.fish, 1);
+    const third = win.gpoGet("/api/status");
+    assert.equal(calls, 2);
+    complete();
+    assert.equal((await third).data.fish, 2);
+  });
+
+  it("does not retain a failed read when the backend reconnects", async () => {
+    const win = await dashboard();
+    win.fetch = async () => { throw new Error("disconnected"); };
+    await assert.rejects(win.gpoGet("/api/status"), /backend unreachable/);
+    win.fetch = async () => ({ ok: true, json: async () => ({ fish: 7 }) });
+    assert.equal((await win.gpoGet("/api/status")).data.fish, 7);
+  });
+
   it("removes LIVE and covers stale pixels when the backend disconnects", async () => {
     const win = await dashboard();
     assert.ok(win.document.getElementById("header-live-pill")?.textContent.includes("LIVE"));

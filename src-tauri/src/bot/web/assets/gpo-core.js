@@ -13,11 +13,19 @@ function withToken(url) {
   return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(GPO_TOKEN);
 }
 
-async function gpoGet(path) {
+const _gpoReads = new Map();
+function gpoGet(path) {
+  if (_gpoReads.has(path)) return _gpoReads.get(path);
+  const pending = gpoRead(path).finally(() => { _gpoReads.delete(path); });
+  _gpoReads.set(path, pending);
+  return pending;
+}
+
+async function gpoRead(path) {
   const t0 = performance.now();
   let r;
   try {
-    r = await fetch(withToken(path), { cache: 'no-store' });
+    r = await fetch(withToken(path), { cache: 'no-store', signal: AbortSignal.timeout(5000) });
   } catch (e) {
     if (typeof gpoNoteOnline === 'function') gpoNoteOnline(false);
     throw new Error('backend unreachable');
@@ -102,7 +110,8 @@ function gpoPaintLivePills(ok) {
     const spans = pill.querySelectorAll('span');
     for (const s of spans) {
       if (/LIVE|OFFLINE|CONNECTING/.test(s.textContent)) {
-        s.textContent = ok ? '● LIVE' : '○ OFFLINE';
+        const label = ok ? '● LIVE' : '○ OFFLINE';
+        if (s.textContent !== label) s.textContent = label;
       }
     }
     pill.classList.toggle('opacity-50', !ok);
@@ -160,13 +169,14 @@ function gpoRebind(el) {
 
 function gpoSetText(id, text) {
   const el = document.getElementById(id);
-  if (el) el.textContent = text;
+  if (el && el.textContent !== String(text)) el.textContent = text;
 }
 
 // Shared PWR button visuals: cyan ON while running, dim OFF otherwise.
 function gpoPaintPwr(btn, running) {
   if (!btn) return;
-  btn.textContent = running ? 'PWR ON' : 'PWR OFF';
+  const label = running ? 'PWR ON' : 'PWR OFF';
+  if (btn.textContent !== label) btn.textContent = label;
   btn.classList.toggle('opacity-60', !running);
 }
 
@@ -175,7 +185,7 @@ async function gpoPaintHostline() {
   try {
     const { data } = await gpoGet('/api/status');
     document.querySelectorAll('[data-gpo="hostline"]').forEach((el) => {
-      el.textContent = (data.local_ip || '…') + ':3888 • v' + (data.version || '—');
+      el.textContent = (data.local_ip || location.hostname || '…') + ':3888 • v' + (data.version || '—');
     });
     return data;
   } catch (e) { return null; }

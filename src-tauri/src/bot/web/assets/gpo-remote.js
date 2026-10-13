@@ -352,6 +352,8 @@
   function paintMacroBtn(running) {
     const btn = document.getElementById('main-macro-btn');
     if (!btn) return;
+    if (btn.dataset.running === String(running)) return;
+    btn.dataset.running = String(running);
     if (running) {
       btn.innerHTML = '<span class="material-symbols-outlined text-[24px] animate-spin">sync</span><span>STOP MACRO // HARVESTING</span>';
       btn.classList.remove('bg-primary-container', 'hover:bg-primary', 'text-on-primary', 'border-primary/40');
@@ -494,7 +496,7 @@
     bindActions();
     gpoPaintHostline().then((d) => { if (d) paint(d); });
     refresh();
-    setInterval(() => { if (!document.hidden) refresh(); }, 2500);
+    setInterval(() => { if (!document.hidden) refresh(); }, 1000);
     const release = () => {
       gpoPost('/api/key', { key: 'release_all' }).catch(() => {});
       gpoPost('/api/mouse', { action: 'release_all' }).catch(() => {});
