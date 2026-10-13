@@ -576,6 +576,12 @@ export type VpnStatus = {
   process_running: boolean;
   tunnel_detected: boolean;
   verification_detail: string;
+  germany_verified?: boolean;
+  warp_verified?: boolean;
+  exit_age_secs?: number | null;
+  exit_error?: string | null;
+  administrator?: boolean;
+  recovery_active?: boolean;
 };
 
 export type PingResult = {

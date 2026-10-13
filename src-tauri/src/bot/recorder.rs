@@ -1055,6 +1055,12 @@ mod tests {
                 process_running: false,
                 tunnel_detected: false,
                 verification_detail: "fake".to_string(),
+                germany_verified: false,
+                warp_verified: false,
+                exit_age_secs: None,
+                exit_error: None,
+                administrator: false,
+                recovery_active: false,
             }
         }
     }

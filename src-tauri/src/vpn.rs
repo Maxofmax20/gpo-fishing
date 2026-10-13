@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::path::Path;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use parking_lot::Mutex;
@@ -105,6 +105,12 @@ pub struct VpnStatus {
     pub process_running: bool,
     pub tunnel_detected: bool,
     pub verification_detail: String,
+    pub germany_verified: bool,
+    pub warp_verified: bool,
+    pub exit_age_secs: Option<u64>,
+    pub exit_error: Option<String>,
+    pub administrator: bool,
+    pub recovery_active: bool,
 }
 
 /// Raw OS observations fed into [`evaluate_evidence`]. Real collectors fill
@@ -139,11 +145,56 @@ pub struct PingResult {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct IpApiResponse {
-    query: Option<String>,
-    country: Option<String>,
-    city: Option<String>,
+#[derive(Debug, Clone, Default)]
+struct ExitObservation {
+    ip: String,
+    country: String,
+    warp: bool,
+    checked: Option<Instant>,
+    error: Option<String>,
+}
+
+impl ExitObservation {
+    fn germany_verified(&self) -> bool {
+        self.country == "DE" && self.checked.is_some_and(|at| at.elapsed() <= Duration::from_secs(30)) && self.error.is_none()
+    }
+}
+
+fn parse_exit_trace(raw: &str) -> Result<ExitObservation, String> {
+    let field = |key: &str| raw.lines().find_map(|line| line.trim().strip_prefix(key));
+    let ip = field("ip=").filter(|ip| ip.parse::<std::net::IpAddr>().is_ok()).ok_or("Exit probe did not return a valid IP address")?;
+    let country = field("loc=").filter(|s| s.len() == 2 && s.bytes().all(|c| c.is_ascii_uppercase())).ok_or("Exit probe did not return a country")?;
+    Ok(ExitObservation { ip: ip.into(), country: country.into(), warp: matches!(field("warp="), Some("on" | "plus")), checked: Some(Instant::now()), error: None })
+}
+
+fn probe_exit(timeout: Duration) -> Result<ExitObservation, String> {
+    let client = reqwest::blocking::Client::builder().no_proxy().timeout(timeout).build().map_err(|e| format!("Exit probe unavailable: {e}"))?;
+    let response = client.get("https://www.cloudflare.com/cdn-cgi/trace").send().and_then(|r| r.error_for_status()).map_err(|e| format!("Exit verification failed: {e}"))?;
+    parse_exit_trace(&response.text().map_err(|e| format!("Exit response unreadable: {e}"))?)
+}
+
+fn publish_exit(target: &Mutex<ExitObservation>, epoch: &AtomicU64, expected: u64, observed: ExitObservation) -> bool {
+    let mut exit = target.lock();
+    if epoch.load(Ordering::SeqCst) != expected { return false; }
+    *exit = observed;
+    true
+}
+
+fn validate_german_profile(config: &serde_json::Value) -> Result<(), String> {
+    let relay = config["outbounds"].as_array().and_then(|outbounds| outbounds.iter().find(|outbound| {
+        outbound["type"] == "vless" && outbound["server"] == "92.5.127.89" && outbound["server_port"] == 443
+    })).ok_or("The profile must use the Frankfurt relay at 92.5.127.89:443")?;
+    if relay["tls"]["enabled"] != true || relay["transport"]["type"] != "ws" || relay["transport"]["path"] != "/rbx-tunnel-9f2a" {
+        return Err("The German profile needs TLS and the working WebSocket route /rbx-tunnel-9f2a".into());
+    }
+    if config["route"]["final"] != relay["tag"] || relay["tag"].as_str().map_or(true, str::is_empty) {
+        return Err("The German relay must be the profile's default outbound route".into());
+    }
+    let tun = config["inbounds"].as_array().is_some_and(|inbounds| inbounds.iter().any(|inbound| {
+        inbound["type"] == "tun" && inbound["auto_route"] == true && inbound["strict_route"] == true
+    }));
+    if !tun { return Err("The German profile needs a TUN interface with automatic and strict routing enabled".into()); }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -153,6 +204,7 @@ pub struct DetectedVpn {
 }
 
 pub struct VpnManager {
+    operation: Mutex<()>,
     connected: AtomicBool,
     state: Mutex<VpnState>,
     /// True only when THIS app established the verified connection.
@@ -161,15 +213,18 @@ pub struct VpnManager {
     engine_name: Mutex<String>,
     auto_detected: AtomicBool,
     start_time: Mutex<Option<Instant>>,
-    last_ip: Arc<Mutex<String>>,
-    last_country: Arc<Mutex<String>>,
-    last_city: Arc<Mutex<String>>,
+    exit: Arc<Mutex<ExitObservation>>,
+    exit_epoch: Arc<AtomicU64>,
+    exit_in_flight: Arc<AtomicBool>,
+    exit_requested: Mutex<Option<Instant>>,
     last_latency: Mutex<Option<u64>>,
     last_error: Mutex<Option<String>>,
     state_reason: Mutex<Option<String>>,
     evidence: Mutex<VpnEvidence>,
     auto_reconnect: AtomicBool,
     user_disconnected: AtomicBool,
+    reconnect_engine: Mutex<Option<String>>,
+    retry_at: Mutex<Option<Instant>>,
 }
 
 /// Control surface used by macro steps. Implemented by [`VpnManager`];
@@ -184,6 +239,7 @@ pub trait VpnControl: Send + Sync {
 impl VpnManager {
     pub fn new() -> Arc<Self> {
         let mgr = Arc::new(Self {
+            operation: Mutex::new(()),
             connected: AtomicBool::new(false),
             state: Mutex::new(VpnState::Disconnected),
             managed: AtomicBool::new(false),
@@ -191,20 +247,22 @@ impl VpnManager {
             engine_name: Mutex::new("Offline".to_string()),
             auto_detected: AtomicBool::new(false),
             start_time: Mutex::new(None),
-            last_ip: Arc::new(Mutex::new("Detecting...".to_string())),
-            last_country: Arc::new(Mutex::new("".to_string())),
-            last_city: Arc::new(Mutex::new("".to_string())),
+            exit: Arc::new(Mutex::new(ExitObservation::default())),
+            exit_epoch: Arc::new(AtomicU64::new(0)),
+            exit_in_flight: Arc::new(AtomicBool::new(false)),
+            exit_requested: Mutex::new(None),
             last_latency: Mutex::new(None),
             last_error: Mutex::new(None),
             state_reason: Mutex::new(None),
             evidence: Mutex::new(VpnEvidence::default()),
             auto_reconnect: AtomicBool::new(true),
             user_disconnected: AtomicBool::new(false),
+            reconnect_engine: Mutex::new(None),
+            retry_at: Mutex::new(None),
         });
 
         // Startup: desired state is DISCONNECTED. Only adopt a genuinely
         // verified external connection (marked unmanaged/external).
-        mgr.sync_process_state();
 
         // Spawn watchdog thread
         let mgr_clone = Arc::clone(&mgr);
@@ -212,8 +270,8 @@ impl VpnManager {
             .name("vpn-watchdog".into())
             .spawn(move || {
                 loop {
-                    std::thread::sleep(Duration::from_secs(5));
                     mgr_clone.watchdog_tick();
+                    std::thread::sleep(Duration::from_secs(5));
                 }
             })
             .ok();
@@ -226,6 +284,7 @@ impl VpnManager {
     #[cfg(test)]
     fn new_isolated() -> Self {
         Self {
+            operation: Mutex::new(()),
             connected: AtomicBool::new(false),
             state: Mutex::new(VpnState::Disconnected),
             managed: AtomicBool::new(false),
@@ -233,19 +292,27 @@ impl VpnManager {
             engine_name: Mutex::new("Offline".to_string()),
             auto_detected: AtomicBool::new(false),
             start_time: Mutex::new(None),
-            last_ip: Arc::new(Mutex::new(String::new())),
-            last_country: Arc::new(Mutex::new(String::new())),
-            last_city: Arc::new(Mutex::new(String::new())),
+            exit: Arc::new(Mutex::new(ExitObservation::default())),
+            exit_epoch: Arc::new(AtomicU64::new(0)),
+            exit_in_flight: Arc::new(AtomicBool::new(false)),
+            exit_requested: Mutex::new(None),
             last_latency: Mutex::new(None),
             last_error: Mutex::new(None),
             state_reason: Mutex::new(None),
             evidence: Mutex::new(VpnEvidence::default()),
             auto_reconnect: AtomicBool::new(true),
             user_disconnected: AtomicBool::new(false),
+            reconnect_engine: Mutex::new(None),
+            retry_at: Mutex::new(None),
         }
     }
 
     fn set_state(&self, state: VpnState, reason: Option<String>) {
+        if self.vpn_state() == VpnState::Connected && state != VpnState::Connected {
+            self.invalidate_exit();
+            *self.start_time.lock() = None;
+            *self.last_latency.lock() = None;
+        }
         *self.state.lock() = state;
         *self.state_reason.lock() = reason;
         self.connected.store(state == VpnState::Connected, Ordering::SeqCst);
@@ -474,6 +541,23 @@ impl VpnManager {
         }
     }
 
+    fn dedicated_tunnel(snap: &EvidenceSnapshot) -> bool {
+        let filtered = EvidenceSnapshot {
+            netsh_lines: snap.netsh_lines.iter().filter(|line| {
+                let lower = line.to_ascii_lowercase();
+                lower.contains("sing-box") || lower.split_whitespace().last() == Some("tun0")
+            }).cloned().collect(),
+            ..Default::default()
+        };
+        Self::snap_has_tunnel(&filtered, None)
+    }
+
+    fn verified_engine(snap: &EvidenceSnapshot) -> Option<DetectedVpn> {
+        ["dedicated", "warp", "psiphon", "wireguard", "proton", "windscribe", "openvpn", "tailscale", "mullvad", "nord", "clash", "nekobox", "v2ray"]
+            .iter().find(|engine| Self::evaluate_evidence(engine, snap).connected)
+            .map(|engine| DetectedVpn { engine: (*engine).into(), display_name: if *engine == "dedicated" { "Germany · Frankfurt relay".into() } else { engine.to_uppercase() } })
+    }
+
     /// Pure verification decision: process evidence AND tunnel evidence are
     /// BOTH required for `connected = true`. Process-without-tunnel is an
     /// explicit non-connected verdict (spec: never infer a tunnel).
@@ -547,7 +631,7 @@ impl VpnManager {
             if !proc {
                 continue;
             }
-            let tunnel = Self::snap_has_tunnel(snap, *keyword);
+            let tunnel = if *id == "dedicated" { Self::dedicated_tunnel(snap) } else { Self::snap_has_tunnel(snap, *keyword) };
             if tunnel {
                 return Verification {
                     connected: true,
@@ -714,9 +798,9 @@ impl VpnManager {
     /// `Error`; externally visible VPNs become `Connected` only when
     /// verified (marked unmanaged), else `Unknown`.
     pub fn sync_process_state(&self) {
+        let Some(_operation) = self.operation.try_lock() else { return; };
         match *self.state.lock() {
             VpnState::Connecting | VpnState::Verifying | VpnState::Disconnecting => return,
-            VpnState::Error => return, // latched until an explicit action
             _ => {}
         }
 
@@ -727,8 +811,14 @@ impl VpnManager {
             let v = Self::evaluate_evidence(&engine, &Self::collect_snapshot());
             self.set_evidence(v.evidence.clone());
             if v.connected {
+                if engine == "dedicated" && !self.exit.lock().germany_verified() {
+                    self.set_state(VpnState::Unknown, Some("Relay interface detected; German exit is not currently verified".into()));
+                    self.refresh_ip_async();
+                    return;
+                }
                 if self.vpn_state() != VpnState::Connected {
                     self.set_state(VpnState::Connected, None);
+                    *self.last_error.lock() = None;
                     if self.start_time.lock().is_none() {
                         *self.start_time.lock() = Some(Instant::now());
                     }
@@ -748,17 +838,20 @@ impl VpnManager {
         let v = Self::evaluate_evidence("auto", &snap);
         self.set_evidence(v.evidence.clone());
         if v.connected {
-            let detected = Self::detect_active_vpn();
+            let detected = Self::verified_engine(&snap);
             let (engine, name) = detected
                 .map(|d| (d.engine, d.display_name))
                 .unwrap_or_else(|| ("generic".to_string(), "VPN (external)".to_string()));
             let prev = self.engine.lock().clone();
             let was_connected = self.vpn_state() == VpnState::Connected;
+            if prev != engine { self.invalidate_exit(); }
+            self.set_evidence(Self::evaluate_evidence(&engine, &snap).evidence);
             *self.engine.lock() = engine;
             *self.engine_name.lock() = name.clone();
             self.auto_detected.store(true, Ordering::SeqCst);
-            self.user_disconnected.store(false, Ordering::SeqCst);
-            self.set_state(VpnState::Connected, Some("externally managed connection".into()));
+            let german_pending = self.engine.lock().as_str() == "dedicated" && !self.exit.lock().germany_verified();
+            self.set_state(if german_pending { VpnState::Unknown } else { VpnState::Connected }, Some(if german_pending { "Relay detected; checking German exit" } else { "externally managed connection" }.into()));
+            if !self.user_disconnected.load(Ordering::SeqCst) { *self.last_error.lock() = None; }
             if !was_connected || prev != self.engine.lock().clone() {
                 if self.start_time.lock().is_none() {
                     *self.start_time.lock() = Some(Instant::now());
@@ -800,22 +893,29 @@ impl VpnManager {
         // Auto-reconnect a managed dedicated relay that dropped. Full
         // verified cycle (not spawn-only); skipped while a cycle is already
         // in flight to avoid overlap.
-        let current_engine = self.engine.lock().clone();
-        let st = self.vpn_state();
-        if current_engine == "dedicated"
-            && self.managed.load(Ordering::SeqCst)
-            && self.auto_reconnect.load(Ordering::SeqCst)
-            && matches!(st, VpnState::Disconnected | VpnState::Error)
+        self.refresh_ip_async();
+        if let Some(engine) = self.recovery_due(is_elevated())
         {
-            tracing::warn!("VPN Watchdog: managed relay down ({:?}); reconnecting with verification...", st);
-            let _ = self.connect_verified("dedicated", Duration::from_secs(10));
+            tracing::warn!("VPN recovery: {engine} needs verification");
+            let _ = self.connect_verified(&engine, Duration::from_secs(10));
         }
     }
 
-    pub fn get_status(&self) -> VpnStatus {
-        self.sync_process_state();
+    fn recovery_due(&self, administrator: bool) -> Option<String> {
+        self.reconnect_engine.lock().clone().filter(|engine| {
+            self.auto_reconnect.load(Ordering::SeqCst) && !self.user_disconnected.load(Ordering::SeqCst)
+                && (engine != "dedicated" || administrator)
+                && matches!(self.vpn_state(), VpnState::Disconnected | VpnState::Error | VpnState::Unknown)
+                && self.retry_at.lock().map_or(true, |at| Instant::now() >= at)
+        })
+    }
 
-        let state = self.vpn_state();
+    pub fn get_status(&self) -> VpnStatus {
+        let exit = self.exit.lock().clone();
+        let engine = self.engine.lock().clone();
+        let state = if self.vpn_state() == VpnState::Connected && engine == "dedicated" && !exit.germany_verified() {
+            VpnState::Unknown
+        } else { self.vpn_state() };
         let connected = state == VpnState::Connected;
         let uptime_secs = if connected {
             self.start_time
@@ -826,16 +926,18 @@ impl VpnManager {
             0
         };
         let ev = self.evidence.lock().clone();
+        let fresh = exit.checked.is_some_and(|at| at.elapsed() <= Duration::from_secs(30));
+        let administrator = is_elevated();
 
         VpnStatus {
             connected,
             state,
             managed: self.managed.load(Ordering::SeqCst),
-            engine: self.engine.lock().clone(),
+            engine,
             engine_name: self.engine_name.lock().clone(),
-            ip: self.last_ip.lock().clone(),
-            country: self.last_country.lock().clone(),
-            city: self.last_city.lock().clone(),
+            ip: if fresh { exit.ip.clone() } else { String::new() },
+            country: if fresh { exit.country.clone() } else { String::new() },
+            city: String::new(),
             latency_ms: *self.last_latency.lock(),
             uptime_secs,
             auto_reconnect: self.auto_reconnect.load(Ordering::SeqCst),
@@ -843,11 +945,18 @@ impl VpnManager {
                 .last_error
                 .lock()
                 .clone()
-                .or_else(|| self.state_reason.lock().clone()),
+                .or_else(|| if state == VpnState::Error { self.state_reason.lock().clone() } else { None }),
             auto_detected: self.auto_detected.load(Ordering::SeqCst),
             process_running: ev.process_running,
             tunnel_detected: ev.tunnel_detected,
             verification_detail: ev.detail,
+            germany_verified: connected && exit.germany_verified(),
+            warp_verified: connected && fresh && exit.warp && exit.error.is_none(),
+            exit_age_secs: exit.checked.map(|at| at.elapsed().as_secs()),
+            exit_error: exit.error,
+            administrator,
+            recovery_active: self.reconnect_engine.lock().as_ref().is_some_and(|engine| engine == self.engine.lock().as_str() && (engine != "dedicated" || administrator))
+                && self.auto_reconnect.load(Ordering::SeqCst) && !self.user_disconnected.load(Ordering::SeqCst),
         }
     }
 
@@ -859,8 +968,19 @@ impl VpnManager {
     }
 
     pub fn connect_verified(&self, engine: &str, timeout: Duration) -> Result<VpnStatus, String> {
+        let _operation = self.operation.try_lock().ok_or("Another VPN operation is already running")?;
+        let result = self.connect_inner(engine, timeout);
+        *self.retry_at.lock() = if result.is_err() { Some(Instant::now() + Duration::from_secs(30)) } else { None };
+        result
+    }
+
+    fn connect_inner(&self, engine: &str, timeout: Duration) -> Result<VpnStatus, String> {
         let engine = engine.trim().to_ascii_lowercase();
+        if !matches!(engine.as_str(), "auto" | "dedicated" | "warp" | "psiphon") {
+            return Err(format!("Engine '{engine}' is read-only. Connect supported engines: dedicated, warp or psiphon."));
+        }
         self.user_disconnected.store(false, Ordering::SeqCst);
+        self.invalidate_exit();
         *self.last_error.lock() = None;
         self.set_state(VpnState::Connecting, Some(format!("connecting via {engine}")));
         *self.engine.lock() = engine.clone();
@@ -868,10 +988,15 @@ impl VpnManager {
         // "auto": adopt a verified external connection if present, else fall
         // through to the preferred local engines.
         if engine == "auto" {
-            let v = Self::evaluate_evidence("auto", &Self::collect_snapshot());
+            *self.reconnect_engine.lock() = None;
+            let snapshot = Self::collect_snapshot();
+            let v = Self::evaluate_evidence("auto", &snapshot);
             self.set_evidence(v.evidence.clone());
             if v.connected {
-                if let Some(detected) = Self::detect_active_vpn() {
+                if let Some(detected) = Self::verified_engine(&snapshot) {
+                    if matches!(detected.engine.as_str(), "dedicated" | "warp" | "psiphon") && Self::evaluate_evidence(&detected.engine, &snapshot).connected {
+                        return self.connect_inner(&detected.engine, timeout);
+                    }
                     *self.engine.lock() = detected.engine.clone();
                     *self.engine_name.lock() = detected.display_name.clone();
                     self.auto_detected.store(true, Ordering::SeqCst);
@@ -884,28 +1009,38 @@ impl VpnManager {
                 }
             }
             if Path::new(SINGBOX_EXE).exists() {
-                return self.connect_verified("dedicated", timeout);
+                return self.connect_inner("dedicated", timeout);
             }
-            return self.connect_verified("warp", timeout);
+            return self.connect_inner("warp", timeout);
         }
 
         // Display name up front (state shows Connecting with engine context).
         *self.engine_name.lock() = match engine.as_str() {
-            "dedicated" => "Dedicated Relay (sing-box)".to_string(),
+            "dedicated" => "Germany · Frankfurt relay".to_string(),
             "warp" => "Cloudflare WARP".to_string(),
             "psiphon" => "Psiphon Tunnel".to_string(),
             other => format!("VPN ({other})"),
         };
 
-        // Spawn only — success here means "command sent", NOT connected.
-        let spawn_result = match engine.as_str() {
+        *self.reconnect_engine.lock() = Some(engine.clone());
+        let already_running = Self::evaluate_evidence(&engine, &Self::collect_snapshot()).connected;
+        if engine == "dedicated" {
+            if let Err(error) = Self::validate_relay_profile() {
+                *self.last_error.lock() = Some(error.clone());
+                self.set_state(VpnState::Error, Some(error.clone()));
+                *self.reconnect_engine.lock() = None;
+                return Err(error);
+            }
+        }
+        // Adopting a verified tunnel never kills or restarts it.
+        let spawn_result = if already_running { Ok(()) } else { match engine.as_str() {
             "dedicated" => Self::spawn_dedicated(),
             "warp" => self.spawn_warp(),
             "psiphon" => self.spawn_psiphon(),
             other => Err(format!(
                 "Unknown engine '{other}'. Supported: auto, dedicated, warp, psiphon."
             )),
-        };
+        }};
         if let Err(e) = spawn_result {
             *self.last_error.lock() = Some(e.clone());
             self.set_state(VpnState::Error, Some(e.clone()));
@@ -918,7 +1053,7 @@ impl VpnManager {
         // missing driver) — fail in ~3s with a reason instead of burning
         // the full verification timeout. warp-cli is one-shot, so the
         // generic loop below covers it.
-        if matches!(engine.as_str(), "dedicated" | "psiphon") {
+        if !already_running && matches!(engine.as_str(), "dedicated" | "psiphon") {
             let procs = match engine.as_str() {
                 "dedicated" => &["sing-box.exe"][..],
                 _ => &["psiphon3.exe", "psiphond.exe"][..],
@@ -956,6 +1091,18 @@ impl VpnManager {
             self.set_evidence(v.evidence.clone());
             last_detail = v.evidence.detail.clone();
             if v.connected {
+                if engine == "dedicated" {
+                    let remaining = deadline.saturating_duration_since(Instant::now());
+                    match probe_exit(remaining.min(Duration::from_secs(5)).max(Duration::from_millis(1))) {
+                        Ok(exit) if exit.germany_verified() => { *self.exit.lock() = exit; }
+                        Ok(exit) => {
+                            last_detail = format!("Relay interface is up, but the observed exit country is {} instead of Germany", exit.country);
+                            *self.exit.lock() = exit;
+                            break;
+                        }
+                        Err(error) => { last_detail = error; break; }
+                    }
+                }
                 self.managed.store(true, Ordering::SeqCst);
                 self.auto_detected.store(false, Ordering::SeqCst);
                 self.set_state(VpnState::Connected, None);
@@ -967,13 +1114,19 @@ impl VpnManager {
             std::thread::sleep(Duration::from_millis(500));
         }
 
-        let reason = format!("Verification timeout after {}s: {last_detail}", timeout.as_secs());
+        let reason = format!("Could not verify {engine}: {last_detail}");
         *self.last_error.lock() = Some(reason.clone());
         self.set_state(VpnState::Error, Some(reason.clone()));
         self.managed.store(false, Ordering::SeqCst);
         // Best-effort cleanup of a half-started tunnel.
-        Self::kill_engine_processes(&engine);
+        if !already_running { Self::kill_engine_processes(&engine); }
         Err(reason)
+    }
+
+    fn validate_relay_profile() -> Result<(), String> {
+        let bytes = std::fs::read(SINGBOX_CONFIG).map_err(|_| format!("German relay profile missing: {SINGBOX_CONFIG}"))?;
+        let config: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| "German relay profile is not valid JSON")?;
+        validate_german_profile(&config)
     }
 
     /// Validate the sing-box config without starting a tunnel (`sing-box
@@ -1016,12 +1169,13 @@ impl VpnManager {
                 as Administrator, or use Cloudflare WARP instead.".to_string(),
             );
         }
-        if let Err(e) = Self::check_singbox_config() {
-            return Err(e);
+        Self::check_singbox_config()?;
+        if Self::snap_warp_cli_connected(&Self::collect_snapshot()) {
+            return Err("Local WARP is active. Disconnect it before starting the German TUN relay to avoid competing default routes.".into());
         }
 
         // Clean up any stale instances first
-        Self::kill_process("sing-box.exe");
+        Self::stop_dedicated()?;
         std::thread::sleep(Duration::from_millis(300));
 
         let mut cmd = Command::new(SINGBOX_EXE);
@@ -1091,7 +1245,7 @@ impl VpnManager {
                 cmd.creation_flags(CREATE_NO_WINDOW);
                 let _ = cmd.output();
             }
-            "dedicated" => Self::kill_process("sing-box.exe"),
+            "dedicated" => { let _ = Self::stop_dedicated(); }
             "psiphon" => {
                 Self::kill_process("psiphon3.exe");
                 Self::kill_process("psiphond.exe");
@@ -1124,12 +1278,7 @@ impl VpnManager {
                 Self::kill_process("xray.exe");
                 Self::kill_process("v2ray.exe");
             }
-            _ => {
-                let procs = Self::get_running_process_names();
-                if procs.iter().any(|p| p == "sing-box.exe") {
-                    Self::kill_process("sing-box.exe");
-                }
-            }
+            _ => {}
         }
     }
 
@@ -1140,8 +1289,17 @@ impl VpnManager {
     /// `DISCONNECTING → DISCONNECTED`, verified by evidence absence. Fails to
     /// `Error` if engine processes persist past the timeout.
     pub fn disconnect_verified(&self, timeout: Duration) -> Result<VpnStatus, String> {
-        self.user_disconnected.store(true, Ordering::SeqCst);
+        let _operation = self.operation.try_lock().ok_or("Another VPN operation is already running")?;
         let engine = self.engine.lock().clone();
+        if !matches!(engine.as_str(), "dedicated" | "warp" | "psiphon" | "none") {
+            return Err("This VPN is externally managed. Disconnect it using its own app.".into());
+        }
+        if engine == "dedicated" && !is_elevated() {
+            return Err("Administrator rights are required to stop the German relay. The current tunnel has been left running.".into());
+        }
+        self.user_disconnected.store(true, Ordering::SeqCst);
+        *self.reconnect_engine.lock() = None;
+        *self.retry_at.lock() = None;
         self.set_state(VpnState::Disconnecting, Some(format!("disconnecting {engine}")));
         Self::kill_engine_processes(&engine);
 
@@ -1173,6 +1331,9 @@ impl VpnManager {
     }
 
     fn disconnected_evidence(engine: &str, snap: &EvidenceSnapshot) -> bool {
+        if engine == "dedicated" {
+            return !Self::snap_has_proc(snap, &["sing-box.exe"]) && !Self::dedicated_tunnel(snap);
+        }
         let (processes, keyword): (&[&str], Option<&str>) = match engine {
             "dedicated" => (&["sing-box.exe"], Some("sing-box")),
             "warp" => (&[], Some("warp")), // WARP's service remains alive when disconnected.
@@ -1216,13 +1377,33 @@ impl VpnManager {
         }
     }
 
+    fn stop_dedicated() -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            let script = format!(
+                "$ErrorActionPreference='Stop'; Get-CimInstance Win32_Process -Filter \"Name='sing-box.exe'\" | Where-Object {{ $_.ExecutablePath -eq '{SINGBOX_EXE}' -and (($_.CommandLine -split '\\s+' | ForEach-Object {{ $_.Trim('\"') }}) -contains '{SINGBOX_CONFIG}') }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -ErrorAction Stop }}"
+            );
+            let output = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]).creation_flags(CREATE_NO_WINDOW).output()
+                .map_err(|error| format!("Could not stop the German relay: {error}"))?;
+            if !output.status.success() { return Err("Could not stop the German relay. Administrator rights may be required; unrelated tunnels were left alone.".into()); }
+        }
+        Ok(())
+    }
+
     pub fn test_ping(&self) -> PingResult {
         let addr = SocketAddr::from((DEDICATED_SERVER_IP, DEDICATED_SERVER_PORT));
-        let start = Instant::now();
-
-        match std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(2500)) {
-            Ok(_) => {
-                let ms = start.elapsed().as_millis() as u64;
+        let mut samples = Vec::new();
+        let mut last_error = None;
+        for _ in 0..3 {
+            let start = Instant::now();
+            match std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(1500)) {
+                Ok(_) => samples.push(start.elapsed().as_millis() as u64),
+                Err(error) => { last_error = Some(error.to_string()); break; }
+            }
+        }
+        if samples.len() == 3 {
+                samples.sort_unstable();
+                let ms = samples[1];
                 *self.last_latency.lock() = Some(ms);
                 PingResult {
                     success: true,
@@ -1230,13 +1411,14 @@ impl VpnManager {
                     target: DEDICATED_RELAY_LABEL.into(),
                     error: None,
                 }
-            }
-            Err(e) => PingResult {
+        } else {
+            *self.last_latency.lock() = None;
+            PingResult {
                 success: false,
                 latency_ms: 0,
                 target: DEDICATED_RELAY_LABEL.into(),
-                error: Some(e.to_string()),
-            },
+                error: last_error,
+            }
         }
     }
 
@@ -1246,9 +1428,10 @@ impl VpnManager {
             let mut cmd = Command::new("ipconfig");
             cmd.arg("/flushdns");
             cmd.creation_flags(CREATE_NO_WINDOW);
-            let _ = cmd.output();
+            let output = cmd.output().map_err(|error| format!("DNS flush failed: {error}"))?;
+            if !output.status.success() { return Err("Windows refused to flush DNS. Administrator rights may be required.".into()); }
         }
-        Ok("DNS cache flushed and network routes refreshed.".to_string())
+        Ok("DNS cache flushed. The active VPN routes were left in place.".to_string())
     }
 
     pub fn get_logs(&self, max_lines: usize) -> Vec<String> {
@@ -1266,42 +1449,25 @@ impl VpnManager {
     }
 
     fn refresh_ip_async(&self) {
-        let target_ip = Arc::clone(&self.last_ip);
-        let target_country = Arc::clone(&self.last_country);
-        let target_city = Arc::clone(&self.last_city);
-
+        if self.exit_requested.lock().is_some_and(|at| at.elapsed() < Duration::from_secs(10)) { return; }
+        if self.exit_in_flight.swap(true, Ordering::SeqCst) { return; }
+        *self.exit_requested.lock() = Some(Instant::now());
+        let target = Arc::clone(&self.exit);
+        let epoch = Arc::clone(&self.exit_epoch);
+        let expected = epoch.load(Ordering::SeqCst);
+        let in_flight = Arc::clone(&self.exit_in_flight);
         std::thread::spawn(move || {
-            let client = match reqwest::blocking::Client::builder()
-                .timeout(Duration::from_millis(3000))
-                .build()
-            {
-                Ok(c) => c,
-                Err(_) => return,
-            };
-
-            // Attempt ip-api.com
-            if let Ok(res) = client.get("http://ip-api.com/json/").send() {
-                if let Ok(json) = res.json::<IpApiResponse>() {
-                    if let Some(ip) = json.query {
-                        *target_ip.lock() = ip;
-                    }
-                    if let Some(country) = json.country {
-                        *target_country.lock() = country;
-                    }
-                    if let Some(city) = json.city {
-                        *target_city.lock() = city;
-                    }
-                    return;
-                }
-            }
-
-            // Fallback ipify
-            if let Ok(res) = client.get("https://api.ipify.org").send() {
-                if let Ok(ip) = res.text() {
-                    *target_ip.lock() = ip.trim().to_string();
-                }
-            }
+            let observed = probe_exit(Duration::from_secs(3)).unwrap_or_else(|error| ExitObservation { error: Some(error), ..Default::default() });
+            publish_exit(&target, &epoch, expected, observed);
+            in_flight.store(false, Ordering::SeqCst);
         });
+    }
+
+    fn invalidate_exit(&self) {
+        let mut exit = self.exit.lock();
+        self.exit_epoch.fetch_add(1, Ordering::SeqCst);
+        *exit = ExitObservation::default();
+        *self.exit_requested.lock() = None;
     }
 }
 
@@ -1339,6 +1505,130 @@ mod tests {
     const WARP_LINE: &str = "Connected  Dedicated  CloudflareWARP";
     const WIFI_LINE: &str = "Connected  Dedicated  Wi-Fi";
     const DIS_LINE: &str = "Disconnected  Dedicated  sing-box TUN";
+
+    #[test]
+    fn a_different_vpn_interface_cannot_verify_the_german_relay() {
+        let snapshot = snap(&["sing-box.exe", "warp-svc.exe"], &[WARP_LINE], Some("Connected"));
+        assert!(!VpnManager::evaluate_evidence("dedicated", &snapshot).connected);
+        assert_eq!(VpnManager::verified_engine(&snapshot).unwrap().engine, "warp");
+        let tun0 = snap(&["sing-box.exe"], &["Connected Dedicated tun0"], None);
+        assert!(VpnManager::evaluate_evidence("dedicated", &tun0).connected);
+        assert!(!VpnManager::disconnected_evidence("dedicated", &tun0));
+    }
+
+    #[test]
+    fn german_exit_needs_fresh_complete_https_evidence() {
+        let mut exit = parse_exit_trace("ip=203.0.113.7\nloc=DE\nwarp=on\n").unwrap();
+        assert!(exit.germany_verified());
+        assert!(exit.warp);
+        exit.checked = Some(Instant::now() - Duration::from_secs(31));
+        assert!(!exit.germany_verified());
+        assert!(!parse_exit_trace("ip=203.0.113.7\nloc=EG\nwarp=off").unwrap().germany_verified());
+        for malformed in ["loc=DE", "ip=broken\nloc=DE", "ip=203.0.113.7", "ip=203.0.113.7\nloc=Germany"] {
+            assert!(parse_exit_trace(malformed).is_err());
+        }
+    }
+
+    #[test]
+    fn replies_from_a_previous_route_cannot_restore_old_country_evidence() {
+        let mgr = VpnManager::new_isolated();
+        let previous = mgr.exit_epoch.load(Ordering::SeqCst);
+        mgr.invalidate_exit();
+        let stale = parse_exit_trace("ip=203.0.113.7\nloc=DE\nwarp=off").unwrap();
+        assert!(!publish_exit(&mgr.exit, &mgr.exit_epoch, previous, stale));
+        assert!(mgr.get_status().country.is_empty());
+        assert!(!mgr.get_status().germany_verified);
+    }
+
+    #[test]
+    fn a_lost_tunnel_clears_exit_country_latency_and_uptime() {
+        let mgr = VpnManager::new_isolated();
+        mgr.set_state(VpnState::Connected, None);
+        *mgr.exit.lock() = parse_exit_trace("ip=203.0.113.7\nloc=DE\nwarp=off").unwrap();
+        *mgr.last_latency.lock() = Some(52);
+        *mgr.start_time.lock() = Some(Instant::now());
+        assert!(mgr.get_status().germany_verified);
+        mgr.set_state(VpnState::Error, Some("Tunnel lost".into()));
+        let status = mgr.get_status();
+        assert!(!status.connected);
+        assert!(!status.germany_verified);
+        assert!(status.ip.is_empty());
+        assert!(status.country.is_empty());
+        assert_eq!(status.latency_ms, None);
+        assert_eq!(status.uptime_secs, 0);
+    }
+
+    #[test]
+    fn an_expired_german_exit_is_not_a_connected_macro_wait_result() {
+        let mgr = VpnManager::new_isolated();
+        *mgr.engine.lock() = "dedicated".into();
+        mgr.set_state(VpnState::Connected, Some("externally managed connection".into()));
+        *mgr.exit.lock() = parse_exit_trace("ip=203.0.113.7\nloc=DE\nwarp=off").unwrap();
+        assert!(mgr.get_status().connected);
+        assert!(mgr.get_status().last_error.is_none(), "healthy connection notes are not error alerts");
+        mgr.exit.lock().checked = Some(Instant::now() - Duration::from_secs(31));
+        let status = mgr.get_status();
+        assert_eq!(status.state, VpnState::Unknown);
+        assert!(!status.connected);
+        assert!(!status.germany_verified);
+        assert!(status.country.is_empty());
+    }
+
+    #[test]
+    fn recovery_preserves_the_request_across_failures_and_respects_cancellation() {
+        let mgr = VpnManager::new_isolated();
+        *mgr.reconnect_engine.lock() = Some("warp".into());
+        mgr.set_state(VpnState::Error, None);
+        mgr.managed.store(false, Ordering::SeqCst);
+        assert_eq!(mgr.recovery_due(false).as_deref(), Some("warp"));
+        *mgr.retry_at.lock() = Some(Instant::now() + Duration::from_secs(30));
+        assert_eq!(mgr.recovery_due(false), None);
+        *mgr.retry_at.lock() = None;
+        mgr.auto_reconnect.store(false, Ordering::SeqCst);
+        assert_eq!(mgr.recovery_due(false), None);
+        mgr.auto_reconnect.store(true, Ordering::SeqCst);
+        mgr.user_disconnected.store(true, Ordering::SeqCst);
+        assert_eq!(mgr.recovery_due(false), None);
+        mgr.user_disconnected.store(false, Ordering::SeqCst);
+        mgr.set_state(VpnState::Connecting, None);
+        assert_eq!(mgr.recovery_due(false), None);
+        mgr.set_state(VpnState::Error, None);
+        *mgr.reconnect_engine.lock() = Some("dedicated".into());
+        assert_eq!(mgr.recovery_due(false), None);
+        assert_eq!(mgr.recovery_due(true).as_deref(), Some("dedicated"));
+    }
+
+    #[test]
+    fn overlapping_operations_are_rejected_before_os_input_or_state_changes() {
+        let mgr = VpnManager::new_isolated();
+        let _busy = mgr.operation.lock();
+        assert!(mgr.connect_verified("dedicated", Duration::ZERO).unwrap_err().contains("already running"));
+        assert!(mgr.disconnect_verified(Duration::ZERO).unwrap_err().contains("already running"));
+        assert_eq!(mgr.vpn_state(), VpnState::Disconnected);
+        assert!(!mgr.user_disconnected.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn the_german_profile_requires_the_working_route_and_tls() {
+        let valid = serde_json::json!({
+            "inbounds": [{"type":"tun","auto_route":true,"strict_route":true}],
+            "outbounds": [{"type":"vless","tag":"relay","server":"92.5.127.89","server_port":443,
+                "tls":{"enabled":true},"transport":{"type":"ws","path":"/rbx-tunnel-9f2a"}}],
+            "route":{"final":"relay"}
+        });
+        assert!(validate_german_profile(&valid).is_ok());
+        for pointer in ["/outbounds/0/tls/enabled", "/inbounds/0/strict_route"] {
+            let mut invalid = valid.clone();
+            *invalid.pointer_mut(pointer).unwrap() = serde_json::json!(false);
+            assert!(validate_german_profile(&invalid).is_err());
+        }
+        let mut wrong_route = valid.clone();
+        wrong_route["route"]["final"] = serde_json::json!("direct");
+        assert!(validate_german_profile(&wrong_route).is_err());
+        let mut wrong_path = valid;
+        wrong_path["outbounds"][0]["transport"]["path"] = serde_json::json!("/old-path");
+        assert!(validate_german_profile(&wrong_path).is_err());
+    }
 
     #[test]
     fn warp_disconnect_uses_cli_and_tunnel_not_service_lifetime() {

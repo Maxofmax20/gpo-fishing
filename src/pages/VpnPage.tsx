@@ -1,413 +1,165 @@
-import { useState, useRef } from "react";
-import {
-  Activity,
-  AlertCircle,
-  Clock,
-  RefreshCw,
-  Shield,
-  ShieldCheck,
-  Terminal,
-  Zap,
-} from "lucide-react";
+import { useRef, useState } from "react";
+import { Activity, AlertCircle, Clock, Globe2, RefreshCw, Shield, ShieldCheck, Terminal, Zap } from "lucide-react";
 import { api } from "../lib/ipc";
-import { showToast } from "../lib/store";
 import { useVisiblePoll } from "../lib/useVisiblePoll";
 import type { PingResult, VpnEngine, VpnStatus } from "../lib/types";
 import { Button, Pill, Row, Section, Toggle, cx } from "../components/primitives";
 
+const initialStatus: VpnStatus = {
+  connected: false, state: "disconnected", managed: false, engine: "none", engine_name: "Checking connection",
+  ip: "", country: "", city: "", latency_ms: null, uptime_secs: 0, auto_reconnect: true, last_error: null,
+  auto_detected: false, process_running: false, tunnel_detected: false, verification_detail: "",
+};
+const stateLabels: Record<VpnStatus["state"], string> = {
+  disconnected: "Disconnected", connecting: "Connecting", verifying: "Verifying connection",
+  connected: "Tunnel connected", disconnecting: "Disconnecting", error: "Connection needs attention", unknown: "Connection unverified",
+};
+const countryName = (country: string) => ({ DE: "Germany", EG: "Egypt" }[country] || country);
+const engines: { id: VpnEngine; title: string; description: string }[] = [
+  { id: "dedicated", title: "Germany · Frankfurt relay", description: "Recommended for your German exit. Uses the working TLS/WebSocket route and supports TCP and UDP. Starting or stopping the TUN driver requires administrator rights." },
+  { id: "warp", title: "Cloudflare WARP", description: "Alternative Cloudflare tunnel on this PC. WARP chooses its exit automatically; selecting it does not guarantee Germany." },
+  { id: "psiphon", title: "Psiphon fallback", description: "Alternative for restrictive networks. Requires Psiphon in C:\\VPN. Its exit country is checked separately." },
+  { id: "auto", title: "Use an existing VPN", description: "Detect an active connection. Supported local engines can be adopted for recovery; other VPN apps remain externally managed." },
+];
+
 export default function VpnPage() {
-  const [status, setStatus] = useState<VpnStatus>({
-    connected: false,
-    state: "disconnected",
-    managed: false,
-    engine: "auto",
-    engine_name: "Scanning...",
-    ip: "Checking...",
-    country: "",
-    city: "",
-    latency_ms: null,
-    uptime_secs: 0,
-    auto_reconnect: true,
-    last_error: null,
-    auto_detected: false,
-    process_running: false,
-    tunnel_detected: false,
-    verification_detail: "",
-  });
-
-  const STATE_META: Record<VpnStatus["state"], { label: string; tone: "ok" | "warn" | "bad" | "accent" | "mute" }> = {
-    disconnected: { label: "Disconnected", tone: "mute" },
-    connecting: { label: "Connecting…", tone: "accent" },
-    verifying: { label: "Verifying tunnel…", tone: "accent" },
-    connected: { label: "Connected (verified)", tone: "ok" },
-    disconnecting: { label: "Disconnecting…", tone: "warn" },
-    error: { label: "Error", tone: "bad" },
-    unknown: { label: "Unknown (unverified)", tone: "warn" },
-  };
-  const meta = STATE_META[status.state] ?? STATE_META.disconnected;
-  const busyState = status.state === "connecting" || status.state === "verifying" || status.state === "disconnecting";
-
-  const [selectedEngine, setSelectedEngine] = useState<VpnEngine>("auto");
+  const [status, setStatus] = useState(initialStatus);
+  const [selectedEngine, setSelectedEngine] = useState<VpnEngine>("dedicated");
   const [busy, setBusy] = useState(false);
-  const [pingResult, setPingResult] = useState<PingResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [ping, setPing] = useState<PingResult | null>(null);
   const [pinging, setPinging] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [resetMsg, setResetMsg] = useState<string | null>(null);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
   const [showLogs, setShowLogs] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const operation = useRef(0);
+  const working = useRef(false);
+  const transitioning = ["connecting", "verifying", "disconnecting"].includes(status.state);
+  const germanVerified = status.connected && status.state === "connected" && status.germany_verified === true;
+  const canManage = ["dedicated", "warp", "psiphon"].includes(status.engine);
+  const needsAdmin = status.engine === "dedicated" && !status.administrator;
 
   const fetchStatus = async () => {
+    if (working.current) return;
+    const generation = operation.current;
     try {
-      const s = await api.vpnGetStatus();
-      setStatus(s);
-
-    } catch (e) {
-      showToast("warn", `VPN status unavailable: ${String(e)}`);
-    }
-  };
-
-  useVisiblePoll(fetchStatus, 3000);
-
-  useVisiblePoll(
-    () => {
-      return api
-        .vpnGetLogs(40)
-        .then((l) => {
-          setLogs(l);
-          logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        })
-        .catch((e) => showToast("warn", `VPN logs unavailable: ${String(e)}`));
-    },
-    2500,
-    showLogs,
-  );
-
-  const handleToggleConnect = async () => {
-    setBusy(true);
-    try {
-      if (status.connected) {
-        const next = await api.vpnDisconnect();
-        setStatus(next);
-      } else {
-        const next = await api.vpnConnect(selectedEngine);
-        setStatus(next);
-        // Automatically probe latency after connecting
-        setTimeout(handleTestPing, 1500);
+      const next = await api.vpnGetStatus();
+      if (generation === operation.current) { setStatus(next); setStatusError(null); }
+    } catch (failure) {
+      if (generation === operation.current) {
+        setStatusError(`VPN status unavailable: ${String(failure)}`);
+        setStatus(previous => ({ ...previous, connected: false, state: "unknown", germany_verified: false, warp_verified: false, country: "", ip: "", process_running: false, tunnel_detected: false, verification_detail: "Connection status could not be refreshed." }));
       }
-    } catch (e) {
-      setStatus((prev) => ({ ...prev, last_error: String(e) }));
-    } finally {
-      setBusy(false);
-      fetchStatus();
     }
   };
+  useVisiblePoll(fetchStatus, 2000);
+  useVisiblePoll(async () => {
+    try { setLogs(await api.vpnGetLogs(40)); }
+    catch (failure) { setError(`VPN logs unavailable: ${String(failure)}`); }
+  }, 3000, showLogs);
 
-  const handleTestPing = async () => {
+  const testPing = async () => {
     setPinging(true);
-    try {
-      const res = await api.vpnTestPing();
-      setPingResult(res);
-      if (res.success) {
-        setStatus((prev) => ({ ...prev, latency_ms: res.latency_ms }));
-      }
-    } catch (e) {
-      setPingResult({
-        success: false,
-        latency_ms: 0,
-        target: "92.5.127.89:443",
-        error: String(e),
-      });
-    } finally {
-      setPinging(false);
-    }
+    try { setPing(await api.vpnTestPing()); }
+    catch (failure) { setPing({ success: false, latency_ms: 0, target: "92.5.127.89:443", error: String(failure) }); }
+    finally { setPinging(false); }
   };
-
-  const handleResetNetwork = async () => {
+  const run = async (action: "connect" | "disconnect" | "adopt") => {
+    operation.current++;
+    working.current = true;
+    setBusy(true);
+    setError(null);
+    setPing(null);
+    try {
+      const next = action === "disconnect" ? await api.vpnDisconnect() : await api.vpnConnect(action === "adopt" ? status.engine : selectedEngine);
+      setStatus(next);
+      if (next.connected && action !== "disconnect") void testPing();
+    } catch (failure) { setError(String(failure)); }
+    finally { working.current = false; setBusy(false); await fetchStatus(); }
+  };
+  const flushDns = async () => {
     setResetting(true);
-    setResetMsg("Flushing DNS & routes...");
-    try {
-      const res = await api.vpnResetNetwork();
-      setResetMsg(res);
-      setTimeout(() => setResetMsg(null), 3000);
-    } catch (e) {
-      setResetMsg(String(e));
-    } finally {
-      setResetting(false);
-    }
+    try { setResetMessage(await api.vpnResetNetwork()); }
+    catch (failure) { setResetMessage(String(failure)); }
+    finally { setResetting(false); }
+  };
+  const toggleRecovery = async (enabled: boolean) => {
+    try { await api.vpnSetAutoReconnect(enabled); await fetchStatus(); }
+    catch (failure) { setError(`Could not change recovery: ${String(failure)}`); }
   };
 
-  const handleToggleAutoReconnect = (val: boolean) => {
-    setStatus((prev) => ({ ...prev, auto_reconnect: val }));
-    api.vpnSetAutoReconnect(val);
-  };
-
-  const formatUptime = (secs: number) => {
-    if (!secs) return "0s";
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    const s = secs % 60;
-    if (h > 0) return `${h}h ${m}m ${s}s`;
-    if (m > 0) return `${m}m ${s}s`;
-    return `${s}s`;
-  };
-
-  return (
-    <div className="pb-6 pt-2">
-      {/* Hero Banner / Status */}
-      <div className="px-4 py-3 mx-4 mb-4 rounded-xl bg-gradient-to-r from-bg-elev to-bg border border-line flex flex-col gap-3 shadow-lg">
-        <div className="flex items-center gap-3">
-          <div
-            className={cx(
-              "w-11 h-11 shrink-0 rounded-xl grid place-items-center transition-colors shadow-[0_0_15px_rgba(0,0,0,0.5)]",
-              status.connected
-                ? "bg-ok-soft text-ok border border-ok/30"
-                : "bg-white/[0.05] text-fg-dim border border-line-strong",
-            )}
-          >
-            {status.connected ? <ShieldCheck size={22} /> : <Shield size={22} />}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-semibold text-[15px] whitespace-nowrap">
-                {status.connected ? "VPN Active" : meta.label === "Disconnected" ? "VPN Offline" : `VPN ${meta.label}`}
-              </span>
-              <span className="inline-block whitespace-nowrap">
-                <Pill tone={meta.tone}>
-                  {status.connected
-                    ? status.engine_name || (status.engine === "dedicated" ? "Dedicated Relay" : status.engine.toUpperCase())
-                    : meta.label}
-                </Pill>
-              </span>
-              {status.connected && !status.managed && (
-                <span className="inline-block whitespace-nowrap" title="Active VPN detected on this PC but not established by this app">
-                  <Pill tone="accent">External</Pill>
-                </span>
-              )}
-              {status.connected && status.auto_detected && status.managed && (
-                <span className="inline-block whitespace-nowrap">
-                  <Pill tone="accent">Auto-Detected</Pill>
-                </span>
-              )}
-            </div>
-            {status.verification_detail && (
-              <div className="text-[11px] text-fg-mute mt-1 break-words" title="Verification evidence">
-                {status.state === "connected" ? "✓ " : status.state === "error" || status.state === "unknown" ? "⚠ " : ""}
-                {status.verification_detail}
-              </div>
-            )}
-            <div className="mt-1.5 flex flex-wrap gap-1.5 text-[10px] font-mono">
-              <span className={cx("rounded px-1.5 py-0.5", status.process_running ? "bg-ok-soft text-ok" : "bg-white/[0.06] text-fg-mute")}>
-                process: {status.process_running ? "running" : "absent"}
-              </span>
-              <span className={cx("rounded px-1.5 py-0.5", status.tunnel_detected ? "bg-ok-soft text-ok" : "bg-white/[0.06] text-fg-mute")}>
-                tunnel: {status.tunnel_detected ? "detected" : "absent"}
-              </span>
-            </div>
-            <div className="text-[12px] text-fg-dim mt-1 flex flex-wrap items-center gap-2 font-mono">
-              <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                <Clock size={12} className="text-fg-mute" />
-                <span>Uptime: {formatUptime(status.uptime_secs)}</span>
-              </span>
-              {status.latency_ms != null && (
-                <>
-                  <span className="text-line-strong">|</span>
-                  <span className="inline-flex items-center gap-1 whitespace-nowrap">
-                    <Zap size={12} className={status.latency_ms < 100 ? "text-ok" : "text-warn"} />
-                    <span>{status.latency_ms} ms</span>
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
+  return <div className="pb-6 pt-2">
+    <div className="mx-4 mb-4 rounded-xl border border-line bg-bg-elev p-4">
+      <div className="flex items-start gap-3">
+        <div className={cx("h-11 w-11 shrink-0 rounded-xl grid place-items-center", germanVerified ? "bg-ok-soft text-ok" : "bg-accent-soft text-accent")}>
+          {germanVerified ? <ShieldCheck size={23} /> : <Shield size={23} />}
         </div>
-
-        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-line/60">
-          <Button
-            kind="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() => { fetchStatus(); }}
-            icon={<RefreshCw size={14} className={cx(busy && "animate-spin")} />}
-          >
-            Re-scan
-          </Button>
-          <Button
-            kind={status.connected ? "danger" : "primary"}
-            size="sm"
-            disabled={busy || busyState}
-            onClick={handleToggleConnect}
-            icon={<Zap size={14} />}
-          >
-            {status.connected ? "Disconnect" : busyState ? "Working…" : "Connect (verified)"}
-          </Button>
+        <div className="min-w-0 flex-1">
+          <div className="text-[15px] font-semibold">{germanVerified ? "German exit verified" : stateLabels[status.state]}</div>
+          <div className="mt-1 text-[12px] text-fg-dim break-words">{status.engine_name || "Germany · Frankfurt relay"}</div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <Pill tone={germanVerified ? "ok" : "warn"}>{germanVerified ? "Germany" : "German exit not verified"}</Pill>
+            {status.warp_verified && status.connected && <Pill tone="accent">WARP observed</Pill>}
+            {status.connected && !status.managed && <Pill tone="mute">Externally managed</Pill>}
+          </div>
         </div>
       </div>
-
-      {/* Error notification if any */}
-      {status.last_error && (
-        <div className="mx-4 mb-4 px-3 py-2 rounded-lg bg-bad-soft border border-bad/30 flex items-center gap-2 text-[12px] text-bad">
-          <AlertCircle size={15} className="shrink-0" />
-          <span className="truncate">{status.last_error}</span>
-        </div>
-      )}
-
-      {/* Network Engine Selection */}
-      <Section title="Tunnel Routing Engine">
-        <Row
-          title="⚡ Auto-Detect Running VPN (Recommended)"
-          sub={
-            status.connected
-              ? `Active: ${status.engine_name || status.engine}. Macro is automatically linked to this connection.`
-              : "Automatically discovers whichever VPN is active on your PC (Cloudflare WARP, Dedicated Relay, Psiphon, WireGuard, ProtonVPN, Windscribe, OpenVPN, etc.)."
-          }
-          right={
-            <input
-              type="radio"
-              name="vpn_engine"
-              checked={selectedEngine === "auto"}
-              onChange={() => setSelectedEngine("auto")}
-              disabled={status.connected || busyState}
-              className="accent-accent w-4 h-4 cursor-pointer"
-            />
-          }
-        />
-        <Row
-          title="German Dedicated Relay"
-          sub="Routes traffic through your Frankfurt VPS in Germany. Requires administrator permissions; check the exit country above after connecting."
-          right={
-            <input
-              type="radio"
-              name="vpn_engine"
-              checked={selectedEngine === "dedicated"}
-              onChange={() => setSelectedEngine("dedicated")}
-              disabled={status.connected || busyState}
-              className="accent-accent w-4 h-4 cursor-pointer"
-            />
-          }
-        />
-        <Row
-          title="Cloudflare WARP (Edge Client)"
-          sub="Cloudflare routing and encryption. Ordinary WARP does not let you select an exit country; use the Frankfurt relay for a German exit."
-          right={
-            <input
-              type="radio"
-              name="vpn_engine"
-              checked={selectedEngine === "warp"}
-              onChange={() => setSelectedEngine("warp")}
-              disabled={status.connected || busyState}
-              className="accent-accent w-4 h-4 cursor-pointer"
-            />
-          }
-        />
-        <Row
-          title="Psiphon Tunnel (Anti-Censorship Fallback)"
-          sub="Multi-hop fallback for severe ISP throttling or restrictive ISP firewalls."
-          right={
-            <input
-              type="radio"
-              name="vpn_engine"
-              checked={selectedEngine === "psiphon"}
-              onChange={() => setSelectedEngine("psiphon")}
-              disabled={status.connected || busyState}
-              className="accent-accent w-4 h-4 cursor-pointer"
-            />
-          }
-        />
-      </Section>
-
-      {/* Telemetry & Live Diagnostics */}
-      <Section title="Live Telemetry">
-        <Row
-          title="Public IP & Geolocation"
-          sub={status.country ? `${status.city ? status.city + ", " : ""}${status.country}` : "Global Network"}
-          right={
-            <span className="font-mono text-[13px] font-medium text-fg">
-              {status.ip || "Detecting..."}
-            </span>
-          }
-        />
-        <Row
-          title="Frankfurt Relay Latency (TCP 443)"
-          sub={pingResult ? (pingResult.success ? `Reachable in ${pingResult.latency_ms} ms` : `Unreachable: ${pingResult.error}`) : "Measure ping to 92.5.127.89:443"}
-          right={
-            <div className="flex items-center gap-2">
-              {status.latency_ms != null && (
-                <span className="font-mono text-[12px] font-medium text-fg-dim">
-                  {status.latency_ms} ms
-                </span>
-              )}
-              <Button
-                kind="default"
-                size="sm"
-                disabled={pinging}
-                onClick={handleTestPing}
-                icon={<Activity size={13} className={cx(pinging && "animate-spin")} />}
-              >
-                {pinging ? "Testing…" : "Test Ping"}
-              </Button>
-            </div>
-          }
-        />
-        <Row
-          title="Auto-Reconnect Watchdog"
-          sub="Background daemon monitors connection health every 10s and instantly revives tunnel if interrupted."
-          right={
-            <Toggle
-              value={status.auto_reconnect}
-              onChange={handleToggleAutoReconnect}
-            />
-          }
-        />
-      </Section>
-
-      {/* Network Tools & Diagnostics */}
-      <Section title="Quick Actions & Tools">
-        <Row
-          title="Flush DNS & Refresh Network Routes"
-          sub={resetMsg ?? "Clears local Windows DNS resolver cache and cleans up stale network routing tables."}
-          right={
-            <Button
-              kind="default"
-              size="sm"
-              disabled={resetting}
-              onClick={handleResetNetwork}
-              icon={<RefreshCw size={13} className={cx(resetting && "animate-spin")} />}
-            >
-              {resetting ? "Refreshing…" : "Flush DNS"}
-            </Button>
-          }
-        />
-        <Row
-          title="Tunnel Diagnostic Logs"
-          sub="Inspect silent sing-box background engine logs, TLS handshake status, and TUN interface."
-          right={
-            <Button
-              kind="default"
-              size="sm"
-              onClick={() => setShowLogs(!showLogs)}
-              icon={<Terminal size={13} />}
-            >
-              {showLogs ? "Hide Logs" : "View Logs"}
-            </Button>
-          }
-        >
-          {showLogs && (
-            <div className="mt-2 p-2.5 rounded-lg bg-black/50 border border-line-strong font-mono text-[11px] text-fg-dim max-h-56 overflow-y-auto leading-relaxed">
-              {logs.length === 0 ? (
-                <div className="text-fg-mute py-4 text-center">No tunnel log entries yet. Connect to start logging.</div>
-              ) : (
-                logs.map((line, i) => (
-                  <div key={i} className="hover:text-fg transition-colors whitespace-pre-wrap break-all">
-                    {line}
-                  </div>
-                ))
-              )}
-              <div ref={logsEndRef} />
-            </div>
-          )}
-        </Row>
-      </Section>
+      <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-fg-dim">
+        <span className="flex items-center gap-1.5"><Globe2 size={13} />{status.country ? countryName(status.country) : "Exit check pending"}</span>
+        <span className="flex items-center gap-1.5"><Clock size={13} />{status.connected ? `${Math.floor(status.uptime_secs / 60)}m ${status.uptime_secs % 60}s connected` : "No verified uptime"}</span>
+        <span>Process: {status.process_running ? "running" : "not detected"}</span>
+        <span>Tunnel: {status.tunnel_detected ? "detected" : "not detected"}</span>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+        <Button size="sm" kind="primary" disabled={busy || transitioning || status.connected} icon={<Zap size={14} />} onClick={() => void run("connect")}>
+          {busy || transitioning ? "Working…" : "Connect selected route"}
+        </Button>
+        {(status.connected || status.tunnel_detected || (status.engine === "dedicated" && status.process_running)) && <Button size="sm" kind="danger" disabled={busy || transitioning || !canManage || needsAdmin} onClick={() => void run("disconnect")}>Disconnect</Button>}
+        {status.connected && !status.managed && canManage && <Button size="sm" disabled={busy || transitioning} onClick={() => void run("adopt")}>Use existing tunnel</Button>}
+        <Button size="sm" kind="ghost" disabled={busy} icon={<RefreshCw size={13} />} onClick={() => void fetchStatus()}>Refresh</Button>
+      </div>
+      {status.verification_detail && <div className="mt-2 text-[11px] text-fg-mute break-words">{status.verification_detail}</div>}
+      {needsAdmin && <p className="mt-2 text-[11px] text-warn">Run the macro as Administrator to restart or stop this relay. Reading its status does not require elevation.</p>}
     </div>
-  );
+
+    {(error || statusError || status.last_error) && <div role="alert" className="mx-4 mb-4 flex items-start gap-2 rounded-lg border border-bad/30 bg-bad-soft px-3 py-2 text-[12px] text-bad">
+      <AlertCircle size={15} className="mt-0.5 shrink-0" /><span className="break-words min-w-0">{error || statusError || status.last_error}</span>
+    </div>}
+
+    <Section title="Choose a connection">
+      {engines.map(engine => <Row key={engine.id} title={engine.title} sub={engine.description} right={
+        <input type="radio" name="vpn-engine" aria-label={engine.title} checked={selectedEngine === engine.id}
+          onChange={() => setSelectedEngine(engine.id)} disabled={busy || transitioning || status.connected} className="h-4 w-4 accent-accent" />
+      } />)}
+    </Section>
+
+    <Section title="Exit & connection health">
+      <Row title="Observed public IP" sub={status.exit_error || (status.exit_age_secs != null ? `HTTPS exit check ${status.exit_age_secs}s ago. Old checks expire; country selection alone is not proof.` : "Waiting for a live HTTPS exit check.")}
+        right={<span className="max-w-40 font-mono text-[12px] break-all">{status.ip || "Not verified"}</span>} />
+      {status.country === "EG" && <Row title="Egyptian exit detected" sub="This exit does not meet your German routing goal. Use the Frankfurt relay and wait for German exit verification." right={<AlertCircle size={17} className="text-warn" />} />}
+      <Row title="Relay latency" sub={ping ? (ping.success ? `Median TCP connection time to Frankfurt: ${ping.latency_ms} ms. This is not Roblox game-server ping.` : `Relay unreachable: ${ping.error}`) : "Measure three TCP connections to Frankfurt. Game ping also depends on the Roblox server and your ISP."}
+        right={<Button size="sm" disabled={pinging} icon={<Activity size={13} className={cx(pinging && "animate-spin")} />} onClick={() => void testPing()}>{pinging ? "Testing…" : "Test latency"}</Button>} />
+      <Row title="Automatic recovery" sub={status.recovery_active ? "Active while this macro stays open. Checks every 5 seconds; failed attempts wait 30 seconds before retrying. Manual disconnect stops recovery." : "Standby. Connect or adopt a supported tunnel to enable recovery. The German driver also needs Administrator rights."}
+        right={<Toggle value={status.auto_reconnect} onChange={(enabled) => void toggleRecovery(enabled)} />} />
+      <Row title="Recovery status" sub="Internet outages can interrupt a game session. The recovery switch does not install a Windows startup service or a Roblox firewall block."
+        right={<Pill tone={status.recovery_active ? "ok" : "mute"}>{status.recovery_active ? "Monitoring" : "Standby"}</Pill>} />
+    </Section>
+
+    <Section title="WARP & German routing">
+      <Row title="Keep game traffic on the German relay" sub="The Frankfurt relay carries TCP and UDP. The WARP proxy on the VPS supports TCP only, so it cannot carry UDP game traffic. Ordinary WARP on this PC has no Germany selector." />
+    </Section>
+
+    <Section title="Diagnostics">
+      <Row title="Flush DNS" sub={resetMessage || "Clear the Windows DNS cache while leaving the active VPN routes in place."}
+        right={<Button size="sm" disabled={resetting || busy || transitioning} icon={<RefreshCw size={13} />} onClick={() => void flushDns()}>{resetting ? "Flushing…" : "Flush DNS"}</Button>} />
+      <Row title="Relay logs" sub="Read the local relay log. If a connection fails, the full error remains visible above."
+        right={<Button size="sm" icon={<Terminal size={13} />} onClick={() => setShowLogs(!showLogs)}>{showLogs ? "Hide logs" : "View logs"}</Button>}>
+        {showLogs && <div className="mt-2 max-h-52 overflow-y-auto rounded-lg border border-line bg-black/20 p-2.5 font-mono text-[11px] text-fg-dim">
+          {logs.length ? logs.map((line, index) => <div key={index} className="whitespace-pre-wrap break-all">{line}</div>) : "No local relay log entries."}
+        </div>}
+      </Row>
+    </Section>
+  </div>;
 }
