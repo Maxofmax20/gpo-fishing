@@ -150,7 +150,15 @@ fn fixture_projection() -> Option<(serde_json::Value, gpo_autofish_lib::core::tr
 
     // The projection reads reviews through a ReviewStore, so it is materialised
     // in a temp dir. The fixture's own inputs are never written to.
-    let dir = std::env::temp_dir().join(format!("gpo-projection-{}", gpo_autofish_lib::events::now_ms()));
+    // Both projection tests run concurrently. Millisecond timestamps alone
+    // can collide, letting one test remove the other's review file.
+    static NEXT_FIXTURE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let fixture_id = NEXT_FIXTURE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let dir = std::env::temp_dir().join(format!(
+        "gpo-projection-{}-{}-{fixture_id}",
+        std::process::id(),
+        gpo_autofish_lib::events::now_ms(),
+    ));
     std::fs::create_dir_all(&dir).unwrap();
     let mut body = String::new();
     for r in fx["reviews"].as_array().expect("fixture reviews") {
