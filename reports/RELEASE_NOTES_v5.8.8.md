@@ -1,0 +1,12 @@
+# GPO Autofish v5.8.8
+
+- Rebuilt the VPN page around the working Frankfurt relay. Germany is the default connection choice, with separate tunnel, exit-country, WARP, elevation and recovery indicators. Full errors remain readable.
+- German connection requests validate the saved TLS/WebSocket profile and require a fresh HTTPS exit observation in Germany. Exit observations expire after 30 seconds; late replies from previous routes cannot restore stale proof. Macro wait results also stop claiming a verified German connection when its proof expires.
+- Connection and disconnection operations cannot overlap. Adopting an already working tunnel leaves it running. Dedicated relay cleanup targets the configured executable and profile rather than every sing-box process on the PC.
+- Recovery retains the requested engine after failed attempts, supports the German relay, WARP and Psiphon, checks every five seconds and waits 30 seconds after failures. Manual disconnect cancels recovery; administrator requirements are shown accurately. Recovery operates while the macro app stays open.
+- VPN status reads use cached observations instead of repeatedly running OS probes on the UI polling path. Relay latency is the median of three TCP connections, clearly separated from game-server ping. DNS flush reports Windows errors and leaves VPN routes in place.
+- The page distinguishes ordinary WARP from the German relay. The existing VPS WARP proxy was observed exiting Germany, but rejects UDP; it is not presented as a replacement for the German UDP game route.
+
+Validation: 143 frontend tests and 504 Rust library tests passed (two existing ignored). Browser preview checks covered four connection states at 400, 460 and 800 pixels without horizontal overflow. Fixtures use mock status and documentation IPs; live elevated tunnel lifecycle and Roblox game latency are not established by these tests. Existing settings, credentials, samples and model weights are preserved. This release does not install a Windows startup VPN service or a Roblox firewall block.
+The unpublished v5.8.7 release gate exposed a pre-existing Windows timestamp collision between concurrent storage replay fixtures. Each replay now uses a process ID and atomic sequence in its temporary directory name, keeping its action-event log isolated.
+The related catch-accounting replay helper received the same directory isolation. Thirty repeated concurrent storage replay runs passed, followed by the full 504-test Rust library regression suite.

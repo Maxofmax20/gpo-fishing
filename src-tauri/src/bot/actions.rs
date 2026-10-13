@@ -1043,7 +1043,11 @@ mod storage_replay_tests {
         ocr.texts.lock().extend(texts.iter().map(|s| s.to_string()));
         let platform = Platform { window: window.clone(), capture: cap, input: input.clone(), ocr };
         let (tx, rx) = crossbeam_channel::unbounded();
-        let dir = std::env::temp_dir().join(format!("gpo-storage-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        // Windows clock resolution can give concurrent replays the same
+        // timestamp. Each harness must have its own action-event log.
+        static NEXT_REPLAY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let replay_id = NEXT_REPLAY.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("gpo-storage-{}-{replay_id}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let ctx = Ctx::new(platform, Arc::new(RwLock::new(settings)), Arc::new(RwLock::new(Some(info))), tx, Arc::new(crate::webhook::WebhookQueue::disabled()), Arc::new(crate::config::Store::new(dir.clone())));
         ctx.running.store(true, Ordering::SeqCst);
         Harness { ctx, input, window, rx, dir }

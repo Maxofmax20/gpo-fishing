@@ -1146,7 +1146,9 @@ mod tests {
         let input = Arc::new(RecordingInput::default());
         let cap = Arc::new(ScriptedCapture::default()); cap.push(blank());
         let (seed, _) = make_ctx(cap, input);
-        let dir = std::env::temp_dir().join(format!("gpo-fruit-count-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        static NEXT_CONTEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let context_id = NEXT_CONTEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!("gpo-fruit-count-{}-{context_id}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         let (tx, rx) = crossbeam_channel::unbounded();
         let mut settings = seed.settings(); settings.features.fruit_storage = true; settings.webhook.send_screenshot = false;
         let ctx = Ctx::new(seed.platform.clone(), Arc::new(RwLock::new(settings)), seed.roblox.clone(), tx, Arc::new(WebhookQueue::disabled()), Arc::new(crate::config::Store::new(dir.clone())));
