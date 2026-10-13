@@ -406,24 +406,53 @@ pub fn is_pity_zero(pity_opt: Option<&str>, raw_text: &str) -> bool {
 /// Isolate a caught item from unrelated fruit-spawn announcements in the
 /// same OCR crop. Spawn names are read independently by `detect_spawn`.
 pub fn catch_name_text(lex: &Lexicon, raw: &str) -> String {
-    let normalized = normalize(raw);
-    let words: Vec<_> = normalized.split_whitespace().collect();
     let threshold = lex.fuzzy_threshold.min(0.8);
-    if let Some(i) = word_at(&words, "item", threshold) {
-        let tail: Vec<_> = words[i + 1..].iter().copied()
-            .take_while(|word| !matches!(*word, "has" | "spawned" | "spawn"))
-            .collect();
-        return format!("new item {}", tail.join(" "));
+    let mut retained = Vec::new();
+    for line in raw.lines() {
+        let normalized = normalize(line);
+        let words: Vec<_> = normalized.split_whitespace().collect();
+        if let Some(i) = word_at(&words, "item", threshold) {
+            let tail = &words[i + 1..];
+            let end = spawn_clause(lex, tail).map(|(subject, _)| subject).unwrap_or(tail.len());
+            if end > 0 || !mentions_spawn(lex, tail, threshold) {
+                return format!("new item {}", tail[..end].join(" "));
+            }
+        }
+        if !mentions_spawn(lex, &words, threshold) {
+            retained.push(line.to_string());
+        } else if let Some(start) = lex.catch_phrases.iter()
+            .filter(|p| p.as_str() != "new item")
+            .filter_map(|p| normalized.find(p.as_str())).min() {
+            let catch_words: Vec<_> = normalized[start..].split_whitespace().collect();
+            let end = spawn_clause(lex, &catch_words).map(|(subject, _)| subject).unwrap_or(catch_words.len());
+            retained.push(catch_words[..end].join(" "));
+        }
     }
-    if mentions_spawn(lex, &words, threshold) {
-        // Retain a separate explicit catch line, never the spawn message.
-        return raw.lines().filter(|line| {
-            let line = normalize(line);
-            let line_words: Vec<_> = line.split_whitespace().collect();
-            !mentions_spawn(lex, &line_words, threshold)
-        }).collect::<Vec<_>>().join("\n");
+    retained.join("\n")
+}
+
+// Locate the spawn subject, not just "has": otherwise the subject's fruit
+// name leaks into a preceding catch ("... Tigerfin A Mochi has spawned").
+fn spawn_clause(lex: &Lexicon, words: &[&str]) -> Option<(usize, usize)> {
+    let threshold = lex.fuzzy_threshold.min(0.8);
+    let spawn = words.iter().position(|w| lex.spawn_keywords.iter().any(|k| similar(w, k, threshold)))?;
+    let verb = if spawn > 0 && matches!(words[spawn - 1], "has" | "have") { spawn - 1 } else { spawn };
+    let name = verb.saturating_sub(1);
+    let mut subject = name;
+    let mut prefix = name;
+    while prefix > 0 && matches!(words[prefix - 1], "a" | "an" | "the" | "devil" | "fruit" | "mythical" | "legendary" | "epic" | "rare" | "common" | "ase" | "all" | "seeing" | "eye") {
+        prefix -= 1;
+        if matches!(words[prefix], "a" | "an" | "the" | "ase" | "all") {
+            subject = prefix;
+            break;
+        }
     }
-    raw.to_string()
+    if subject == name && words.get(name) == Some(&"fruit") && name > 0
+        && (words[name - 1] == "devil" || match_fruit(lex, words[name - 1]).is_some()) {
+        subject = name - 1;
+        if subject > 0 && matches!(words[subject - 1], "a" | "an" | "the") { subject -= 1; }
+    }
+    Some((subject, spawn))
 }
 
 pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
@@ -609,7 +638,17 @@ pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
         mentions_spawn(lex, &words, lex.fuzzy_threshold.min(0.8))
     });
     let raw = spawn_line.unwrap_or(raw);
-    let text = normalize(raw);
+    let normalized = normalize(raw);
+    let all_words: Vec<_> = normalized.split_whitespace().collect();
+    let text = if let Some((subject, spawn)) = spawn_clause(lex, &all_words) {
+        let tail = &all_words[spawn + 1..];
+        let catch = tail.windows(2).position(|pair| {
+            (matches!(pair[0], "new" | "nev" | "uev" | "ncv") && matches!(pair[1], "item" | "itemv" | "ltem" | "itern"))
+                || (pair[0] == "you" && matches!(pair[1], "caught" | "got" | "fished" | "found"))
+                || (pair[0] == "fished" && pair[1] == "up")
+        }).map(|i| spawn + 1 + i).unwrap_or(all_words.len());
+        all_words[subject..catch].join(" ")
+    } else { normalized };
     if text.is_empty() {
         return None;
     }
@@ -632,22 +671,8 @@ pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
     let has_i = word_at(&words, "has", 0.9);
     let at_i = has_i.and_then(|h| words[h + 1..].iter().position(|w| *w == "at").map(|p| h + 1 + p));
 
-    // 1. Try to extract fruit from brackets [ ] or < > in raw (ignoring [All-Seeing Eye])
-    let mut extracted_name = None;
-    if let Some(start) = raw.find('[').or_else(|| raw.find('<')) {
-        if let Some(end) = raw[start + 1..].find(']').or_else(|| raw[start + 1..].find('>')) {
-            let inside = raw[start + 1..start + 1 + end].trim();
-            let inside_norm = normalize(inside);
-            let inside_words: Vec<&str> = inside_norm.split_whitespace().collect();
-            if !inside_norm.contains("all") && !inside_norm.contains("seeing") && !inside_norm.contains("eye") {
-                if let Some(f) = first_fruit(lex, inside_words.iter().copied()) {
-                    extracted_name = Some(f);
-                }
-            }
-        }
-    }
-
-    // 2. Extract fruit before "has" (e.g. "All-Seeing Eye: Tori has spawned" -> "Tori")
+    // Extract only from the scoped announcement, never a bracketed catch
+    // in the original crop. Normalization retains bracket contents.
     let name_before_has = has_i.and_then(|h| {
         let candidate_words: Vec<&str> = words[..h]
             .iter()
@@ -662,9 +687,7 @@ pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
         return None;
     }
 
-    if extracted_name.is_none() {
-        extracted_name = name_before_has;
-    }
+    let mut extracted_name = name_before_has;
 
     // 3. Fallback: check all words in sentence (excluding non-fruit keywords)
     if extracted_name.is_none() {
@@ -840,6 +863,37 @@ mod tests {
             assert_eq!(detect_catch(&lex(), raw), CatchVerdict::Unknown, "{raw}");
         }
         assert_eq!(detect_catch(&lex(), "The fish got away. Nev Item Shark"), CatchVerdict::Failed);
+    }
+
+    #[test]
+    fn merged_spawn_subjects_never_become_caught_fruit_names() {
+        for raw in [
+            "Nev Item <Exotic Tiserfin> A MOCHI has spawned at SANDORA",
+            "Nev Item QExotic Tiserfin A MOCHI has spawned at SANDORA",
+            "A MOCHI has spawned at SANDORA Nev Item QExotic Tiserfin",
+            "A MOCHI has spawned at SANDORA\nNev Item QExotic Tiserfin",
+        ] {
+            assert_eq!(detect_catch(&lex(), raw), CatchVerdict::Caught, "{raw}");
+            assert_eq!(parse_catch_item(&lex(), raw).0, "fish", "{raw}");
+            assert!(detect_drop(&lex(), raw).is_none(), "{raw}");
+            assert_eq!(detect_spawn(&lex(), raw).unwrap().name.as_deref(), Some("Mochi"), "{raw}");
+        }
+        for raw in [
+            "New Item <Pika> A SUKE has spawned at Trading Hub",
+            "A SUKE has spawned at Trading Hub New Item Pika",
+            "You got a Pika devil fruit! A SUKE has spawned at Trading Hub",
+            "A SUKE has spawned at Trading Hub You got a Pika devil fruit!",
+        ] {
+            assert_eq!(parse_catch_item(&lex(), raw), ("fruit".into(), "Pika".into()), "{raw}");
+            let spawn = detect_spawn(&lex(), raw).unwrap();
+            assert_eq!(spawn.name.as_deref(), Some("Suke"), "{raw}");
+            assert_eq!(spawn.location.as_deref(), Some("Trading Hub"), "{raw}");
+        }
+        for raw in ["New Item Devil Fruit 0/40 A KILO has spawned at Orange Town", "New Item Devil Fruit KILO has spawned at Orange Town 0/40"] {
+            let caught = detect_drop(&lex(), raw).unwrap();
+            assert!(is_pity_zero(caught.pity.as_deref(), raw));
+            assert_eq!(caught.name, None, "spawn name cannot become the unknown caught fruit: {raw}");
+        }
     }
 
     #[test]
