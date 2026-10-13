@@ -15,8 +15,15 @@ export function CollectionControl() {
     if (working.current) return;
     const current = generation.current;
     try {
-      const status = await api.mlCollectionStatus();
-      if (!working.current && current === generation.current) setEnabled(status.trace_on);
+      // Reading the preference must not parse every dataset annotation just
+      // to get a boolean. The full status belongs to the statistics card.
+      const settings = await api.settingsGet();
+      if (!working.current && current === generation.current) {
+        setEnabled(settings.fishing.trace);
+        useStore.setState(state => state.settings && state.settings.fishing.trace !== settings.fishing.trace
+          ? { settings: { ...state.settings, fishing: { ...state.settings.fishing, trace: settings.fishing.trace } } }
+          : {});
+      }
     } catch { if (!working.current && current === generation.current) setEnabled(null); }
   }, 3000);
   const change = async () => {

@@ -8,6 +8,7 @@ const rpc = vi.hoisted(() => ({
   datasetExplorer: vi.fn(), trainingSettingsGet: vi.fn(), trainingBackend: vi.fn(), reviewCoverage: vi.fn(),
   dropsExplorer: vi.fn(), readinessStatus: vi.fn(), reviewIntegrity: vi.fn(), semanticTeacherStatus: vi.fn(),
   reviewPriority: vi.fn(), mlCollectionStatus: vi.fn(), trainingStart: vi.fn(),
+  settingsGet: vi.fn(),
 }));
 vi.mock("../lib/ipc", () => ({ api: rpc }));
 beforeEach(() => {
@@ -16,6 +17,7 @@ beforeEach(() => {
   rpc.trainingOverview.mockResolvedValue({ dataset_version: 1, rows: 7500, sessions: 10, models: [], eligibility: [], backend_available: false });
   for (const name of ["trainingJobs", "trainingCandidates", "trainingHistory", "dropsExplorer", "readinessStatus"] as const) rpc[name].mockResolvedValue([]);
   rpc.mlCollectionStatus.mockResolvedValue({ trace_on: false });
+  rpc.settingsGet.mockResolvedValue({ fishing: { trace: false } });
   rpc.reviewPriority.mockResolvedValue({ items: [], total_matching: 0 });
   rpc.semanticTeacherStatus.mockResolvedValue(null);
 });
@@ -29,6 +31,7 @@ it("shows the simple workflow without scanning advanced datasets or starting tra
   expect(screen.queryByRole("navigation", { name: "Training sections" })).not.toBeInTheDocument();
   expect(rpc.reviewPriority).not.toHaveBeenCalled();
   expect(rpc.datasetExplorer).not.toHaveBeenCalled();
+  expect(rpc.mlCollectionStatus).not.toHaveBeenCalled();
   expect(rpc.trainingStart).not.toHaveBeenCalled();
 });
 

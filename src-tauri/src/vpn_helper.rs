@@ -54,6 +54,7 @@ mod tests {
         let script = include_str!("vpn_helper_setup.ps1");
         assert!(script.contains("SetAccessRuleProtection($true, $false)"));
         assert!(script.contains("(A;;GRGX;;;$ownerSid)"));
+        assert!(script.contains("O:BAG:BAD:P"));
         assert!(!script.contains("(A;;GA;;;$ownerSid)"));
         assert!(script.contains("ReparsePoint"));
         assert!(script.contains("Get-FileHash"));

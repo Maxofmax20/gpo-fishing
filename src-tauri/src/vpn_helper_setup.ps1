@@ -65,7 +65,7 @@ Write-ProtectedText 'relay.log' ''
 $scheduler = New-Object -ComObject 'Schedule.Service'
 $scheduler.Connect()
 $folder = $scheduler.GetFolder('\')
-$descriptor = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGX;;;$ownerSid)"
+$descriptor = "O:BAG:BAD:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGX;;;$ownerSid)"
 foreach ($operation in @('Start', 'Stop')) {
     $task = $scheduler.NewTask(0)
     $task.RegistrationInfo.Description = 'GPO German relay: fixed privileged operation. Main app remains a standard user.'

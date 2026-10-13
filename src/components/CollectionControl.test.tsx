@@ -10,7 +10,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   rpc.mlCollectionStatus.mockResolvedValue({ trace_on: true });
   rpc.mlCollectionSet.mockResolvedValue({ fishing: { trace: false } });
-  rpc.settingsGet.mockResolvedValue({ fishing: { trace: false } });
+  rpc.settingsGet.mockResolvedValue({ fishing: { trace: true } });
 });
 afterEach(cleanup);
 
@@ -26,7 +26,8 @@ it("retains the enabled state when saving fails", async () => {
   render(<CollectionControl />);
   await userEvent.click(await screen.findByRole("button", { name: "Stop collecting data" }));
   expect(await screen.findByRole("button", { name: "Stop collecting data" })).toBeEnabled();
-  expect(rpc.settingsGet).not.toHaveBeenCalled();
+  expect(rpc.settingsGet).toHaveBeenCalledTimes(1);
+  expect(rpc.mlCollectionStatus).not.toHaveBeenCalled();
 });
 
 it("does not queue repeated changes while finalizing", async () => {
