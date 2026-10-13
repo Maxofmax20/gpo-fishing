@@ -42,13 +42,14 @@ pub mod windows_brightness {
     pub fn set_brightness(level: u32) -> Result<u32, String> {
         let clamped = level.clamp(0, 100);
         let script = format!(
-            r#"try {{
-                (Get-WmiObject -Namespace root/wmi -ClassName WmiMonitorBrightnessMethods -ErrorAction Stop).WmiSetBrightness(1, {clamped})
-            }} catch {{
-                try {{
-                    (Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBrightnessMethods -ErrorAction Stop) | Invoke-CimMethod -MethodName WmiSetBrightness -Arguments @{{ Timeout = 1; Brightness = {clamped} }}
-                }} catch {{}}
-            }}"#
+            r#"$ErrorActionPreference='Stop'; try {{
+                $monitors = @(Get-CimInstance -Namespace root/wmi -ClassName WmiMonitorBrightnessMethods);
+                if ($monitors.Count -eq 0) {{ throw 'No supported brightness controller' }};
+                foreach ($monitor in $monitors) {{
+                    $result = $monitor | Invoke-CimMethod -MethodName WmiSetBrightness -Arguments @{{ Timeout = 0; Brightness = [byte]{clamped} }};
+                    if ($result.ReturnValue -ne 0) {{ throw 'Brightness controller rejected the request' }}
+                }}
+            }} catch {{ Write-Error $_; exit 1 }}"#
         );
 
         let output = Command::new("powershell")
@@ -59,7 +60,7 @@ pub mod windows_brightness {
 
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr);
-            tracing::warn!("WmiSetBrightness returned non-zero: {err}");
+            return Err(format!("Brightness change failed: {}", err.chars().take(240).collect::<String>()));
         }
 
         CACHED_BRIGHTNESS.store(clamped, Ordering::SeqCst);

@@ -1330,6 +1330,15 @@ pub fn ml_collection_status(st: State<'_, AppState>) -> MlCollectionStatus {
 }
 
 #[tauri::command]
+pub async fn ml_collection_set(app: AppHandle, st: State<'_, AppState>, enabled: bool) -> Result<Settings, String> {
+    let bot = st.bot.clone();
+    tauri::async_runtime::spawn_blocking(move || bot.set_collection(enabled)).await.map_err(|e| e.to_string())??;
+    let settings = st.settings.read().clone();
+    let _ = app.emit("settings:changed", &settings);
+    Ok(settings)
+}
+
+#[tauri::command]
 pub fn ml_model_status(st: State<'_, AppState>) -> MlModelStatus {
     let dir = st.store.dir().join("models");
     let p = crate::core::ml_model::GpoMlProvider::load(dir);
@@ -1693,6 +1702,11 @@ pub fn macro_delete(st: State<'_, AppState>, name: String) -> Result<serde_json:
 pub async fn vpn_get_status(st: State<'_, AppState>) -> Result<crate::vpn::VpnStatus, String> {
     let vpn = Arc::clone(&st.vpn);
     blocking(move || Ok(vpn.get_status())).await
+}
+
+#[tauri::command]
+pub async fn vpn_setup_helper() -> Result<String, String> {
+    blocking(crate::vpn_helper::install).await
 }
 
 #[tauri::command]

@@ -17,6 +17,7 @@ pub mod webhook;
 pub mod windows;
 pub mod discord_rpc;
 pub mod vpn;
+pub mod vpn_helper;
 pub mod multi_roblox;
 pub mod laptop_light;
 pub mod laptop_fan;
@@ -128,6 +129,7 @@ pub fn run() {
             commands::ml_validate,
             commands::ml_preflight,
             commands::ml_collection_status,
+            commands::ml_collection_set,
             commands::ml_baseline,
             commands::ml_model_status,
             commands::ml_readiness,
@@ -179,6 +181,7 @@ pub fn run() {
             commands_review::readiness_status,
             commands_review::hermes_tasks,
             commands::vpn_get_status,
+            commands::vpn_setup_helper,
             commands::vpn_connect,
             commands::vpn_disconnect,
             commands::vpn_test_ping,

@@ -187,6 +187,36 @@ impl Bot {
         self.ctx.emit_stats();
     }
 
+    /// Change sample recording without interrupting fishing or inference.
+    /// Serialize with start/stop so a disabled session cannot be rearmed by
+    /// a concurrent start. Persist before changing live state.
+    pub fn set_collection(&self, enabled: bool) -> Result<(), String> {
+        let _lifecycle = self.lifecycle.lock();
+        if enabled && self.is_running() {
+            let preflight = crate::commands::collection_preflight(&self.ctx);
+            let failures = preflight.checks.iter().filter(|c| c.name != "consent" && !c.ok).map(|c| c.detail.as_str()).collect::<Vec<_>>();
+            if !failures.is_empty() { return Err(format!("Collection could not start: {}", failures.join("; "))); }
+        }
+        {
+            let mut settings = self.ctx.settings.write();
+            let mut next = settings.clone();
+            next.fishing.trace = enabled;
+            self.ctx.store.save(&next).map_err(|e| e.to_string())?;
+            *settings = next;
+        }
+        if enabled {
+            if self.is_running() && !self.ctx.ml.is_collecting() {
+                self.ctx.ml.begin_session(env!("CARGO_PKG_VERSION"));
+            }
+            self.emit_ml_session(None);
+        } else {
+            self.finalize_ml_session("collection disabled");
+            self.emit_ml_session(None);
+        }
+        self.ctx.log_info(if enabled { "Sample collection enabled; existing samples preserved" } else { "Sample collection stopped; fishing and name recognition continue" });
+        Ok(())
+    }
+
     /// Finalize the active collection session (flush, validate subset,
     /// summarize) and push it to the UI. No active session → silent no-op.
     fn finalize_ml_session(&self, why: &str) {
@@ -387,6 +417,26 @@ mod lifecycle_tests {
         for thread in threads { thread.join().unwrap(); }
         assert!(bot.is_running());
         assert_eq!(bot.ctx.session.lock().lifetime().sessions, 1);
+        bot.stop();
+    }
+    #[test]
+    fn collection_can_stop_and_resume_without_stopping_fishing() {
+        let bot = bot("collection-toggle");
+        bot.start_checked().unwrap();
+        bot.set_collection(true).unwrap();
+        let first = bot.ctx.ml.active_session_id().unwrap();
+        let sample = bot.ctx.store.dir().join("keep-this-sample.png");
+        std::fs::write(&sample, b"existing sample sentinel").unwrap();
+        bot.set_collection(false).unwrap();
+        assert!(bot.is_running());
+        assert!(!bot.ctx.settings.read().fishing.trace);
+        assert!(!bot.ctx.ml.is_collecting());
+        assert_eq!(std::fs::read(&sample).unwrap(), b"existing sample sentinel");
+        bot.set_collection(true).unwrap();
+        assert!(bot.is_running());
+        assert!(bot.ctx.settings.read().fishing.trace);
+        assert!(bot.ctx.ml.is_collecting());
+        assert_ne!(bot.ctx.ml.active_session_id().unwrap(), first);
         bot.stop();
     }
     #[test]

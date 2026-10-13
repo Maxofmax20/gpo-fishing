@@ -581,6 +581,7 @@ export type VpnStatus = {
   exit_age_secs?: number | null;
   exit_error?: string | null;
   administrator?: boolean;
+  helper_ready?: boolean;
   recovery_active?: boolean;
 };
 

@@ -240,14 +240,19 @@ pub fn set_fan_mode(target: &str) -> FanStatus {
         "performance" | "turbo" => GUID_PERFORMANCE,
         _ => GUID_BALANCE,
     };
+    let mut command_error = None::<String>;
 
     #[cfg(windows)]
     {
         // 1. Activate Windows Power Scheme for Lenovo EC
-        let _ = Command::new("powercfg")
+        let result = Command::new("powercfg")
             .args(["/setactive", guid])
             .creation_flags(CREATE_NO_WINDOW)
-            .status();
+            .output();
+        match result {
+            Ok(output) if output.status.success() => {}
+            _ => command_error = Some("Windows could not activate this laptop power profile. Check that the manufacturer's power plans are installed.".into()),
+        }
 
         // 2. Dispatch background WMI command for Lenovo Gamezone Cooling
         let turbo_val = if is_turbo { 1 } else { 0 };
@@ -277,9 +282,20 @@ pub fn set_fan_mode(target: &str) -> FanStatus {
     persist.last_mode = mode.to_string();
     save_persist_state(&persist);
 
-    // Invalidate cache immediately so new mode takes effect
-    *TELEMETRY_CACHE.write() = None;
-    get_fan_status()
+    // Return the requested profile without synchronously re-querying CPU/GPU
+    // temperatures through three subprocesses. Telemetry observes it later.
+    let mut cache = TELEMETRY_CACHE.write();
+    let mut status = cache.as_ref().map(|c| c.status.clone()).unwrap_or_default();
+    status.current_mode = mode.into();
+    status.mode_label = format!("{mode} (requested)");
+    status.fan_level_pct = match mode { "quiet" => 25, "performance" => 75, "turbo" => 100, _ => 50 };
+    status.auto_turbo = persist.auto_turbo;
+    status.is_turbo_active = is_turbo;
+    status.success = command_error.is_none();
+    status.error = command_error;
+    // Leave the observation expired so the background poll refreshes it.
+    *cache = Some(CachedTelemetry { status: status.clone(), last_fetched: Instant::now() - Duration::from_secs(3) });
+    status
 }
 
 pub fn set_fan_percentage(pct: u32) -> FanStatus {
@@ -301,8 +317,11 @@ pub fn set_auto_turbo(enabled: bool) -> FanStatus {
     persist.auto_turbo = enabled;
     save_persist_state(&persist);
 
-    *TELEMETRY_CACHE.write() = None;
-    get_fan_status()
+    let mut cache = TELEMETRY_CACHE.write();
+    let mut status = cache.as_ref().map(|c| c.status.clone()).unwrap_or_default();
+    status.auto_turbo = enabled;
+    *cache = Some(CachedTelemetry { status: status.clone(), last_fetched: Instant::now() - Duration::from_secs(3) });
+    status
 }
 
 #[cfg(test)]

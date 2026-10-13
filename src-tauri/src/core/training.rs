@@ -830,6 +830,11 @@ impl Supervisor {
         let log_file = std::fs::File::create(&log_path).map_err(|e| e.to_string())?;
         let err_file = log_file.try_clone().map_err(|e| e.to_string())?;
         let mut cmd = std::process::Command::new(&argv[0]);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
         cmd.args(&argv[1..]).current_dir(cwd).stdout(log_file).stderr(err_file);
         for (k, v) in envs {
             cmd.env(k, v);
@@ -1090,6 +1095,11 @@ fn probe_program(
 
 fn probe_program_in(program: &str, args: &[&str], timeout: Duration, cwd: Option<&Path>) -> Result<std::process::Output, String> {
     let mut command = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000);
+    }
     if let Some(cwd) = cwd { command.current_dir(cwd); }
     let mut child = command
         .args(args)
@@ -1357,6 +1367,14 @@ pub fn read_history(data_dir: &Path, tail: usize) -> Vec<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
+    #[test]
+    fn model_backend_probes_do_not_create_console_windows() {
+        let script = "Add-Type -Name NativeConsole -Namespace GpoTest -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern IntPtr GetConsoleWindow();'; [GpoTest.NativeConsole]::GetConsoleWindow().ToInt64()";
+        let output = probe_program("powershell.exe", &["-NoProfile", "-NonInteractive", "-Command", script], Duration::from_secs(15)).unwrap();
+        assert!(output.status.success());
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "0");
+    }
     use super::super::ml_dataset::{DATASET_VERSION, GameStateLabel, MlTask, UiLabel};
 
     fn row(session: &str, ts: u64, state: GameStateLabel, entity: Option<&str>) -> MlAnnotation {

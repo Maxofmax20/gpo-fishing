@@ -110,6 +110,7 @@ pub struct VpnStatus {
     pub exit_age_secs: Option<u64>,
     pub exit_error: Option<String>,
     pub administrator: bool,
+    pub helper_ready: bool,
     pub recovery_active: bool,
 }
 
@@ -894,7 +895,7 @@ impl VpnManager {
         // verified cycle (not spawn-only); skipped while a cycle is already
         // in flight to avoid overlap.
         self.refresh_ip_async();
-        if let Some(engine) = self.recovery_due(is_elevated())
+        if let Some(engine) = self.recovery_due(is_elevated() || crate::vpn_helper::available())
         {
             tracing::warn!("VPN recovery: {engine} needs verification");
             let _ = self.connect_verified(&engine, Duration::from_secs(10));
@@ -955,7 +956,8 @@ impl VpnManager {
             exit_age_secs: exit.checked.map(|at| at.elapsed().as_secs()),
             exit_error: exit.error,
             administrator,
-            recovery_active: self.reconnect_engine.lock().as_ref().is_some_and(|engine| engine == self.engine.lock().as_str() && (engine != "dedicated" || administrator))
+            helper_ready: crate::vpn_helper::available(),
+            recovery_active: self.reconnect_engine.lock().as_ref().is_some_and(|engine| engine == self.engine.lock().as_str() && (engine != "dedicated" || administrator || crate::vpn_helper::available()))
                 && self.auto_reconnect.load(Ordering::SeqCst) && !self.user_disconnected.load(Ordering::SeqCst),
         }
     }
@@ -1124,7 +1126,8 @@ impl VpnManager {
     }
 
     fn validate_relay_profile() -> Result<(), String> {
-        let bytes = std::fs::read(SINGBOX_CONFIG).map_err(|_| format!("German relay profile missing: {SINGBOX_CONFIG}"))?;
+        let path = if crate::vpn_helper::available() { crate::vpn_helper::directory().join("profile.json") } else { SINGBOX_CONFIG.into() };
+        let bytes = std::fs::read(&path).map_err(|_| "German relay profile missing".to_string())?;
         let config: serde_json::Value = serde_json::from_slice(&bytes).map_err(|_| "German relay profile is not valid JSON")?;
         validate_german_profile(&config)
     }
@@ -1156,6 +1159,14 @@ impl VpnManager {
     /// Spawn-only: sends the connect command. Success means the command was
     /// accepted — it says NOTHING about connectivity (verified later).
     fn spawn_dedicated() -> Result<(), String> {
+        if cfg!(test) { return Err("German relay helper not found in test mode; live network operations are disabled".into()); }
+        if crate::vpn_helper::available() {
+            Self::validate_relay_profile()?;
+            if Self::snap_warp_cli_connected(&Self::collect_snapshot()) {
+                return Err("Disconnect local WARP before connecting the German relay to avoid conflicting routes.".into());
+            }
+            return crate::vpn_helper::run(true);
+        }
         if !Path::new(SINGBOX_EXE).exists() {
             return Err(format!("sing-box executable not found at {SINGBOX_EXE}"));
         }
@@ -1164,9 +1175,7 @@ impl VpnManager {
         }
         if !is_elevated() {
             return Err(
-                "Administrator rights required: the Dedicated Relay TUN driver cannot start \
-                without elevation (sing-box fails with 'Access is denied'). Restart GPO Autofish \
-                as Administrator, or use Cloudflare WARP instead.".to_string(),
+                "Install the German relay helper on the VPN page once. Windows needs one setup approval for the TUN driver; normal connections do not elevate the macro.".to_string(),
             );
         }
         Self::check_singbox_config()?;
@@ -1294,14 +1303,15 @@ impl VpnManager {
         if !matches!(engine.as_str(), "dedicated" | "warp" | "psiphon" | "none") {
             return Err("This VPN is externally managed. Disconnect it using its own app.".into());
         }
-        if engine == "dedicated" && !is_elevated() {
-            return Err("Administrator rights are required to stop the German relay. The current tunnel has been left running.".into());
+        if engine == "dedicated" && !is_elevated() && !crate::vpn_helper::available() {
+            return Err("Install the German relay helper to control it without elevating the macro. The current tunnel has been left running.".into());
         }
         self.user_disconnected.store(true, Ordering::SeqCst);
         *self.reconnect_engine.lock() = None;
         *self.retry_at.lock() = None;
         self.set_state(VpnState::Disconnecting, Some(format!("disconnecting {engine}")));
-        Self::kill_engine_processes(&engine);
+        if engine == "dedicated" { Self::stop_dedicated()?; }
+        else { Self::kill_engine_processes(&engine); }
 
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
@@ -1378,6 +1388,7 @@ impl VpnManager {
     }
 
     fn stop_dedicated() -> Result<(), String> {
+        if crate::vpn_helper::available() { return crate::vpn_helper::run(false); }
         #[cfg(windows)]
         {
             let script = format!(
@@ -1435,7 +1446,8 @@ impl VpnManager {
     }
 
     pub fn get_logs(&self, max_lines: usize) -> Vec<String> {
-        if let Ok(content) = std::fs::read_to_string(SINGBOX_LOG) {
+        let log = if crate::vpn_helper::available() { crate::vpn_helper::directory().join("relay.log") } else { SINGBOX_LOG.into() };
+        if let Ok(content) = std::fs::read_to_string(log) {
             let lines: Vec<&str> = content.lines().collect();
             let start = lines.len().saturating_sub(max_lines);
             lines[start..].iter().map(|s| s.to_string()).collect()

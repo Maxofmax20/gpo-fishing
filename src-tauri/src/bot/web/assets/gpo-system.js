@@ -3,20 +3,29 @@
 (function () {
   let bossBase = {};   // name -> {secs, at}
   let soundAlerts = localStorage.getItem('gpo_sound_alerts') !== 'false';
+  let collectionEnabled = null;
+  const setDeviceBusy = (selector, busy) => {
+    document.querySelectorAll(selector).forEach(button => {
+      button.disabled = busy;
+      button.setAttribute('aria-busy', String(busy));
+    });
+  };
 
   function toast(m, icon) {
     if (typeof showToast === 'function') { try { showToast(m, icon); return; } catch (e) {} }
     gpoToast(m);
   }
 
-  function paintSlider(fillId, badgeId, container, pct, label) {
+  function paintSlider(fillId, badgeId, container, pct, label, local = false) {
+    if (!local && container && container.dataset.editing === "1") return;
+    if (container) container.setAttribute("aria-valuenow", String(pct));
     const fill = document.getElementById(fillId);
     if (fill) fill.style.width = pct + '%';
     const badge = document.getElementById(badgeId);
     if (badge) badge.textContent = label != null ? label : (pct + '%');
     if (container) {
       const thumb = container.querySelector(':scope > div.absolute');
-      if (thumb) thumb.style.left = 'calc(' + pct + '% - 12px)';
+      if (thumb) thumb.style.left = pct + '%';
     }
   }
 
@@ -28,10 +37,74 @@
   function bindSlider(idx, fillId, badgeId, onSet) {
     const c = sliderContainer(idx);
     if (!c) return;
-    c.addEventListener('pointerdown', (e) => {
+    let dragging = false, wanted = null, sending = false;
+    c.style.touchAction = 'none';
+    c.setAttribute('role', 'slider');
+    c.setAttribute('tabindex', '0');
+    c.setAttribute('aria-label', badgeId.replace('-badge', '').replaceAll('-', ' '));
+    c.setAttribute('aria-valuemin', '0');
+    c.setAttribute('aria-valuemax', '100');
+    const preview = (pct) => {
+      wanted = pct;
+      c.dataset.editing = '1';
+      paintSlider(fillId, badgeId, c, pct, undefined, true);
+    };
+    const point = (e) => {
       const r = c.getBoundingClientRect();
-      const pct = Math.max(0, Math.min(100, Math.round(((e.clientX - r.left) / r.width) * 100)));
-      onSet(pct);
+      preview(Math.max(0, Math.min(100, Math.round(((e.clientX - r.left) / Math.max(1, r.width)) * 100))));
+    };
+    const commit = async () => {
+      if (sending) return;
+      sending = true;
+      try {
+        // One hardware command in flight; subsequent edits retain only the latest.
+        while (wanted !== null && !dragging) {
+          const pct = wanted;
+          wanted = null;
+          await onSet(pct);
+        }
+      } finally {
+        sending = false;
+        if (!dragging && wanted === null) {
+          delete c.dataset.editing;
+          void refresh();
+        }
+      }
+    };
+    c.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      dragging = true;
+      c.setPointerCapture(e.pointerId);
+      point(e);
+      e.preventDefault();
+    });
+    c.addEventListener('pointermove', (e) => { if (dragging) point(e); });
+    c.addEventListener('pointerup', (e) => {
+      if (!dragging) return;
+      point(e);
+      dragging = false;
+      void commit();
+    });
+    c.addEventListener('pointercancel', () => {
+      dragging = false;
+      wanted = null;
+      delete c.dataset.editing;
+      void refresh();
+    });
+    c.addEventListener('lostpointercapture', () => {
+      if (!dragging) return;
+      dragging = false;
+      wanted = null;
+      delete c.dataset.editing;
+      void refresh();
+    });
+    c.addEventListener('keydown', (e) => {
+      const current = Number(c.getAttribute('aria-valuenow')) || 0;
+      const values = { ArrowLeft: current - 5, ArrowDown: current - 5, ArrowRight: current + 5, ArrowUp: current + 5, Home: 0, End: 100 };
+      if (!(e.key in values)) return;
+      e.preventDefault();
+      preview(Math.max(0, Math.min(100, values[e.key])));
+      void commit();
     });
   }
 
@@ -160,6 +233,11 @@
       paintSlider('brightness-fill', 'brightness-badge', sliderContainer(2), data.brightness != null ? data.brightness : 0);
       paintBosses(data.bosses);
       paintToggles(data);
+      const collection = document.getElementById('ml-collection-btn');
+      if (collection && !collection.disabled) {
+        collectionEnabled = typeof data.collection_enabled === 'boolean' ? data.collection_enabled : null;
+        collection.textContent = collectionEnabled === null ? 'Collection unavailable' : collectionEnabled ? 'Stop collecting data' : 'Enable collection';
+      }
       const code = document.getElementById('input-ps-code');
       if (code && !code.dataset.touched) code.value = data.private_server_code || '';
       const url = document.getElementById('input-vip-url');
@@ -208,15 +286,19 @@
     });
     document.querySelectorAll('[data-fanmode]').forEach((b) => {
       b.addEventListener('click', async () => {
+        if (b.disabled) return;
+        setDeviceBusy('[data-fanmode]', true);
+        toast('Applying fan mode...');
         try {
           await gpoPost('/api/fan/set', { mode: b.getAttribute('data-fanmode') });
           toast('Fan: ' + b.getAttribute('data-fanmode'));
           await refresh();
         } catch (e) { toast('Fan failed: ' + e.message); }
+        finally { setDeviceBusy('[data-fanmode]', false); }
       });
     });
     bindSlider(0, 'fan-speed-fill', 'fan-speed-badge', async (pct) => {
-      try { await gpoPost('/api/fan/set', { fan_percentage: pct }); await refresh(); }
+      try { await gpoPost('/api/fan/set', { pct }); await refresh(); }
       catch (e) { toast('Fan failed: ' + e.message); }
     });
     const turbo = document.getElementById('turbo-toggle');
@@ -230,11 +312,15 @@
     });
     document.querySelectorAll('[data-rgb]').forEach((b) => {
       b.addEventListener('click', async () => {
+        if (b.disabled) return;
+        setDeviceBusy('[data-rgb]', true);
+        toast('Applying keyboard light...');
         try {
           const j = await gpoPost('/api/keyboard/light', { action: b.getAttribute('data-rgb') });
           toast('Keyboard light: ' + (j.status || j.message || b.getAttribute('data-rgb')).toString().toUpperCase());
           await refresh();
         } catch (e) { toast('Light failed: ' + e.message); }
+        finally { setDeviceBusy('[data-rgb]', false); }
       });
     });
     bindSlider(1, 'volume-fill', 'volume-badge', async (pct) => {
@@ -328,18 +414,21 @@
       const d = data.dataset || {};
       const r = data.readiness || {};
       const m = data.model || {};
+      const fish = data.fish_recognition || {};
       const cov = d.state_coverage || {};
       const w = cov.waiting_for_bite || {};
       const b = cov.bite || {};
       const cr = cov.catch_result || {};
       const pct = Math.min(100, Math.round(((r.entity_linked_result || 0) / Math.max(1, 1000)) * 100));
-      const modelLine = m.trained
+      const modelLine = fish.loaded
+        ? 'Local fish-name model loaded: ' + (fish.classes || 0) + ' classes. Starts inside the macro; no terminal. Fruit names use OCR.'
+        : m.trained
         ? 'Model ' + gpoEsc(m.name || '?') + ' v' + gpoEsc(m.version || '?') + ' loaded (' + gpoEsc(m.runtime || '?') + ').'
         : 'MODEL: NOT TRAINED' + (m.reason ? ' — ' + gpoEsc(m.reason) : '') + '. OCR + heuristics active.';
       box.innerHTML =
         '<div class="flex items-center justify-between">' +
           '<span class="font-label-md text-label-md uppercase text-on-surface">Vision Model</span>' +
-          '<span class="font-label-sm text-label-sm uppercase font-bold ' + (m.trained ? 'text-tertiary' : 'text-[#f59e0b]') + '">' + (m.trained ? 'LOADED' : 'NOT TRAINED') + '</span></div>' +
+          '<span class="font-label-sm text-label-sm uppercase font-bold ' + (fish.loaded || m.trained ? 'text-tertiary' : 'text-[#f59e0b]') + '">' + (fish.loaded || m.trained ? 'LOADED' : 'OCR ACTIVE') + '</span></div>' +
         '<div class="font-body-sm text-body-sm text-on-surface-variant">' + modelLine + '</div>' +
         '<div class="flex items-center justify-between mt-1">' +
           '<span class="font-label-md text-label-md uppercase text-on-surface">Dataset gpo-vision/v1</span>' +
@@ -385,9 +474,10 @@
       (stateM ? 'DEPLOYED shadow (held-out 1.0000)' : 'artifact 1.0000 held-out; NOT DEPLOYED') +
       ' — ' + (sh.enabled === true ? 'observed live' : 'not observed') + '; never controls macro');
     html += line('SHADOW', sh.enabled === true, sh.enabled === true ? gpoEsc(sh.reason || 'telemetry active') : gpoEsc(sh.reason || 'OFF'));
-    html += line('ENTITY MODEL', false, fishM
-      ? 'SHADOW ONLY (8-fish ' + fishM.test_accuracy + ' test, rest UNKNOWN; NOT PRODUCTION)'
-      : 'NOT PRODUCTION (fish scope: 8/41; fruit scope blocked)');
+    const recognition = data.fish_recognition || {};
+    html += line('FISH NAME MODEL', recognition.loaded === true, recognition.loaded
+      ? recognition.classes + ' classes; native inference; held-out accuracy ' + recognition.test_accuracy
+      : 'OCR fallback; local model disabled or unavailable');
     html += gateLine('FISH RECOGNITION', 'fish_entity');
     html += gateLine('FRUIT RECOGNITION', 'fruit_entity');
     html += gateLine('OTHER-DROP RECOGNITION', 'other_drop');
@@ -418,6 +508,15 @@
     refreshMl();
     const mrb = document.getElementById('ml-refresh-btn');
     if (mrb) mrb.addEventListener('click', refreshMl);
+    const collection = document.getElementById('ml-collection-btn');
+    if (collection) collection.addEventListener('click', async () => {
+      if (collection.disabled || collectionEnabled === null) return;
+      collection.disabled = true;
+      collection.textContent = 'Saving...';
+      try { const result = await gpoAction('set_collection', { enabled: !collectionEnabled }); toast(result.message); }
+      catch (error) { toast('Collection failed: ' + error.message); }
+      finally { collection.disabled = false; await refresh(); }
+    });
     setInterval(() => { if (!document.hidden) refresh(); }, 3000);
     setInterval(tickTimers, 1000);
   });

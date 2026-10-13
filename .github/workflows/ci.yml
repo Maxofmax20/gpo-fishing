@@ -34,7 +34,7 @@ jobs:
         run: npm test
 
       - name: Dashboard gesture tests
-        run: node --test src-tauri/src/bot/web/assets/gpo-touch.test.mjs
+        run: node --test src-tauri/src/bot/web/assets/gpo-touch.test.mjs src-tauri/src/bot/web/assets/gpo-system.test.mjs
 
       - name: Setup Python
         uses: actions/setup-python@v5

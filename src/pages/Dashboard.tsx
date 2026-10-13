@@ -8,6 +8,7 @@ import { Button, CustomSelect, Pill, Section, cx, fmtRuntime } from "../componen
 import { StateBadge } from "../components/StateIcon";
 import { LogList } from "../components/LogList";
 import { LiveAreas } from "../components/LiveAreas";
+import { CollectionControl } from "../components/CollectionControl";
 import ConfirmModal from "../components/ConfirmModal";
 import type { CustomMacro, MlCollectionStatus, MlPreflight, RecorderStatus } from "../lib/types";
 
@@ -346,6 +347,7 @@ function MlDataCard() {
           </Pill>
           {shortId && <span className="font-mono text-[11px] text-fg-mute">session {shortId}</span>}
           <span className="font-mono text-[11px] text-fg-mute">{col.dataset}</span>
+          <CollectionControl />
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-[12px] text-fg-dim">
           <span>Frames: <b className="text-fg">{col.samples_written}</b></span>

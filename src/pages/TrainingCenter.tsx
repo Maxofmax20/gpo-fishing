@@ -4,6 +4,7 @@ import { showToast } from "../lib/store";
 import { useVisiblePoll } from "../lib/useVisiblePoll";
 import { OntologyReview } from "./OntologyReview";
 import { Button, CustomSelect, Kbd, Pill, Section, Toggle } from "../components/primitives";
+import { CollectionControl } from "../components/CollectionControl";
 import ConfirmModal from "../components/ConfirmModal";
 import type {
   BackendStatus,
@@ -418,8 +419,9 @@ const CLASS_TONE: Record<ClassReadinessStatus, "ok" | "warn" | "bad" | "mute"> =
 export default function TrainingCenter() {
   const [tab, setTab] = useState<SubTab>(() => {
     const saved = sessionStorage.getItem("training-tab");
-    return TABS.some((t) => t.id === saved) ? saved as SubTab : "overview";
+    return ["overview", "review", "jobs"].includes(saved ?? "") ? saved as SubTab : "overview";
   });
+  const [advanced, setAdvanced] = useState(false);
   const groups: { label: string; tabs: SubTab[] }[] = [
     { label: "Overview", tabs: ["overview", "readiness", "history"] },
     { label: "Data & review", tabs: ["dataset", "fish", "fruits", "review", "ontology", "coverage", "drops"] },
@@ -591,23 +593,19 @@ export default function TrainingCenter() {
 
   useEffect(() => {
     refreshAll();
-    refreshSlow();
-  }, [refreshAll, refreshSlow]);
+  }, [refreshAll]);
 
   // Full detail tier on sub-tab change (skipped on the first render, which
   // already refreshed above). This is also the settings-save path, because
   // the bars edited there feed readiness_status.
-  const firstTab = useRef(true);
   useEffect(() => {
-    if (firstTab.current) {
-      firstTab.current = false;
-      return;
-    }
+    if (!advanced && tab !== "review") return;
     void refreshSlow();
-  }, [tab, refreshSlow]);
+  }, [tab, advanced, refreshSlow]);
 
   // Re-query the backend whenever a queue filter changes, and on first mount.
   useEffect(() => {
+    if (!reviewing) return;
     let live = true;
     (async () => {
       try {
@@ -624,7 +622,7 @@ export default function TrainingCenter() {
     return () => {
       live = false;
     };
-  }, [fetchQueue, applyQueue]);
+  }, [fetchQueue, applyQueue, reviewing]);
 
   const anyActive = jobs.some((j) => ["QUEUED", "RUNNING", "EVALUATING"].includes(j.status));
   // Poll only while a job is live. On mount `anyActive` is false (jobs start
@@ -983,18 +981,24 @@ export default function TrainingCenter() {
     <div className="flex flex-col gap-3 px-4 pb-6">
       <div className="flex items-center justify-between pt-3">
         <div>
-          <div className="text-sm font-semibold text-fg">ML Training Center</div>
+          <div className="text-sm font-semibold text-fg">Fish model & samples</div>
           <div className="text-[11px] text-fg-dim">
-            Real dataset, real jobs, real evaluations. Production control:{" "}
-            <span className="font-mono font-bold text-ok">OFF</span>
+            Local name recognition starts with the macro. No terminal needed.
+            Fruit names use OCR; collected samples need review before training.
           </div>
         </div>
-        <Pill tone={overview?.shadow_enabled ? "ok" : "mute"}>
+        {advanced && <Pill tone={overview?.shadow_enabled ? "ok" : "mute"}>
           SHADOW {overview?.shadow_enabled ? "ON" : "OFF"}
-        </Pill>
+        </Pill>}
       </div>
 
-      <nav aria-label="Training sections" className="flex gap-1 flex-wrap">
+      <div className="flex gap-2 flex-wrap"><CollectionControl />
+        <Button size="sm" kind={tab === "overview" ? "primary" : "ghost"} onClick={() => setTab("overview")}>Home</Button>
+        <Button size="sm" kind={tab === "review" ? "primary" : "ghost"} onClick={() => setTab("review")}>Review samples</Button>
+        <Button size="sm" kind={tab === "jobs" ? "primary" : "ghost"} onClick={() => setTab("jobs")}>Training progress</Button>
+        <Button size="sm" kind="ghost" onClick={() => { setAdvanced(!advanced); if (advanced) setTab("overview"); }}>{advanced ? "Hide advanced" : "Advanced tools"}</Button>
+      </div>
+      {advanced && <><nav aria-label="Training sections" className="flex gap-1 flex-wrap">
         {groups.map((g) => <Button key={g.label} size="sm" kind={group.label === g.label ? "primary" : "ghost"} onClick={() => setTab(g.tabs[0])}>{g.label}</Button>)}
       </nav>
       <nav aria-label={`${group.label} pages`} className="flex gap-1.5 flex-wrap border-b border-line pb-2">
@@ -1005,9 +1009,11 @@ export default function TrainingCenter() {
         ))}
       </nav>
 
+      </>}
       {tab === "overview" && (
         <Section title="Learning status">
-          <FinalStatus overview={overview} readiness={readiness} />
+          <div className="text-[12px] text-fg-dim mb-3">1. Collect while fishing · 2. Review fish names · 3. Train an updated model</div>
+          {advanced && <FinalStatus overview={overview} readiness={readiness} />}
           {!overview ? (
             <div className="text-[11px] text-fg-mute">Loading…</div>
           ) : (
@@ -1022,7 +1028,7 @@ export default function TrainingCenter() {
                   {m.macro_f1?.toFixed(4) ?? "N/A"}
                 </div>
               ))}
-              {overview.eligibility.map((e) => (
+              {advanced && overview.eligibility.map((e) => (
                 <div key={e.family}>
                   {e.family} training:{" "}
                   <span className={e.eligible ? "text-ok" : "text-warn"}>{e.eligible ? "ELIGIBLE" : "BLOCKED"}</span>
@@ -1039,24 +1045,13 @@ export default function TrainingCenter() {
                 <Button size="sm" kind="primary" disabled={busy !== null || !overview.backend_available || !overview.eligibility.some((e) => e.family === "fish" && e.eligible)} onClick={() => startTrain("fish")}>
                   Train Fish
                 </Button>
-                {/* `Button` has no "disabled" kind, and `pointer-events-none`
-                    on a disabled button suppresses its own tooltip, so the
-                    explanation lives in the wrapper's title + visible text. */}
-                <span
-                  title="No fruit trainer exists: training_start(&quot;fruit&quot;) has no trainer module and always returns an error."
-                  className="inline-flex"
-                >
-                  <Button size="sm" disabled onClick={() => startTrain("fruit")}>
-                    Train Fruit
-                  </Button>
-                </span>
-                <Button size="sm" disabled={busy !== null || !overview.backend_available || !overview.eligibility.some((e) => e.family === "state" && e.eligible)} onClick={() => startTrain("state")}>
+                {advanced && <Button size="sm" disabled={busy !== null || !overview.backend_available || !overview.eligibility.some((e) => e.family === "state" && e.eligible)} onClick={() => startTrain("state")}>
                   Train State
-                </Button>
+                </Button>}
               </div>
               <div className="text-fg-mute">
-                Train Fruit is unavailable: no fruit trainer module exists in this build, so the request always
-                fails. Fruit readiness is tracked on the Readiness tab instead.
+                Review your collected fish names before updating the model. Training uses reviewed samples;
+                fruit names continue to use OCR. See Advanced tools for detailed readiness checks.
               </div>
               {!overview.backend_available && (
                 <div className="text-warn">

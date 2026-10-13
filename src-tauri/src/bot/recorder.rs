@@ -1060,6 +1060,7 @@ mod tests {
                 exit_age_secs: None,
                 exit_error: None,
                 administrator: false,
+                helper_ready: false,
                 recovery_active: false,
             }
         }

@@ -24,6 +24,10 @@ static TELEMETRY_STARTED: AtomicBool = AtomicBool::new(false);
 static LOCAL_IP: RwLock<Option<String>> = RwLock::new(None);
 static FAN_STATUS: RwLock<Option<crate::laptop_fan::FanStatus>> = RwLock::new(None);
 
+fn send_json(stream: &mut TcpStream, body: &str) {
+    let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+}
+
 // WMI, PowerShell and GPU queries must never occupy HTTP request workers.
 // Publish the last completed observation; control/status requests stay fast
 // even when a hardware provider is slow or unavailable.
@@ -564,6 +568,8 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "state": state_str,
         "paused": paused,
         "is_running": bot.is_running(),
+        "collection_enabled": s.fishing.trace,
+        "collection_recording": s.fishing.trace && bot.ctx().ml.is_collecting(),
         "fish": stats.fish,
         "fruits": stats.fruits,
         "pity_fruit": stats.pity_fruit,
@@ -1097,6 +1103,12 @@ fn handle_ml_status(stream: &mut TcpStream, bot: &Arc<Bot>) {
     );
     let action_summary = crate::core::workflow::summarize_action_log(bot.ctx().store.dir());
     let fs = bot.ctx().settings();
+    let fish_recognition = if fs.features.ml_fish_recognition {
+        crate::core::shadow_infer::engine(&models_dir).and_then(|engine| engine.models.get("fish_v1").map(|model| json!({
+            "enabled": true, "loaded": true, "classes": model.classes.len(), "test_accuracy": model.test_accuracy,
+            "runtime": "native ONNX", "version": model.revision,
+        }))).unwrap_or_else(|| json!({"enabled": true, "loaded": false}))
+    } else { json!({"enabled": false, "loaded": false}) };
     let policy_rules = serde_json::json!({
         "unknown_auto_drop": false,
         "missing_confirmation_is_success": false,
@@ -1108,7 +1120,8 @@ fn handle_ml_status(stream: &mut TcpStream, bot: &Arc<Bot>) {
     });
     let reply = json!({
         "ok": true,
-        "collecting": readiness.sessions > 0,
+        "collecting": fs.fishing.trace && bot.ctx().ml.is_collecting(),
+        "fish_recognition": fish_recognition,
         "dataset": {
             "name": "gpo-vision/v1",
             "rows": rows.len(),
@@ -1155,6 +1168,17 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
     let action = parsed.get("action").and_then(|a| a.as_str()).unwrap_or("");
 
     let res_msg = match action {
+        "set_collection" => {
+            let Some(enabled) = parsed.get("enabled").and_then(|v| v.as_bool()) else {
+                send_json(stream, &json!({"ok": false, "message": "Collection enabled must be true or false"}).to_string());
+                return;
+            };
+            if let Err(error) = bot.set_collection(enabled) {
+                send_json(stream, &json!({"ok": false, "message": error}).to_string());
+                return;
+            }
+            if enabled { "Collection enabled; existing samples kept" } else { "Collection stopped; fishing continues and samples kept" }
+        }
         "start" => {
             bot.start();
             "Macro started"
@@ -1179,7 +1203,10 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
             });
             if let Some(val) = val_opt {
                 let clamped = (val as f32).clamp(0.0, 100.0) / 100.0;
-                let _ = crate::core::audio::set_volume(clamped);
+                if let Err(error) = crate::core::audio::set_volume(clamped) {
+                    send_json(stream, &json!({"ok": false, "message": error}).to_string());
+                    return;
+                }
             }
             "Volume updated"
         }
@@ -1199,7 +1226,10 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
             });
             if let Some(val) = val_opt {
                 let clamped = (val as u32).clamp(0, 100);
-                let _ = crate::core::brightness::set_brightness(clamped);
+                if let Err(error) = crate::core::brightness::set_brightness(clamped) {
+                    send_json(stream, &json!({"ok": false, "message": error}).to_string());
+                    return;
+                }
             }
             "Brightness updated"
         }
@@ -1446,7 +1476,10 @@ fn handle_keyboard_light(stream: &mut TcpStream, body: &str) {
     let action = parsed.get("action").and_then(|a| a.as_str()).unwrap_or("toggle");
 
     let st = crate::laptop_light::set_keyboard_light(action);
-    let out = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
+    let mut response = serde_json::to_value(&st).unwrap_or(json!({}));
+    response["ok"] = json!(st.success);
+    response["message"] = json!(st.error.unwrap_or_default());
+    let out = response.to_string();
 
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -1457,7 +1490,7 @@ fn handle_keyboard_light(stream: &mut TcpStream, body: &str) {
 }
 
 fn send_fan_status(stream: &mut TcpStream) {
-    let st = crate::laptop_fan::get_fan_status();
+    let st = FAN_STATUS.read().clone().unwrap_or_default();
     let body = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -1479,7 +1512,10 @@ fn handle_fan_set(stream: &mut TcpStream, body: &str) {
         crate::laptop_fan::get_fan_status()
     };
     *FAN_STATUS.write() = Some(st.clone());
-    let out = serde_json::to_string(&st).unwrap_or_else(|_| "{}".to_string());
+    let mut response = serde_json::to_value(&st).unwrap_or(json!({}));
+    response["ok"] = json!(st.success);
+    response["message"] = json!(st.error.unwrap_or_default());
+    let out = response.to_string();
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         out.len(),

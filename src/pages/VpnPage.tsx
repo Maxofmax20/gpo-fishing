@@ -16,7 +16,7 @@ const stateLabels: Record<VpnStatus["state"], string> = {
 };
 const countryName = (country: string) => ({ DE: "Germany", EG: "Egypt" }[country] || country);
 const engines: { id: VpnEngine; title: string; description: string }[] = [
-  { id: "dedicated", title: "Germany · Frankfurt relay", description: "Recommended for your German exit. Uses the working TLS/WebSocket route and supports TCP and UDP. Starting or stopping the TUN driver requires administrator rights." },
+  { id: "dedicated", title: "Germany · Frankfurt relay", description: "Recommended for your German exit. Uses TLS/WebSocket and supports TCP and UDP. Install the helper once, then connect from the macro without Administrator mode." },
   { id: "warp", title: "Cloudflare WARP", description: "Alternative Cloudflare tunnel on this PC. WARP chooses its exit automatically; selecting it does not guarantee Germany." },
   { id: "psiphon", title: "Psiphon fallback", description: "Alternative for restrictive networks. Requires Psiphon in C:\\VPN. Its exit country is checked separately." },
   { id: "auto", title: "Use an existing VPN", description: "Detect an active connection. Supported local engines can be adopted for recovery; other VPN apps remain externally managed." },
@@ -39,7 +39,8 @@ export default function VpnPage() {
   const transitioning = ["connecting", "verifying", "disconnecting"].includes(status.state);
   const germanVerified = status.connected && status.state === "connected" && status.germany_verified === true;
   const canManage = ["dedicated", "warp", "psiphon"].includes(status.engine);
-  const needsAdmin = status.engine === "dedicated" && !status.administrator;
+  const needsAdmin = status.engine === "dedicated" && !status.administrator && !status.helper_ready;
+  const [setupMessage, setSetupMessage] = useState<string | null>(null);
 
   const fetchStatus = async () => {
     if (working.current) return;
@@ -89,6 +90,15 @@ export default function VpnPage() {
     try { await api.vpnSetAutoReconnect(enabled); await fetchStatus(); }
     catch (failure) { setError(`Could not change recovery: ${String(failure)}`); }
   };
+  const setupHelper = async () => {
+    if (working.current) return;
+    working.current = true;
+    setBusy(true);
+    setError(null);
+    try { setSetupMessage(await api.vpnSetupHelper()); }
+    catch (failure) { setError(String(failure)); }
+    finally { working.current = false; setBusy(false); await fetchStatus(); }
+  };
 
   return <div className="pb-6 pt-2">
     <div className="mx-4 mb-4 rounded-xl border border-line bg-bg-elev p-4">
@@ -121,13 +131,18 @@ export default function VpnPage() {
         <Button size="sm" kind="ghost" disabled={busy} icon={<RefreshCw size={13} />} onClick={() => void fetchStatus()}>Refresh</Button>
       </div>
       {status.verification_detail && <div className="mt-2 text-[11px] text-fg-mute break-words">{status.verification_detail}</div>}
-      {needsAdmin && <p className="mt-2 text-[11px] text-warn">Run the macro as Administrator to restart or stop this relay. Reading its status does not require elevation.</p>}
+      {needsAdmin && <p className="mt-2 text-[11px] text-warn">Set up the relay helper below. The macro can stay in normal user mode.</p>}
     </div>
 
     {(error || statusError || status.last_error) && <div role="alert" className="mx-4 mb-4 flex items-start gap-2 rounded-lg border border-bad/30 bg-bad-soft px-3 py-2 text-[12px] text-bad">
       <AlertCircle size={15} className="mt-0.5 shrink-0" /><span className="break-words min-w-0">{error || statusError || status.last_error}</span>
     </div>}
 
+    <Section title="German relay setup">
+      <Row title={status.helper_ready ? "Helper installed" : "One-time Windows setup"}
+        sub={setupMessage || "Windows asks once to install fixed connect and disconnect tasks. Later connections and recovery run without elevating the macro. Setup does not connect the VPN."}
+        right={<Button size="sm" disabled={busy || transitioning || status.connected || status.tunnel_detected} onClick={() => void setupHelper()}>{status.helper_ready ? "Repair helper" : "Install helper"}</Button>} />
+    </Section>
     <Section title="Choose a connection">
       {engines.map(engine => <Row key={engine.id} title={engine.title} sub={engine.description} right={
         <input type="radio" name="vpn-engine" aria-label={engine.title} checked={selectedEngine === engine.id}
@@ -141,7 +156,7 @@ export default function VpnPage() {
       {status.country === "EG" && <Row title="Egyptian exit detected" sub="This exit does not meet your German routing goal. Use the Frankfurt relay and wait for German exit verification." right={<AlertCircle size={17} className="text-warn" />} />}
       <Row title="Relay latency" sub={ping ? (ping.success ? `Median TCP connection time to Frankfurt: ${ping.latency_ms} ms. This is not Roblox game-server ping.` : `Relay unreachable: ${ping.error}`) : "Measure three TCP connections to Frankfurt. Game ping also depends on the Roblox server and your ISP."}
         right={<Button size="sm" disabled={pinging} icon={<Activity size={13} className={cx(pinging && "animate-spin")} />} onClick={() => void testPing()}>{pinging ? "Testing…" : "Test latency"}</Button>} />
-      <Row title="Automatic recovery" sub={status.recovery_active ? "Active while this macro stays open. Checks every 5 seconds; failed attempts wait 30 seconds before retrying. Manual disconnect stops recovery." : "Standby. Connect or adopt a supported tunnel to enable recovery. The German driver also needs Administrator rights."}
+      <Row title="Automatic recovery" sub={status.recovery_active ? "Active while this macro stays open. Checks every 5 seconds; failed attempts wait 30 seconds before retrying. Manual disconnect stops recovery." : "Standby. Connect or adopt a supported tunnel to enable recovery. Install the German helper once for recovery in normal user mode."}
         right={<Toggle value={status.auto_reconnect} onChange={(enabled) => void toggleRecovery(enabled)} />} />
       <Row title="Recovery status" sub="Internet outages can interrupt a game session. The recovery switch does not install a Windows startup service or a Roblox firewall block."
         right={<Pill tone={status.recovery_active ? "ok" : "mute"}>{status.recovery_active ? "Monitoring" : "Standby"}</Pill>} />

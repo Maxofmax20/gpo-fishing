@@ -138,14 +138,10 @@
 </div>
 <!-- Thermal Profile Selector -->
 <div class="flex items-center justify-between gap-space-xs mt-space-xs p-1 rounded-lg bg-surface-container-low border border-outline-variant/20">
-<button class="flex-1 py-2 px-1 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-on-surface flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-all" type="button" data-fanmode="quiet">
-</button>
-<button class="flex-1 py-2 px-1 min-h-[44px] rounded bg-primary text-on-primary flex flex-col items-center justify-center gap-0.5 shadow-[0_0_12px_rgba(76,215,246,0.4)] active:scale-95 transition-all font-bold" type="button" data-fanmode="balance">
-</button>
-<button class="flex-1 py-2 px-1 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-on-surface flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-all" type="button" data-fanmode="performance">
-</button>
-<button class="flex-1 py-2 px-1 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-error flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-all" type="button" data-fanmode="turbo">
-</button>
+<button class="flex-1 py-2 px-1 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-on-surface flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-all" type="button" data-fanmode="quiet"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4h4l5 4V6L8 10H4Z"/></svg><span>Quiet</span></button>
+<button class="flex-1 py-2 px-1 min-h-[44px] rounded bg-primary text-on-primary flex flex-col items-center justify-center gap-0.5 shadow-[0_0_12px_rgba(76,215,246,0.4)] active:scale-95 transition-all font-bold" type="button" data-fanmode="balance"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M12 4v16"/></svg><span>Balanced</span></button>
+<button class="flex-1 py-2 px-1 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-on-surface flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-all" type="button" data-fanmode="performance"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 16 5-5 4 3 7-9"/></svg><span>Fast</span></button>
+<button class="flex-1 py-2 px-1 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-error flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-all" type="button" data-fanmode="turbo"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m13 2-9 12h7l-1 8 10-12h-7l1-8Z"/></svg><span>Turbo</span></button>
 </div>
 <!-- Fan Speed Slider -->
 <div class="flex flex-col gap-1.5 mt-space-xs">
@@ -189,14 +185,10 @@
 </div>
 <!-- Keyboard Light Modes -->
 <div class="grid grid-cols-4 gap-space-xs mt-space-xs p-1 rounded-lg bg-surface-container-low border border-outline-variant/20">
-<button class="py-2.5 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-on-surface flex flex-col items-center justify-center gap-1 active:scale-95 transition-all" type="button" data-rgb="off">
-</button>
-<button class="py-2.5 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-on-surface flex flex-col items-center justify-center gap-1 active:scale-95 transition-all" type="button" data-rgb="low">
-</button>
-<button class="py-2.5 min-h-[44px] rounded bg-secondary text-on-secondary flex flex-col items-center justify-center gap-1 shadow-[0_0_12px_rgba(208,188,255,0.4)] active:scale-95 transition-all font-bold" type="button" data-rgb="high">
-</button>
-<button class="py-2.5 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-on-surface flex flex-col items-center justify-center gap-1 active:scale-95 transition-all" type="button" data-rgb="cycle">
-</button>
+<button class="py-2.5 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-on-surface flex flex-col items-center justify-center gap-1 active:scale-95 transition-all" type="button" data-rgb="off"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 4 16 16M9 9h6v6H9z"/></svg><span>Off</span></button>
+<button class="py-2.5 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-on-surface flex flex-col items-center justify-center gap-1 active:scale-95 transition-all" type="button" data-rgb="low"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v8M8 12h8"/></svg><span>Low</span></button>
+<button class="py-2.5 min-h-[44px] rounded bg-secondary text-on-secondary flex flex-col items-center justify-center gap-1 shadow-[0_0_12px_rgba(208,188,255,0.4)] active:scale-95 transition-all font-bold" type="button" data-rgb="high"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M6 6l2 2m8 8 2 2M6 18l2-2m8-8 2-2M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8"/></svg><span>High</span></button>
+<button class="py-2.5 min-h-[44px] rounded bg-surface-container-high text-on-surface-variant hover:text-on-surface flex flex-col items-center justify-center gap-1 active:scale-95 transition-all" type="button" data-rgb="cycle"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-2l2 2M18 17a7 7 0 0 1-12 2l-2-2"/></svg><span>Cycle</span></button>
 </div>
 <!-- Audio Slider (45%) -->
 <div class="flex flex-col gap-1 mt-space-xs">
@@ -460,6 +452,7 @@
 <span class="font-label-sm text-label-sm uppercase">Refresh</span>
 </button>
 </div>
+<button id="ml-collection-btn" class="min-h-[44px] px-space-sm rounded bg-primary-container text-on-primary font-label-md" type="button">Checking collection...</button>
 <div id="ml-body" class="flex flex-col gap-space-xs mt-space-xs">
 <div class="font-body-sm text-body-sm text-on-surface-variant">Loading model state…</div>
 </div>

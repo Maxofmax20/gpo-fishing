@@ -7,6 +7,7 @@ import VpnPage from "./VpnPage";
 const rpc = vi.hoisted(() => ({
   vpnGetStatus: vi.fn(), vpnConnect: vi.fn(), vpnDisconnect: vi.fn(), vpnTestPing: vi.fn(),
   vpnGetLogs: vi.fn(), vpnSetAutoReconnect: vi.fn(), vpnResetNetwork: vi.fn(),
+  vpnSetupHelper: vi.fn(),
 }));
 vi.mock("../lib/ipc", () => ({ api: rpc }));
 let current: VpnStatus;
@@ -66,7 +67,21 @@ it("adopts an external relay without issuing disconnect and explains missing ele
   expect(rpc.vpnConnect).toHaveBeenCalledWith("dedicated");
   expect(rpc.vpnDisconnect).not.toHaveBeenCalled();
   expect(screen.getByRole("button", { name: "Disconnect" })).toBeDisabled();
-  expect(screen.getByText(/Run the macro as Administrator to restart or stop this relay/)).toBeVisible();
+  expect(screen.getByText(/Set up the relay helper below/)).toBeVisible();
+});
+
+it("allows a normal-user disconnect with the installed helper", async () => {
+  current = { ...current, state: "connected", connected: true, engine: "dedicated", helper_ready: true, administrator: false };
+  render(<VpnPage />);
+  expect(await screen.findByRole("button", { name: "Disconnect" })).toBeEnabled();
+});
+
+it("installs the helper without automatically connecting a tunnel", async () => {
+  rpc.vpnSetupHelper.mockResolvedValue("Helper installed");
+  render(<VpnPage />);
+  await userEvent.click(await screen.findByRole("button", { name: "Install helper" }));
+  expect(rpc.vpnSetupHelper).toHaveBeenCalledTimes(1);
+  expect(rpc.vpnConnect).not.toHaveBeenCalled();
 });
 
 it("warns about an Egyptian WARP exit without claiming German protection", async () => {

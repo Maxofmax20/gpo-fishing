@@ -103,6 +103,18 @@ pub fn setup(app: &AppHandle, st: &AppState) -> Result<(), Box<dyn std::error::E
         let seeded = crate::core::shadow_infer::seed_shadow_models(&candidates, &st.store.dir().join("models"));
         tracing::info!("shadow models seeded: {seeded:?}");
     }
+    // Pure Rust ONNX inference loads inside the app, never a terminal/Python
+    // service. Warm it before the user starts fishing; keep UI startup free.
+    if st.settings.read().features.ml_shadow || st.settings.read().features.ml_fish_recognition {
+        let models = st.store.dir().join("models");
+        std::thread::Builder::new().name("local-model-startup".into()).spawn(move || {
+            if crate::core::shadow_infer::engine(&models).is_some() {
+                tracing::info!("Local sample-trained models ready inside the macro");
+            } else {
+                tracing::warn!("Local models unavailable; OCR remains active");
+            }
+        })?;
+    }
     if let Some(rx) = st.events_rx.lock().take() {
         spawn_event_forwarder(app.clone(), rx);
     }

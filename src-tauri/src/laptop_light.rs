@@ -212,12 +212,21 @@ pub fn get_keyboard_light_status() -> KeyboardLightStatus {
 }
 
 pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
+    if !matches!(action, "off" | "low" | "high" | "cycle" | "toggle") {
+        return KeyboardLightStatus { error: Some("Unsupported keyboard light action".into()), ..Default::default() };
+    }
+    static COMMAND: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
+    let Some(_command) = COMMAND.try_lock() else {
+        return KeyboardLightStatus { error: Some("A keyboard light change is already running".into()), ..Default::default() };
+    };
     ensure_worker_scripts();
     let dir = get_data_dir();
     let target_file = dir.join("keyboard_light_target.txt");
     let state_file = dir.join("keyboard_light_state.json");
 
-    let _ = fs::write(&target_file, action);
+    if let Err(error) = fs::write(&target_file, action) {
+        return KeyboardLightStatus { error: Some(format!("Could not request keyboard light change: {error}")), ..Default::default() };
+    }
 
     let prev_mtime = fs::metadata(&state_file)
         .and_then(|m| m.modified())
@@ -236,9 +245,11 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
 
         if let Ok(status) = sch_status {
             if status.success() {
-                // Poll for updated state file up to 250ms
+                // Cold PowerShell/C# startup can take several seconds. Once
+                // the task accepts a command, never launch a duplicate worker
+                // (especially Cycle, which would cycle twice).
                 let start = Instant::now();
-                while start.elapsed() < Duration::from_millis(250) {
+                while start.elapsed() < Duration::from_secs(8) {
                     thread::sleep(Duration::from_millis(30));
                     if let Ok(m) = fs::metadata(&state_file) {
                         if let Ok(mtime) = m.modified() {
@@ -248,12 +259,13 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
                         }
                     }
                 }
+                return KeyboardLightStatus { error: Some("Keyboard command accepted but its result was not confirmed. No duplicate command was sent.".into()), ..Default::default() };
             }
         }
 
         // Strategy 2: Direct PowerShell worker execution
         let worker_path = dir.join("keyboard_backlight_worker.ps1");
-        let _ = Command::new("powershell")
+        let result = Command::new("powershell")
             .args([
                 "-NoProfile",
                 "-ExecutionPolicy",
@@ -265,6 +277,9 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
             ])
             .creation_flags(CREATE_NO_WINDOW)
             .status();
+        if !matches!(result, Ok(status) if status.success()) {
+            return KeyboardLightStatus { error: Some("Windows refused the keyboard light worker. Check the keyboard helper setup.".into()), ..Default::default() };
+        }
 
         let start = Instant::now();
         while start.elapsed() < Duration::from_millis(500) {
@@ -272,13 +287,15 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
             if let Ok(m) = fs::metadata(&state_file) {
                 if let Ok(mtime) = m.modified() {
                     if Some(mtime) != prev_mtime {
-                        break;
+                        return get_keyboard_light_status();
                     }
                 }
             }
         }
+        return KeyboardLightStatus { error: Some("Keyboard light result was not confirmed".into()), ..Default::default() };
     }
 
+    #[cfg(not(windows))]
     get_keyboard_light_status()
 }
 
