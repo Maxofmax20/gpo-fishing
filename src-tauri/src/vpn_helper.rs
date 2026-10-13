@@ -17,7 +17,7 @@ pub fn run(connect: bool) -> Result<(), String> {
         let task = if connect { "GPO_GermanRelayStart_v1" } else { "GPO_GermanRelayStop_v1" };
         let result = std::process::Command::new("schtasks.exe").args(["/Run", "/TN", task]).creation_flags(0x08000000).output().map_err(|e| e.to_string())?;
         if result.status.success() { return Ok(()); }
-        return Err("Windows refused the German relay helper operation. Run Repair helper on the VPN page; the macro itself needs no Administrator rights.".into());
+        Err("Windows refused the German relay helper operation. Run Repair helper on the VPN page; the macro itself needs no Administrator rights.".into())
     }
     #[cfg(not(windows))]
     { let _ = connect; Err("German relay helper is only available on Windows".into()) }

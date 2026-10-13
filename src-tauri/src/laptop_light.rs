@@ -292,7 +292,7 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
                 }
             }
         }
-        return KeyboardLightStatus { error: Some("Keyboard light result was not confirmed".into()), ..Default::default() };
+        KeyboardLightStatus { error: Some("Keyboard light result was not confirmed".into()), ..Default::default() }
     }
 
     #[cfg(not(windows))]

@@ -1,0 +1,13 @@
+# GPO Autofish v5.8.10
+
+- The web System page starts only lightweight status reads. Full model/dataset validation runs when Refresh is explicitly pressed, preventing large sample collections from delaying laptop controls on page load.
+- Restored eight empty fan and keyboard-light buttons with visible names and embedded SVG icons. Laptop sliders now support dragging, touch, keyboard input and immediate feedback. Slow hardware writes run one at a time per slider, retaining only the latest edit. The fan slider sends the backend's correct `pct` field.
+- Laptop profile changes return without repeating CPU/GPU telemetry subprocesses. Brightness changes use the current CIM method and report failures instead of claiming success; web audio and keyboard-light controls also expose errors.
+- Local sample-trained ONNX models warm up inside the app at startup and when fishing starts. Neither inference nor training probes need a visible terminal. Existing model weights are preserved; fruit names still use OCR. This update does not retrain the model on unreviewed samples.
+- Added Stop collecting data / Enable collection to the desktop dashboard, training page and web System page. Stopping finalizes the active collection session while fishing and recognition continue. Resuming creates a fresh session. Existing samples remain intact and the preference persists.
+- Simplified training to Home, Review samples and Training progress. Detailed tools remain under Advanced; the home page no longer starts full dataset/review scans merely to display the main workflow.
+- Added a one-time German relay helper setup. Windows approval installs fixed SYSTEM connect/disconnect tasks and a protected executable/profile; the normal user receives read/execute rights, never task-edit rights. Subsequent connections and recovery can run without elevating the macro. Setup uses the existing verified sing-box 1.14.2 binary and saved relay UUID, does not connect automatically, and leaves the source credentials/profile intact.
+
+Verification: frontend and dashboard regression tests, Rust library tests, Windows console-window checks, frontend and native builds, PowerShell syntax validation, and isolated browser previews. Automated tests do not establish live Roblox latency, uninterrupted internet, or the elevated helper lifecycle. German exit proof still requires a live HTTPS check; ordinary WARP has no Germany selector. Recovery remains active while the macro stays open; no firewall kill switch is installed.
+
+The unfinished v5.8.9 release was cancelled before publication so this release also includes the last page-startup performance fix.

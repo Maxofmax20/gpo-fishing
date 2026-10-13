@@ -403,7 +403,7 @@
     });
   }
 
-  // MODEL & DATASET module: fetched on load + manual refresh only — the
+  // MODEL & DATASET module: fetched on manual refresh only — the
   // full validation pass is expensive on large datasets, never polled.
   async function refreshMl() {
     const box = document.getElementById('ml-body');
@@ -505,7 +505,8 @@
     document.querySelectorAll('.timer-badge').forEach((el) => { el.textContent = '—'; });
     gpoPaintHostline();
     refresh();
-    refreshMl();
+    // Full dataset validation is explicitly requested; opening laptop
+    // controls must not start thousands of image reads on the PC.
     const mrb = document.getElementById('ml-refresh-btn');
     if (mrb) mrb.addEventListener('click', refreshMl);
     const collection = document.getElementById('ml-collection-btn');
