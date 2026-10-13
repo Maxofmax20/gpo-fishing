@@ -22,8 +22,6 @@ enum Outcome {
 pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
     ctx.log_debug("Loop thread started");
     let mut tracker = Tracker::default();
-    let mut last_hash: u64 = 0;
-    let mut spawn_checked_at = Instant::now() - Duration::from_secs(3600);
     let mut anti_afk_at = Instant::now();
     let mut rod_equipped = false;
 
@@ -72,7 +70,7 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
             return;
         }
         tracker.reset();
-        let outcome = fish_cycle(ctx, &mut tracker, &mut last_hash, &mut spawn_checked_at);
+        let outcome = fish_cycle(ctx, &mut tracker);
         ctx.release_mouse();
         match outcome {
             Outcome::Stopped => return,
@@ -121,26 +119,7 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
                         ctx.emit_stats();
                     }
                     fruit::CatchVerdict::Caught => {
-                        let (kind, mut item_name) = fruit::parse_catch_item(&ctx.settings.read().lexicon, &text);
-                        if let Some(frame) = result_frame.as_ref() {
-                            if let Some(name) = recognize_fish_name(ctx, frame, &text) { item_name = name; }
-                        }
-                        let is_fruit = kind == "fruit";
-                        {
-                            let mut s = ctx.session.lock();
-                            s.record(true);
-                            if is_fruit {
-                                s.fruits += 1;
-                                s.last_fruit = Some(item_name.clone());
-                            } else {
-                                s.last_fish = Some(item_name.clone());
-                            }
-                            let n = s.fish;
-                            let tag = "";
-                            ctx.log_info(&format!("Caught {kind}: {item_name} (#{n}){tag}"));
-                        }
-                        ctx.record_catch(&kind, &item_name, &text);
-                        ctx.emit_stats();
+                        let is_fruit = record_verified_catch(ctx, &text, result_frame.as_ref());
                         if !post_catch(ctx, &text, &mut rod_equipped) {
                             return;
                         }
@@ -179,6 +158,31 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
             return;
         }
     }
+}
+
+/// Account for a verified catch once, independently of notification work.
+fn record_verified_catch(ctx: &Ctx, text: &str, result_frame: Option<&Frame>) -> bool {
+    let (kind, mut item_name) = fruit::parse_catch_item(&ctx.settings.read().lexicon, text);
+    if let Some(frame) = result_frame {
+        if let Some(name) = recognize_fish_name(ctx, frame, text) { item_name = name; }
+    }
+    let is_fruit = kind == "fruit";
+    {
+        let mut s = ctx.session.lock();
+        s.record(true);
+        if is_fruit {
+            s.fruits += 1;
+            s.last_fruit = Some(item_name.clone());
+        } else {
+            s.last_fish = Some(item_name.clone());
+        }
+        let n = s.fish;
+        let tag = "";
+        ctx.log_info(&format!("Caught {kind}: {item_name} (#{n}){tag}"));
+    }
+    ctx.record_catch(&kind, &item_name, text);
+    ctx.emit_stats();
+    is_fruit
 }
 
 /// Validate a VIP server URL before it is handed to a shell.
@@ -464,7 +468,7 @@ fn handle_disconnect_flow(ctx: &Arc<Ctx>, reason: &str, rod_equipped: &mut bool)
     false
 }
 
-fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_checked_at: &mut Instant) -> Outcome {
+fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
     ctx.set_state(BotState::WaitingForBite, None);
     // Episode capture: WAITING state, once per cast (trace-gated, async).
     if ctx.settings.read().fishing.trace {
@@ -527,8 +531,6 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_check
         } else {
             Duration::from_secs_f32(1.0 / s.fishing.scan_hz.max(1) as f32)
         };
-        let spawn_interval = Duration::from_secs_f32(s.ocr.spawn_check_interval_s);
-        let alerts = s.fruit_alerts();
         drop(s);
 
         if tracking_since.is_none() {
@@ -542,10 +544,6 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker, last_hash: &mut u64, spawn_check
                     finish_trace(trace.take(), "disconnect", ctx);
                     return Outcome::Disconnected(reason);
                 }
-            }
-            if alerts && spawn_checked_at.elapsed() > spawn_interval {
-                *spawn_checked_at = Instant::now();
-                check_spawn(ctx, last_hash);
             }
         } else if let Some(t) = tracking_since {
             if t.elapsed().as_secs_f32() > track_timeout {
@@ -706,7 +704,7 @@ pub(crate) fn check_spawn(ctx: &Ctx, last_hash: &mut u64) {
     }
     ctx.log_debug(&format!("Spawn banner OCR: {}", text.trim()));
     let lex = ctx.settings.read().lexicon.clone();
-    if let Some(mut info) = fruit::detect_spawn(&lex, &text) {
+    if let Some(info) = fruit::detect_spawn(&lex, &text) {
         ctx.log_info(&format!("Fruit spawned: {}", info.label()));
         {
             let mut s = ctx.session.lock();
@@ -719,22 +717,6 @@ pub(crate) fn check_spawn(ctx: &Ctx, last_hash: &mut u64) {
         } else {
             None
         };
-
-        // If Gemini is enabled, rewrite message or resolve fruit name with Gemini
-        let s = ctx.settings.read();
-        if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
-            if let Ok(gemini_msg) = crate::core::gemini::rewrite_spawn_message_gemini(
-                info.name.as_deref(),
-                info.location.as_deref(),
-                info.is_ase,
-                &text,
-                &s.gemini.api_key,
-                &s.gemini.model,
-            ) {
-                info.custom_telegram_message = Some(gemini_msg);
-            }
-        }
-        drop(s);
 
         ctx.emit_stats();
         ctx.emit(BotEvent::FruitSpawn(info.clone()));
@@ -888,10 +870,11 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
         return (fruit::CatchVerdict::Unknown, String::new(), None);
     }
     let s = ctx.settings();
-    let wants_ocr = s.features.fruit_storage || (s.webhook.enabled && s.webhook.fruit_drop);
-    let max_reads = if wants_ocr { s.ocr.post_catch_reads.max(1) } else { 1 };
+    // Catch accounting and local fish naming need verification even when
+    // fruit storage/alerts are off. A fading first read can be incomplete.
+    let max_reads = s.ocr.post_catch_reads.max(1);
     let mut last = String::new();
-    for _ in 0..max_reads {
+    for read in 0..max_reads {
         if let Some(frame) = grab_region(ctx, s.regions.drop) {
             if let Ok(text) = ctx.platform.ocr.read(&frame) {
                 if !text.trim().is_empty() {
@@ -904,7 +887,8 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
                 }
             }
         }
-        if !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms.min(40)) {
+        if read + 1 == max_reads { break; }
+        if !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms) {
             break;
         }
     }
@@ -936,7 +920,7 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
                     }
                 }
             }
-            if !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms.min(40)) {
+            if !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms) {
                 return false;
             }
         }
@@ -1198,9 +1182,7 @@ mod tests {
         }
         let (ctx, _rx) = make_ctx(cap, input.clone());
         let mut tracker = Tracker::default();
-        let mut hash = 0;
-        let mut t = Instant::now();
-        let out = fish_cycle(&ctx, &mut tracker, &mut hash, &mut t);
+        let out = fish_cycle(&ctx, &mut tracker);
         assert!(matches!(out, Outcome::Ended));
         let ev = input.events.lock();
         assert!(ev.iter().any(|e| matches!(e, crate::core::platform::mock::InputEvent::Button(_, true))));
@@ -1213,9 +1195,7 @@ mod tests {
         let input = Arc::new(RecordingInput::default());
         let (ctx, _rx) = make_ctx(cap, input);
         let mut tracker = Tracker::default();
-        let mut hash = 0;
-        let mut t = Instant::now();
-        let out = fish_cycle(&ctx, &mut tracker, &mut hash, &mut t);
+        let out = fish_cycle(&ctx, &mut tracker);
         assert!(matches!(out, Outcome::Timeout));
     }
 
@@ -1292,6 +1272,75 @@ mod tests {
     }
 
     #[test]
+    fn logged_nev_item_catches_increment_once() {
+        let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["Nev Item Shark*".into()]);
+        let (verdict, text, frame) = verify_catch(&ctx);
+        assert_eq!(verdict, fruit::CatchVerdict::Caught);
+        assert!(!record_verified_catch(&ctx, &text, frame.as_ref()));
+        let mut rod = true;
+        assert!(post_catch(&ctx, &text, &mut rod));
+        let session = ctx.session.lock();
+        assert_eq!(session.fish, 1);
+        assert_eq!(session.unverified, 0);
+        assert_eq!(session.fruits, 0);
+        drop(session);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn catch_verification_waits_for_the_configured_gap() {
+        let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["noise".into(), "Nev Item Shark".into()]);
+        ctx.settings.write().ocr.post_catch_read_gap_ms = 70;
+        let started = Instant::now();
+        assert_eq!(verify_catch(&ctx).0, fruit::CatchVerdict::Caught);
+        assert!(started.elapsed() >= Duration::from_millis(70));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn spawn_observation_never_pauses_counts_or_sends_inputs() {
+        let (mut ctx, dir) = make_collect_ctx(vec![blank()], vec!["A Kilo has spawned at Orange Town".into()]);
+        let input = Arc::new(RecordingInput::default());
+        let (tx, rx) = crossbeam_channel::unbounded();
+        let mutable = Arc::get_mut(&mut ctx).unwrap();
+        mutable.events = tx;
+        mutable.platform.input = input.clone();
+        ctx.set_state(BotState::Tracking, None);
+        let mut hash = u64::MAX;
+        check_spawn(&ctx, &mut hash);
+        assert!(ctx.alive());
+        assert_eq!(ctx.state(), BotState::Tracking);
+        assert_eq!(ctx.session.lock().fish, 0);
+        assert_eq!(ctx.session.lock().fruits, 0);
+        assert!(input.events.lock().is_empty());
+        assert!(rx.try_iter().any(|e| matches!(e, BotEvent::FruitSpawn(_))));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn fishing_cycle_does_not_run_spawn_ocr() {
+        struct NoSpawnCapture {
+            inner: Arc<dyn crate::core::platform::Capture>,
+            spawn: PxRect,
+        }
+        impl crate::core::platform::Capture for NoSpawnCapture {
+            fn grab(&self, rect: PxRect) -> crate::core::platform::Result<Frame> {
+                assert_ne!(rect, self.spawn, "spawn capture/OCR must not run on the fishing control thread");
+                self.inner.grab(rect)
+            }
+        }
+        let (mut ctx, dir) = make_collect_ctx(reel_frames(), vec![]);
+        let capture = NoSpawnCapture {
+            inner: ctx.platform.capture.clone(),
+            spawn: ctx.settings.read().game.spawn_banner.to_px(&ctx.roblox_rect().unwrap()),
+        };
+        Arc::get_mut(&mut ctx).unwrap().platform.capture = Arc::new(capture);
+        ctx.settings.write().webhook.spawn = true;
+        assert!(matches!(fish_cycle(&ctx, &mut Tracker::default()), Outcome::Ended));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn reel_end_collects_real_pipeline_sample() {
         // Full production path with scripted frames (plumbing test, not
         // accuracy): fish_cycle WAITING/BITE hooks + verify + RESULT hook →
@@ -1300,9 +1349,7 @@ mod tests {
         let (ctx, dir) = make_collect_ctx(reel_frames(), texts);
         ctx.ml.begin_session("test-4.3.0");
         let mut tracker = Tracker::default();
-        let mut hash = 0;
-        let mut t = Instant::now();
-        let out = fish_cycle(&ctx, &mut tracker, &mut hash, &mut t);
+        let out = fish_cycle(&ctx, &mut tracker);
         assert!(matches!(out, Outcome::Ended), "scripted reel must end");
         let (verdict, text, _) = verify_catch(&ctx);
         maybe_collect_ml_sample(&ctx, &verdict, &text);
@@ -1339,9 +1386,7 @@ mod tests {
         let (ctx, dir) = make_collect_ctx(reel_frames(), vec![]);
         ctx.ml.begin_session("test-4.3.0");
         let mut tracker = Tracker::default();
-        let mut hash = 0;
-        let mut t = Instant::now();
-        let out = fish_cycle(&ctx, &mut tracker, &mut hash, &mut t);
+        let out = fish_cycle(&ctx, &mut tracker);
         assert!(matches!(out, Outcome::Ended));
         let (verdict, text, _) = verify_catch(&ctx);
         assert_eq!(verdict, fruit::CatchVerdict::Unknown);

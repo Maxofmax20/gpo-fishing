@@ -493,6 +493,18 @@ pub enum CatchVerdict {
     Unknown,
 }
 
+// Windows OCR often reads the catch title as "Nev Item" or "uev Item".
+// Match the two-word title, never an item name or spawn announcement alone.
+fn new_item_marker(raw: &str) -> bool {
+    let normalized = normalize(raw);
+    let words: Vec<_> = normalized.split_whitespace().collect();
+    words.windows(2).enumerate().any(|(i, pair)| {
+        matches!(pair[0], "new" | "nev" | "uev" | "ncv")
+            && matches!(pair[1], "item" | "itemv" | "ltem" | "ltemv" | "itern")
+            && !matches!(words.get(i + 2), Some(&"has" | &"spawn" | &"spawned"))
+    })
+}
+
 pub fn detect_catch(lex: &Lexicon, raw: &str) -> CatchVerdict {
     let text = normalize(raw);
     if text.is_empty() {
@@ -501,7 +513,7 @@ pub fn detect_catch(lex: &Lexicon, raw: &str) -> CatchVerdict {
     if lex.fail_phrases.iter().any(|p| text.contains(p.as_str())) {
         return CatchVerdict::Failed;
     }
-    if lex.catch_phrases.iter().any(|p| text.contains(p.as_str())) || detect_drop(lex, raw).is_some() {
+    if new_item_marker(raw) || lex.catch_phrases.iter().filter(|p| p.as_str() != "new item").any(|p| text.contains(p.as_str())) || detect_drop(lex, raw).is_some() {
         return CatchVerdict::Caught;
     }
     CatchVerdict::Unknown
@@ -814,6 +826,20 @@ mod tests {
 
     fn lex() -> Lexicon {
         Lexicon::default()
+    }
+
+    #[test]
+    fn real_windows_ocr_catch_titles_are_verified() {
+        for raw in ["Nev Item Shark*", "Nev Item <Exotic Tiserfin»", "Nev Item czebra Ribbon Angelfish*", "—uev 'Item-cGndy.Com Squid*", "nev itemv ctimson sna pper", "Nev Item"] {
+            assert_eq!(detect_catch(&lex(), raw), CatchVerdict::Caught, "{raw}");
+            assert!(detect_drop(&lex(), raw).is_none(), "fish catch is not a fruit: {raw}");
+        }
+        assert_eq!(detect_catch(&lex(), "Nev i"), CatchVerdict::Unknown);
+        assert_eq!(detect_catch(&lex(), "random item Shark"), CatchVerdict::Unknown);
+        for raw in ["A MOCHI has spawned at SANDORA", "A new item has spawned at Orange Town"] {
+            assert_eq!(detect_catch(&lex(), raw), CatchVerdict::Unknown, "{raw}");
+        }
+        assert_eq!(detect_catch(&lex(), "The fish got away. Nev Item Shark"), CatchVerdict::Failed);
     }
 
     #[test]

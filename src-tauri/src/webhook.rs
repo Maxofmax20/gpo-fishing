@@ -26,8 +26,13 @@ pub struct Notification {
     pub custom_telegram_html: Option<String>,
 }
 
+enum Delivery {
+    Message(Notification),
+    Spawn(Notification, SpawnInfo),
+}
+
 pub struct WebhookQueue {
-    tx: Option<Sender<Notification>>,
+    tx: Option<Sender<Delivery>>,
     settings: Option<Arc<RwLock<Settings>>>,
 }
 
@@ -37,7 +42,7 @@ impl WebhookQueue {
     }
 
     pub fn start(settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) -> Arc<Self> {
-        let (tx, rx) = unbounded::<Notification>();
+        let (tx, rx) = unbounded::<Delivery>();
         let s2 = Arc::clone(&settings);
         std::thread::Builder::new()
             .name("webhook".into())
@@ -72,7 +77,7 @@ impl WebhookQueue {
             return;
         }
         if let Some(tx) = &self.tx {
-            let _ = tx.send(notif);
+            let _ = tx.send(Delivery::Message(notif));
         }
     }
 
@@ -301,7 +306,7 @@ impl WebhookQueue {
             h
         });
 
-        self.send(Notification {
+        let notification = Notification {
             title,
             desc,
             color,
@@ -313,7 +318,14 @@ impl WebhookQueue {
             ],
             photo,
             custom_telegram_html: Some(tg_html),
-        });
+        };
+        // Enrichment and transport belong to the notification worker. The
+        // spawn observer never waits for a network request or changes control.
+        if self.enabled() {
+            if let Some(tx) = &self.tx {
+                let _ = tx.send(Delivery::Spawn(notification, info.clone()));
+            }
+        }
     }
 
     pub fn purchase(&self, amount: u32) {
@@ -552,8 +564,24 @@ fn delivery_log(events: &Sender<BotEvent>, message: String) {
     let _ = events.send(BotEvent::Log(LogLine { ts: crate::events::now_ms(), level: crate::events::LogLevel::Warn, msg: message }));
 }
 
-fn worker(rx: Receiver<Notification>, settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) {
-    for notif in rx.iter() {
+fn worker(rx: Receiver<Delivery>, settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) {
+    for delivery in rx.iter() {
+        let (mut notif, spawn) = match delivery {
+            Delivery::Message(notification) => (notification, None),
+            Delivery::Spawn(notification, info) => (notification, Some(info)),
+        };
+        if let Some(info) = spawn {
+            // Clone before calling Gemini: never hold a settings lock over IO.
+            let gemini = settings.read().gemini.clone();
+            if gemini.enabled && !gemini.api_key.trim().is_empty() {
+                if let Ok(message) = crate::core::gemini::rewrite_spawn_message_gemini(
+                    info.name.as_deref(), info.location.as_deref(), info.is_ase,
+                    &info.text, &gemini.api_key, &gemini.model,
+                ) {
+                    notif.custom_telegram_html = Some(message);
+                }
+            }
+        }
         let (provider, url, tg_token, tg_chat) = {
             let s = settings.read();
             (
@@ -657,6 +685,29 @@ fn deliver_telegram(text: &str, photo: Option<&[u8]>, mut send_photo: impl FnMut
 #[cfg(test)]
 mod fruit_delivery_tests {
     use super::*;
+    #[test]
+    fn spawn_enrichment_is_queued_and_never_runs_on_the_producer() {
+        let mut settings = Settings::default();
+        settings.webhook.enabled = true;
+        settings.webhook.provider = "telegram".into();
+        settings.webhook.telegram_bot_token = "unused-test-token".into();
+        settings.webhook.telegram_chat_id = "unused-test-chat".into();
+        settings.gemini.enabled = true;
+        settings.gemini.api_key = "unused-test-key".into();
+        let settings = Arc::new(RwLock::new(settings));
+        let (tx, rx) = unbounded(); // no transport worker; no external requests
+        let queue = WebhookQueue { tx: Some(tx), settings: Some(settings.clone()) };
+        let info = SpawnInfo { text: "A Kilo has spawned at Orange Town".into(), name: Some("Kilo".into()), location: Some("Orange Town".into()), is_ase: false, custom_telegram_message: None };
+        queue.spawn(&info, None);
+        assert!(settings.try_write().is_some(), "producer must release settings locks");
+        match rx.try_recv().unwrap() {
+            Delivery::Spawn(notification, context) => {
+                assert_eq!(context.name, info.name);
+                assert!(notification.custom_telegram_html.unwrap().contains("Kilo"));
+            }
+            Delivery::Message(_) => panic!("enrichment context must travel to the worker"),
+        }
+    }
     fn catch(raw: &str) -> FruitCatchContext {
         let d = DropInfo { name: None, pity: None, text: raw.into(), is_legendary: false, custom_telegram_message: None };
         FruitCatchContext::new(&d, raw, true, true)
