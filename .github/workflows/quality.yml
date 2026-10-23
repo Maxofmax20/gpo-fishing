@@ -22,7 +22,9 @@ jobs:
       - name: Version consistency gate
         if: inputs.release_tag != ''
         shell: pwsh
-        run: ./scripts/check-versions.ps1 -Tag '${{ inputs.release_tag }}'
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: ./scripts/check-versions.ps1 -Tag $env:RELEASE_TAG
       - run: npm ci
       - run: npm run build
       - run: npm test

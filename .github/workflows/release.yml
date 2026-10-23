@@ -13,6 +13,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Reject invalid tags, missing notes or vulnerable dependencies before spending
+  # time on a signed Windows build or creating any private draft.
+  preflight:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - name: Validate release version and notes
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          ./scripts/check-versions.ps1 -Tag $env:RELEASE_TAG
+          if (-not (Test-Path "reports/RELEASE_NOTES_$env:RELEASE_TAG.md")) { throw 'Release notes missing' }
+      - run: npm ci
+      - run: npm audit --audit-level=high
+
   # All three independent suites run concurrently. Publication still waits
   # for every suite, and artifact signing/verification remain mandatory.
   quality-gates:
@@ -22,6 +44,7 @@ jobs:
 
   # Build the private draft in parallel, but only publish after all gates pass.
   release:
+    needs: preflight
     permissions:
       contents: write
     strategy:
