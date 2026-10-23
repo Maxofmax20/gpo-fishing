@@ -8,68 +8,20 @@ on:
       - 'v*'
   workflow_dispatch:
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  # Every gate below must pass — no continue-on-error on this path.
+  # All three independent suites run concurrently. Publication still waits
+  # for every suite, and artifact signing/verification remain mandatory.
   quality-gates:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    uses: ./.github/workflows/quality.yml
+    with:
+      release_tag: ${{ github.ref_name }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: lts/*
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-          components: clippy
-
-      - name: Version consistency gate (tag vs manifests)
-        shell: pwsh
-        run: ./scripts/check-versions.ps1 -Tag '${{ github.ref_name }}'
-
-      - name: Install frontend dependencies
-        run: npm ci
-
-      - name: Frontend build (tsc --noEmit + vite build)
-        run: npm run build
-
-      - name: Frontend regression tests
-        run: npm test
-
-      - name: Dashboard gesture tests
-        run: node --test src-tauri/src/bot/web/assets/gpo-touch.test.mjs src-tauri/src/bot/web/assets/gpo-system.test.mjs
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Install Python test dependencies
-        run: python -m pip install -r ml/requirements-training.txt
-
-      - name: Verify production training imports
-        run: python -c "import torch,numpy,PIL,onnx,onnxruntime,onnxscript,ml.gpo_train.fish_train,ml.gpo_train.state_train"
-
-      - name: Python regression tests
-        run: python -m pytest ml/gpo_train/tests ml/gpo_ontology_review/tests ml/gpo_ocr_audit/tests ml/ram_plus/test_worker.py -q
-
-      - name: Rust tests
-        run: cargo test --locked -j 2
-        working-directory: src-tauri
-
-      - name: Clippy (report)
-        run: cargo clippy --lib --tests --message-format short
-        working-directory: src-tauri
-
-      - name: npm audit (high+ fails release)
-        run: npm audit --audit-level=high
-
+  # Build the private draft in parallel, but only publish after all gates pass.
   release:
-    needs: quality-gates
     permissions:
       contents: write
     strategy:
@@ -88,11 +40,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
+          cache: npm
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+
+      - name: Restore production Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: windows-release-v1
+          cache-on-failure: true
 
       - name: Install dependencies
         run: npm ci
@@ -134,27 +94,49 @@ jobs:
           # itself, but a published SHA-256 lets a human verify the download
           # without trusting our tooling.
           Write-Output '### SHA-256' >> "$env:GITHUB_STEP_SUMMARY"
-          Get-ChildItem $dir -File | ForEach-Object {
-            $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
-            "``$h  $($_.Name)``" | Tee-Object -FilePath "$dir/SHA256SUMS.txt" -Append | Out-Null
-            "``$h  $($_.Name)``"
-          } | Out-String | Add-Content "$env:GITHUB_STEP_SUMMARY"
+          $checksumLines = Get-ChildItem $dir -File |
+            Where-Object { $_.Name -match '_x64-setup\.exe(\.sig)?$|^latest\.json$' } |
+            ForEach-Object {
+              $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+              "$h  $($_.Name)"
+            }
+          $checksumLines | Set-Content "$dir/SHA256SUMS.txt" -Encoding utf8
+          $checksumLines | Add-Content "$env:GITHUB_STEP_SUMMARY"
           Write-Output "updater artifacts verified for $($exe.Name)"
 
-      - name: Publish release
-        shell: pwsh
+      - name: Retain verified artifacts for gated publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-windows-installer
+          path: |
+            src-tauri/target/release/bundle/nsis/*_x64-setup.exe
+            src-tauri/target/release/bundle/nsis/*_x64-setup.exe.sig
+            src-tauri/target/release/bundle/nsis/latest.json
+            src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [quality-gates, release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-windows-installer
+          path: verified
+      - name: Publish only after every quality gate and signature check passed
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          $dir = 'src-tauri/target/release/bundle/nsis'
-          $files = Get-ChildItem $dir -File |
-            Where-Object { $_.Name -match '\.exe$|\.exe\.sig$|^latest\.json$|^SHA256SUMS\.txt$' }
-          if (-not $files) { Write-Error 'no artifacts to publish'; exit 1 }
-          foreach ($f in $files) {
-            gh release upload '${{ github.ref_name }}' $f.FullName --clobber
-            if ($LASTEXITCODE -ne 0) { Write-Error "upload failed: $($f.Name)"; exit 1 }
-          }
-          # Draft -> published only after every artifact is on the release.
-          gh release edit '${{ github.ref_name }}' --notes-file reports/RELEASE_NOTES_${{ github.ref_name }}.md --draft=false
-          if ($LASTEXITCODE -ne 0) { Write-Error 'failed to publish release'; exit 1 }
-          Write-Output 'release published'
+          cd verified
+          sha256sum --check SHA256SUMS.txt
+          for file in *_x64-setup.exe *_x64-setup.exe.sig latest.json SHA256SUMS.txt; do
+            test -s "$file"
+            gh release upload "$RELEASE_TAG" "$file" --clobber
+          done
+          cd ..
+          gh release edit "$RELEASE_TAG" --notes-file "reports/RELEASE_NOTES_$RELEASE_TAG.md" --draft=false

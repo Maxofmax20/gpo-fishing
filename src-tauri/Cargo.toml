@@ -86,3 +86,12 @@ lto = true
 opt-level = 3
 panic = "unwind"
 strip = true
+
+
+# Test binaries need quick compilation, not release-level optimization of every
+# dependency. Keep the production profile above unchanged for inference speed.
+[profile.test]
+opt-level = 0
+
+[profile.test.package."*"]
+opt-level = 1
