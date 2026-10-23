@@ -765,10 +765,15 @@ struct LocalStorageIo<'a> {
     drop_sent: bool,
 }
 impl LocalStorageIo<'_> {
-    /// At most three local reads; configured delays govern the observation window.
+    /// Store prompts get three reads. After Backspace, GPO may display the
+    /// drop confirmation later than the default 350 ms; wait longer before
+    /// treating the result as unconfirmed. This only reads the screen:
+    /// it never retries a destructive input or assumes a drop succeeded.
     fn observe(&mut self, wait_ms: u32, drop_only: bool) -> Result<Option<crate::core::fruit::StorageBannerResult>, ()> {
-        let gap = wait_ms.div_ceil(3);
-        for _ in 0..3 {
+        let reads: u32 = if drop_only { 9 } else { 3 };
+        let window_ms = if drop_only { wait_ms.max(1400) } else { wait_ms };
+        let gap = window_ms.div_ceil(reads);
+        for _ in 0..reads {
             if !self.ctx.sleep_ms(gap) || !self.ctx.roblox_in_front() { return Err(()); }
             let Some(r) = self.ctx.roblox_rect() else { return Err(()); };
             let rect = RelRect { x: 0.18, y: 0.02, w: 0.64, h: 0.28 }.to_px(&r);
@@ -1074,6 +1079,19 @@ mod storage_replay_tests {
         let h = harness(&["You can only store one of each fruit!", "You can only store one of each fruit!", "", "Dropped Kilo will despawn in 10 minutes"]);
         assert_eq!(store_fruit(&h.ctx, &catch("unreadable"), "test-drop"), StorageOutcome::Dropped);
         assert_eq!(drops(&h), 1); terminal(&h, "dropped_confirmed");
+    }
+    #[test] fn late_drop_confirmation_is_not_mistaken_for_an_unconfirmed_drop() {
+        // The old three-read drop window paused even though Roblox later
+        // displayed its confirmation. A stale duplicate banner may linger.
+        let h = harness(&[
+            "You can only store one of each fruit!",
+            "You can only store one of each fruit!",
+            "", "", "", "",
+            "Dropped Kilo will despawn in 10 minutes",
+        ]);
+        assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "test-late-drop"), StorageOutcome::Dropped);
+        assert_eq!(drops(&h), 1);
+        terminal(&h, "dropped_confirmed");
     }
     #[test] fn stored_banner_stops_slot_attempts() {
         let h = harness(&["Successfully stored Pika"]);
