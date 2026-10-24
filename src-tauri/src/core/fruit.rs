@@ -785,7 +785,17 @@ pub fn parse_storage_banner(lex: &Lexicon, raw: &str) -> Option<StorageBannerRes
         || lower.contains("already have this")
         || lower.contains("already in storage");
 
-    let is_dropped = lower.contains("dropped") && (lower.contains("despawn") || lower.contains("minute") || lower.contains("ground"));
+    // Coloured outlined game text often produces one-character OCR errors.
+    // Two independent anchors are still required; "fruit drop" catch messages,
+    // duplicate-only banners and world-spawn announcements never confirm a drop.
+    let near = |target: &str| words.iter().any(|word|
+        word.len().abs_diff(target.len()) <= 1 && strsim::levenshtein(word, target) <= 1);
+    let negative = lower.contains("not dropped") || lower.contains("not drop")
+        || lower.contains("cannot drop") || lower.contains("can't drop") || lower.contains("failed to drop");
+    let drop_verb = lower.contains("dropped") || near("dropped");
+    let expiry = lower.contains("despawn") || near("despawn") || near("minute") || near("minutes")
+        || lower.contains("ground");
+    let is_dropped = !negative && drop_verb && expiry;
 
     if lower.contains("successfully stored") || lower.contains("stored successfully") {
         return Some(StorageBannerResult::Stored);
@@ -904,6 +914,28 @@ mod tests {
         }
         assert_eq!(extract_pity_text("Level 3/20 Pity 0 / 40 New Item Pika"), Some("0/40".into()));
     }
+    #[test]
+    fn drop_confirmation_tolerates_small_ocr_errors_but_not_catch_or_spawn_text() {
+        for raw in [
+            "Dropped Bomb will despawn in 10 minutes",
+            "Drcpped Bomb will despawn in 10 minutes",
+            "Dr0pped Bomb will despavvn in 10 minutes",
+            "Dropped Kilo will despaun in 10 minvtes",
+        ] {
+            assert!(matches!(parse_storage_banner(&lex(), raw), Some(StorageBannerResult::Dropped { .. })), "{raw}");
+        }
+        for raw in [
+            "You can only store one of each fruit!",
+            "YOU GOT A DEVIL FRUIT DROP CHECK YOUR BACKPACK",
+            "A Bomb has spawned and will despawn in 10 minutes",
+            "Fruit drop chance increases every 10 minutes",
+            "Cannot drop Bomb on the ground",
+            "Bomb was not dropped and will despawn in 10 minutes",
+        ] {
+            assert!(!matches!(parse_storage_banner(&lex(), raw), Some(StorageBannerResult::Dropped { .. } | StorageBannerResult::DuplicateDropped { .. })), "{raw}");
+        }
+    }
+
     #[test]
     fn duplicate_is_not_a_drop_confirmation() {
         assert!(matches!(parse_storage_banner(&lex(), "You can only store one of each fruit!"), Some(StorageBannerResult::Duplicate { .. })));

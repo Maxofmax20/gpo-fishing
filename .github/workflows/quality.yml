@@ -83,12 +83,13 @@ jobs:
         with:
           workspaces: src-tauri -> target
           shared-key: windows-tests-v1
-          cache-on-failure: true
+          prefix-key: v1-complete-rust
+          cache-on-failure: false
       - run: npm ci
       - run: npm run build
       - name: Rust tests
         run: cargo test --locked -j 2
         working-directory: src-tauri
       - name: Clippy (report)
-        run: cargo clippy --locked --lib --tests --message-format short
+        run: cargo clippy --locked --profile test --lib --tests --message-format short
         working-directory: src-tauri

@@ -161,6 +161,7 @@ export type Settings = {
     purchase: boolean;
     recovery: boolean;
     legendary_only: boolean;
+    pity_zero_only: boolean;
     send_screenshot: boolean;
     send_catch_screenshot: boolean;
     send_drop_screenshot: boolean;

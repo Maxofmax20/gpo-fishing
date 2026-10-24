@@ -752,10 +752,27 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
     ctx.log_info(&format!("{}: {}", catch.name, outcome.detail()));
     // Publish the completion before capture/encoding or queued HTTP delivery.
     if ctx.alive() { ctx.set_state(BotState::PostCatch, Some(format!("{}: {}", catch.name, outcome.detail()))); }
-    let photo = if ctx.alive() && ctx.roblox_in_front() { capture_drop_screenshot(ctx, &s, catch.high_tier()) } else { None };
+    let notify = crate::webhook::should_notify_fruit_outcome(&s, catch, &outcome);
+    let photo = if notify && ctx.alive() && ctx.roblox_in_front() { capture_drop_screenshot(ctx, &s, catch.high_tier()) } else { None };
     ctx.webhook.fruit_storage_outcome(catch, &outcome, photo);
 
     outcome
+}
+
+// Fallback only for the yellow post-drop banner. A high-contrast copy avoids
+// blue water, the red duplicate message and the white catch message dominating
+// Windows OCR. It never authorizes input and is never sent to a remote service.
+fn drop_banner_ocr_frame(frame: &crate::core::types::Frame) -> crate::core::types::Frame {
+    let mut mask = frame.clone();
+    for px in mask.rgba.chunks_exact_mut(4) {
+        let yellow = px[0] >= 130 && px[1] >= 110
+            && (px[2] as u16 + 55) < (px[0].min(px[1]) as u16);
+        let value = if yellow { 0 } else { 255 };
+        px.copy_from_slice(&[value, value, value, 255]);
+    }
+    // Keep the longest side below 2560 for the native OCR engine.
+    let factor = if mask.w.max(mask.h) <= 1280 { 2 } else { 1 };
+    mask.upscale(factor)
 }
 
 struct LocalStorageIo<'a> {
@@ -786,11 +803,28 @@ impl LocalStorageIo<'_> {
                 Err(_) => return Ok(Some(crate::core::fruit::StorageBannerResult::Failed { reason: "Storage OCR failed".into() })),
             };
             self.last_text = text;
-            if let Some(banner) = crate::core::fruit::parse_storage_banner(&self.settings.lexicon, &self.last_text) {
+            let mut parsed = crate::core::fruit::parse_storage_banner(&self.settings.lexicon, &self.last_text);
+            if drop_only && !matches!(parsed, Some(crate::core::fruit::StorageBannerResult::Dropped { .. } | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. })) {
+                // One bounded fallback on the SAME captured frame: no extra
+                // Backspace, click or other game input.
+                if let Ok(enhanced) = self.ctx.platform.ocr.read(&drop_banner_ocr_frame(&frame)) {
+                    if let Some(banner) = crate::core::fruit::parse_storage_banner(&self.settings.lexicon, &enhanced) {
+                        if matches!(banner, crate::core::fruit::StorageBannerResult::Dropped { .. } | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. }) {
+                            self.last_text = enhanced;
+                            parsed = Some(banner);
+                        }
+                    }
+                }
+            }
+            if let Some(banner) = parsed {
                 if drop_only && !matches!(banner, crate::core::fruit::StorageBannerResult::Dropped { .. } | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. }) { continue; }
                 submit_action_frame(self.ctx, "confirm_banner", &self.last_text);
                 return Ok(Some(banner));
             }
+        }
+        if drop_only {
+            let excerpt: String = self.last_text.chars().take(180).collect();
+            self.ctx.log_warn(&format!("Drop confirmation OCR remained unrecognized: {excerpt:?}"));
         }
         Ok(None)
     }
@@ -1093,6 +1127,28 @@ mod storage_replay_tests {
         assert_eq!(drops(&h), 1);
         terminal(&h, "dropped_confirmed");
     }
+    #[test]
+    fn yellow_banner_fallback_confirms_without_a_second_drop_input() {
+        let h = harness(&[
+            "You can only store one of each fruit!",
+            "Dr0p text unreadable",
+            "Drcpped Bomb will despawn in 10 minutes",
+        ]);
+        assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "test-enhanced-drop"), StorageOutcome::Dropped);
+        assert_eq!(drops(&h), 1);
+        terminal(&h, "dropped_confirmed");
+    }
+
+    #[test]
+    fn drop_banner_mask_is_bounded_and_excludes_red_and_white_text() {
+        let source = crate::core::types::Frame::new(3, 1, vec![240, 220, 20, 255, 240, 10, 10, 255, 255, 255, 255, 255]);
+        let mask = drop_banner_ocr_frame(&source);
+        assert_eq!((mask.w, mask.h), (6, 2));
+        assert_eq!(mask.px(0, 0), (0, 0, 0));
+        assert_eq!(mask.px(2, 0), (255, 255, 255));
+        assert_eq!(mask.px(4, 0), (255, 255, 255));
+    }
+
     #[test] fn stored_banner_stops_slot_attempts() {
         let h = harness(&["Successfully stored Pika"]);
         assert_eq!(store_fruit(&h.ctx, &catch("0/100"), "test-stored"), StorageOutcome::Stored);

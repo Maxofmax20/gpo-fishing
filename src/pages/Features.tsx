@@ -599,7 +599,7 @@ export default function Features() {
             {(
               [
                 ["fruit_drop", "Devil fruit caught"],
-                ["send_drop_screenshot", "📸 Send fruit drop screenshot (Ground banner)"],
+                ["send_drop_screenshot", "📸 Screenshot after storing or dropping fruit"],
                 ["send_catch_screenshot", "🎣 Force photo on ALL fruit catches (Common/Rare)"],
                 ["crop_fruit_screenshot", "✂️ Crop drop & catch screenshots (Focus on banner)"],
                 ["disconnect_alert", "⚠️ Roblox disconnected alert"],
@@ -626,6 +626,34 @@ export default function Features() {
               </div>
             )}
           </div>
+          {s.webhook.fruit_drop && ocrAvailable && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-fg-dim">Pity 0 only · after store / drop</div>
+                <Toggle value={s.webhook.pity_zero_only ?? false} onChange={(v) => update((x) => {
+                  x.webhook.pity_zero_only = v;
+                  if (v) {
+                    x.webhook.send_screenshot = true;
+                    x.webhook.send_drop_screenshot = true;
+                    x.webhook.send_catch_screenshot = false;
+                    x.webhook.progress = false;
+                    x.webhook.spawn = false;
+                    x.webhook.purchase = false;
+                    x.webhook.recovery = false;
+                    x.webhook.disconnect_alert = false;
+                    x.webhook.bait_alert = false;
+                  }
+                })} />
+              </div>
+              <p className="text-[11px] text-fg-mute mt-1">
+                Sends one result with its screenshot after the fruit workflow, only when pity 0 was read.
+                Other fruit and early catch alerts are suppressed. Fruit protections still apply.
+              </p>
+              {!s.features.fruit_storage && s.webhook.pity_zero_only && (
+                <p className="text-[11px] text-warn mt-1">Enable automatic fruit storage to receive after-action results.</p>
+              )}
+            </div>
+          )}
           {s.webhook.spawn && ocrAvailable && (
             <div className="mt-3">
               <Field label="Spawn check every">
