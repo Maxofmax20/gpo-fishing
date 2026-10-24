@@ -1,7 +1,7 @@
 {
   "name": "gpo-autofish",
   "private": true,
-  "version": "5.8.14",
+  "version": "5.9.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -14,7 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "build:web": "node node_modules/tailwindcss-legacy/lib/cli.js -c scripts/web-tailwind.config.cjs -i scripts/web-tailwind.css -o src-tauri/src/bot/web/assets/gpo-utilities.css --minify"
+    "build:web": "node node_modules/tailwindcss-legacy/lib/cli.js -c scripts/web-tailwind.config.cjs -i scripts/web-tailwind.css -o src-tauri/src/bot/web/assets/gpo-utilities.css --minify",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
@@ -26,6 +27,8 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^7.0.1",

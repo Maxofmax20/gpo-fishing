@@ -229,7 +229,7 @@
     try {
       const { data, ms } = await gpoGet('/api/status');
       gpoSetText('sync-rtt-text', 'Stable (' + ms + 'ms)');
-      gpoSetText('studio-pity-text', 'Pity: ' + (data.pity_legendary || 0) + '/100');
+      gpoSetText('studio-pity-text', 'Pity: ' + (data.pity_legendary || 0) + '/' + (data.pity_cap || 100));
       gpoSetText('studio-queue-text', 'Steps: ' + (lastRecorder ? lastRecorder.recorded_steps_count : 0));
       gpoPaintPwr(document.getElementById('pwr-btn'), data.is_running && !data.paused);
     } catch (e) { /* offline */ }

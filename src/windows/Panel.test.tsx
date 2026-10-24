@@ -1,0 +1,33 @@
+import { afterEach, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+const state = vi.hoisted(() => ({ ready: true, error: null, roblox: null, version: "test", settings: { auto_update: false }, init: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("../lib/store", () => ({ useStore: (selector: any) => selector(state), showToast: vi.fn() }));
+vi.mock("../lib/updater", () => ({ useUpdater: (selector: any) => selector({ available: null, busy: false }) }));
+vi.mock("../lib/ipc", () => ({ api: { panelShow: vi.fn(), panelPlacementChanged: vi.fn() } }));
+vi.mock("@tauri-apps/api/window", () => ({ getCurrentWindow: () => ({ isMinimized: vi.fn().mockResolvedValue(false), onMoved: vi.fn().mockResolvedValue(vi.fn()), onResized: vi.fn().mockResolvedValue(vi.fn()) }) }));
+vi.mock("../components/Toasts", () => ({ default: () => null }));
+vi.mock("../components/ConnectGate", () => ({ ConnectGate: () => <p>Connect Roblox</p> }));
+vi.mock("../pages/Dashboard", () => ({ default: () => <p>Fishing dashboard</p> }));
+vi.mock("../pages/Settings", () => ({ default: () => <p>Offline settings</p> }));
+vi.mock("../pages/VpnPage", () => ({ default: () => <p>VPN settings</p> }));
+import Panel from "./Panel";
+afterEach(cleanup);
+it("keeps settings accessible without Roblox and hides specialist navigation initially", async () => {
+  render(<Panel />);
+  expect(screen.getByText("Connect Roblox")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Training" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+  expect(await screen.findByText("Offline settings")).toBeVisible();
+  expect(screen.queryByText("Connect Roblox")).not.toBeInTheDocument();
+});
+it("reveals advanced tools and returns safely when the group closes", async () => {
+  render(<Panel />);
+  const advanced = screen.getByRole("button", { name: "Advanced tools" });
+  fireEvent.click(advanced);
+  expect(advanced).toHaveAttribute("aria-expanded", "true");
+  fireEvent.click(screen.getByRole("button", { name: "VPN & Relay" }));
+  expect(await screen.findByText("VPN settings")).toBeVisible();
+  fireEvent.click(advanced);
+  expect(screen.queryByRole("button", { name: "VPN & Relay" })).not.toBeInTheDocument();
+  expect(screen.getByText("Connect Roblox")).toBeVisible();
+});

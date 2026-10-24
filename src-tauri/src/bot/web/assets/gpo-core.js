@@ -1,11 +1,18 @@
 'use strict';
-/* GPO Cyberdeck shared core: auth plumbing, API helpers, nav, status polling.
-   No external requests. Token travels only in ?token= (needed for <img>).
-   Pure gesture helpers below are shared with node:test (guarded browser-only
-   top-level code at the bottom). */
-const GPO_TOKEN = (typeof location !== 'undefined')
-  ? new URLSearchParams(location.search).get('token') || ''
-  : '';
+/* Shared dashboard transport. Credentials stay in tab-scoped storage, not navigation URLs.
+   Image streams retain the legacy query-token protocol; ordinary API calls use Bearer. */
+const GPO_TOKEN = (() => {
+  if (typeof location === 'undefined') return '';
+  const url = new URL(location.href);
+  const supplied = url.searchParams.get('token');
+  let token = supplied || '';
+  try {
+    if (supplied) sessionStorage.setItem('gpo-dashboard-token', supplied);
+    else token = sessionStorage.getItem('gpo-dashboard-token') || '';
+  } catch (_) { /* Storage-disabled browsers retain the current page credential. */ }
+  if (supplied) { url.searchParams.delete('token'); history.replaceState(null, '', url); }
+  return token;
+})();
 // Touch-gesture decisions live in gpo-gesture.js (loaded before this file);
 // remote.js calls those globals with inline fallbacks if absent.
 
@@ -25,14 +32,15 @@ async function gpoRead(path) {
   const t0 = performance.now();
   let r;
   try {
-    r = await fetch(withToken(path), { cache: 'no-store', signal: AbortSignal.timeout(5000) });
+    r = await fetch(path, { headers: { Authorization: 'Bearer ' + GPO_TOKEN }, cache: 'no-store', signal: AbortSignal.timeout(5000) });
   } catch (e) {
     if (typeof gpoNoteOnline === 'function') gpoNoteOnline(false);
     throw new Error('backend unreachable');
   }
   if (!r.ok) {
-    if (typeof gpoNoteOnline === 'function') gpoNoteOnline(false);
-    throw new Error('HTTP ' + r.status);
+    const denied = r.status === 401 || r.status === 403;
+    if (typeof gpoNoteOnline === 'function') gpoNoteOnline(false, denied ? 'Authorization required — reopen Web UI from the desktop app.' : undefined);
+    throw new Error(denied ? 'dashboard authorization rejected' : 'HTTP ' + r.status);
   }
   let data;
   try {
@@ -48,10 +56,10 @@ async function gpoRead(path) {
 async function gpoPost(path, body) {
   let r;
   try {
-    r = await fetch(withToken(path), {
+    r = await fetch(path, {
       method: 'POST',
       signal: AbortSignal.timeout(15000),
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + GPO_TOKEN },
       body: JSON.stringify(body || {}),
     });
   } catch (e) {
@@ -60,8 +68,9 @@ async function gpoPost(path, body) {
   }
   let j = {};
   try { j = await r.json(); } catch (e) { throw new Error('bad backend response'); }
+  const denied = r.status === 401 || r.status === 403;
+  if (typeof gpoNoteOnline === 'function') gpoNoteOnline(!denied, denied ? 'Authorization required — reopen Web UI from the desktop app.' : undefined);
   if (!r.ok || j.ok === false) throw new Error((j && j.message) || ('HTTP ' + r.status));
-  if (typeof gpoNoteOnline === 'function') gpoNoteOnline(true);
   return j;
 }
 
@@ -75,10 +84,10 @@ function gpoAction(action, extra) {
   return pending;
 }
 
-// Bottom nav: keep the token across tab switches.
+// Bottom nav: same-origin tab storage preserves authentication without URL credentials.
 function gpoWireNav() {
   document.querySelectorAll('[data-nav]').forEach((a) => {
-    a.href = a.getAttribute('data-nav') + '?token=' + encodeURIComponent(GPO_TOKEN);
+    a.href = a.getAttribute('data-nav');
   });
 }
 
@@ -87,7 +96,7 @@ function gpoWireNav() {
 // stale "RECORDING/ACTIVE" states. This banner makes disconnects obvious.
 let _gpoOnlineEl = null;
 let _gpoOnline = null;
-function gpoNoteOnline(ok) {
+function gpoNoteOnline(ok, reason) {
   const changed = _gpoOnline !== !!ok;
   _gpoOnline = !!ok;
   if (!_gpoOnlineEl) {
@@ -99,6 +108,7 @@ function gpoNoteOnline(ok) {
     document.body.insertBefore(d, document.querySelector('body > main'));
     _gpoOnlineEl = d;
   }
+  _gpoOnlineEl.textContent = reason || 'OFFLINE — BACKEND UNREACHABLE, RETRYING…';
   _gpoOnlineEl.style.display = _gpoOnline ? 'none' : 'block';
   if (changed) document.dispatchEvent(new CustomEvent('gpo:online', { detail: _gpoOnline }));
   try {

@@ -579,6 +579,9 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "fruits": stats.fruits,
         "pity_fruit": stats.pity_fruit,
         "pity_legendary": stats.pity_legendary,
+        "pity_cap": s.fruit_storage.pity_cap,
+        "pity_zero_only": s.webhook.pity_zero_only,
+        "continue_on_unconfirmed": s.fruit_storage.continue_on_unconfirmed,
         "success_rate": (stats.success_rate * 100.0).round(),
         "runtime_s": stats.runtime_s,
         "bait_purchased": stats.bait_purchased,
@@ -627,8 +630,25 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
 /// Last catch log rows for the telemetry loot feed (newest first).
 /// Tolerant mini-CSV reader: `Timestamp,Type,Name,RawText` with optional
 /// quoting. Never fails the status call — any read/parse problem yields [].
+fn read_log_tail(path: &std::path::Path, budget: u64) -> std::io::Result<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let length = file.metadata()?.len();
+    let start = length.saturating_sub(budget);
+    file.seek(SeekFrom::Start(start))?;
+    let mut bytes = Vec::with_capacity(budget.min(length) as usize);
+    file.take(budget).read_to_end(&mut bytes)?;
+    let bytes = if start > 0 {
+        // Discard the first partial record, including a possible split UTF-8 codepoint.
+        match bytes.iter().position(|b| *b == b'\n') { Some(i) => &bytes[i + 1..], None => &[] }
+    } else { &bytes[..] };
+    Ok(String::from_utf8_lossy(bytes).into_owned())
+}
+
 fn recent_catches(store: &crate::config::Store) -> serde_json::Value {
-    let raw = std::fs::read_to_string(store.catches_path()).unwrap_or_default();
+    // A long AFK log can be very large. Status polling only needs the tail,
+    // never the whole catch history on every phone refresh.
+    let raw = read_log_tail(&store.catches_path(), 64 * 1024).unwrap_or_default();
     let mut rows: Vec<(String, String, String, String)> = Vec::new();
     for line in raw.lines().rev() {
         if rows.len() >= 6 {
@@ -1595,7 +1615,7 @@ fn send_html_page(stream: &mut TcpStream, html: &str) {
     // without a hard refresh (stale CSS/JS after auto-update otherwise).
     let html = html.replace("%%V%%", env!("CARGO_PKG_VERSION"));
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         html.len(),
         html
     );
@@ -1802,6 +1822,20 @@ mod tests {
             }
         }
         String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    #[test]
+    fn catch_history_tail_is_bounded_and_keeps_complete_unicode_records() {
+        let (_, _, dir) = input_test_bot();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("history.csv");
+        let row = "timestamp,fish,سمكة,original\n";
+        std::fs::write(&path, row.repeat(10000)).unwrap();
+        let tail = read_log_tail(&path, 1024).unwrap();
+        assert!(tail.len() <= 1024);
+        assert!(tail.lines().all(|line| line == row.trim_end()));
+        assert!(!tail.contains('\u{fffd}'));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

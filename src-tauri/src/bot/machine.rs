@@ -884,6 +884,14 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
                     if v != fruit::CatchVerdict::Unknown {
                         return (v, text, Some(frame));
                     }
+                    let enhanced = actions::catch_banner_ocr_frame(&frame);
+                    if let Ok(retry) = ctx.platform.ocr.read(&enhanced) {
+                        let verified = fruit::detect_catch(&s.lexicon, &retry);
+                        if verified != fruit::CatchVerdict::Unknown {
+                            ctx.log_info(&format!("Verified enhanced catch text: {}", retry.trim()));
+                            return (verified, retry, Some(frame));
+                        }
+                    }
                 }
             }
         }

@@ -44,6 +44,7 @@
     c.setAttribute('aria-label', badgeId.replace('-badge', '').replaceAll('-', ' '));
     c.setAttribute('aria-valuemin', '0');
     c.setAttribute('aria-valuemax', '100');
+    c.setAttribute('aria-valuenow', '0');
     const preview = (pct) => {
       wanted = pct;
       c.dataset.editing = '1';
@@ -199,6 +200,7 @@
     tickTimers();
   }
 
+  let pityZeroOnly = false;
   function paintToggles(d) {
     const setPill = (filter, on, onText, offText) => {
       const card = document.querySelector('.toggle-card[data-filter="' + filter + '"]');
@@ -207,7 +209,9 @@
       if (pill) pill.textContent = on ? onText : offText;
       card.classList.toggle('opacity-70', !on);
     };
-    setPill('pity', !!d.legendary_only, 'ACTIVE', 'MUTED');
+    pityZeroOnly = !!d.pity_zero_only;
+    setPill('pity', pityZeroOnly || !!d.legendary_only, 'ACTIVE', 'MUTED');
+    gpoSetText('notification-filter-label', pityZeroOnly ? 'PITY ZERO ONLY' : 'LEGENDARY / PITY 0 ONLY');
     setPill('screen', !!d.send_drop_screenshot, 'ACTIVE', 'MUTED');
     gpoSetText('reconnect-state-text', d.auto_reconnect ? 'DAEMON ACTIVE' : 'DAEMON STANDBY');
     const sb = document.getElementById('sound-btn');
@@ -349,6 +353,7 @@
     });
     const pityCard = document.querySelector('.toggle-card[data-filter="pity"]');
     if (pityCard) pityCard.addEventListener('click', async () => {
+      if (pityZeroOnly) { toast('Pity-zero-only mode is enabled. Change it in desktop Notifications.'); return; }
       try { const j = await gpoAction('toggle_legendary_only'); toast(j.message); await refresh(); }
       catch (e) { toast('Failed: ' + e.message); }
     });
@@ -385,7 +390,7 @@
       catch (e) { toast('Save failed: ' + e.message); }
     });
     const studio = document.getElementById('studio-btn');
-    if (studio) studio.addEventListener('click', () => { location.href = '/studio?token=' + encodeURIComponent(GPO_TOKEN); });
+    if (studio) studio.addEventListener('click', () => { location.href = '/studio'; });
     const pwr = document.getElementById('pwr-btn');
     if (pwr) pwr.addEventListener('click', async () => {
       try {

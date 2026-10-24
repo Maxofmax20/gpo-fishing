@@ -37,14 +37,15 @@
     gpoSetText('fish-counter', d.fish);
     gpoSetText('catch-rate-text', d.success_rate + '% Catch Rate');
     const trend = document.getElementById('trend-pill');
-    if (trend) trend.innerHTML = '<span class="material-symbols-outlined text-[12px]">trending_up</span>▲' + d.success_rate + '%';
+    if (trend) trend.textContent = (d.success_rate ?? 0) + '% verified';
     gpoSetText('fruit-counter', d.fruits);
     gpoSetText('fruit-pity-text', 'Pity • ' + d.pity_fruit + ' Sparks');
-    const pity = Math.max(0, Math.min(100, d.pity_legendary || 0));
+    const cap = Math.max(1, d.pity_cap || 100);
+    const pity = Math.max(0, Math.min(cap, d.pity_legendary || 0));
     gpoSetText('pity-val', pity);
     const fill = document.getElementById('pity-fill-bar');
-    if (fill) fill.style.width = pity + '%';
-    gpoSetText('pity-remaining-text', (100 - pity) + ' REMAINING');
+    if (fill) fill.style.width = (pity * 100 / cap) + '%';
+    gpoSetText('pity-remaining-text', (cap - pity) + ' REMAINING');
     gpoSetText('session-stopwatch', gpoFmtRuntime(d.runtime_s));
     gpoSetText('auto-orders-count', d.bait_purchased);
     const left = Math.max(0, (d.every_n_catches || 0) - (d.since_purchase || 0));
@@ -67,7 +68,8 @@
     try {
       const { data, ms } = await gpoGet('/api/status');
       paint(data, ms);
-    } catch (e) { /* offline */ }
+      return true;
+    } catch (e) { return false; }
   }
 
   function bind() {
@@ -100,13 +102,13 @@
       const icon = document.getElementById('sync-icon');
       if (icon) icon.style.transform = 'rotate(360deg)';
       setTimeout(() => { if (icon) icon.style.transform = ''; }, 400);
-      await refresh();
-      toast('Telemetry synced');
+      if (await refresh()) toast('Telemetry synced');
+      else toast('Telemetry could not sync — check the connection');
     });
     const loop = document.getElementById('loop-stat-chip');
     if (loop) loop.addEventListener('click', () => { chime(); refresh(); });
     const profile = document.getElementById('profile-btn');
-    if (profile) profile.addEventListener('click', () => { location.href = '/system?token=' + encodeURIComponent(GPO_TOKEN); });
+    if (profile) profile.addEventListener('click', () => { location.href = '/system'; });
     // Data cards: tap re-syncs from the backend (real numbers replace the
     // mock +1/+2 increments the rebound handlers used to fake).
     ['fish-caught-card', 'devil-fruits-card', 'pity-gauge-card'].forEach((id) => {

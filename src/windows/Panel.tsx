@@ -141,7 +141,7 @@ export default function Panel() {
               {update && !updateDismissed && (
                 <span className="mr-1 inline-flex items-center gap-1">
                   <button
-                    className="h-7 px-2.5 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-medium bg-accent-soft text-accent hover:bg-accent/30 disabled:opacity-60"
+                    className="h-7 max-w-44 truncate px-2.5 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-medium bg-accent-soft text-accent hover:bg-accent/30 disabled:opacity-60"
                     onClick={installUpdate}
                     disabled={!!updating}
                     title={update.body ? `Update ${update.version}\n\n${update.body.slice(0, 400)}` : `Update ${update.version}`}
@@ -203,8 +203,11 @@ function Booting({ error }: { error: string | null }) {
   return (
     <div className="h-full flex flex-col items-center justify-center text-center px-8">
       <div className="w-8 h-8 rounded-full border-2 border-white/10 border-t-accent animate-spin mb-4" />
-      <div className="text-fg-dim">Starting…</div>
-      {error && <div className="mt-3 text-[11px] text-warn font-mono break-all select-text max-w-[320px]">{error}</div>}
+      <div className="text-fg-dim">{error ? "Could not connect to the app" : "Starting…"}</div>
+      {error && <>
+        <div className="mt-3 text-xs text-warn font-mono break-all select-text max-w-[320px]">{error}</div>
+        <button className="mt-4 px-3 py-2 rounded-lg bg-accent-soft text-accent" onClick={() => window.location.reload()}>Reload interface</button>
+      </>}
     </div>
   );
 }

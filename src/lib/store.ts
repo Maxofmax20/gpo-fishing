@@ -128,7 +128,7 @@ export const useStore = create<Store>((set, get) => ({
       on("bot:recovery", (p) => set({ lastEvent: { kind: "recovery", text: `Recovered (#${p.attempt})`, ts: Date.now() } }));
       on("bot:ml_session", (p) => {
         set({ ml: p });
-        if (!p.collecting && p.session_id) {
+        if (!p.collecting && p.session_id && (p.samples > 0 || p.reels > 0 || p.hard_examples > 0 || p.quality_ok === false)) {
           get().toast(
             "info",
             `ML DATA session ${p.quality_ok === false ? "complete with warnings" : "complete"}: ${p.samples} samples, ${p.hard_examples} hard, ${p.pending_annotation} pending annotation.`,

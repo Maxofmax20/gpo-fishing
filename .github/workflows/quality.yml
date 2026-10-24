@@ -28,6 +28,10 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      - name: Install browser for dashboard checks
+        run: npx playwright install --with-deps chromium
+      - name: Browser dashboard checks
+        run: npm run test:browser
       - name: Dashboard gesture tests
         run: node --test src-tauri/src/bot/web/assets/*.test.mjs
       - run: npm audit --audit-level=high
