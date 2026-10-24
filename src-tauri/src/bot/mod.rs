@@ -26,7 +26,7 @@ use crate::webhook::WebhookQueue;
 use ctx::Ctx;
 
 #[cfg(test)]
-pub static WORKFLOW_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub static WORKFLOW_TEST_LOCK: parking_lot::ReentrantMutex<()> = parking_lot::ReentrantMutex::new(());
 
 pub struct Bot {
     ctx: Arc<Ctx>,
@@ -263,6 +263,8 @@ impl Bot {
     }
 
     pub fn stop(&self) {
+        #[cfg(test)]
+        let _workflow_guard = WORKFLOW_TEST_LOCK.lock();
         crate::bot::crafting::stop_auto_craft();
         crate::bot::recorder::stop_playback();
         self.ctx.input_epoch.fetch_add(1, Ordering::SeqCst);
@@ -515,7 +517,7 @@ mod lifecycle_tests {
     }
     #[test]
     fn stop_or_pause_after_checkpoint_consumption_revokes_delayed_startup_resume() {
-        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
+        let _guard = WORKFLOW_TEST_LOCK.lock();
         for pause in [false,true] {
             let bot=bot(if pause { "startup-pause" } else { "startup-stop" });
             let generation=bot.control_generation();
@@ -527,7 +529,7 @@ mod lifecycle_tests {
     }
     #[test]
     fn update_waits_for_boundary_and_stop_revokes_resume() {
-        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
+        let _guard = WORKFLOW_TEST_LOCK.lock();
         let bot=bot("update-boundary");
         bot.ctx.running.store(true,Ordering::SeqCst);
         let worker=Arc::clone(&bot);
@@ -545,7 +547,7 @@ mod lifecycle_tests {
     }
     #[test]
     fn paused_update_failure_never_starts_fishing() {
-        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
+        let _guard = WORKFLOW_TEST_LOCK.lock();
         let bot=bot("update-paused");
         let id=bot.prepare_update("99.0.0").unwrap();
         bot.cancel_update(&id).unwrap();
@@ -554,7 +556,7 @@ mod lifecycle_tests {
     }
     #[test]
     fn pause_during_reel_cancels_install_preparation() {
-        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
+        let _guard = WORKFLOW_TEST_LOCK.lock();
         let bot=bot("update-cancel");
         bot.ctx.running.store(true,Ordering::SeqCst);
         let worker=Arc::clone(&bot);
