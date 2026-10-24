@@ -4,7 +4,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 const root = resolve("src-tauri/src/bot/web");
 const pages = ["remote", "stats", "studio", "craft", "system"];
-for (const width of [360, 768, 1280]) for (const name of pages) {
+for (const width of [320, 360, 768, 1280]) for (const name of pages) {
   test(`${name} at ${width}px loads offline assets, fits and reports failures`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const errors: string[] = [];
@@ -38,6 +38,8 @@ for (const width of [360, 768, 1280]) for (const name of pages) {
     if (width === 360) await writeFile(`test-results/${name}-accessibility.json`, JSON.stringify(accessibility.violations, null, 2));
     expect(accessibility.violations.filter(v => ["critical", "serious"].includes(v.impact || "")), JSON.stringify(accessibility.violations.map(v => ({id: v.id, nodes: v.nodes.map(n => n.target)})))).toEqual([]);
     expect(errors).toEqual([]);
+    await expect(page.locator("body")).not.toContainText("undefined");
+    await expect(page.locator("body")).not.toContainText("NaN");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.locator('[data-nav]')).toHaveCount(5);
     await expect(page.locator('script[src*="tailwind.js"]')).toHaveCount(0);

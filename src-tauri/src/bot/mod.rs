@@ -151,6 +151,7 @@ impl Bot {
 
     pub fn pause(&self) {
         self.generation.fetch_add(1, Ordering::SeqCst);
+        self.ctx.input_epoch.fetch_add(1, Ordering::SeqCst);
         let was_running = self.ctx.running.swap(false, Ordering::SeqCst);
         self.ctx.platform.input.release_all();
         self.ctx.release_mouse();
@@ -172,6 +173,7 @@ impl Bot {
     pub fn stop(&self) {
         crate::bot::crafting::stop_auto_craft();
         crate::bot::recorder::stop_playback();
+        self.ctx.input_epoch.fetch_add(1, Ordering::SeqCst);
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.ctx.running.store(false, Ordering::SeqCst);
         self.ctx.platform.input.release_all();

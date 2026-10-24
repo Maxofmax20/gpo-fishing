@@ -1346,6 +1346,7 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let ry = request.ry.unwrap_or(0.0);
     let btn = request.button.input();
     if act == "release_all" || act == "reset" {
+        bot.ctx().input_epoch.fetch_add(1,Ordering::SeqCst);
         bot.ctx()
             .platform
             .input
