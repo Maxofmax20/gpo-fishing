@@ -131,14 +131,15 @@ pub struct CastWatch {
     consecutive: u8,
 }
 impl CastWatch {
-    /// Allow the cast animation to close its UI before considering rejection.
-    /// Two independent positive observations are required, never UI absence.
-    pub fn observe(&mut self, elapsed_ms: u64, menu_open: bool, rod: RodEvidence) -> bool {
+    /// The bait menu can remain visible after selecting bait and while a
+    /// valid cast is underway. Only repeated, positive evidence that a
+    /// *different toolbar slot* is selected can reject an attempted cast.
+    pub fn observe(&mut self, elapsed_ms: u64, _menu_open: bool, rod: RodEvidence) -> bool {
         if elapsed_ms < 800 {
             self.consecutive = 0;
             return false;
         }
-        if menu_open || rod == RodEvidence::Unequipped {
+        if rod == RodEvidence::Unequipped {
             self.consecutive = self.consecutive.saturating_add(1);
         } else {
             self.consecutive = 0;
@@ -165,11 +166,16 @@ mod tests {
         }
     }
     #[test]
-    fn menu_still_open_recovers_without_bite_timeout() {
+    fn bait_menu_can_remain_open_during_valid_cast() {
         let mut w = CastWatch::default();
-        assert!(!w.observe(300, true, RodEvidence::Equipped));
-        assert!(!w.observe(800, true, RodEvidence::Equipped));
-        assert!(w.observe(1300, true, RodEvidence::Equipped));
+        for elapsed in [300, 800, 1300, 1800, 3000] {
+            assert!(!w.observe(elapsed, true, RodEvidence::Equipped));
+        }
+        // Unknown toolbar state combined with a visible menu must not
+        // trigger the rapid cast/recover loop reported in beta 1.
+        for elapsed in [3500, 4000, 4500] {
+            assert!(!w.observe(elapsed, true, RodEvidence::Unknown));
+        }
     }
     #[test]
     fn failed_cast_evidence_must_be_consecutive() {
@@ -181,8 +187,8 @@ mod tests {
     #[test]
     fn affirmative_unequipped_rejects_cast() {
         let mut w = CastWatch::default();
-        assert!(!w.observe(800, false, RodEvidence::Unequipped));
-        assert!(w.observe(1300, false, RodEvidence::Unequipped));
+        assert!(!w.observe(800, true, RodEvidence::Unequipped));
+        assert!(w.observe(1300, true, RodEvidence::Unequipped));
     }
     fn pixels(rect: SlotRect, fill: bool) -> Vec<(u8, u8, u8)> {
         let mut p = vec![(20, 20, 20); 200 * 60];
