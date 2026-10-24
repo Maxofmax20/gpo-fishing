@@ -33,13 +33,19 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
+        id: production_cache
         with:
           workspaces: src-tauri -> target
           shared-key: windows-release-v1
           prefix-key: v1-complete-rust
           cache-on-failure: false
+      # Exact hits already came from a successful build. Do not relink the
+      # entire ONNX/Tauri binary merely to save the same immutable cache key.
       - run: npm ci
+        if: steps.production_cache.outputs.cache-hit != 'true'
       - run: npm run build
+        if: steps.production_cache.outputs.cache-hit != 'true'
       - name: Warm production dependency cache without publishing or signing
+        if: steps.production_cache.outputs.cache-hit != 'true'
         run: cargo build --release --locked
         working-directory: src-tauri
