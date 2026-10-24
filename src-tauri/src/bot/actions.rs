@@ -734,7 +734,16 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
         StorageOutcome::Failed("Store button point is not configured".into())
     } else {
         let mut io = LocalStorageIo { ctx, settings: &s, last_text: String::new(), drop_sent: false };
-        run_storage(&mut io, catch)
+        let result = run_storage(&mut io, catch);
+        if result == StorageOutcome::Unknown && s.fruit_storage.continue_on_unconfirmed && io.drop_sent {
+            ctx.log_info("Fruit outcome unconfirmed; rechecking without sending another drop");
+            match io.observe(5000, true) {
+                Ok(Some(crate::core::fruit::StorageBannerResult::Dropped { .. }
+                    | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. })) => StorageOutcome::Dropped,
+                Ok(_) => StorageOutcome::Unknown,
+                Err(()) => StorageOutcome::Cancelled,
+            }
+        } else { result }
     };
     event.confirmation_state = match &outcome {
         StorageOutcome::Stored | StorageOutcome::ProtectedKept | StorageOutcome::Dropped => ConfirmationState::Confirmed,
@@ -746,7 +755,7 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
     event.final_outcome = Some(match &outcome {
         StorageOutcome::Stored => "stored", StorageOutcome::ProtectedKept => "protected_kept",
         StorageOutcome::Dropped => "dropped_confirmed", StorageOutcome::Failed(_) => "store_failed",
-        StorageOutcome::Unknown => "unknown_halted", StorageOutcome::Cancelled => "cancelled",
+        StorageOutcome::Unknown => "unconfirmed", StorageOutcome::Cancelled => "cancelled",
     }.into());
     let _ = crate::core::workflow::append_action_event(ctx.store.dir(), &event);
     ctx.log_info(&format!("{}: {}", catch.name, outcome.detail()));
@@ -757,6 +766,20 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
     ctx.webhook.fruit_storage_outcome(catch, &outcome, photo);
 
     outcome
+}
+
+/// High-contrast white result text, used only after an ordinary OCR read is unknown.
+/// This does not classify the catch: the same strict result parser remains authoritative.
+pub(crate) fn catch_banner_ocr_frame(frame: &crate::core::types::Frame) -> crate::core::types::Frame {
+    let mut mask = frame.clone();
+    for px in mask.rgba.chunks_exact_mut(4) {
+        let min = px[0].min(px[1]).min(px[2]);
+        let max = px[0].max(px[1]).max(px[2]);
+        let value = if min >= 170 && max - min <= 55 { 0 } else { 255 };
+        px.copy_from_slice(&[value, value, value, 255]);
+    }
+    let factor = if mask.w.max(mask.h) <= 1280 { 2 } else { 1 };
+    mask.upscale(factor)
 }
 
 // Fallback only for the yellow post-drop banner. A high-contrast copy avoids
@@ -1114,6 +1137,27 @@ mod storage_replay_tests {
         assert_eq!(store_fruit(&h.ctx, &catch("unreadable"), "test-drop"), StorageOutcome::Dropped);
         assert_eq!(drops(&h), 1); terminal(&h, "dropped_confirmed");
     }
+    #[test]
+    fn enhanced_catch_frame_is_bounded_and_isolates_white_result_text() {
+        let frame = Frame::new(3, 1, vec![255,255,255,255, 220,180,20,255, 20,90,160,255]);
+        let enhanced = catch_banner_ocr_frame(&frame);
+        assert_eq!((enhanced.w, enhanced.h), (6, 2));
+        assert_eq!(&enhanced.rgba[..4], &[0,0,0,255]);
+        assert_eq!(&enhanced.rgba[8..12], &[255,255,255,255]);
+    }
+
+    #[test]
+    fn extended_recheck_confirms_late_drop_without_another_input() {
+        let mut texts = vec!["You can only store one of each fruit!"];
+        texts.extend(std::iter::repeat_n("", 18));
+        texts.push("Dropped Bomb will despawn in 10 minutes");
+        let h = harness(&texts);
+        h.ctx.settings.write().fruit_storage.continue_on_unconfirmed = true;
+        assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "late-recheck"), StorageOutcome::Dropped);
+        assert_eq!(drops(&h), 1);
+        terminal(&h, "dropped_confirmed");
+    }
+
     #[test] fn late_drop_confirmation_is_not_mistaken_for_an_unconfirmed_drop() {
         // The old three-read drop window paused even though Roblox later
         // displayed its confirmation. A stale duplicate banner may linger.
@@ -1159,7 +1203,7 @@ mod storage_replay_tests {
     #[test] fn unconfirmed_drop_has_terminal_unknown() {
         let h = harness(&["You can only store one of each fruit!"]);
         assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "test-unknown"), StorageOutcome::Unknown);
-        assert_eq!(drops(&h), 1); terminal(&h, "unknown_halted");
+        assert_eq!(drops(&h), 1); terminal(&h, "unconfirmed");
     }
     #[test] fn focus_loss_never_sends_storage_inputs() {
         let h = harness(&[]); h.window.info.lock().as_mut().unwrap().is_foreground = false;

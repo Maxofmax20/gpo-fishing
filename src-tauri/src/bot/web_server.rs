@@ -24,6 +24,11 @@ static TELEMETRY_STARTED: AtomicBool = AtomicBool::new(false);
 static LOCAL_IP: RwLock<Option<String>> = RwLock::new(None);
 static FAN_STATUS: RwLock<Option<crate::laptop_fan::FanStatus>> = RwLock::new(None);
 
+fn send_action_error(stream: &mut TcpStream, message: &str) {
+    let body = json!({"ok": false, "message": message}).to_string();
+    let _ = write!(stream, "HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+}
+
 fn send_json(stream: &mut TcpStream, body: &str) {
     let _ = write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
 }
@@ -564,7 +569,7 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         }));
     }
 
-    let payload = json!({
+    let mut payload = json!({
         "state": state_str,
         "paused": paused,
         "is_running": bot.is_running(),
@@ -610,6 +615,11 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "stream_live": bot.ctx().roblox_rect().is_some(),
     });
 
+    // Keep serde_json's macro expansion bounded as the status contract grows.
+    payload["pity_cap"] = json!(s.fruit_storage.pity_cap);
+    payload["pity_zero_only"] = json!(s.webhook.pity_zero_only);
+    payload["continue_on_unconfirmed"] = json!(s.fruit_storage.continue_on_unconfirmed);
+
     let body = payload.to_string();
     let resp = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -622,8 +632,25 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
 /// Last catch log rows for the telemetry loot feed (newest first).
 /// Tolerant mini-CSV reader: `Timestamp,Type,Name,RawText` with optional
 /// quoting. Never fails the status call — any read/parse problem yields [].
+fn read_log_tail(path: &std::path::Path, budget: u64) -> std::io::Result<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let length = file.metadata()?.len();
+    let start = length.saturating_sub(budget);
+    file.seek(SeekFrom::Start(start))?;
+    let mut bytes = Vec::with_capacity(budget.min(length) as usize);
+    file.take(budget).read_to_end(&mut bytes)?;
+    let bytes = if start > 0 {
+        // Discard the first partial record, including a possible split UTF-8 codepoint.
+        match bytes.iter().position(|b| *b == b'\n') { Some(i) => &bytes[i + 1..], None => &[] }
+    } else { &bytes[..] };
+    Ok(String::from_utf8_lossy(bytes).into_owned())
+}
+
 fn recent_catches(store: &crate::config::Store) -> serde_json::Value {
-    let raw = std::fs::read_to_string(store.catches_path()).unwrap_or_default();
+    // A long AFK log can be very large. Status polling only needs the tail,
+    // never the whole catch history on every phone refresh.
+    let raw = read_log_tail(&store.catches_path(), 64 * 1024).unwrap_or_default();
     let mut rows: Vec<(String, String, String, String)> = Vec::new();
     for line in raw.lines().rev() {
         if rows.len() >= 6 {
@@ -1163,10 +1190,52 @@ fn handle_ml_status(stream: &mut TcpStream, bot: &Arc<Bot>) {
     let _ = stream.write_all(resp.as_bytes());
 }
 
-fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Settings>>, body: &str) {
-    let parsed: serde_json::Value = serde_json::from_str(body).unwrap_or(json!({}));
-    let action = parsed.get("action").and_then(|a| a.as_str()).unwrap_or("");
+fn save_web_settings(bot: &Arc<Bot>, settings: &Arc<RwLock<Settings>>, change: impl FnOnce(&mut Settings)) -> Result<(), String> {
+    let mut current = settings.write();
+    let mut candidate = current.clone();
+    change(&mut candidate);
+    crate::config::Store::clamp_safety_settings(&mut candidate);
+    bot.ctx().store.save(&candidate).map_err(|e| e.to_string())?;
+    *current = candidate;
+    drop(current);
+    bot.ctx().emit(crate::events::BotEvent::SettingsInvalidated);
+    Ok(())
+}
 
+fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Settings>>, body: &str) {
+    let parsed: serde_json::Value = match serde_json::from_str(body) {
+        Ok(value) => value,
+        Err(_) => { send_action_error(stream, "Request body must be valid JSON"); return; }
+    };
+    let action = parsed.get("action").and_then(|a| a.as_str()).unwrap_or("");
+    if matches!(action, "set_volume" | "set_brightness") {
+        let value = parsed.get("value").and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.parse::<f64>().ok())));
+        if !value.is_some_and(|v| v.is_finite() && (0.0..=100.0).contains(&v)) {
+            send_action_error(stream, "Value must be a number between 0 and 100"); return;
+        }
+    }
+
+    if matches!(action, "set_vip_url" | "set_private_server_code" | "set_rejoin_macro")
+        && !parsed.get("value").is_some_and(|v| v.as_str().is_some_and(|s| s.len() <= 2048)) {
+        send_action_error(stream, "Value must be text, at most 2048 bytes"); return;
+    }
+    let saved_change = match action {
+        "toggle_spawn" => Some(save_web_settings(bot, settings, |s| s.webhook.spawn = !s.webhook.spawn)),
+        "toggle_auto_reconnect" => Some(save_web_settings(bot, settings, |s| s.features.auto_reconnect = !s.features.auto_reconnect)),
+        "toggle_legendary_only" => Some(save_web_settings(bot, settings, |s| s.webhook.legendary_only = !s.webhook.legendary_only)),
+        "toggle_drop_screenshot" => Some(save_web_settings(bot, settings, |s| s.webhook.send_drop_screenshot = !s.webhook.send_drop_screenshot)),
+        "set_vip_url" => Some(save_web_settings(bot, settings, |s| s.features.vip_server_url = parsed["value"].as_str().unwrap_or_default().trim().to_string())),
+        "set_private_server_code" => Some(save_web_settings(bot, settings, |s| s.features.private_server_code = parsed["value"].as_str().unwrap_or_default().trim().to_string())),
+        "set_rejoin_macro" => Some(save_web_settings(bot, settings, |s| s.features.rejoin_macro_name = parsed["value"].as_str().unwrap_or_default().trim().to_string())),
+        _ => None,
+    };
+    if let Some(result) = saved_change {
+        match result {
+            Ok(()) => send_json(stream, &json!({"ok": true, "message": "Setting saved"}).to_string()),
+            Err(error) => send_json(stream, &json!({"ok": false, "message": format!("Setting was not saved: {error}")}).to_string()),
+        }
+        return;
+    }
     let res_msg = match action {
         "set_collection" => {
             let Some(enabled) = parsed.get("enabled").and_then(|v| v.as_bool()) else {
@@ -1180,8 +1249,8 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
             if enabled { "Collection enabled; existing samples kept" } else { "Collection stopped; fishing continues and samples kept" }
         }
         "start" => {
-            bot.start();
-            "Macro started"
+            if let Err(error) = bot.start_checked() { send_action_error(stream, &error); return; }
+            "Macro start requested"
         }
         "pause" => {
             bot.pause();
@@ -1189,11 +1258,12 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
         }
         "recast" => {
             bot.recast();
-            "Rod recast triggered"
+            "Rod recast requested"
         }
         "buy_bait" => {
             let ok = crate::bot::actions::purchase(&bot.ctx());
-            if ok { "Bait purchased successfully" } else { "Bait purchase failed (check setup)" }
+            if !ok { send_json(stream, &json!({"ok": false, "message": "Bait purchase failed (check setup)"}).to_string()); return; }
+            "Bait purchased successfully"
         }
         "set_volume" => {
             let val_opt = parsed.get("value").and_then(|v| {
@@ -1211,11 +1281,15 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
             "Volume updated"
         }
         "mute" => {
-            let _ = crate::core::audio::set_mute(true);
+            if let Err(error) = crate::core::audio::set_mute(true) {
+                send_json(stream, &json!({"ok": false, "message": error}).to_string()); return;
+            }
             "Audio muted"
         }
         "unmute" => {
-            let _ = crate::core::audio::set_mute(false);
+            if let Err(error) = crate::core::audio::set_mute(false) {
+                send_json(stream, &json!({"ok": false, "message": error}).to_string()); return;
+            }
             "Audio unmuted"
         }
         "set_brightness" => {
@@ -1232,13 +1306,6 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
                 }
             }
             "Brightness updated"
-        }
-        "toggle_spawn" => {
-            let mut s = settings.write();
-            s.webhook.spawn = !s.webhook.spawn;
-            let enabled = s.webhook.spawn;
-            let _ = bot.ctx().store.save(&s);
-            if enabled { "Fruit Spawn alerts enabled (Active on Roblox)" } else { "Fruit Spawn alerts stopped" }
         }
         "update" => {
             let bot_clone = Arc::clone(bot);
@@ -1264,54 +1331,9 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
             // remote JSON is remote code execution, and the pinned minisign key
             // exists precisely to prevent that). The previous text claimed an
             // install would happen - it would not.
-            "Checked for updates. Use the in-app updater (Settings -> Check for updates) to install; it verifies the release signature."
+            "Update check requested. Use the in-app updater (Settings -> Check for updates) to install; it verifies the release signature."
         }
-        "set_vip_url" => {
-            if let Some(val) = parsed.get("value").and_then(|v| v.as_str()) {
-                let mut s = settings.write();
-                s.features.vip_server_url = val.trim().to_string();
-                let _ = bot.ctx().store.save(&s);
-            }
-            "VIP server link saved"
-        }
-        "set_private_server_code" => {
-            if let Some(val) = parsed.get("value").and_then(|v| v.as_str()) {
-                let mut s = settings.write();
-                s.features.private_server_code = val.trim().to_string();
-                let _ = bot.ctx().store.save(&s);
-            }
-            "Private server code saved"
-        }
-        "set_rejoin_macro" => {
-            if let Some(val) = parsed.get("value").and_then(|v| v.as_str()) {
-                let mut s = settings.write();
-                s.features.rejoin_macro_name = val.trim().to_string();
-                let _ = bot.ctx().store.save(&s);
-            }
-            "Rejoin macro assigned"
-        }
-        "toggle_auto_reconnect" => {
-            let mut s = settings.write();
-            s.features.auto_reconnect = !s.features.auto_reconnect;
-            let on = s.features.auto_reconnect;
-            let _ = bot.ctx().store.save(&s);
-            if on { "Auto-reconnect enabled" } else { "Auto-reconnect disabled" }
-        }
-        "toggle_legendary_only" => {
-            let mut s = settings.write();
-            s.webhook.legendary_only = !s.webhook.legendary_only;
-            let on = s.webhook.legendary_only;
-            let _ = bot.ctx().store.save(&s);
-            if on { "Notifications restricted to Legendary/Mythical & Pity 0 only" } else { "Notifications enabled for ALL fruit drops" }
-        }
-        "toggle_drop_screenshot" => {
-            let mut s = settings.write();
-            s.webhook.send_drop_screenshot = !s.webhook.send_drop_screenshot;
-            let on = s.webhook.send_drop_screenshot;
-            let _ = bot.ctx().store.save(&s);
-            if on { "Drop screenshots enabled" } else { "Drop screenshots disabled" }
-        }
-        _ => "Unknown action",
+        _ => { send_action_error(stream, "Unknown action"); return; },
     };
 
     let reply = json!({ "ok": true, "message": res_msg }).to_string();
@@ -1537,7 +1559,7 @@ const WEB_STUDIO_HTML: &str = include_str!("web/studio.html");
 const WEB_CRAFT_HTML: &str = include_str!("web/craft.html");
 const WEB_SYSTEM_HTML: &str = include_str!("web/system.html");
 
-const ASSET_TAILWIND_JS: &[u8] = include_bytes!("web/assets/tailwind.js");
+const ASSET_UTILITIES_CSS: &str = include_str!("web/assets/gpo-utilities.css");
 const ASSET_FONTS_CSS: &str = include_str!("web/assets/fonts.css");
 const ASSET_LAYOUT_CSS: &str = include_str!("web/assets/gpo-layout.css");
 const ASSET_GPO_CORE_JS: &str = include_str!("web/assets/gpo-core.js");
@@ -1595,7 +1617,7 @@ fn send_html_page(stream: &mut TcpStream, html: &str) {
     // without a hard refresh (stale CSS/JS after auto-update otherwise).
     let html = html.replace("%%V%%", env!("CARGO_PKG_VERSION"));
     let resp = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\nPragma: no-cache\r\nExpires: 0\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         html.len(),
         html
     );
@@ -1631,7 +1653,7 @@ fn serve_asset(stream: &mut TcpStream, raw_path: &str) -> bool {
         return true;
     }
     match name {
-        "tailwind.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_TAILWIND_JS),
+        "gpo-utilities.css" => send_bytes(stream, "text/css; charset=utf-8", ASSET_UTILITIES_CSS.as_bytes()),
         "fonts.css" => send_bytes(stream, "text/css; charset=utf-8", ASSET_FONTS_CSS.replace("%%V%%", env!("CARGO_PKG_VERSION")).as_bytes()),
         "gpo-layout.css" => send_bytes(stream, "text/css; charset=utf-8", ASSET_LAYOUT_CSS.as_bytes()),
         "gpo-core.js" => send_bytes(stream, "text/javascript; charset=utf-8", ASSET_GPO_CORE_JS.as_bytes()),
@@ -1776,6 +1798,7 @@ mod tests {
         let mut client = std::net::TcpStream::connect(("127.0.0.1", port)).unwrap();
         let (mut server, _) = listener.accept().unwrap();
         match route {
+            "action" => handle_action(&mut server, bot, &bot.ctx().settings, body),
             "key" => handle_key(&mut server, bot, body),
             "click" => handle_click(&mut server, bot, body),
             "drag" => handle_drag(&mut server, bot, body),
@@ -1801,6 +1824,46 @@ mod tests {
             }
         }
         String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    #[test]
+    fn catch_history_tail_is_bounded_and_keeps_complete_unicode_records() {
+        let (_, _, dir) = input_test_bot();
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("history.csv");
+        let row = "timestamp,fish,سمكة,original\n";
+        std::fs::write(&path, row.repeat(10000)).unwrap();
+        let tail = read_log_tail(&path, 1024).unwrap();
+        assert!(tail.len() <= 1024);
+        assert!(tail.lines().all(|line| line == row.trim_end()));
+        assert!(!tail.contains('\u{fffd}'));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn invalid_actions_do_not_claim_success_or_send_input() {
+        let (bot, input, dir) = input_test_bot();
+        for body in ["not-json", "{}", r#"{"action":"unknown"}"#, r#"{"action":"set_volume"}"#,
+            r#"{"action":"set_brightness","value":101}"#, r#"{"action":"set_volume","value":"NaN"}"#,
+            r#"{"action":"set_vip_url","value":42}"#] {
+            let response = drive(&bot, "action", body);
+            assert!(response.starts_with("HTTP/1.1 400"), "{body}: {response}");
+            assert!(response.contains("\"ok\":false"));
+        }
+        assert!(input.events.lock().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn web_setting_persistence_failure_keeps_memory_unchanged() {
+        let (bot, _, dir) = input_test_bot();
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::write(&dir, b"block directory creation").unwrap();
+        let before = bot.ctx().settings.read().webhook.spawn;
+        let response = drive(&bot, "action", r#"{"action":"toggle_spawn"}"#);
+        assert!(response.contains("\"ok\":false"));
+        assert_eq!(bot.ctx().settings.read().webhook.spawn, before);
+        let _ = std::fs::remove_file(dir);
     }
 
     #[test]
@@ -2057,7 +2120,8 @@ mod tests {
             ] {
                 assert!(!page.contains(needle), "{name} must not reference {needle} (offline LAN app)");
             }
-            assert!(page.contains("/assets/tailwind.js"), "{name} must load vendored tailwind");
+            assert!(page.contains("/assets/gpo-utilities.css"), "{name} must load compiled styles");
+            assert!(!page.contains("tailwind.config"), "{name} must not compile styles at runtime");
             assert!(page.contains("/assets/fonts.css"), "{name} must load vendored fonts");
             assert!(page.contains("GPO CYBERDECK"), "{name} must carry the shell");
         }
@@ -2101,10 +2165,10 @@ mod tests {
         };
         let serve = fetch;
 
-        let js = serve("/assets/tailwind.js");
-        assert!(js.starts_with("HTTP/1.1 200 OK"), "tailwind route, got: {}", &js[..js.len().min(60)]);
-        assert!(js.contains("text/javascript"), "js content type, got: {}", &js[..js.len().min(200)]);
-        assert!(js.len() > 100_000, "vendored tailwind must be substantial");
+        let js = serve("/assets/gpo-utilities.css");
+        assert!(js.starts_with("HTTP/1.1 200 OK"), "compiled stylesheet route, got: {}", &js[..js.len().min(60)]);
+        assert!(js.contains("text/css"), "js content type, got: {}", &js[..js.len().min(200)]);
+        assert!(js.len() > 10_000, "compiled utilities must not be empty");
 
         let css = serve("/assets/fonts.css");
         assert!(css.starts_with("HTTP/1.1 200 OK"));

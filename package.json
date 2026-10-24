@@ -1,11 +1,11 @@
 {
   "name": "gpo-autofish",
   "private": true,
-  "version": "5.8.14",
+  "version": "5.9.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run build:web && tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "review": "node scripts/ontology-review-server.mjs",
@@ -13,7 +13,9 @@
     "app:build": "tauri build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:web": "node node_modules/tailwindcss-legacy/lib/cli.js -c scripts/web-tailwind.config.cjs -i scripts/web-tailwind.css -o src-tauri/src/bot/web/assets/gpo-utilities.css --minify",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
@@ -25,6 +27,8 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^7.0.1",
@@ -37,8 +41,14 @@
     "@vitest/coverage-v8": "^4.1.11",
     "jsdom": "^30.1.2",
     "tailwindcss": "^4.3.3",
+    "tailwindcss-legacy": "npm:tailwindcss@3.4.19",
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "tailwindcss-legacy": {
+      "postcss-selector-parser": "7.1.7"
+    }
   }
 }

@@ -431,6 +431,11 @@ export default function Features() {
             <div className="text-[11px] text-fg-dim pb-1.5 leading-normal">
               🛡️ Never presses Backspace on high-tier fruits (Tori, Mochi, Ope, Venom, Buddha, Dragon, Pika, Magu, Goro, etc.). Keeps them safely in your hotbar/inventory if storage fails or backpack is full.
             </div>
+            <Field wide label="Continue after an unconfirmed ordinary fruit">
+              <Toggle value={s.fruit_storage.continue_on_unconfirmed ?? false}
+                onChange={(v) => update((x) => void (x.fruit_storage.continue_on_unconfirmed = v))} />
+            </Field>
+            <p className="text-xs text-fg-dim leading-relaxed">Rechecks the banner for five seconds, then resumes without repeating a drop. The result stays unconfirmed. Protected fruits and explicit storage errors still pause.</p>
             <Field wide label="Pause after storing a protected fruit">
               <Toggle
                 value={s.fruit_storage.pause_on_protected_fruit ?? false}
@@ -471,26 +476,6 @@ export default function Features() {
             </Field>
           </div>
         </Row>
-      </Section>
-
-      <Section title="Multi-Account & Multi-Roblox">
-        <Row
-          title="Multiple Roblox Instances"
-          sub="Allows multiple Roblox clients to run simultaneously on different accounts without singleton collisions or Error 773 teleports."
-          right={
-            <Toggle
-              value={s.features.multi_roblox}
-              onChange={async (v) => {
-                update((x) => void (x.features.multi_roblox = v));
-                try {
-                  await api.multiRobloxSetEnabled(v);
-                } catch (e) {
-                  showToast("error", `Could not toggle Multi-Roblox: ${String(e)}`);
-                }
-              }}
-            />
-          }
-        />
       </Section>
 
       <Section title="Notifications & Integrations">

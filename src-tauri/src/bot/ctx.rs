@@ -95,7 +95,12 @@ impl Ctx {
     }
 
     pub fn emit(&self, e: BotEvent) {
-        let _ = self.events.send(e);
+        if matches!(e, BotEvent::Reading(_)) {
+            // Visual telemetry must never stall the fishing controller.
+            let _ = self.events.try_send(e);
+        } else {
+            let _ = self.events.send(e);
+        }
     }
 
     pub fn emit_stats(&self) {

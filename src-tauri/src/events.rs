@@ -113,6 +113,7 @@ pub struct MlSessionState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BotEvent {
+    SettingsInvalidated,
     State { state: BotState, detail: Option<String> },
     Stats(Stats),
     Log(LogLine),
@@ -128,6 +129,7 @@ pub enum BotEvent {
 impl BotEvent {
     pub fn channel(&self) -> &'static str {
         match self {
+            BotEvent::SettingsInvalidated => "settings:invalidated",
             BotEvent::State { .. } => "bot:state",
             BotEvent::Stats(_) => "bot:stats",
             BotEvent::Log(_) => "bot:log",

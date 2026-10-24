@@ -884,6 +884,14 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
                     if v != fruit::CatchVerdict::Unknown {
                         return (v, text, Some(frame));
                     }
+                    let enhanced = actions::catch_banner_ocr_frame(&frame);
+                    if let Ok(retry) = ctx.platform.ocr.read(&enhanced) {
+                        let verified = fruit::detect_catch(&s.lexicon, &retry);
+                        if verified != fruit::CatchVerdict::Unknown {
+                            ctx.log_info(&format!("Verified enhanced catch text: {}", retry.trim()));
+                            return (verified, retry, Some(frame));
+                        }
+                    }
                 }
             }
         }
@@ -1021,9 +1029,12 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         }
         if s.features.fruit_storage {
             let outcome = actions::store_fruit(ctx, &catch, &workflow_id);
-            if !outcome.may_continue() || (is_protected && outcome == crate::core::fruit_storage::StorageOutcome::Dropped) {
+            if !outcome.may_resume(s.fruit_storage.continue_on_unconfirmed, is_protected) || (is_protected && outcome == crate::core::fruit_storage::StorageOutcome::Dropped) {
                 if ctx.alive() { ctx.set_state(BotState::Paused, Some(format!("{}: {}", fruit_name, outcome.detail()))); }
                 return false;
+            }
+            if outcome == crate::core::fruit_storage::StorageOutcome::Unknown {
+                ctx.log_warn("Continuing by recovery preference; previous fruit outcome remains unconfirmed");
             }
             if s.fruit_storage.pause_on_protected_fruit && is_protected {
                 ctx.set_state(BotState::Paused, Some(format!("Protected {fruit_name}: {}", outcome.detail())));
@@ -1286,7 +1297,8 @@ mod tests {
 
     #[test]
     fn catch_verification_waits_for_the_configured_gap() {
-        let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["noise".into(), "Nev Item Shark".into()]);
+        // Raw + enhanced OCR share frame one; frame two must still wait for the gap.
+        let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["noise".into(), "noise".into(), "Nev Item Shark".into()]);
         ctx.settings.write().ocr.post_catch_read_gap_ms = 70;
         let started = Instant::now();
         assert_eq!(verify_catch(&ctx).0, fruit::CatchVerdict::Caught);

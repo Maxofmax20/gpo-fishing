@@ -13,7 +13,7 @@ type Drag = { type: "move" | "draw" | "resize"; edge?: string; sx: number; sy: n
 type RegionKey = "bar" | "drop" | "bait_menu";
 
 const HANDLE = 8;
-const COLORS: Record<RegionKey, string> = { bar: "#4f8cff", drop: "#22c55e", bait_menu: "#f97316" };
+const COLORS: Record<RegionKey, string> = { bar: "#fb5b68", drop: "#22c55e", bait_menu: "#f97316" };
 const LABELS: Record<RegionKey, string> = { bar: "Fishing bar", drop: "Drop message", bait_menu: "Bait menu" };
 
 export default function Overlay() {

@@ -363,6 +363,7 @@ type Events = {
   "ui:visibility": boolean;
   "guide:open": null;
   "settings:changed": Settings;
+  "settings:invalidated": { kind: "settings_invalidated" };
   "panel:visible": boolean;
   "macro:status_changed": null;
 };

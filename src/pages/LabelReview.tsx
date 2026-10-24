@@ -89,7 +89,23 @@ type ConfirmResult = {
   message: string;
 };
 
-const thumbCache = new Map<string, string | null>();
+const thumbCache = new Map<string, string>();
+const thumbRequests = new Map<string, Promise<string | null>>();
+const THUMB_CACHE_LIMIT = 96;
+function loadThumb(imageId: string): Promise<string | null> {
+  const cached = thumbCache.get(imageId);
+  if (cached) { thumbCache.delete(imageId); thumbCache.set(imageId, cached); return Promise.resolve(cached); }
+  const active = thumbRequests.get(imageId);
+  if (active) return active;
+  const pending = fetchImageDataUrl(`${LABELS_API_BASE}/thumb/${encodeURIComponent(imageId)}`)
+    .then((url) => {
+      if (url) thumbCache.set(imageId, url);
+      while (thumbCache.size > THUMB_CACHE_LIMIT) thumbCache.delete(thumbCache.keys().next().value!);
+      return url;
+    }).finally(() => { thumbRequests.delete(imageId); });
+  thumbRequests.set(imageId, pending);
+  return pending;
+}
 
 function useThumb(imageId: string) {
   const [src, setSrc] = useState<string | null>(() => thumbCache.get(imageId) ?? null);
@@ -99,13 +115,11 @@ function useThumb(imageId: string) {
       setSrc(thumbCache.get(imageId) ?? null);
       return;
     }
-    fetchImageDataUrl(`${LABELS_API_BASE}/thumb/${encodeURIComponent(imageId)}`)
+    loadThumb(imageId)
       .then((u) => {
-        thumbCache.set(imageId, u);
         if (live) setSrc(u);
       })
       .catch(() => {
-        thumbCache.set(imageId, null);
         if (live) setSrc(null);
       });
     return () => {

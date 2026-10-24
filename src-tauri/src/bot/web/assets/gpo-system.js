@@ -44,6 +44,7 @@
     c.setAttribute('aria-label', badgeId.replace('-badge', '').replaceAll('-', ' '));
     c.setAttribute('aria-valuemin', '0');
     c.setAttribute('aria-valuemax', '100');
+    c.setAttribute('aria-valuenow', '0');
     const preview = (pct) => {
       wanted = pct;
       c.dataset.editing = '1';
@@ -72,7 +73,7 @@
       }
     };
     c.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || c.getAttribute('aria-disabled') === 'true') return;
       dragging = true;
       c.setPointerCapture(e.pointerId);
       point(e);
@@ -99,6 +100,7 @@
       void refresh();
     });
     c.addEventListener('keydown', (e) => {
+      if (c.getAttribute('aria-disabled') === 'true') return;
       const current = Number(c.getAttribute('aria-valuenow')) || 0;
       const values = { ArrowLeft: current - 5, ArrowDown: current - 5, ArrowRight: current + 5, ArrowUp: current + 5, Home: 0, End: 100 };
       if (!(e.key in values)) return;
@@ -129,6 +131,14 @@
   }
 
   function paintFan(fan) {
+    const available = !!fan && fan.success !== false;
+    document.querySelectorAll('[data-fanmode], #turbo-toggle').forEach(button => {
+      button.disabled = !available;
+      button.title = available ? '' : 'Fan provider unavailable or still loading';
+    });
+    const slider = sliderContainer(0);
+    if (slider) slider.setAttribute('aria-disabled', String(!available));
+    if (!available) { gpoSetText('fan-mode-badge', 'UNAVAILABLE'); return; }
     const mode = (fan.current_mode || '').toLowerCase();
     const modes = ['quiet', 'balance', 'performance', 'turbo'];
     const labels = { quiet: 'QUIET', balance: 'BALANCE (AUTO)', performance: 'PERF', turbo: 'TURBO (MAX)' };
@@ -159,6 +169,9 @@
   }
 
   function paintLight(kb) {
+    const available = !!kb && kb.success !== false;
+    document.querySelectorAll('[data-rgb]').forEach(button => { button.disabled = !available; });
+    if (!available) { gpoSetText('rgb-preset-badge', 'UNAVAILABLE'); return; }
     const st = (kb && kb.status ? kb.status : 'Unknown').toLowerCase();
     const label = st === 'off' ? 'PRESET: OFF' : st === 'low' ? 'PRESET: LOW' : st === 'high' ? 'PRESET: HIGH' : 'PRESET: ' + st.toUpperCase();
     gpoSetText('rgb-preset-badge', label);
@@ -199,6 +212,7 @@
     tickTimers();
   }
 
+  let pityZeroOnly = false;
   function paintToggles(d) {
     const setPill = (filter, on, onText, offText) => {
       const card = document.querySelector('.toggle-card[data-filter="' + filter + '"]');
@@ -207,7 +221,9 @@
       if (pill) pill.textContent = on ? onText : offText;
       card.classList.toggle('opacity-70', !on);
     };
-    setPill('pity', !!d.legendary_only, 'ACTIVE', 'MUTED');
+    pityZeroOnly = !!d.pity_zero_only;
+    setPill('pity', pityZeroOnly || !!d.legendary_only, 'ACTIVE', 'MUTED');
+    gpoSetText('notification-filter-label', pityZeroOnly ? 'PITY ZERO ONLY' : 'LEGENDARY / PITY 0 ONLY');
     setPill('screen', !!d.send_drop_screenshot, 'ACTIVE', 'MUTED');
     gpoSetText('reconnect-state-text', d.auto_reconnect ? 'DAEMON ACTIVE' : 'DAEMON STANDBY');
     const sb = document.getElementById('sound-btn');
@@ -227,8 +243,8 @@
       const { data } = await gpoGet('/api/status');
       gpoNoteOnline(true);
       gpoSetText('bridge-sync-text', 'BRIDGE SYNCED');
-      if (data.fan) paintFan(data.fan);
-      if (data.keyboard_light) paintLight(data.keyboard_light);
+      paintFan(data.fan);
+      paintLight(data.keyboard_light);
       paintSlider('volume-fill', 'volume-badge', sliderContainer(1), data.volume != null ? data.volume : 0);
       paintSlider('brightness-fill', 'brightness-badge', sliderContainer(2), data.brightness != null ? data.brightness : 0);
       paintBosses(data.bosses);
@@ -349,6 +365,7 @@
     });
     const pityCard = document.querySelector('.toggle-card[data-filter="pity"]');
     if (pityCard) pityCard.addEventListener('click', async () => {
+      if (pityZeroOnly) { toast('Pity-zero-only mode is enabled. Change it in desktop Notifications.'); return; }
       try { const j = await gpoAction('toggle_legendary_only'); toast(j.message); await refresh(); }
       catch (e) { toast('Failed: ' + e.message); }
     });
@@ -385,7 +402,7 @@
       catch (e) { toast('Save failed: ' + e.message); }
     });
     const studio = document.getElementById('studio-btn');
-    if (studio) studio.addEventListener('click', () => { location.href = '/studio?token=' + encodeURIComponent(GPO_TOKEN); });
+    if (studio) studio.addEventListener('click', () => { location.href = '/studio'; });
     const pwr = document.getElementById('pwr-btn');
     if (pwr) pwr.addEventListener('click', async () => {
       try {

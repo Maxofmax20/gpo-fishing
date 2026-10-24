@@ -7,7 +7,7 @@ const html = readFileSync(new URL('../system.html', import.meta.url), 'utf8');
 const script = readFileSync(new URL('./gpo-system.js', import.meta.url), 'utf8');
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
-async function page() {
+async function page(hardware = true) {
   const dom = new JSDOM(html, { url: 'http://localhost/system', runScripts: 'outside-only' });
   const w = dom.window;
   if (w.document.readyState === 'loading') await new Promise(resolve => w.document.addEventListener('DOMContentLoaded', resolve, { once: true }));
@@ -16,7 +16,7 @@ async function page() {
   for (const name of ['gpoNoteOnline', 'gpoPaintHostline', 'gpoPaintPwr', 'gpoRebind', 'gpoToast']) w[name] = () => {};
   w.gpoSetText = (id, value) => { const e = w.document.getElementById(id); if (e) e.textContent = value; };
   w.gpoEsc = value => String(value || '');
-  w.gpoGet = async path => { reads.push(path); return { data: { volume: 20, brightness: 40, collection_enabled: true, dataset: {}, readiness: {}, model: {} } }; };
+  w.gpoGet = async path => { reads.push(path); return { data: { volume: 20, brightness: 40, fan: hardware ? { success: true, current_mode: "balance", fan_level_pct: 50 } : null, keyboard_light: hardware ? { success: true, status: "High" } : null, collection_enabled: true, dataset: {}, readiness: {}, model: {} } }; };
   w.gpoAction = (action, body) => { calls.push({ action, ...body }); return new Promise(resolve => pending.push(resolve)); };
   w.gpoPost = (path, body) => { calls.push({ path, ...body }); return new Promise(resolve => pending.push(resolve)); };
   w.eval(script);
@@ -112,4 +112,16 @@ test('web collection stop sends an explicit preference without stopping fishing'
     assert.deepEqual(p.calls, [{ action: 'set_collection', enabled: false }]);
     p.pending.shift()({ message: 'Collection stopped' }); await tick();
   } finally { p.close(); }
+});
+
+test('unsupported hardware controls cannot submit device commands', async () => {
+  const fixture = await page(false);
+  const w = fixture.w;
+  try {
+    assert.ok([...w.document.querySelectorAll('[data-fanmode], [data-rgb], #turbo-toggle')].every(button => button.disabled));
+    const slider = w.document.querySelector('[aria-label="fan speed"]');
+    assert.equal(slider.getAttribute('aria-disabled'), 'true');
+    slider.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    assert.equal(fixture.calls.length, 0);
+  } finally { w.close(); }
 });

@@ -143,7 +143,7 @@
         gpoSetText('req-peli', c.tier ? String(c.tier).toUpperCase() : TIERS[tier].title.toUpperCase());
         gpoSetText('estimated-time', craftStartMs ? ('Elapsed: ' + fmtElapsed(Date.now() - craftStartMs)) : 'Running…');
         if (target && (c.crafted_count || 0) >= target) {
-          await gpoPost('/api/craft', { action: 'stop' }).catch(() => {});
+          await gpoPost('/api/craft', { action: 'stop' });
           paintCta(false);
           pushLog('Target reached: ' + TIERS[tier].title, target + ' batches • auto-stopped');
           toast('Craft target reached — auto-stopped');
@@ -153,7 +153,7 @@
         craftStartMs = 0;
       }
       gpoPaintPwr(document.getElementById('pwr-btn'), data.is_running && !data.paused);
-    } catch (e) { /* offline */ }
+    } catch (e) { toast('Craft status or stop failed: ' + e.message); }
   }
 
   function bind() {

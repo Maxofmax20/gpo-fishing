@@ -83,3 +83,6 @@ reports/name_vocabulary_2026-10-12.json
 reports/ui-preview.html
 reports/ui-preview.tsx
 .playwright-cli/
+
+/test-results/
+/playwright-report/
