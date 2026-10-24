@@ -522,7 +522,8 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             return false;
         };
 
-        let menu = observed_bait_region(ctx).unwrap_or(s.regions.bait_menu);
+        // Match v5.9.0: use the bait-menu region the user calibrated for actual clicks.
+        let menu = s.regions.bait_menu;
         let (row_rx, row_ry) = stock.click_relative_pos(chosen_tier);
         let target_rel = RelPoint {
             x: menu.x + menu.w * row_rx,
