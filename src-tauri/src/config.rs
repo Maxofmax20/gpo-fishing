@@ -921,7 +921,23 @@ impl Store {
         Ok(())
     }
 
+    // One-time, read-only safety copy of pre-rollback user data. The v5.9.0
+    // Settings schema cannot round-trip later v6-only fields, so keep the
+    // original JSON/CSV files intact for recovery. Never overwrite backups.
+    fn backup_before_rollback(&self) {
+        let dest = self.dir.join("backup-before-v590-restore");
+        for name in ["settings.json", "stats.json", "catches.csv"] {
+            let source = self.dir.join(name);
+            let target = dest.join(name);
+            if !source.is_file() || target.exists() { continue; }
+            if let Err(e) = fs::create_dir_all(&dest).and_then(|_| fs::copy(&source, &target).map(|_| ())) {
+                tracing::warn!("Could not back up {name} before v5.9.0 restore: {e}");
+            }
+        }
+    }
+
     pub fn load(&self) -> Settings {
+        self.backup_before_rollback();
         let settings_path = self.settings_path();
         // Fresh installs have no file yet: persist defaults immediately so
         // generated values (notably the per-install web token) are stable
@@ -1615,5 +1631,34 @@ mod tests {
         );
         assert!(loaded.training.readiness_min_shadow_events >= 20);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod rollback_backup_tests {
+    use super::Store;
+    #[test]
+    fn preserve_original_settings_stats_and_catches_once() {
+        let dir = std::env::temp_dir().join(format!("gpo-v590-rollback-backup-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        for file in ["settings.json", "stats.json", "catches.csv"] {
+            std::fs::write(dir.join(file), format!("original-{file}")).unwrap();
+        }
+        let store = Store::new(dir.clone());
+        // The intentionally invalid JSON is quarantined on load; the raw
+        // pre-rollback bytes must still be in the backup directory.
+        let _ = store.load();
+        for file in ["settings.json", "stats.json", "catches.csv"] {
+            let backup = dir.join("backup-before-v590-restore").join(file);
+            assert_eq!(std::fs::read_to_string(&backup).unwrap(), format!("original-{file}"));
+            std::fs::write(dir.join(file), "changed").unwrap();
+        }
+        let _ = store.load();
+        for file in ["settings.json", "stats.json", "catches.csv"] {
+            let backup = dir.join("backup-before-v590-restore").join(file);
+            assert_eq!(std::fs::read_to_string(&backup).unwrap(), format!("original-{file}"));
+        }
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

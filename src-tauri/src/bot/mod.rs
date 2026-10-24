@@ -440,6 +440,19 @@ mod lifecycle_tests {
         bot.stop();
     }
     #[test]
+    fn stop_then_start_after_recovering_creates_fresh_session() {
+        let bot = bot("v590-stop-start");
+        bot.start_checked().unwrap();
+        bot.ctx.set_state(BotState::Recovering, Some("old recovery".into()));
+        bot.stop();
+        assert_eq!(bot.state(), BotState::Stopped);
+        assert!(!bot.is_running());
+        bot.start_checked().unwrap();
+        assert!(bot.is_running());
+        bot.stop();
+    }
+
+    #[test]
     fn stop_during_backoff_cannot_restart() {
         let bot = bot("backoff");
         bot.start_checked().unwrap();

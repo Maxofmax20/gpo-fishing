@@ -40,16 +40,18 @@ pub async fn bot_start(st: State<'_, AppState>) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || bot.start_checked()).await.map_err(|e| e.to_string())?
 }
 
+// Return success only when the previous fishing worker has completely stopped.
+// The old fire-and-forget command raced an immediate Start tap in the UI.
 #[tauri::command]
-pub fn bot_pause(st: State<'_, AppState>) {
+pub async fn bot_pause(st: State<'_, AppState>) -> Result<(), String> {
     let bot = Arc::clone(&st.bot);
-    std::thread::spawn(move || bot.pause());
+    tauri::async_runtime::spawn_blocking(move || bot.pause()).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn bot_stop(st: State<'_, AppState>) {
+pub async fn bot_stop(st: State<'_, AppState>) -> Result<(), String> {
     let bot = Arc::clone(&st.bot);
-    std::thread::spawn(move || bot.stop());
+    tauri::async_runtime::spawn_blocking(move || bot.stop()).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
