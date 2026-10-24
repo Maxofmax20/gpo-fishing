@@ -106,6 +106,11 @@ impl Bot {
                 self.finalize_ml_session("update checkpoint");
             }
             self.ctx.store.save_stats(&self.ctx.session.lock().lifetime()).map_err(|e| e.to_string())?;
+            if !self.ctx.webhook.flush_pending(std::time::Duration::from_secs(15), || {
+                self.ctx.store.update_gate.lock().ready(&id).is_ok()
+            }) {
+                return Err("Update postponed: notification delivery is still pending or the update was cancelled".into());
+            }
             self.ctx.store.commit_update_resume(&id)?;
             self.ctx.emit_stats();
             Ok(())
@@ -537,6 +542,23 @@ mod lifecycle_tests {
         bot.cancel_update(&id).unwrap();
         assert!(!bot.is_running(),"Stop revokes any failure auto-resume");
         assert!(!bot.ctx.store.take_update_resume("99.0.0"));
+        let _=std::fs::remove_dir_all(bot.ctx.store.dir());
+    }
+    #[test]
+    fn failed_installation_can_resume_the_same_running_session() {
+        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
+        let bot=bot("update-failed-resume");
+        bot.ctx.running.store(true,Ordering::SeqCst);
+        bot.ctx.session.lock().fish=7;
+        let worker=Arc::clone(&bot);
+        let handle=std::thread::spawn(move || worker.prepare_update("99.0.0"));
+        wait_pending(&bot);
+        bot.ctx.store.update_boundary_reached();
+        let id=handle.join().unwrap().unwrap();
+        bot.cancel_update(&id).unwrap();
+        assert!(bot.is_running());
+        assert_eq!(bot.ctx.session.lock().fish,7);
+        bot.stop();
         let _=std::fs::remove_dir_all(bot.ctx.store.dir());
     }
     #[test]
