@@ -925,9 +925,9 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
 /// Called only after a fruit catch is confirmed, before any storage input.
 /// The configured catch-banner crop can omit the separate Legendary Pity line.
 fn read_fruit_pity(ctx: &Ctx, catch_text: &str, recorded: Option<&str>) -> Option<crate::core::pity_evidence::PityEvidence> {
-    // Preserve the existing structured nonzero catch reading. A regular fruit
-    // pity counter elsewhere on screen must not turn it into legendary zero.
-    if let Some(evidence) = crate::core::pity_evidence::recorded_nonzero(recorded) { return Some(evidence); }
+    // Preserve existing structured catch evidence, including protected zero.
+    // A later screen read cannot downgrade zero or replace known nonzero.
+    if let Some(evidence) = crate::core::pity_evidence::recorded(recorded) { return Some(evidence); }
     if let Some(evidence) = crate::core::pity_evidence::parse(catch_text) { return Some(evidence); }
     let deadline = Instant::now() + Duration::from_millis(700);
     for read in 0..2 {
@@ -937,6 +937,7 @@ fn read_fruit_pity(ctx: &Ctx, catch_text: &str, recorded: Option<&str>) -> Optio
             let Some(remaining) = deadline.checked_duration_since(Instant::now()) else { break; };
             let timeout = remaining.min(Duration::from_millis(250));
             if let Ok(text) = ctx.platform.ocr.read_with_timeout(&frame, timeout) {
+                if !ctx.alive() || !ctx.roblox_in_front() { break; }
                 if let Some(evidence) = crate::core::pity_evidence::parse(&text) { return Some(evidence); }
             }
         }
@@ -1230,6 +1231,8 @@ mod tests {
             assert!(ocr.budgets.lock().len() <= 2);
             assert!(ocr.budgets.lock().iter().all(|budget| *budget <= Duration::from_millis(250)));
             let previous_reads = ocr.budgets.lock().len();
+            assert_eq!(read_fruit_pity(&ctx, "Pity unreadable", Some("0/40")).unwrap().current, 0);
+
             assert_eq!(read_fruit_pity(&ctx, "Pity unreadable", Some("17/40")).unwrap().current, 17);
             assert_eq!(ocr.budgets.lock().len(), previous_reads, "known nonzero must not be overwritten by an unrelated screen zero");
         }
