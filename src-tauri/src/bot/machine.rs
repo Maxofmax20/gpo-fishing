@@ -1296,13 +1296,26 @@ mod tests {
     }
 
     #[test]
-    fn catch_verification_waits_for_the_configured_gap() {
-        // Raw + enhanced OCR share frame one; frame two must still wait for the gap.
+    fn catch_verification_caps_the_configured_gap() {
+        // Oversized user gaps must not stall the recast loop.
         let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["noise".into(), "noise".into(), "Nev Item Shark".into()]);
         ctx.settings.write().ocr.post_catch_read_gap_ms = 70;
         let started = Instant::now();
         assert_eq!(verify_catch(&ctx).0, fruit::CatchVerdict::Caught);
-        assert!(started.elapsed() >= Duration::from_millis(70));
+        assert!(started.elapsed() >= Duration::from_millis(25));
+        assert!(started.elapsed() < Duration::from_millis(400));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn absent_catch_banner_is_nonblocking_and_does_not_invent_a_catch() {
+        let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["".into(); 8]);
+        ctx.settings.write().ocr.post_catch_reads = 100;
+        ctx.settings.write().ocr.post_catch_read_gap_ms = 10_000;
+        let started = Instant::now();
+        assert_eq!(verify_catch(&ctx).0, fruit::CatchVerdict::Unknown);
+        assert!(started.elapsed() < Duration::from_millis(400));
+        assert_eq!(ctx.session.lock().fish, 0);
         let _ = std::fs::remove_dir_all(dir);
     }
 
