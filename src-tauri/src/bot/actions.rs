@@ -734,7 +734,16 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
         StorageOutcome::Failed("Store button point is not configured".into())
     } else {
         let mut io = LocalStorageIo { ctx, settings: &s, last_text: String::new(), drop_sent: false };
-        run_storage(&mut io, catch)
+        let result = run_storage(&mut io, catch);
+        if result == StorageOutcome::Unknown && s.fruit_storage.continue_on_unconfirmed && io.drop_sent {
+            ctx.log_info("Fruit outcome unconfirmed; rechecking without sending another drop");
+            match io.observe(5000, true) {
+                Ok(Some(crate::core::fruit::StorageBannerResult::Dropped { .. }
+                    | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. })) => StorageOutcome::Dropped,
+                Ok(_) => StorageOutcome::Unknown,
+                Err(()) => StorageOutcome::Cancelled,
+            }
+        } else { result }
     };
     event.confirmation_state = match &outcome {
         StorageOutcome::Stored | StorageOutcome::ProtectedKept | StorageOutcome::Dropped => ConfirmationState::Confirmed,
@@ -746,7 +755,7 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
     event.final_outcome = Some(match &outcome {
         StorageOutcome::Stored => "stored", StorageOutcome::ProtectedKept => "protected_kept",
         StorageOutcome::Dropped => "dropped_confirmed", StorageOutcome::Failed(_) => "store_failed",
-        StorageOutcome::Unknown => "unknown_halted", StorageOutcome::Cancelled => "cancelled",
+        StorageOutcome::Unknown => "unconfirmed", StorageOutcome::Cancelled => "cancelled",
     }.into());
     let _ = crate::core::workflow::append_action_event(ctx.store.dir(), &event);
     ctx.log_info(&format!("{}: {}", catch.name, outcome.detail()));
@@ -1159,7 +1168,7 @@ mod storage_replay_tests {
     #[test] fn unconfirmed_drop_has_terminal_unknown() {
         let h = harness(&["You can only store one of each fruit!"]);
         assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "test-unknown"), StorageOutcome::Unknown);
-        assert_eq!(drops(&h), 1); terminal(&h, "unknown_halted");
+        assert_eq!(drops(&h), 1); terminal(&h, "unconfirmed");
     }
     #[test] fn focus_loss_never_sends_storage_inputs() {
         let h = harness(&[]); h.window.info.lock().as_mut().unwrap().is_foreground = false;

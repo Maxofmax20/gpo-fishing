@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useUpdater } from "../lib/updater";
 import { api } from "../lib/ipc";
 import { showToast, useStore } from "../lib/store";
+import PageBoundary from "../components/PageBoundary";
 import Toasts from "../components/Toasts";
 import { cx, Dot } from "../components/primitives";
 import { ConnectGate } from "../components/ConnectGate";
@@ -16,7 +17,7 @@ const Macros = lazy(() => import("../pages/Macros"));
 const VpnPage = lazy(() => import("../pages/VpnPage"));
 const MultiRobloxPage = lazy(() => import("../pages/MultiRobloxPage"));
 const TrainingCenter = lazy(() => import("../pages/TrainingCenter"));
-import { BookOpen, Download, Film, Gauge, Globe, GraduationCap, Layers, ListChecks, Minus, Settings2, Shield, SlidersHorizontal, X } from "lucide-react";
+import { BookOpen, Download, Film, Gauge, Globe, GraduationCap, Layers, ListChecks, Minus, Settings2, Shield, SlidersHorizontal, Wrench, X } from "lucide-react";
 
 type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "vpn" | "multi" | "training" | "settings";
 
@@ -39,6 +40,7 @@ export default function Panel() {
   const roblox = useStore((s) => s.roblox);
   const version = useStore((s) => s.version);
   const [tab, setTab] = useState<Tab>("dashboard");
+  const [advanced, setAdvanced] = useState(false);
   const [skipGate, setSkipGate] = useState(false);
   useEffect(() => {
     init().finally(() => api.panelShow());
@@ -88,26 +90,31 @@ export default function Panel() {
     };
   }, []);
 
-  const gated = ready && !roblox && !skipGate && tab !== "vpn" && tab !== "multi";
+  const gated = ready && !roblox && !skipGate && !["settings", "journal", "training", "vpn", "multi", "macros"].includes(tab);
 
   return (
     <div className="h-full w-full bg-bg-glass">
       <div className="h-full w-full flex overflow-hidden">
-        <nav className="w-14 shrink-0 flex flex-col items-center py-3 border-r border-line bg-black/20">
+        <nav className="w-14 shrink-0 flex flex-col items-center py-3 overflow-y-auto border-r border-line bg-black/20">
           <img src={logo} alt="" draggable={false} className="w-9 h-9 rounded-xl mb-4 drag shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
-          {TABS.map((t) => (
+          {TABS.filter((t) => advanced || !["macros", "vpn", "multi", "training"].includes(t.id)).map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
               title={t.label} aria-label={t.label} aria-current={tab === t.id ? "page" : undefined}
               className={cx(
-                "w-10 h-10 rounded-xl grid place-items-center mb-1 transition-colors",
+                "w-10 h-10 shrink-0 rounded-xl grid place-items-center mb-1 transition-colors",
                 tab === t.id ? "bg-white/[0.1] text-fg" : "text-fg-mute hover:text-fg hover:bg-white/[0.05]",
               )}
             >
               {t.icon}
             </button>
           ))}
+          <button aria-label="Advanced tools" aria-expanded={advanced} title="Advanced tools: recorder, VPN, Multi Roblox and training"
+            onClick={() => { if (advanced && ["macros", "vpn", "multi", "training"].includes(tab)) setTab("dashboard"); setAdvanced(!advanced); }}
+            className={cx("w-10 h-10 rounded-xl grid place-items-center mt-2 shrink-0", advanced ? "bg-accent-soft text-accent" : "text-fg-mute hover:bg-white/[0.05]")}>
+            <Wrench size={17} />
+          </button>
           <div className="mt-auto flex flex-col items-center gap-1.5 text-[10px] text-fg-mute">
             <Dot tone={roblox ? (roblox.is_foreground ? "ok" : "accent") : "mute"} />
             <span className="font-mono">{version}</span>
@@ -170,8 +177,9 @@ export default function Panel() {
             {!ready && <Booting error={error} />}
             {gated && <ConnectGate onSkip={() => setSkipGate(true)} />}
             {ready && !gated && (
+              <PageBoundary key={tab}>
               <Suspense fallback={<div role="status" className="p-4 text-fg-mute">Loading page…</div>}>
-                {tab === "dashboard" && <Dashboard onNavigate={setTab} />}
+                {tab === "dashboard" && <Dashboard onNavigate={(next) => { if (["macros", "vpn", "multi", "training"].includes(next)) setAdvanced(true); setTab(next); }} />}
                 {tab === "journal" && <Journal />}
                 {tab === "setup" && <Setup />}
                 {tab === "features" && <Features />}
@@ -181,6 +189,7 @@ export default function Panel() {
                 {tab === "training" && <TrainingCenter />}
                 {tab === "settings" && <SettingsPage />}
               </Suspense>
+              </PageBoundary>
             )}
             <Toasts />
           </main>

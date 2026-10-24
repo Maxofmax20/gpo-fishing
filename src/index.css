@@ -1,16 +1,16 @@
 @import "tailwindcss";
 
 @theme {
-  --color-bg: #0b0d12;
-  --color-bg-elev: #12151c;
-  --color-bg-glass: #12151c;
+  --color-bg: #08090b;
+  --color-bg-elev: #111114;
+  --color-bg-glass: #111114;
   --color-line: rgba(255, 255, 255, 0.07);
   --color-line-strong: rgba(255, 255, 255, 0.14);
   --color-fg: #e8eaf0;
   --color-fg-dim: #9aa1b2;
   --color-fg-mute: #929bad;
-  --color-accent: #4f8cff;
-  --color-accent-soft: rgba(79, 140, 255, 0.16);
+  --color-accent: #fb5b68;
+  --color-accent-soft: rgba(251, 91, 104, 0.16);
   --color-ok: #22c55e;
   --color-ok-soft: rgba(34, 197, 94, 0.16);
   --color-warn: #f59e0b;
@@ -64,7 +64,7 @@ html[data-view="panel"] #root {
 }
 
 html[data-view="panel"] {
-  --color-bg-glass: rgba(18, 21, 28, 0.86);
+  --color-bg-glass: rgba(17, 17, 20, 0.86);
 }
 
 .drag {

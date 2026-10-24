@@ -1021,9 +1021,12 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         }
         if s.features.fruit_storage {
             let outcome = actions::store_fruit(ctx, &catch, &workflow_id);
-            if !outcome.may_continue() || (is_protected && outcome == crate::core::fruit_storage::StorageOutcome::Dropped) {
+            if !outcome.may_resume(s.fruit_storage.continue_on_unconfirmed, is_protected) || (is_protected && outcome == crate::core::fruit_storage::StorageOutcome::Dropped) {
                 if ctx.alive() { ctx.set_state(BotState::Paused, Some(format!("{}: {}", fruit_name, outcome.detail()))); }
                 return false;
+            }
+            if outcome == crate::core::fruit_storage::StorageOutcome::Unknown {
+                ctx.log_warn("Continuing by recovery preference; previous fruit outcome remains unconfirmed");
             }
             if s.fruit_storage.pause_on_protected_fruit && is_protected {
                 ctx.set_state(BotState::Paused, Some(format!("Protected {fruit_name}: {}", outcome.detail())));

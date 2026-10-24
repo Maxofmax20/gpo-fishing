@@ -53,6 +53,9 @@ impl StorageOutcome {
             _ => self.label().into(),
         }
     }
+    pub fn may_resume(&self, allow_unconfirmed: bool, protected: bool) -> bool {
+        self.may_continue() || (allow_unconfirmed && !protected && *self == Self::Unknown)
+    }
     pub fn may_continue(&self) -> bool {
         matches!(self, Self::Stored | Self::Dropped)
     }
@@ -252,5 +255,19 @@ mod tests {
             StorageOutcome::Failed("OCR unavailable".into())
         );
         assert_eq!(f.drops, 0);
+    }
+}
+
+#[cfg(test)]
+mod recovery_policy_tests {
+    use super::StorageOutcome;
+    #[test]
+    fn uncertain_resume_is_explicit_and_never_overrides_protection_or_cancellation() {
+        assert!(!StorageOutcome::Unknown.may_resume(false, false));
+        assert!(StorageOutcome::Unknown.may_resume(true, false));
+        assert!(!StorageOutcome::Unknown.may_resume(true, true));
+        assert!(!StorageOutcome::Cancelled.may_resume(true, false));
+        assert!(!StorageOutcome::Failed("missing setup".into()).may_resume(true, false));
+        assert!(StorageOutcome::Dropped.may_resume(false, false));
     }
 }

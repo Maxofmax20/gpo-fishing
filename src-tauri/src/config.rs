@@ -238,6 +238,8 @@ pub struct FruitStorage {
     pub click_settle_ms: u32,
     pub dialog_wait_ms: u32,
     pub after_drop_ms: u32,
+    /// Resume after read-only rechecks; never repeats a drop or reports success.
+    pub continue_on_unconfirmed: bool,
     pub never_drop_legendary_or_mythical: bool,
     pub pause_on_protected_fruit: bool,
     pub keep_pity_zero_fruit: bool,
@@ -252,6 +254,7 @@ impl Default for FruitStorage {
             click_settle_ms: 180,
             dialog_wait_ms: 250,
             after_drop_ms: 350,
+            continue_on_unconfirmed: false,
             never_drop_legendary_or_mythical: true,
             pause_on_protected_fruit: false,
             keep_pity_zero_fruit: true,

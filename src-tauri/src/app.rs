@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::{Mutex, RwLock};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -48,7 +48,7 @@ pub fn build_state() -> AppState {
     let settings = Arc::new(RwLock::new(store.load()));
     let platform = platform::build();
     let roblox = Arc::new(RwLock::new(platform.window.find()));
-    let (tx, rx) = unbounded::<BotEvent>();
+    let (tx, rx) = bounded::<BotEvent>(1024);
     let webhook = WebhookQueue::start(Arc::clone(&settings), tx.clone());
     let vpn = crate::vpn::VpnManager::new();
     let multi_roblox = Arc::new(crate::multi_roblox::MultiRobloxManager::new(dir.clone()));
@@ -211,8 +211,20 @@ fn spawn_event_forwarder(app: AppHandle, rx: Receiver<BotEvent>) {
     std::thread::Builder::new()
         .name("event-forwarder".into())
         .spawn(move || {
+            let mut last_reading = std::time::Instant::now() - Duration::from_secs(1);
             for ev in rx.iter() {
-                let _ = app.emit(ev.channel(), &ev);
+                if let BotEvent::Reading(reading) = &ev {
+                    if reading.is_some() && last_reading.elapsed() < Duration::from_millis(66) { continue; }
+                    last_reading = std::time::Instant::now();
+                    for window in app.webview_windows().values() {
+                        if window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false) {
+                            let _ = app.emit_to(window.label(), ev.channel(), &ev);
+                        }
+                    }
+                } else {
+                    // Ordered state/results still reach hidden windows so reopening is consistent.
+                    let _ = app.emit(ev.channel(), &ev);
+                }
                 match &ev {
                     BotEvent::State { state, .. } => tray::update(&app, *state),
                     BotEvent::Roblox(info) => windows::on_roblox_changed(&app, *info),

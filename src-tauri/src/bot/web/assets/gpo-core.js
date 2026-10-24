@@ -50,6 +50,7 @@ async function gpoPost(path, body) {
   try {
     r = await fetch(withToken(path), {
       method: 'POST',
+      signal: AbortSignal.timeout(15000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
     });
@@ -58,16 +59,20 @@ async function gpoPost(path, body) {
     throw new Error('backend unreachable');
   }
   let j = {};
-  try { j = await r.json(); } catch (e) { /* non-JSON */ }
+  try { j = await r.json(); } catch (e) { throw new Error('bad backend response'); }
   if (!r.ok || j.ok === false) throw new Error((j && j.message) || ('HTTP ' + r.status));
   if (typeof gpoNoteOnline === 'function') gpoNoteOnline(true);
   return j;
 }
 
+const _gpoActions = new Map();
 function gpoAction(action, extra) {
-  const b = extra || {};
-  b.action = action;
-  return gpoPost('/api/action', b);
+  const b = Object.assign({}, extra || {}, { action });
+  const key = JSON.stringify(b);
+  if (_gpoActions.has(key)) return _gpoActions.get(key);
+  const pending = gpoPost('/api/action', b).finally(() => _gpoActions.delete(key));
+  _gpoActions.set(key, pending);
+  return pending;
 }
 
 // Bottom nav: keep the token across tab switches.

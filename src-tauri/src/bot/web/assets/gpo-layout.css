@@ -1,15 +1,15 @@
 /* Shared layout for all five remote dashboard pages. */
 html { color-scheme: dark; }
 body { min-height: 100dvh; }
-body > header[class] { position: sticky; top: 0; background: #0f131d; }
+body > header[class] { position: sticky; top: 0; background: #09090b; }
 body > main[class] { padding-top: 0; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); min-height: 0; flex: 1; }
 body > main > div:first-child { max-width: 1120px; margin-inline: auto; }
-body > nav[class] { background: #0f131d; }
+body > nav[class] { background: #09090b; }
 body > nav > div { max-width: 1120px; margin-inline: auto; }
 button, a, input, select { touch-action: manipulation; }
 button:disabled { opacity: .5; cursor: not-allowed; }
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-  outline: 2px solid #4cd7f6; outline-offset: 3px;
+  outline: 2px solid #ff7781; outline-offset: 3px;
 }
 body .text-label-sm { font-size: 11px; line-height: 16px; }
 #gpo-offline-banner {
@@ -28,3 +28,11 @@ body .text-label-sm { font-size: 11px; line-height: 16px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Keep dense controls usable at phone widths and large text sizes. */
+body { overflow-wrap: anywhere; }
+main, section, article { min-width: 0; }
+input, select, textarea { max-width: 100%; }
+button, a { -webkit-tap-highlight-color: transparent; }
+body .text-label-sm { font-size: 12px; line-height: 18px; }
+@media (max-width: 400px) { main .grid-cols-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
