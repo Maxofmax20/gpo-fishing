@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use crate::bot::ctx::Ctx;
 use crate::config::Store;
 use crate::core::types::{Key, MouseButton, PxPoint, WindowInfo};
-use crate::core::platform::playback_guard::{acquire_playback_focus, StopKeyEdges};
 
 static IS_RECORDING: AtomicBool = AtomicBool::new(false);
 static IS_PLAYING: AtomicBool = AtomicBool::new(false);
@@ -296,15 +295,9 @@ pub fn toggle_recording() -> Result<bool, String> {
 }
 
 pub fn start_recording(mode: RecordMode) -> Result<(), String> {
-    let update_store = STORE_REF.read().clone();
-    let update_gate = update_store.as_ref().map(|store| store.update_gate.lock());
-    if update_gate.as_ref().is_some_and(|gate| gate.pending()) {
-        return Err("Recording is unavailable while a signed update is pending".into());
-    }
     if IS_RECORDING.swap(true, Ordering::SeqCst) {
         return Err("Already recording a macro".into());
     }
-    drop(update_gate);
     let now = Instant::now();
     *ACTIVE_RECORDING.write() = Some(ActiveRecording {
         _mode: mode,
@@ -698,15 +691,16 @@ pub fn play_macro(
     speed: Option<f32>,
     max_loops: Option<u32>,
 ) -> Result<(), String> {
-    if speed.is_some_and(|value| !value.is_finite() || !(0.1..=100.0).contains(&value)) {
-        return Err("Playback speed must be between 0.1 and 100".into());
+    if IS_PLAYING.swap(true, Ordering::SeqCst) {
+        return Err("A macro is already playing".into());
     }
-    let update_gate = store.update_gate.lock();
-    if update_gate.pending() {
-        return Err("Playback is unavailable while a signed update is pending".into());
-    }
-    let target = claim_playback(load_macros(&store), name_or_id, &IS_PLAYING)?;
-    drop(update_gate);
+
+    let list = load_macros(&store);
+    let target = list
+        .into_iter()
+        .find(|m| m.id == name_or_id || m.name.eq_ignore_ascii_case(name_or_id))
+        .ok_or_else(|| format!("Macro '{name_or_id}' not found"))?;
+
     let sp = speed.unwrap_or(1.0).clamp(0.1, 100.0);
     let target_loops = if loop_mode {
         max_loops.unwrap_or(0)
@@ -732,29 +726,7 @@ pub fn play_macro(
         };
     }
 
-    let mut stop_keys = StopKeyEdges::new(playback_stop_keys());
     std::thread::spawn(move || {
-        // Play is explicit consent for the initial app-to-game handoff. Later
-        // input checks never steal focus and do not depend on fishing.running.
-        let has_game_input = target.steps.iter().any(|step| matches!(step,
-            MacroStep::Click { .. } | MacroStep::Drag { .. } | MacroStep::KeyTap { .. }
-            | MacroStep::KeyHold { .. } | MacroStep::MouseMove { .. }));
-        if has_game_input {
-            match acquire_playback_focus(ctx.platform.window.as_ref(), &STOP_PLAYBACK_REQUESTED, Duration::from_millis(750)) {
-                Ok(info) => { *ctx.roblox.write() = Some(info); }
-                Err(reason) => {
-                    let mut status = STATUS.write();
-                    status.is_playing = false;
-                    status.playing_macro_name = None;
-                    status.is_looping = false;
-                    status.message = format!("Macro stopped: {reason}");
-                    drop(status);
-                    ctx.log_error(&format!("Macro playback could not start: {reason}"));
-                    IS_PLAYING.store(false, Ordering::SeqCst);
-                    return;
-                }
-            }
-        }
         let mut loop_count = 1u32;
         let mut completed_all = false;
         ctx.log_info(&format!(
@@ -789,11 +761,11 @@ pub fn play_macro(
                 match step {
                     MacroStep::Click { rx, ry, button, delay_ms } => {
                         let scaled_delay = ((*delay_ms as f32) / sp).round() as u64;
-                        if scaled_delay > 0 && !sleep_responsive(scaled_delay, &mut stop_keys) {
+                        if scaled_delay > 0 && !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
-                        if !playback_input_ready(&ctx) { finished_steps = false; break; }
+                        if !ctx.ensure_roblox_focus() { finished_steps = false; break; }
                         if let Some(rect) = ctx.roblox_rect() {
                             let px = rect.x + (rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
                             let py = rect.y + (ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
@@ -820,11 +792,11 @@ pub fn play_macro(
                     MacroStep::Drag { start_rx, start_ry, end_rx, end_ry, duration_ms, delay_ms } => {
                         let scaled_delay = ((*delay_ms as f32) / sp).round() as u64;
                         let scaled_duration = if sp >= 50.0 { 4 } else if sp >= 10.0 { 12 } else { ((*duration_ms as f32) / sp).round().max(20.0) as u64 };
-                        if scaled_delay > 0 && !sleep_responsive(scaled_delay, &mut stop_keys) {
+                        if scaled_delay > 0 && !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
-                        if !playback_input_ready(&ctx) { finished_steps = false; break; }
+                        if !ctx.ensure_roblox_focus() { finished_steps = false; break; }
                         if let Some(rect) = ctx.roblox_rect() {
                             let start_px = rect.x + (start_rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
                             let start_py = rect.y + (start_ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
@@ -870,11 +842,11 @@ pub fn play_macro(
                     }
                     MacroStep::KeyTap { key, delay_ms } => {
                         let scaled_delay = ((*delay_ms as f32) / sp).round() as u64;
-                        if scaled_delay > 0 && !sleep_responsive(scaled_delay, &mut stop_keys) {
+                        if scaled_delay > 0 && !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
-                        if !playback_input_ready(&ctx) { finished_steps = false; break; }
+                        if !ctx.ensure_roblox_focus() { finished_steps = false; break; }
                         if let Some(k) = parse_key(key) {
                             ctx.platform.input.key(k, true);
                             let tap_dur = if sp >= 50.0 { 1 } else if sp >= 10.0 { 3 } else { (50.0 / sp).round().max(5.0) as u64 };
@@ -885,14 +857,14 @@ pub fn play_macro(
                     MacroStep::KeyHold { key, duration_ms, delay_ms } => {
                         let scaled_delay = ((*delay_ms as f32) / sp).round() as u64;
                         let scaled_duration = if sp >= 50.0 { ((*duration_ms as f32) / sp).round().max(1.0) as u64 } else { ((*duration_ms as f32) / sp).round().max(4.0) as u64 };
-                        if scaled_delay > 0 && !sleep_responsive(scaled_delay, &mut stop_keys) {
+                        if scaled_delay > 0 && !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
-                        if !playback_input_ready(&ctx) { finished_steps = false; break; }
+                        if !ctx.ensure_roblox_focus() { finished_steps = false; break; }
                         if let Some(k) = parse_key(key) {
                             ctx.platform.input.key(k, true);
-                            if scaled_duration > 0 && !sleep_responsive(scaled_duration, &mut stop_keys) {
+                            if scaled_duration > 0 && !sleep_responsive(scaled_duration) {
                                 ctx.platform.input.key(k, false);
                                 finished_steps = false;
                                 break;
@@ -902,11 +874,11 @@ pub fn play_macro(
                     }
                     MacroStep::MouseMove { rx, ry, delay_ms } => {
                         let scaled_delay = ((*delay_ms as f32) / sp).round() as u64;
-                        if scaled_delay > 0 && !sleep_responsive(scaled_delay, &mut stop_keys) {
+                        if scaled_delay > 0 && !sleep_responsive(scaled_delay) {
                             finished_steps = false;
                             break;
                         }
-                        if !playback_input_ready(&ctx) { finished_steps = false; break; }
+                        if !ctx.ensure_roblox_focus() { finished_steps = false; break; }
                         if let Some(rect) = ctx.roblox_rect() {
                             let px = rect.x + (rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
                             let py = rect.y + (ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
@@ -915,7 +887,7 @@ pub fn play_macro(
                     }
                     MacroStep::Sleep { ms } => {
                         let scaled_ms = ((*ms as f32) / sp).round() as u64;
-                        if scaled_ms > 0 && !sleep_responsive(scaled_ms, &mut stop_keys) {
+                        if scaled_ms > 0 && !sleep_responsive(scaled_ms) {
                             finished_steps = false;
                             break;
                         }
@@ -953,11 +925,12 @@ pub fn play_macro(
 
             loop_count += 1;
             let loop_delay = if sp >= 50.0 { 1 } else if sp >= 10.0 { 4 } else { (250.0 / sp).round().max(10.0) as u64 };
-            if loop_delay > 0 && !sleep_responsive(loop_delay, &mut stop_keys) {
+            if loop_delay > 0 && !sleep_responsive(loop_delay) {
                 break;
             }
         }
 
+        IS_PLAYING.store(false, Ordering::SeqCst);
         if completed_all {
             let mut st = STATUS.write();
             st.is_playing = false;
@@ -977,8 +950,6 @@ pub fn play_macro(
             }
             ctx.log_info(&format!("📼 Macro '{}' stopped before completion.", target.name));
         }
-        // Publish terminal status before another Play can claim the recorder.
-        IS_PLAYING.store(false, Ordering::SeqCst);
     });
 
     Ok(())
@@ -1008,46 +979,23 @@ fn parse_key(key_str: &str) -> Option<Key> {
     }
 }
 
-fn claim_playback(list: Vec<CustomMacro>, name_or_id: &str, playing: &AtomicBool) -> Result<CustomMacro, String> {
-    let target = list.into_iter().find(|m| m.id == name_or_id || m.name.eq_ignore_ascii_case(name_or_id))
-        .ok_or_else(|| format!("Macro '{name_or_id}' not found"))?;
-    if playing.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-        return Err("A macro is already playing".into());
-    }
-    Ok(target)
-}
-
-fn playback_input_ready(ctx: &Ctx) -> bool {
-    if STOP_PLAYBACK_REQUESTED.load(Ordering::SeqCst) { return false; }
-    if let Some(info) = ctx.platform.window.find().filter(|info| info.visible && info.is_foreground) {
-        *ctx.roblox.write() = Some(info);
-        return true;
-    }
-    ctx.platform.input.release_all();
-    STATUS.write().message = "Macro stopped: Roblox lost focus".into();
-    false
-}
-
-fn playback_stop_keys() -> [bool; 2] {
-    #[cfg(windows)]
-    {
-        use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
-        [0x77, 0x78].map(|key| (unsafe { GetAsyncKeyState(key) } as u16 & 0x8000) != 0)
-    }
-    #[cfg(not(windows))]
-    { [false, false] }
-}
-
-fn sleep_responsive(ms: u64, stop_keys: &mut StopKeyEdges) -> bool {
+fn sleep_responsive(ms: u64) -> bool {
     let step = 25;
     let mut elapsed = 0;
     while elapsed < ms {
         if STOP_PLAYBACK_REQUESTED.load(Ordering::SeqCst) {
             return false;
         }
-        if stop_keys.pressed(playback_stop_keys()) {
-            STOP_PLAYBACK_REQUESTED.store(true, Ordering::SeqCst);
-            return false;
+        #[cfg(windows)]
+        {
+            use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+            // Hotkey F8 (0x77) or F9 (0x78) halts macro playback directly from laptop keyboard
+            let f8 = (unsafe { GetAsyncKeyState(0x77) } as u16 & 0x8000) != 0;
+            let f9 = (unsafe { GetAsyncKeyState(0x78) } as u16 & 0x8000) != 0;
+            if f8 || f9 {
+                STOP_PLAYBACK_REQUESTED.store(true, Ordering::SeqCst);
+                return false;
+            }
         }
         std::thread::sleep(Duration::from_millis(step.min(ms - elapsed)));
         elapsed += step;
@@ -1059,60 +1007,6 @@ fn sleep_responsive(ms: u64, stop_keys: &mut StopKeyEdges) -> bool {
 mod tests {
     use super::*;
     use crate::vpn::{VpnState, VpnStatus};
-
-    #[test]
-    fn missing_macro_does_not_latch_playback_active() {
-        let playing = AtomicBool::new(false);
-        assert!(claim_playback(vec![], "missing", &playing).is_err());
-        assert!(!playing.load(Ordering::SeqCst));
-        let saved = CustomMacro { id: "saved-id".into(), name: "Saved".into(), created_at: String::new(), steps: vec![MacroStep::Sleep { ms: 1 }] };
-        assert!(claim_playback(vec![saved.clone()], "saved-id", &playing).is_ok());
-        assert!(playing.load(Ordering::SeqCst));
-        assert!(claim_playback(vec![saved], "Saved", &playing).is_err());
-    }
-
-    #[test]
-    fn playback_from_the_app_works_while_fishing_is_stopped() {
-        let _guard = crate::bot::WORKFLOW_TEST_LOCK.lock();
-        use crate::core::platform::{GameWindow, Platform};
-        use crate::core::platform::mock::{InputEvent, NoOcr, RecordingInput, ScriptedCapture};
-        use crate::core::types::PxRect;
-        struct PlaybackWindow(parking_lot::Mutex<WindowInfo>);
-        impl GameWindow for PlaybackWindow {
-            fn find(&self) -> Option<WindowInfo> { Some(*self.0.lock()) }
-            fn focus(&self) -> bool { self.0.lock().is_foreground = true; true }
-        }
-        let window = Arc::new(PlaybackWindow(parking_lot::Mutex::new(WindowInfo {
-            client: PxRect { x: 0, y: 0, w: 800, h: 600 },
-            visible: true, is_foreground: false, dpi: 96,
-        })));
-        let input = Arc::new(RecordingInput::default());
-        let dir = std::env::temp_dir().join(format!("gpo-recorder-playback-{}-{}", std::process::id(), crate::events::now_ms()));
-        fs::create_dir_all(&dir).unwrap();
-        let store = Arc::new(Store::new(dir.clone()));
-        let saved = CustomMacro { id: "playback-test".into(), name: "Playback test".into(), created_at: String::new(), steps: vec![
-            MacroStep::Click { rx: 0.5, ry: 0.5, button: "left".into(), delay_ms: 0 },
-            MacroStep::KeyTap { key: "e".into(), delay_ms: 0 },
-        ] };
-        save_macros(&store, &[saved]).unwrap();
-        let (events, _receiver) = crossbeam_channel::unbounded();
-        let ctx = Arc::new(Ctx::new(Platform {
-            window, input: input.clone(), capture: Arc::new(ScriptedCapture::default()), ocr: Arc::new(NoOcr),
-        }, Arc::new(RwLock::new(crate::config::Settings::default())), Arc::new(RwLock::new(None)),
-            events, Arc::new(crate::webhook::WebhookQueue::disabled()), store.clone()));
-        assert!(!ctx.alive());
-        play_macro(ctx.clone(), store, "playback-test", false, Some(100.0), None).unwrap();
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while is_playing() && Instant::now() < deadline { std::thread::sleep(Duration::from_millis(5)); }
-        assert!(!is_playing(), "playback did not finish");
-        assert!(get_status().message.contains("finished"), "{}", get_status().message);
-        let inputs = input.events.lock();
-        assert!(inputs.contains(&InputEvent::Button(MouseButton::Left, true)));
-        assert!(inputs.contains(&InputEvent::Key(Key::Char('e'), true)));
-        assert!(!ctx.alive(), "recorded macro must not start fishing");
-        drop(inputs);
-        let _ = fs::remove_dir_all(dir);
-    }
 
     /// Scripted fake provider: scripted verification outcomes, real state
     /// tracking. Never touches the OS.

@@ -7,15 +7,12 @@ use windows::Win32::Graphics::Direct3D11::{
     D3D11_CREATE_DEVICE_FLAG, D3D11_MAPPED_SUBRESOURCE, D3D11_MAP_READ, D3D11_SDK_VERSION,
     D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
 };
-use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_MODE_ROTATION_IDENTITY, DXGI_SAMPLE_DESC,
-};
+use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_SAMPLE_DESC};
 use windows::Win32::Graphics::Dxgi::{
     CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1, IDXGIOutput1, IDXGIOutputDuplication,
     IDXGIResource, DXGI_ERROR_WAIT_TIMEOUT, DXGI_OUTDUPL_DESC, DXGI_OUTDUPL_FRAME_INFO,
 };
 
-use crate::core::platform::capture_bounds::{contained_offset, mapped_rows, CaptureLayout};
 use crate::core::platform::{Capture, PlatformError, Result};
 use crate::core::types::{Frame, PxRect};
 
@@ -41,10 +38,7 @@ pub struct DxgiCapture {
 
 impl DxgiCapture {
     pub fn new() -> Self {
-        Self {
-            session: Mutex::new(None),
-            fallback: GdiCapture::new(),
-        }
+        Self { session: Mutex::new(None), fallback: GdiCapture::new() }
     }
 
     fn open(rect: PxRect) -> std::result::Result<Session, String> {
@@ -58,18 +52,7 @@ impl DxgiCapture {
                     output_index += 1;
                     let Ok(desc) = output.GetDesc() else { continue };
                     let dc = desc.DesktopCoordinates;
-                    let (Some(output_w), Some(output_h)) =
-                        (dc.right.checked_sub(dc.left), dc.bottom.checked_sub(dc.top))
-                    else {
-                        continue;
-                    };
-                    if contained_offset(
-                        (rect.x, rect.y, rect.w, rect.h),
-                        (dc.left, dc.top),
-                        (output_w, output_h),
-                    )
-                    .is_none()
-                    {
+                    if rect.x < dc.left || rect.y < dc.top || rect.x >= dc.right || rect.y >= dc.bottom {
                         continue;
                     }
                     let base: IDXGIAdapter = adapter.cast().map_err(|e| e.to_string())?;
@@ -91,54 +74,27 @@ impl DxgiCapture {
                         return Err("D3D11CreateDevice returned nothing".into());
                     };
                     let output1: IDXGIOutput1 = output.cast().map_err(|e| e.to_string())?;
-                    let dup = output1
-                        .DuplicateOutput(&device)
-                        .map_err(|e| e.to_string())?;
+                    let dup = output1.DuplicateOutput(&device).map_err(|e| e.to_string())?;
                     let dd: DXGI_OUTDUPL_DESC = dup.GetDesc();
-                    // Rotated duplication surfaces use a different coordinate space.
-                    // Let GDI handle these until an explicit rotation transform exists.
-                    if dd.Rotation != DXGI_MODE_ROTATION_IDENTITY {
-                        return Err("rotated output requires GDI capture".into());
-                    }
-                    let w = i32::try_from(dd.ModeDesc.Width).map_err(|_| "DXGI width overflow")?;
-                    let h =
-                        i32::try_from(dd.ModeDesc.Height).map_err(|_| "DXGI height overflow")?;
-                    CaptureLayout::new(dc.left, dc.top, w, h)?;
-                    if contained_offset((rect.x, rect.y, rect.w, rect.h), (dc.left, dc.top), (w, h))
-                        .is_none()
-                    {
-                        return Err("capture rectangle crosses the duplication surface".into());
-                    }
+                    let (w, h) = (dd.ModeDesc.Width as i32, dd.ModeDesc.Height as i32);
                     let tex_desc = D3D11_TEXTURE2D_DESC {
                         Width: w as u32,
                         Height: h as u32,
                         MipLevels: 1,
                         ArraySize: 1,
                         Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                        SampleDesc: DXGI_SAMPLE_DESC {
-                            Count: 1,
-                            Quality: 0,
-                        },
+                        SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
                         Usage: D3D11_USAGE_STAGING,
                         BindFlags: 0,
                         CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
                         MiscFlags: 0,
                     };
                     let mut staging: Option<ID3D11Texture2D> = None;
-                    device
-                        .CreateTexture2D(&tex_desc, None, Some(&mut staging))
-                        .map_err(|e| e.to_string())?;
+                    device.CreateTexture2D(&tex_desc, None, Some(&mut staging)).map_err(|e| e.to_string())?;
                     let Some(staging) = staging else {
                         return Err("CreateTexture2D returned nothing".into());
                     };
-                    return Ok(Session {
-                        context,
-                        dup,
-                        staging,
-                        origin: (dc.left, dc.top),
-                        size: (w, h),
-                        has_frame: false,
-                    });
+                    return Ok(Session { context, dup, staging, origin: (dc.left, dc.top), size: (w, h), has_frame: false });
                 }
             }
             Err("no output contains the capture rect".into())
@@ -147,9 +103,15 @@ impl DxgiCapture {
 
     fn grab_dxgi(&self, rect: PxRect) -> std::result::Result<Frame, String> {
         let mut guard = self.session.lock();
-        let needs_open = guard.as_ref().map_or(true, |s| {
-            contained_offset((rect.x, rect.y, rect.w, rect.h), s.origin, s.size).is_none()
-        });
+        let needs_open = match guard.as_ref() {
+            Some(s) => {
+                rect.x < s.origin.0
+                    || rect.y < s.origin.1
+                    || rect.x + rect.w > s.origin.0 + s.size.0
+                    || rect.y + rect.h > s.origin.1 + s.size.1
+            }
+            None => true,
+        };
         if needs_open {
             *guard = Some(Self::open(rect)?);
         }
@@ -162,18 +124,9 @@ impl DxgiCapture {
     }
 
     unsafe fn read(s: &mut Session, rect: PxRect) -> std::result::Result<Frame, String> {
-        let layout = CaptureLayout::new(rect.x, rect.y, rect.w, rect.h)?;
-        let local = contained_offset((rect.x, rect.y, rect.w, rect.h), s.origin, s.size)
-            .ok_or("capture rectangle is outside the duplication surface")?;
-        // Allocate before mapping so allocation failure cannot leave the texture mapped.
-        let mut rgba = layout.allocate()?;
         let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
         let mut resource: Option<IDXGIResource> = None;
-        let timeout = if s.has_frame {
-            0
-        } else {
-            FIRST_FRAME_TIMEOUT_MS
-        };
+        let timeout = if s.has_frame { 0 } else { FIRST_FRAME_TIMEOUT_MS };
         match s.dup.AcquireNextFrame(timeout, &mut info, &mut resource) {
             Ok(()) => {
                 let copied = resource
@@ -193,35 +146,28 @@ impl DxgiCapture {
             Err(e) => return Err(e.to_string()),
         }
 
+        let lx = rect.x - s.origin.0;
+        let ly = rect.y - s.origin.1;
+        let w = rect.w as usize;
+        let h = rect.h as usize;
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-        s.context
-            .Map(&s.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
-            .map_err(|e| e.to_string())?;
-        // Always unmap, including invalid driver pitch/null-pointer error paths.
-        let copied = (|| -> std::result::Result<(), String> {
-            if mapped.pData.is_null() {
-                return Err("DXGI mapped a null pixel buffer".into());
+        s.context.Map(&s.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped)).map_err(|e| e.to_string())?;
+        let pitch = mapped.RowPitch as usize;
+        let base = mapped.pData as *const u8;
+        let mut rgba = vec![0u8; w * h * 4];
+        for row in 0..h {
+            let src = base.add((ly as usize + row) * pitch + lx as usize * 4);
+            let src_row = std::slice::from_raw_parts(src, w * 4);
+            let dst_row = &mut rgba[row * w * 4..(row + 1) * w * 4];
+            for (d, sp) in dst_row.chunks_exact_mut(4).zip(src_row.chunks_exact(4)) {
+                d[0] = sp[2];
+                d[1] = sp[1];
+                d[2] = sp[0];
+                d[3] = 255;
             }
-            let rows = mapped_rows(layout, local, s.size, mapped.RowPitch as usize)?;
-            let base = mapped.pData as *const u8;
-            for row in 0..rows.rows {
-                // mapped_rows has checked the final byte, texture bounds, pitch,
-                // and isize::MAX before any pointer/slice is constructed here.
-                let src = base.add(rows.first_byte + row * rows.pitch);
-                let src_row = std::slice::from_raw_parts(src, rows.row_bytes);
-                let dst_row = &mut rgba[row * rows.row_bytes..(row + 1) * rows.row_bytes];
-                for (d, sp) in dst_row.chunks_exact_mut(4).zip(src_row.chunks_exact(4)) {
-                    d[0] = sp[2];
-                    d[1] = sp[1];
-                    d[2] = sp[0];
-                    d[3] = 255;
-                }
-            }
-            Ok(())
-        })();
+        }
         s.context.Unmap(&s.staging, 0);
-        copied?;
-        Ok(Frame::new(layout.width, layout.height, rgba))
+        Ok(Frame::new(w, h, rgba))
     }
 }
 
@@ -233,8 +179,9 @@ impl Default for DxgiCapture {
 
 impl Capture for DxgiCapture {
     fn grab(&self, rect: PxRect) -> Result<Frame> {
-        CaptureLayout::new(rect.x, rect.y, rect.w, rect.h)
-            .map_err(|error| PlatformError::Capture(error.into()))?;
+        if rect.is_empty() {
+            return Err(PlatformError::Capture("empty rect".into()));
+        }
         match self.grab_dxgi(rect) {
             Ok(f) => Ok(f),
             Err(e) => {
@@ -244,3 +191,4 @@ impl Capture for DxgiCapture {
         }
     }
 }
+

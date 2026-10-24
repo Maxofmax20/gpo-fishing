@@ -43,35 +43,3 @@ body .text-label-sm { font-size: 12px; line-height: 18px; }
 
 /* Pulse the status dot, not readable status text. */
 #engine-status-text { animation: none; }
-
-.gpo-stop-button { width:100%; min-height:42px; margin-top:8px; border:1px solid #ff778166; border-radius:10px; background:#ff778110; color:#ffc0c6; font:600 13px/18px Inter,sans-serif; }
-.gpo-stop-button:hover { background:#ff778125; }
-[hidden] { display:none !important; }
-
-/* Shared task-first shell: readable labels, bounded controls, no demo telemetry. */
-.gpo-header {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid #28282f;z-index:50;font:14px/1.4 Inter,sans-serif;}
-.gpo-brand {display:flex;align-items:center;gap:8px;min-width:0;color:#ff8b94;}
-.gpo-brand>div {min-width:0;}.gpo-brand strong {display:block;font-size:14px;white-space:nowrap;letter-spacing:.03em;}
-.gpo-brand small {display:block;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#a8a8b3;font:11px/1.6 Inter,sans-serif;}
-.gpo-header-actions {display:flex;align-items:center;gap:6px;flex-shrink:0;}
-.gpo-icon-button,.gpo-primary-button,.gpo-secondary-button {min-height:40px;border:1px solid #34343e;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;gap:6px;font:600 13px/1.3 Inter,sans-serif;padding:8px 12px;color:#eeeef3;background:#19191f;white-space:nowrap;}
-.gpo-icon-button {width:36px;padding:6px;}.gpo-icon-button .material-symbols-outlined {font-size:19px;}
-.gpo-primary-button {background:#ec5364;color:#09090b;border-color:#ec5364;min-width:62px;}
-.gpo-page {padding:20px 16px 100px!important;font:14px/1.5 Inter,sans-serif;}
-.gpo-page-inner {display:flex;flex-direction:column;gap:16px;max-width:960px;margin:auto;}
-.gpo-page h1 {font-size:24px;line-height:1.2;font-weight:700;margin:0 0 6px;}
-.gpo-page h2 {font-size:15px;font-weight:600;margin:0;}
-.gpo-page-title,.gpo-split,.gpo-status-row {display:flex;align-items:center;justify-content:space-between;gap:12px;}
-.gpo-page-title p,.gpo-muted {font-size:13px;color:#b7b7c3;margin:0;}
-.gpo-hint {font-size:12px;line-height:1.5;color:#a8a8b3;margin:6px 0 0;}
-.gpo-badge {display:inline-flex;align-items:center;white-space:nowrap;font-size:12px;padding:4px 9px;border-radius:7px;color:#ffc1c8;background:#38202a;}
-.gpo-metric-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
-.gpo-card {display:flex;flex-direction:column;gap:8px;background:#141418;border:1px solid #292930;border-radius:14px;padding:16px;min-width:0;}
-.gpo-card.gpo-split {flex-direction:row;}
-.gpo-label {color:#b7b7c3;font-size:13px;}.gpo-metric {font-size:30px;line-height:1.15;letter-spacing:-.03em;color:#f4f4f7;}
-.gpo-runtime {font-size:22px;font-variant-numeric:tabular-nums;}
-.gpo-progress {height:6px;border-radius:8px;background:#292930;overflow:hidden;}.gpo-progress>div {height:100%;background:#ed6977;width:0;transition:width .2s ease;}
-.gpo-record-list {display:flex;flex-direction:column;gap:8px;margin-top:10px;}
-@media(max-width:400px){.gpo-header{padding:10px 12px;gap:6px;flex-wrap:wrap;}.gpo-brand{flex:1}.gpo-brand small{max-width:170px}.gpo-header-actions{gap:4px}.gpo-page-title{align-items:flex-start}.gpo-metric-grid{gap:10px}.gpo-card{padding:13px}.gpo-runtime{font-size:20px}.gpo-split{flex-wrap:wrap}}
-
-.gpo-stream-status {padding:5px 16px;color:#b7b7c3;font:12px/1.5 Inter,sans-serif;background:#0e0e11;border-bottom:1px solid #202027;}

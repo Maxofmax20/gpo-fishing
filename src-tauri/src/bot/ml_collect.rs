@@ -30,16 +30,13 @@ use crate::core::ml_dataset::{GameStateLabel, MlDatasetStore, MlTask, UiLabel};
 
 /// Bounded async queue depth. Small on purpose: backpressure must shed load
 /// (counted as dropped), never stall the macro loop.
-pub const QUEUE_CAP: usize = 8;
-/// Per-sample raw or encoded payload budget; at most 32 MiB queued.
-const MAX_SAMPLE_BYTES: usize = 4 * 1024 * 1024;
+pub const QUEUE_CAP: usize = 256;
 /// Flush wait at session end before finalizing with what's done.
 const FLUSH_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone)]
 pub struct SampleJob {
- pub png: Vec<u8>,
-    pub frame: Option<crate::core::types::Frame>,
+    pub png: Vec<u8>,
     pub session_id: String,
     pub task: MlTask,
     pub ui_label: Option<UiLabel>,
@@ -239,11 +236,6 @@ impl MlCollector {
     /// Non-blocking submit from the macro loop. Full queue → counted drop,
     /// never a stall. No active session → counted drop (never an error).
     pub fn submit(&self, mut job: SampleJob) -> bool {
-        let bytes = job.frame.as_ref().map_or(job.png.len(), |frame| frame.rgba.len());
-        if bytes > MAX_SAMPLE_BYTES {
-            self.inner.dropped.fetch_add(1, Ordering::SeqCst);
-            return false;
-        }
         let session = match self.inner.session.lock().as_ref() {
             Some(m) => m.session_id.clone(),
             None => {
@@ -289,18 +281,8 @@ impl MlCollector {
         let hard = job.hard_reason.clone();
         let ocr = job.ocr_text.clone();
         let entity = job.entity_id.clone();
-        let encoded;
-        let png = if let Some(frame) = &job.frame {
-            match frame.to_png_bytes() {
-                Ok(bytes) => { encoded = bytes; &encoded }
-                Err(_) => {
-                    self.inner.write_errors.fetch_add(1, Ordering::SeqCst);
-                    return;
-                }
-            }
-        } else { &job.png };
         let result = self.dataset.import_png(
-            png,
+            &job.png,
             &job.session_id,
             job.task,
             job.game_state,
@@ -310,6 +292,8 @@ impl MlCollector {
         );
         match result {
             Ok(image_id) => {
+                self.inner.written.fetch_add(1, Ordering::SeqCst);
+                self.inner.last_write_ms.store(now_ms(), Ordering::SeqCst);
                 self.inner.session_images.lock().push(image_id.clone());
                 // A DEDUP FOLD is not a new sample: `import_png` returned the
                 // existing id because the bytes were already stored. Counting
@@ -725,8 +709,7 @@ mod tests {
             let frame = crate::core::types::Frame::new(16, 16, rgba);
             let png = frame.to_png_bytes().unwrap();
             assert!(c.submit(SampleJob {
-                frame: None,
-png,
+                png,
                 session_id: String::new(),
                 task: crate::core::ml_dataset::MlTask::EntityRecognition,
                 ui_label: None,
@@ -766,8 +749,7 @@ png,
         let c = MlCollector::new(dir.clone());
         let id = c.begin_session("9.9.9");
         assert!(c.submit(SampleJob {
-            frame: None,
-png: png(),
+            png: png(),
             session_id: String::new(),
             task: crate::core::ml_dataset::MlTask::UiDetection,
             ui_label: Some(crate::core::ml_dataset::UiLabel::FishingBar),
@@ -804,8 +786,7 @@ png: png(),
     fn submit_without_session_drops_without_error() {
         let (c, _d) = collector("nosess");
         let job = SampleJob {
-            frame: None,
-png: png(),
+            png: png(),
             session_id: String::new(),
             task: crate::core::ml_dataset::MlTask::UiDetection,
             ui_label: None,

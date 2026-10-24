@@ -86,6 +86,3 @@ reports/ui-preview.tsx
 
 /test-results/
 /playwright-report/
-
-# Nested platform-neutral crate build output
-**/target/

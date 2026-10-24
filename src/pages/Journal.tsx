@@ -1,58 +1,40 @@
-import { useEffect, useState, useRef, useDeferredValue } from "react";
+﻿import { useEffect, useState, useMemo } from "react";
 import { Fish, FolderOpen, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
 import { api } from "../lib/ipc";
 import { showToast } from "../lib/store";
-import type { CatchPageRecord } from "../lib/types";
+import type { CatchRecord } from "../lib/types";
 import { Button, Pill, Section, cx } from "../components/primitives";
 import ConfirmModal from "../components/ConfirmModal";
 
 export default function Journal() {
-  const [catches, setCatches] = useState<CatchPageRecord[]>([]);
+  const [catches, setCatches] = useState<CatchRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "fish" | "fruit">("all");
   const [search, setSearch] = useState("");
-  const deferredSearch = useDeferredValue(search);
-  const [nextCursor, setNextCursor] = useState<number | null>(null);
-  const [revision, setRevision] = useState<string | null>(null);
-  const [totals, setTotals] = useState({total:0,fish:0,fruits:0});
-  const request = useRef(0);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
 
-  const refresh = async (append = false) => {
-    const ticket=++request.current;
+  const refresh = async () => {
     setLoading(true);
     try {
-      const page=await api.getCatchPage(append ? nextCursor ?? 0 : 0,filter,deferredSearch,append ? revision : null);
-      if(ticket!==request.current) return;
-      setCatches(previous=>append ? [...previous,...page.items] : page.items);
-      setNextCursor(page.next_cursor);
-      setRevision(page.revision);
-      setTotals({total:page.total,fish:page.fish,fruits:page.fruits});
+      const data = await api.getCatches();
+      setCatches(data);
     } catch (e) {
-      if(ticket!==request.current) return;
-      if(append && String(e).includes("Journal changed")) {
-        showToast("info","New catches arrived. Refreshing the history.");
-        void refresh(false);
-      } else showToast("error", "Could not load journal: " + String(e));
+      showToast("error", `Could not load journal: ${String(e)}`);
     } finally {
-      if(ticket===request.current) setLoading(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    void refresh(false);
-    return () => {request.current+=1;};
-  }, [deferredSearch,filter]);
+    refresh();
+  }, []);
 
   const clear = async () => {
     setClearing(true);
     try {
       await api.clearCatches();
-      request.current+=1;
       setCatches([]);
-      setNextCursor(null);
-      setTotals({total:0,fish:0,fruits:0});
       setConfirmClear(false);
       showToast("info", "Journal cleared. A backup CSV was kept in the data folder.");
     } catch (e) {
@@ -66,18 +48,28 @@ export default function Journal() {
     api.openCatches().catch((e) => showToast("error", `Could not open CSV: ${String(e)}`));
   };
 
-  const totalFish = totals.fish;
-  const totalFruits = totals.fruits;
-  const filtered = catches;
+  const totalFish = useMemo(() => catches.filter((c) => c.kind === "fish").length, [catches]);
+  const totalFruits = useMemo(() => catches.filter((c) => c.kind === "fruit").length, [catches]);
+
+  const filtered = useMemo(() => {
+    return catches.filter((c) => {
+      if (filter === "fish" && c.kind !== "fish") return false;
+      if (filter === "fruit" && c.kind !== "fruit") return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        return c.name.toLowerCase().includes(q) || c.raw.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [catches, filter, search]);
 
   return (
     <div className="pb-4 pt-2">
-      <div className="workflow-intro"><h1>Your catch history</h1><p>Confirmed catches from your saved journal. Search by title or original reading.</p></div>
       {/* Top summary stats */}
       <div className="px-4 mb-3 grid grid-cols-3 gap-2">
         <div className="glass rounded-xl p-3 border border-line bg-white/[0.02]">
           <div className="text-[11px] text-fg-mute uppercase tracking-wider font-semibold">Total Catches</div>
-          <div className="text-[20px] font-mono font-bold mt-0.5 text-fg">{totals.total}</div>
+          <div className="text-[20px] font-mono font-bold mt-0.5 text-fg">{catches.length}</div>
         </div>
         <div className="glass rounded-xl p-3 border border-line bg-white/[0.02]">
           <div className="text-[11px] text-accent uppercase tracking-wider font-semibold flex items-center gap-1">
@@ -100,7 +92,6 @@ export default function Journal() {
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-mute" />
             <input
               type="text"
-              aria-label="Search catch history"
               placeholder="Search catches..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -110,9 +101,9 @@ export default function Journal() {
           <Button size="sm" onClick={openCsv} icon={<FolderOpen size={13} />}>
             Open CSV
           </Button>
-          <Button size="sm" label="Refresh catch history" disabled={loading} onClick={() => void refresh(false)} icon={<RefreshCw size={13} className={loading ? "animate-spin" : ""} />} />
+          <Button size="sm" onClick={refresh} icon={<RefreshCw size={13} className={loading ? "animate-spin" : ""} />} />
           {catches.length > 0 && (
-            <Button size="sm" label="Clear catch history" kind="danger" onClick={() => setConfirmClear(true)} icon={<Trash2 size={13} />} />
+            <Button size="sm" kind="danger" onClick={() => setConfirmClear(true)} icon={<Trash2 size={13} />} />
           )}
           <ConfirmModal
             open={confirmClear}
@@ -135,7 +126,7 @@ export default function Journal() {
               filter === "all" ? "bg-accent/20 text-accent border border-accent/30" : "text-fg-dim hover:text-fg hover:bg-white/[0.05]"
             )}
           >
-            All ({totals.total})
+            All ({catches.length})
           </button>
           <button
             onClick={() => setFilter("fish")}
@@ -170,8 +161,8 @@ export default function Journal() {
           </div>
         ) : (
           <div className="divide-y divide-line max-h-[380px] overflow-y-auto">
-            {filtered.map((item) => (
-              <div key={item.id} className="px-4 py-2.5 flex items-center gap-3 hover:bg-white/[0.02] transition-colors">
+            {filtered.map((item, idx) => (
+              <div key={idx} className="px-4 py-2.5 flex items-center gap-3 hover:bg-white/[0.02] transition-colors">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-[13px] font-semibold text-fg truncate">{item.name}</span>
@@ -187,9 +178,6 @@ export default function Journal() {
           </div>
         )}
       </Section>
-      {nextCursor !== null && <div className="px-4 flex items-center justify-between gap-2 text-xs text-fg-mute">
-        <span>{catches.length} loaded · {totals.total} saved</span><Button size="sm" disabled={loading} onClick={() => void refresh(true)}>{loading ? "Loading…" : "Load next 50"}</Button>
-      </div>}
     </div>
   );
 }

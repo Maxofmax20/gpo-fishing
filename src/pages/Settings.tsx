@@ -3,7 +3,7 @@ import { useUpdater } from "../lib/updater";
 import { Download, FolderOpen, Globe, RotateCcw, Save, Trash2, Upload } from "lucide-react";
 import { api } from "../lib/ipc";
 import { showToast, useStore } from "../lib/store";
-import { Field, Button, KeyCapture, Pill, Row, Section, Segmented, Slider, Stepper, TextField, Toggle } from "../components/primitives";
+import { Button, KeyCapture, Pill, Row, Section, Segmented, Slider, Stepper, TextField, Toggle } from "../components/primitives";
 import ConfirmModal from "../components/ConfirmModal";
 
 export default function SettingsPage() {
@@ -34,7 +34,6 @@ export default function SettingsPage() {
   if (!s) {
     return (
       <div className="pb-4 pt-2">
-      <div className="workflow-intro"><h1>App & tracking preferences</h1><p>Keep your hotkeys, presets and connections in one place. Expert tuning remains available below.</p></div>
         <div className="rounded-xl border border-line p-4 text-[12px] text-fg-dim">Loading settings…</div>
       </div>
     );
@@ -401,6 +400,15 @@ export default function SettingsPage() {
           }
         />
       </Section>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center min-h-10 py-1">
+      <div className="text-fg-dim w-32 shrink-0">{label}</div>
+      <div className="ml-auto">{children}</div>
     </div>
   );
 }
