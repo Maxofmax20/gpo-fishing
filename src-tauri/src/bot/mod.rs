@@ -25,6 +25,9 @@ use crate::events::{BotEvent, BotState};
 use crate::webhook::WebhookQueue;
 use ctx::Ctx;
 
+#[cfg(test)]
+pub static WORKFLOW_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub struct Bot {
     ctx: Arc<Ctx>,
     thread: Mutex<Option<JoinHandle<()>>>,
@@ -508,6 +511,7 @@ mod lifecycle_tests {
     }
     #[test]
     fn stop_or_pause_after_checkpoint_consumption_revokes_delayed_startup_resume() {
+        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
         for pause in [false,true] {
             let bot=bot(if pause { "startup-pause" } else { "startup-stop" });
             let generation=bot.control_generation();
@@ -519,6 +523,7 @@ mod lifecycle_tests {
     }
     #[test]
     fn update_waits_for_boundary_and_stop_revokes_resume() {
+        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
         let bot=bot("update-boundary");
         bot.ctx.running.store(true,Ordering::SeqCst);
         let worker=Arc::clone(&bot);
@@ -536,6 +541,7 @@ mod lifecycle_tests {
     }
     #[test]
     fn paused_update_failure_never_starts_fishing() {
+        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
         let bot=bot("update-paused");
         let id=bot.prepare_update("99.0.0").unwrap();
         bot.cancel_update(&id).unwrap();
@@ -544,6 +550,7 @@ mod lifecycle_tests {
     }
     #[test]
     fn pause_during_reel_cancels_install_preparation() {
+        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
         let bot=bot("update-cancel");
         bot.ctx.running.store(true,Ordering::SeqCst);
         let worker=Arc::clone(&bot);

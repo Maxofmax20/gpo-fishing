@@ -1073,6 +1073,7 @@ mod tests {
 
     #[test]
     fn playback_from_the_app_works_while_fishing_is_stopped() {
+        let _guard = crate::bot::WORKFLOW_TEST_LOCK.lock().unwrap();
         use crate::core::platform::{GameWindow, Platform};
         use crate::core::platform::mock::{InputEvent, NoOcr, RecordingInput, ScriptedCapture};
         use crate::core::types::PxRect;

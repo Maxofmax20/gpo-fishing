@@ -46,10 +46,6 @@ pub fn is_crafting_running() -> bool {
 }
 
 pub fn stop_auto_craft() {
-    let update_gate = ctx.store.update_gate.lock();
-    if update_gate.pending() {
-        return Err("Crafting is unavailable while a signed update is pending".into());
-    }
     if CRAFTING_ACTIVE.load(Ordering::SeqCst) {
         CRAFTING_STOP_REQUESTED.store(true, Ordering::SeqCst);
         let mut s = STATUS.write();
@@ -70,6 +66,10 @@ pub fn start_auto_craft_with_target(
 ) -> Result<(), String> {
     if target_batches.is_some_and(|n| !(1..=99).contains(&n)) {
         return Err("Craft target must be between 1 and 99 batches".into());
+    }
+    let update_gate = ctx.store.update_gate.lock();
+    if update_gate.pending() {
+        return Err("Crafting is unavailable while a signed update is pending".into());
     }
     if CRAFTING_ACTIVE
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)

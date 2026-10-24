@@ -1668,6 +1668,28 @@ mod tests {
 #[cfg(test)]
 mod update_checkpoint_tests {
     use super::*;
+    #[cfg(windows)]
+    #[test]
+    fn locked_checkpoint_is_durably_revoked_before_restart() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir=std::env::temp_dir().join(format!("gpo-update-locked-{}-{}",std::process::id(),crate::events::now_ms()));
+        let store=Store::new(dir.clone());
+        store.update_gate.lock().begin(crate::core::update_handoff::ResumeIntent {
+            request_id:"locked".into(),source:"5.9.2".into(),target:"5.9.3".into(),
+            created_ms:crate::events::now_ms(),was_running:true,
+        }).unwrap();
+        store.update_boundary_reached();
+        store.commit_update_resume("locked").unwrap();
+        // Simulate a reader that allows writes but denies deletion.
+        let reader=fs::OpenOptions::new().read(true).share_mode(3).open(store.update_resume_path()).unwrap();
+        assert!(store.cancel_update_resume(Some("locked")).unwrap().is_some());
+        let stored:crate::core::update_handoff::ResumeIntent=serde_json::from_slice(&fs::read(store.update_resume_path()).unwrap()).unwrap();
+        assert!(!stored.was_running);
+        drop(reader);
+        assert!(!Store::new(dir.clone()).take_update_resume("5.9.3"));
+        let _=std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn update_checkpoint_is_consumed_once_and_legacy_resume_is_not_used() {
         let dir=std::env::temp_dir().join(format!("gpo-update-checkpoint-{}-{}",std::process::id(),crate::events::now_ms()));
