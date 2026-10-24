@@ -57,6 +57,17 @@ pub fn outlined(rect: SlotRect, pixel: &impl Fn(usize, usize) -> (u8, u8, u8)) -
     inside * 100 < count * 45
 }
 
+/// A positively selected different slot is negative rod evidence. Failure to
+/// see the learned rectangle alone is never negative evidence (occlusion).
+pub fn different_selected_slot(rod: SlotRect, selected: Option<SlotRect>) -> bool {
+    selected.is_some_and(|other| {
+        other.x + other.w <= rod.x
+            || rod.x + rod.w <= other.x
+            || other.y + other.h <= rod.y
+            || rod.y + rod.h <= other.y
+    })
+}
+
 pub fn find_outline(
     w: usize,
     h: usize,
@@ -238,5 +249,20 @@ mod tests {
             })
             .is_none()
         );
+    }
+    #[test]
+    fn only_a_positive_different_selection_proves_unequipped() {
+        let rod = SlotRect {
+            x: 30,
+            y: 15,
+            w: 32,
+            h: 32,
+        };
+        assert!(!different_selected_slot(rod, None));
+        assert!(!different_selected_slot(rod, Some(rod)));
+        assert!(different_selected_slot(
+            rod,
+            Some(SlotRect { x: 70, ..rod })
+        ));
     }
 }

@@ -140,7 +140,7 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
             }
             Outcome::CastFailed => {
                 rod_equipped = false;
-                ctx.log_warn("Cast did not start: Fishing Baits remained open; retrying bait selection and cast");
+                ctx.log_warn("Cast did not start: bait menu remained open or another toolbar slot was selected; retrying bait and cast");
                 ctx.set_state(BotState::Recovering, Some("Cast not started; retrying bait and cast".into()));
                 if !ctx.sleep_ms(400) { return; }
                 continue;
@@ -689,7 +689,13 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
                     if !ctx.alive() || ctx.state() == BotState::Paused || !ctx.roblox_in_front() {
                         ctx.release_mouse(); return Outcome::Stopped;
                     }
-                    if cast_watch.observe(started.elapsed().as_millis() as u64, menu_open, actions::rod_state::RodEvidence::Unknown) {
+                    let rod = if !menu_open && actions::rod_visibly_unequipped(ctx) {
+                        actions::rod_state::RodEvidence::Unequipped
+                    } else { actions::rod_state::RodEvidence::Unknown };
+                    if !ctx.alive() || ctx.state() == BotState::Paused || !ctx.roblox_in_front() {
+                        ctx.release_mouse(); return Outcome::Stopped;
+                    }
+                    if cast_watch.observe(started.elapsed().as_millis() as u64, menu_open, rod) {
                         return Outcome::CastFailed;
                     }
                 }

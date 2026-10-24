@@ -50,6 +50,22 @@ fn learned_rod_selected(ctx:&Ctx)->bool {
     rod_state::outlined(rod_state::SlotRect{x:0,y:0,w:r.w,h:r.h},&|x,y|frame.px(x,y))
 }
 
+/// Positive selection of another learned toolbar slot, not a missing border.
+pub fn rod_visibly_unequipped(ctx:&Ctx)->bool {
+    if !rod_action_allowed(ctx) { return false; }
+    let learned=rod_trackers().lock().get(&rod_context_key(ctx)).and_then(|t|t.learned);
+    let Some((rod,w,h,key))=learned else { return false; };
+    let Some(client)=ctx.roblox_rect() else { return false; };
+    if (w,h,key)!=(client.w as usize,client.h as usize,ctx.settings.read().keys.rod) { return false; }
+    let band=PxRect{x:client.x,y:client.y+client.h*9/10,w:client.w,h:client.h-client.h*9/10};
+    let Ok(frame)=ctx.platform.capture.grab(band) else { return false; };
+    if !rod_action_allowed(ctx) { return false; }
+    let min=(client.h as usize*45/1000).max(12);
+    let max=(client.h as usize*80/1000).max(min);
+    let selected=rod_state::find_outline(frame.w,frame.h,min,max,|x,y|frame.px(x,y));
+    rod_state::different_selected_slot(rod,selected)
+}
+
 fn rod_action_allowed(ctx: &Ctx) -> bool {
     ctx.alive() && ctx.state() != BotState::Paused && ctx.roblox_in_front()
 }
@@ -834,7 +850,10 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
     } else {
         let mut io = LocalStorageIo { ctx, settings: &s, last_text: String::new(), drop_sent: false };
         let result = run_storage(&mut io, catch);
-        if result == StorageOutcome::Unknown && s.fruit_storage.continue_on_unconfirmed && io.drop_sent {
+        // A delayed drop banner deserves read-only confirmation even when the
+        // user has *not* enabled continuing after an unconfirmed outcome.
+        // Never repeat Backspace or infer success from the key being sent.
+        if result == StorageOutcome::Unknown && io.drop_sent {
             ctx.log_info("Fruit outcome unconfirmed; rechecking without sending another drop");
             match io.observe(5000, true) {
                 Ok(Some(crate::core::fruit::StorageBannerResult::Dropped { .. }
@@ -1248,7 +1267,9 @@ mod storage_replay_tests {
         texts.extend(std::iter::repeat_n("", 18));
         texts.push("Dropped Bomb will despawn in 10 minutes");
         let h = harness(&texts);
-        h.ctx.settings.write().fruit_storage.continue_on_unconfirmed = true;
+        // Default is to pause on *still*-unconfirmed outcomes, but the late
+        // banner must be checked before that decision is made.
+        assert!(!h.ctx.settings().fruit_storage.continue_on_unconfirmed);
         assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "late-recheck"), StorageOutcome::Dropped);
         assert_eq!(drops(&h), 1);
         terminal(&h, "dropped_confirmed");
