@@ -105,6 +105,7 @@ pub fn run() {
             commands::open_url,
             commands::data_dir,
             commands::catches_list,
+            commands::catches_page,
             commands::catches_clear,
             commands::catches_open,
             commands::boss_tracker_scan_server_age,
