@@ -90,5 +90,5 @@ jobs:
         run: cargo test --locked -j 2
         working-directory: src-tauri
       - name: Clippy (report)
-        run: cargo clippy --locked --lib --tests --message-format short
+        run: cargo clippy --locked --profile test --lib --tests --message-format short
         working-directory: src-tauri
