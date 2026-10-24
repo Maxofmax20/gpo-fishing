@@ -19,7 +19,7 @@ const COLOR_GOLD: u32 = 0xF59E0B;
 const COLOR_GREEN: u32 = 0x22C55E;
 const COLOR_RED: u32 = 0xEF4444;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Notification {
     pub title: String,
     pub desc: String,
@@ -29,10 +29,11 @@ pub struct Notification {
     pub custom_telegram_html: Option<String>,
 }
 
+#[derive(Clone)]
 enum Delivery {
     Message(Notification),
     Spawn(Notification, SpawnInfo),
-    FruitOutcome(Notification, bool),
+    FruitOutcome(Notification, bool, String),
 }
 
 pub struct WebhookQueue {
@@ -61,7 +62,7 @@ impl WebhookQueue {
         // A slow provider must never grow RAM or block the controller.
         // At most 16 messages * 1 MiB photo bytes are queued.
         let notification = match &mut delivery {
-            Delivery::Message(n) | Delivery::Spawn(n, _) | Delivery::FruitOutcome(n, _) => n,
+            Delivery::Message(n) | Delivery::Spawn(n, _) | Delivery::FruitOutcome(n, _, _) => n,
         };
         if notification.photo.as_ref().is_some_and(|p| p.len() > 1024 * 1024) {
             notification.photo = None;
@@ -214,12 +215,18 @@ impl WebhookQueue {
     }
 
     pub fn fruit_storage_outcome(&self, catch: &FruitCatchContext, outcome: &StorageOutcome, photo: Option<Vec<u8>>) {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let id=format!("fruit-{}-{}",crate::events::now_ms(),NEXT.fetch_add(1,std::sync::atomic::Ordering::Relaxed));
+        self.fruit_storage_outcome_with_id(catch,outcome,photo,&id);
+    }
+
+    pub fn fruit_storage_outcome_with_id(&self, catch: &FruitCatchContext, outcome: &StorageOutcome, photo: Option<Vec<u8>>, id: &str) {
         let Some(settings) = &self.settings else { return; };
         let settings = settings.read();
         if let Some(notification) = storage_notification(&settings, catch, outcome, photo) {
             drop(settings);
             if self.enabled() {
-                self.enqueue(Delivery::FruitOutcome(notification, catch.pity_zero), true);
+                self.enqueue(Delivery::FruitOutcome(notification, catch.pity_zero, id.into()), true);
             }
         }
     }
@@ -594,22 +601,45 @@ fn delivery_log(events: &Sender<BotEvent>, message: String) {
 
 fn delivery_allowed(settings: &Settings, delivery: &Delivery) -> bool {
     settings.webhook.enabled && (!settings.webhook.pity_zero_only
-        || matches!(delivery, Delivery::FruitOutcome(_, true)))
+        || matches!(delivery, Delivery::FruitOutcome(_, true, _)))
 }
 
 fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) {
+    let outbox=crate::notification_outbox::Outbox::new(crate::app::data_dir().join("notification-outbox"));
+    let mut retry_at=std::time::Instant::now();
+    let mut replay=std::collections::VecDeque::from(outbox.pending());
     loop {
-        let delivery = crossbeam_channel::select_biased! {
+        let replayed=if retry_at.elapsed()>=Duration::from_secs(60) {
+            retry_at=std::time::Instant::now();
+            replay=std::collections::VecDeque::from(outbox.pending());
+            replay.pop_front()
+        } else { replay.pop_front() };
+        let delivery = if let Some(record)=replayed {
+            Delivery::FruitOutcome(record.notification,record.pity_zero,record.id)
+        } else { crossbeam_channel::select_biased! {
             recv(priority_rx) -> item => match item { Ok(item) => item, Err(_) => break },
             recv(rx) -> item => match item { Ok(item) => item, Err(_) => break },
-        };
+            default(Duration::from_secs(1)) => continue,
+        }};
         // Apply current consent/filtering again: changing modes must discard
         // already-queued nonzero catches, routine alerts and world spawns.
         if !delivery_allowed(&settings.read(), &delivery) { continue; }
-        let (mut notif, spawn) = match delivery {
-            Delivery::Message(notification) | Delivery::FruitOutcome(notification, _) => (notification, None),
-            Delivery::Spawn(notification, info) => (notification, Some(info)),
+        let (mut notif, spawn, record_info) = match delivery {
+            Delivery::Message(notification) => (notification,None,None),
+            Delivery::FruitOutcome(notification,pity_zero,id) => {
+                let record=outbox.load_or_create(&id,pity_zero,&notification);
+                match record {
+                    Ok(record) if record.completed => continue,
+                    Ok(record) => (notification,None,Some(record)),
+                    Err(error) => {
+                        delivery_log(&events,format!("Notification could not be persisted: {error}; trying in-memory delivery"));
+                        (notification,None,None)
+                    }
+                }
+            },
+            Delivery::Spawn(notification, info) => (notification,Some(info),None),
         };
+        let mut record=record_info;
         if let Some(info) = spawn {
             // Clone before calling Gemini: never hold a settings lock over IO.
             let gemini = settings.read().gemini.clone();
@@ -633,7 +663,7 @@ fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc
         };
 
         // 1. Discord delivery
-        if (provider == "discord" || provider == "both") && !url.trim().is_empty() {
+        if (provider == "discord" || provider == "both") && !url.trim().is_empty() && !record.as_ref().is_some_and(|r|r.discord_done) {
             let discord_fields: Vec<Value> = notif.fields.iter().map(|(k, v)| field(k, v)).collect();
             let mut emb = embed(&notif.title, &notif.desc, notif.color, discord_fields);
             if notif.photo.is_some() {
@@ -648,7 +678,10 @@ fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc
                     post_discord(&url, &body)
                 };
                 match res {
-                    Ok(_) => break,
+                    Ok(_) => {
+                        if let Some(record)=record.as_mut() {record.discord_done=true;let _=outbox.save(record);}
+                        break;
+                    }
                     Err(e) => {
                         // reqwest errors echo the request URL, which IS the
                         // secret webhook URL — redact before logging.
@@ -661,7 +694,7 @@ fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc
         }
 
         // 2. Telegram delivery
-        if (provider == "telegram" || provider == "both") && !tg_token.trim().is_empty() && !tg_chat.trim().is_empty() {
+        if (provider == "telegram" || provider == "both") && !tg_token.trim().is_empty() && !tg_chat.trim().is_empty() && !record.as_ref().is_some_and(|r|r.telegram_done) {
             let tg_text = if let Some(ref custom) = notif.custom_telegram_html {
                 custom.clone()
             } else {
@@ -693,7 +726,10 @@ fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc
                     },
                     |text| post_telegram(&tg_token, &tg_chat, text));
                 match res {
-                    Ok(_) => break,
+                    Ok(_) => {
+                        if let Some(record)=record.as_mut() {record.telegram_done=true;let _=outbox.save(record);}
+                        break;
+                    }
                     Err(e) => {
                         // Telegram API URLs embed the bot token — redact it.
                         let safe = crate::core::secrets::redact(&e, &[&tg_token, &tg_chat]);
@@ -701,6 +737,16 @@ fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc
                         if attempt < 2 { std::thread::sleep(delay); delay *= 2; }
                     }
                 }
+            }
+        }
+        if let Some(record)=record.as_mut() {
+            let discord_needed=(provider=="discord" || provider=="both") && !url.trim().is_empty();
+            let telegram_needed=(provider=="telegram" || provider=="both") && !tg_token.trim().is_empty() && !tg_chat.trim().is_empty();
+            record.completed=(discord_needed || telegram_needed) && (!discord_needed || record.discord_done) && (!telegram_needed || record.telegram_done);
+            if record.completed {record.notification.photo=None;}
+            if let Err(error)=outbox.save(record) {delivery_log(&events,format!("Notification acknowledgement could not be saved: {error}"));}
+            if record.completed {
+                let _=events.try_send(BotEvent::Log(LogLine{ts:crate::events::now_ms(),level:crate::events::LogLevel::Info,msg:"Fruit outcome notification delivered".into()}));
             }
         }
     }
@@ -797,7 +843,7 @@ mod fruit_delivery_tests {
         assert!(rx.try_recv().is_err(), "no screenshot or notification before storage");
         queue.fruit_storage_outcome(&catch("0/40"), &StorageOutcome::Stored, Some(vec![2]));
         match rx.try_recv().unwrap() {
-            Delivery::FruitOutcome(n, true) => { assert!(n.title.contains("Stored")); assert_eq!(n.photo, Some(vec![2])); }
+            Delivery::FruitOutcome(n, true, _) => { assert!(n.title.contains("Stored")); assert_eq!(n.photo, Some(vec![2])); }
             _ => panic!("expected one post-storage result"),
         }
         assert!(rx.try_recv().is_err());
@@ -811,10 +857,10 @@ mod fruit_delivery_tests {
         assert!(delivery_allowed(&s, &unrelated));
         s.webhook.pity_zero_only = true;
         assert!(!delivery_allowed(&s, &unrelated));
-        assert!(!delivery_allowed(&s, &Delivery::FruitOutcome(notification.clone(), false)));
-        assert!(delivery_allowed(&s, &Delivery::FruitOutcome(notification.clone(), true)));
+        assert!(!delivery_allowed(&s, &Delivery::FruitOutcome(notification.clone(), false,"synthetic".into())));
+        assert!(delivery_allowed(&s, &Delivery::FruitOutcome(notification.clone(), true,"synthetic".into())));
         s.webhook.enabled = false;
-        assert!(!delivery_allowed(&s, &Delivery::FruitOutcome(notification, true)));
+        assert!(!delivery_allowed(&s, &Delivery::FruitOutcome(notification, true,"synthetic".into())));
     }
 
     #[test]
@@ -833,7 +879,7 @@ mod fruit_delivery_tests {
         assert!(at.elapsed() < Duration::from_millis(100));
         assert_eq!(rx.len(), 1);
         match priority_rx.try_recv().unwrap() {
-            Delivery::FruitOutcome(n, true) => assert!(n.photo.is_none()),
+            Delivery::FruitOutcome(n, true, _) => assert!(n.photo.is_none()),
             _ => panic!("priority result must not compete with routine messages"),
         }
     }

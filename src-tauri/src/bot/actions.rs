@@ -737,7 +737,7 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
     if ctx.alive() { ctx.set_state(BotState::PostCatch, Some(format!("{}: {}", catch.name, outcome.detail()))); }
     let notify = crate::webhook::should_notify_fruit_outcome(&s, catch, &outcome);
     let photo = if notify && ctx.alive() && ctx.roblox_in_front() { capture_drop_screenshot(ctx, &s, catch.high_tier()) } else { None };
-    ctx.webhook.fruit_storage_outcome(catch, &outcome, photo);
+    ctx.webhook.fruit_storage_outcome_with_id(catch, &outcome, photo, workflow_id);
 
     outcome
 }

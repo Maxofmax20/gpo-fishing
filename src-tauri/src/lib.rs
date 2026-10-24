@@ -14,6 +14,7 @@ pub mod events;
 pub mod hotkeys;
 pub mod tray;
 pub mod webhook;
+pub mod notification_outbox;
 pub mod windows;
 pub mod discord_rpc;
 pub mod vpn;
