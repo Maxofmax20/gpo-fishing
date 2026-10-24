@@ -16,14 +16,18 @@ pub enum CraftTier {
     All,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all="snake_case")]
+pub enum CraftJobState { Idle, Pending, Running, Completed, Failed, Cancelled }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CraftStatus {
     pub is_crafting: bool,
     pub tier: String,
     pub crafted_count: u32,
     pub message: String,
     pub target_batches: Option<u32>,
-    pub state: &'static str,
+    pub state: CraftJobState,
     pub job_id: Option<String>,
 }
 
@@ -33,9 +37,42 @@ static STATUS: RwLock<CraftStatus> = RwLock::new(CraftStatus {
     crafted_count: 0,
     message: String::new(),
     target_batches: None,
-    state: "completed",
+    state: CraftJobState::Idle,
     job_id: None,
 });
+
+fn recovered_status(mut status:CraftStatus)->CraftStatus {
+    if status.is_crafting || matches!(status.state,CraftJobState::Pending|CraftJobState::Running) {
+        status.is_crafting=false;status.state=CraftJobState::Failed;
+        status.message="Previous craft job was interrupted by app exit. Review inventory before starting another job.".into();
+    }
+    status
+}
+
+fn write_checkpoint(dir:&std::path::Path,status:&CraftStatus)->Result<(),String> {
+    use std::io::Write;
+    let bytes=serde_json::to_vec(status).map_err(|_|"Could not serialize craft checkpoint")?;
+    if bytes.len()>65536 {return Err("Craft checkpoint exceeds size budget".into());}
+    std::fs::create_dir_all(dir).map_err(|_|"Could not create craft checkpoint directory")?;
+    let path=dir.join("craft-job.json");let temp=dir.join("craft-job.tmp");
+    let mut file=std::fs::File::create(&temp).map_err(|_|"Could not create craft checkpoint")?;
+    file.write_all(&bytes).map_err(|_|"Could not write craft checkpoint")?;
+    file.sync_all().map_err(|_|"Could not flush craft checkpoint")?;
+    drop(file);
+    std::fs::rename(temp,path).map_err(|_|"Could not commit craft checkpoint")?;
+    Ok(())
+}
+fn persist_status(dir:&std::path::Path)->Result<(),String> {write_checkpoint(dir,&get_craft_status())}
+
+pub fn restore_status(dir:&std::path::Path) {
+    let path=dir.join("craft-job.json");
+    let Ok(meta)=path.metadata() else {return};
+    if meta.len()>65536 {tracing::warn!("Craft checkpoint too large; retained for review");return;}
+    match std::fs::read(&path).ok().and_then(|bytes|serde_json::from_slice::<CraftStatus>(&bytes).ok()) {
+        Some(status)=>{*STATUS.write()=recovered_status(status);}
+        None=>tracing::warn!("Craft checkpoint unreadable; retained for review"),
+    }
+}
 
 pub fn get_craft_status() -> CraftStatus {
     STATUS.read().clone()
@@ -82,12 +119,19 @@ pub fn start_auto_craft_with_target(
         s.crafted_count = 0;
         s.message = "Starting auto-craft...".into();
         s.target_batches = target_batches;
-        s.state = "pending";
+        s.state = CraftJobState::Pending;
         s.job_id = Some(format!("craft-{}", crate::events::now_ms()));
     }
 
+    if let Err(error)=persist_status(ctx.store.dir()) {
+        let mut status=STATUS.write();
+        status.is_crafting=false;status.state=CraftJobState::Failed;status.message=error.clone();
+        CRAFTING_ACTIVE.store(false,Ordering::SeqCst);
+        return Err(error);
+    }
     std::thread::spawn(move || {
-        STATUS.write().state = "running";
+        STATUS.write().state = CraftJobState::Running;
+        let _=persist_status(ctx.store.dir());
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             run_crafting_loop(&ctx, tier, target_batches)
         }))
@@ -95,24 +139,26 @@ pub fn start_auto_craft_with_target(
         let mut s = STATUS.write();
         s.is_crafting = false;
         s.state = if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) {
-            "cancelled"
+            CraftJobState::Cancelled
         } else if res.is_ok() {
-            "completed"
+            CraftJobState::Completed
         } else {
-            "failed"
+            CraftJobState::Failed
         };
         match res {
             Ok(count) => {
                 s.message = format!(
                     "Auto-craft finished: {count} batches attempted; verify inventory for results."
                 );
-                ctx.log_info(&format!("🔨 Auto-craft complete: {count} batches crafted."));
+                ctx.log_info(&format!("Auto-craft finished: {count} batches attempted; inspect inventory for confirmation."));
             }
             Err(e) => {
                 s.message = format!("Auto-craft stopped: {e}");
                 ctx.log_warn(&format!("🔨 Auto-craft: {e}"));
             }
         }
+        drop(s);
+        if let Err(error)=persist_status(ctx.store.dir()) {ctx.log_warn(&error);}
         CRAFTING_ACTIVE.store(false, Ordering::SeqCst);
     });
 
@@ -328,6 +374,7 @@ fn run_crafting_loop(
                     "Attempted {total_crafted} batches; inventory confirmation unavailable"
                 );
             }
+            persist_status(ctx.store.dir())?;
 
             consecutive_failures = 0;
             // Short rest between crafts
@@ -723,4 +770,25 @@ fn detect_quantity_dialog(frame: &Frame, window: &PxRect) -> Option<QuantityDial
         slider_max_pos: slider_max_pt,
         craft_selected_pos: craft_selected_pt,
     })
+}
+
+
+#[cfg(test)]
+mod checkpoint_tests {
+    use super::*;
+    #[test]
+    fn interrupted_jobs_keep_identity_limits_and_counts_without_resuming_inputs() {
+        let status=CraftStatus {is_crafting:true,tier:"Rare".into(),crafted_count:7,message:"Working".into(),
+            target_batches:Some(17),state:CraftJobState::Running,job_id:Some("synthetic-job".into())};
+        let recovered=recovered_status(status);
+        assert!(!recovered.is_crafting);assert_eq!(recovered.state,CraftJobState::Failed);
+        assert_eq!(recovered.crafted_count,7);assert_eq!(recovered.target_batches,Some(17));
+        assert_eq!(recovered.job_id.as_deref(),Some("synthetic-job"));
+        let dir=std::env::temp_dir().join(format!("gpo-craft-checkpoint-{}",std::process::id()));
+        write_checkpoint(&dir,&recovered).unwrap();
+        let decoded:CraftStatus=serde_json::from_slice(&std::fs::read(dir.join("craft-job.json")).unwrap()).unwrap();
+        assert_eq!(decoded.state,CraftJobState::Failed);
+        assert!(!decoded.is_crafting);
+        let _=std::fs::remove_dir_all(dir);
+    }
 }
