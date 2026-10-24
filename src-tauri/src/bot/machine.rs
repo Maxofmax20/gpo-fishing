@@ -118,7 +118,8 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
                     rod_equipped = false;
                 }
 
-                rod_equipped = false;
+                // Normal completed reels do not unequip the rod. Retain the
+                // previously verified state; fast-reset above already invalidates it.
 
                 let (verdict, text, result_frame) = verify_catch(ctx);
                 // Training-data collection: one sample per ended reel, only

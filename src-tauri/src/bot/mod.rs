@@ -625,6 +625,19 @@ mod lifecycle_tests {
         bot.stop();
     }
     #[test]
+    fn stop_then_start_from_recovering_replaces_old_loop() {
+        let bot = bot("stop-start-recovering");
+        bot.start_checked().unwrap();
+        bot.ctx.set_state(BotState::Recovering, Some("test stale state".into()));
+        bot.stop();
+        assert!(!bot.is_running());
+        assert_eq!(bot.state(), BotState::Stopped);
+        bot.start_checked().unwrap();
+        assert!(bot.is_running());
+        bot.stop();
+        assert!(!bot.is_running());
+    }
+    #[test]
     fn stop_during_backoff_cannot_restart() {
         let bot = bot("backoff");
         bot.start_checked().unwrap();

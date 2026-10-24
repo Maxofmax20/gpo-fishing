@@ -35,7 +35,8 @@ fn learn_rod_outline(ctx: &Ctx) {
         let mut trackers=rod_trackers().lock();
         let tracker=trackers.entry(rod_context_key(ctx)).or_default();
         tracker.learned=Some((rect,client.w as usize,client.h as usize,ctx.settings.read().keys.rod));
-        tracker.recovery_attempted=false;
+        tracker.recovery_attempts=0;
+        tracker.last_recovery=None;
     }
 }
 
@@ -272,35 +273,64 @@ pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
 }
 
 pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
-    // Remembered inputs never establish equipment: Roblox can ignore a key.
-    *rod_equipped = false;
     if !rod_action_allowed(ctx) { return false; }
     if is_rod_equipped(ctx) == Some(true) && rod_action_allowed(ctx) {
         *rod_equipped = true;
+        let mut trackers = rod_trackers().lock();
+        let tracker = trackers.entry(rod_context_key(ctx)).or_default();
+        tracker.recovery_attempts = 0;
+        tracker.last_recovery = None;
         return true;
     }
-    let s=ctx.settings();
+    // A verified rod stays valid across normal reels unless a *different*
+    // selected slot is positively observed. Missing/OCR-obscured UI is unknown.
+    if *rod_equipped && !rod_visibly_unequipped(ctx) && rod_action_allowed(ctx) {
+        return true;
+    }
+    *rod_equipped = false;
+    let s = ctx.settings();
+    if s.keys.reset_slot == s.keys.rod {
+        ctx.release_mouse();
+        ctx.log_warn("Rod slot and reset slot are identical; cannot safely recover");
+        ctx.set_state(BotState::Paused, Some("Configure different rod and reset slots".into()));
+        return false;
+    }
     let attempt = {
-        let mut trackers=rod_trackers().lock();
-        let tracker=trackers.entry(rod_context_key(ctx)).or_default();
-        let attempt=!tracker.recovery_attempted && s.keys.reset_slot!=s.keys.rod;
-        tracker.recovery_attempted=true;
-        attempt
+        let mut trackers = rod_trackers().lock();
+        let tracker = trackers.entry(rod_context_key(ctx)).or_default();
+        if tracker.recovery_attempts >= 3 { None }
+        else if tracker.last_recovery.is_some_and(|t| t.elapsed() < Duration::from_millis(800)) { Some(false) }
+        else {
+            tracker.recovery_attempts += 1;
+            tracker.last_recovery = Some(std::time::Instant::now());
+            Some(true)
+        }
     };
-    // One bounded attempt per unknown episode. Neither key dispatch nor a
-    // missing highlight is a confirmation; never enter the bite wait on it.
-    if attempt {
-        ctx.log_info("Rod selection unknown; trying reset slot then rod once and verifying locally");
-        if !rod_action_allowed(ctx) || !key_tap(ctx,Key::Char(s.keys.reset_slot)) || !ctx.sleep_ms(80) { return false; }
-        if !rod_action_allowed(ctx) || !key_tap(ctx,Key::Char(s.keys.rod)) { return false; }
+    if attempt.is_none() {
+        ctx.release_mouse();
+        ctx.log_warn("Rod still unverified after three recovery attempts; pausing instead of recovering forever");
+        ctx.set_state(BotState::Paused, Some("Rod cannot be verified; check rod hotbar slot, bait menu and Roblox focus".into()));
+        return false;
+    }
+    if attempt == Some(true) {
+        ctx.log_info("Rod not confirmed; selecting reset slot then rod and checking locally");
+        if !key_tap(ctx, Key::Char(s.keys.reset_slot)) || !ctx.sleep_ms(80) { return false; }
+        if !rod_action_allowed(ctx) || !key_tap(ctx, Key::Char(s.keys.rod)) { return false; }
         for _ in 0..3 {
             if !ctx.sleep_ms(180) || !rod_action_allowed(ctx) { return false; }
-            if is_rod_equipped(ctx)==Some(true) && rod_action_allowed(ctx) { *rod_equipped=true; return true; }
+            if is_rod_equipped(ctx) == Some(true) && rod_action_allowed(ctx) {
+                *rod_equipped = true;
+                let mut trackers = rod_trackers().lock();
+                let tracker = trackers.entry(rod_context_key(ctx)).or_default();
+                tracker.recovery_attempts = 0;
+                tracker.last_recovery = None;
+                return true;
+            }
         }
     }
     ctx.release_mouse();
     if rod_action_allowed(ctx) {
-        ctx.set_state(BotState::Recovering, Some("Waiting for local rod evidence; open Fishing Baits if needed".into()));
+        ctx.set_state(BotState::Recovering, Some("Checking rod selection; bounded retry, then pause if still unverified".into()));
     }
     false
 }
@@ -1436,6 +1466,30 @@ mod rod_state_tests {
             assert!(photo.is_none(),"an Alt-Tab frame must never be sent");
             let _=std::fs::remove_dir_all(dir);
         }
+    }
+
+    #[test]
+    fn previously_verified_rod_survives_unreadable_reel_overlay() {
+        let (ctx,input,dir) = fixture(false);
+        let mut equipped = true;
+        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(equipped);
+        assert!(input.events.lock().is_empty(), "no duplicate rod toggle while overlay is unreadable");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn missing_rod_evidence_pauses_after_bounded_recovery() {
+        let (ctx,input,dir) = fixture(false);
+        let mut equipped = false;
+        for i in 0..3 {
+            if i > 0 { std::thread::sleep(std::time::Duration::from_millis(850)); }
+            assert!(!ensure_rod_equipped(&ctx, &mut equipped));
+        }
+        assert!(!ensure_rod_equipped(&ctx, &mut equipped));
+        assert_eq!(ctx.state(), BotState::Paused);
+        assert_eq!(input.events.lock().iter().filter(|e| **e == InputEvent::Key(Key::Char('4'),true)).count(),3);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
