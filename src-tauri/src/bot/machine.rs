@@ -685,6 +685,7 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
             }
         }
 
+        ctx.control_metrics.record(cycle_started.elapsed(),period);
         if !ctx.sleep(period.saturating_sub(cycle_started.elapsed())) {
             finish_trace(trace.take(), "stopped", ctx);
             return Outcome::Stopped;

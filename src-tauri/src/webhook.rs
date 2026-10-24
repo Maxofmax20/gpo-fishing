@@ -74,6 +74,10 @@ impl WebhookQueue {
         }
     }
 
+    pub fn queue_depth(&self)->usize {
+        self.tx.as_ref().map_or(0,|q|q.len())+self.priority_tx.as_ref().map_or(0,|q|q.len())
+    }
+
     fn enabled(&self) -> bool {
         self.settings
             .as_ref()

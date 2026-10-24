@@ -1064,6 +1064,8 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
     });
     payload["frame_age_ms"] = json!(preview_age_ms());
     payload["api_version"] = json!(2);
+    payload["control_metrics"]=json!(bot.ctx().control_metrics.snapshot());
+    payload["notification_queue"]=json!(bot.ctx().webhook.queue_depth());
     payload["pity_cap"] = json!(s.fruit_storage.pity_cap);
     let window=bot.ctx().platform.window.find();
     payload["readiness"]=json!({
