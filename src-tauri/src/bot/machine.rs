@@ -1297,7 +1297,8 @@ mod tests {
 
     #[test]
     fn catch_verification_waits_for_the_configured_gap() {
-        let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["noise".into(), "Nev Item Shark".into()]);
+        // Raw + enhanced OCR share frame one; frame two must still wait for the gap.
+        let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["noise".into(), "noise".into(), "Nev Item Shark".into()]);
         ctx.settings.write().ocr.post_catch_read_gap_ms = 70;
         let started = Instant::now();
         assert_eq!(verify_catch(&ctx).0, fruit::CatchVerdict::Caught);

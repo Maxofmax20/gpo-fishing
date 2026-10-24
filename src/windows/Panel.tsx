@@ -23,9 +23,9 @@ type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "vpn" | "
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "Dashboard", icon: <Gauge size={17} /> },
-  { id: "journal", label: "Journal", icon: <BookOpen size={17} /> },
-  { id: "setup", label: "Setup", icon: <ListChecks size={17} /> },
-  { id: "features", label: "Features", icon: <SlidersHorizontal size={17} /> },
+  { id: "journal", label: "History", icon: <BookOpen size={17} /> },
+  { id: "setup", label: "Calibration", icon: <ListChecks size={17} /> },
+  { id: "features", label: "Automation", icon: <SlidersHorizontal size={17} /> },
   { id: "macros", label: "Macros", icon: <Film size={17} /> },
   { id: "vpn", label: "VPN & Relay", icon: <Shield size={17} /> },
   { id: "multi", label: "Multi Roblox", icon: <Layers size={17} /> },
@@ -95,7 +95,7 @@ export default function Panel() {
   return (
     <div className="h-full w-full bg-bg-glass">
       <div className="h-full w-full flex overflow-hidden">
-        <nav className="w-14 shrink-0 flex flex-col items-center py-3 overflow-y-auto border-r border-line bg-black/20">
+        <nav aria-label="Main navigation" className="w-14 shrink-0 flex flex-col items-center py-3 overflow-y-auto border-r border-line bg-black/20">
           <img src={logo} alt="" draggable={false} className="w-9 h-9 rounded-xl mb-4 drag shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
           {TABS.filter((t) => advanced || !["macros", "vpn", "multi", "training"].includes(t.id)).map((t) => (
             <button

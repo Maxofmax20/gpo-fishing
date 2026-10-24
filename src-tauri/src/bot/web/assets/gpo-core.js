@@ -114,6 +114,8 @@ function gpoNoteOnline(ok, reason) {
   }
   _gpoOnlineEl.textContent = reason || 'OFFLINE — BACKEND UNREACHABLE, RETRYING…';
   _gpoOnlineEl.style.display = _gpoOnline ? 'none' : 'block';
+  const bridge = document.getElementById('bridge-sync-text');
+  if (bridge) bridge.textContent = _gpoOnline ? 'BRIDGE SYNCED' : 'BRIDGE OFFLINE';
   if (changed) document.dispatchEvent(new CustomEvent('gpo:online', { detail: _gpoOnline }));
   try {
     if (typeof gpoPaintLivePills === 'function') gpoPaintLivePills(_gpoOnline);
