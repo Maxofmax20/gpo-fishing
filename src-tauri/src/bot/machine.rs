@@ -90,11 +90,11 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
 
                 if fast_reset_enabled {
                     ctx.log_info(&format!("⚡ Fast reset: immediately canceling animation with slot [{reset_key}] -> rod [{rod_key}]"));
-                    actions::key_tap(ctx, Key::Char(reset_key));
+                    if reset_key == rod_key || !actions::key_tap(ctx, Key::Char(reset_key)) { return; }
                     if !ctx.sleep_ms(35) {
                         return;
                     }
-                    actions::key_tap(ctx, Key::Char(rod_key));
+                    if !actions::key_tap(ctx, Key::Char(rod_key)) { return; }
                     if !ctx.sleep_ms(80) {
                         return;
                     }
@@ -880,13 +880,19 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
         return (fruit::CatchVerdict::Unknown, String::new(), None);
     }
     let s = ctx.settings();
-    let deadline = Instant::now() + Duration::from_millis(1000);
+    let started = Instant::now();
+    let deadline = started + Duration::from_millis(1000);
     let max_reads = s.ocr.post_catch_reads.clamp(1, 3);
     let mut last = String::new();
     for read in 0..max_reads {
+        if read > 0 && read + 1 == max_reads {
+            let late = Duration::from_millis(600).saturating_sub(started.elapsed());
+            if !late.is_zero() && !ctx.sleep(late) { break; }
+        }
         if !ctx.alive() || Instant::now() >= deadline { break; }
         if let Some(frame) = grab_region(ctx, s.regions.drop) {
             if let Ok(text) = ctx.platform.ocr.read_with_timeout(&frame, deadline.saturating_duration_since(Instant::now()).min(Duration::from_millis(200))) {
+                if !ctx.alive() { break; }
                 if !text.trim().is_empty() {
                     last = text.clone();
                     ctx.log_info(&format!("Reel text: {}", text.trim()));
@@ -900,6 +906,7 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
                 if !ctx.alive() || Instant::now() >= deadline { break; }
                 let enhanced = actions::catch_banner_ocr_frame(&frame);
                 if let Ok(retry) = ctx.platform.ocr.read_with_timeout(&enhanced, deadline.saturating_duration_since(Instant::now()).min(Duration::from_millis(200))) {
+                    if !ctx.alive() { break; }
                     let verdict = fruit::detect_catch(&s.lexicon, &retry);
                     if verdict != fruit::CatchVerdict::Unknown {
                         ctx.log_info(&format!("Verified enhanced catch text: {}", retry.trim()));

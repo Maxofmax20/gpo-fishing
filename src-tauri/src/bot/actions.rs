@@ -181,6 +181,10 @@ pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
         return true;
     }
 
+    if s.keys.reset_slot == s.keys.rod {
+        ctx.log_warn("Rod and reset slot must be different; choose a separate reset slot in Settings");
+        return false;
+    }
     // Establish a known selection first. Pressing the rod key while it is
     // already selected unequips it, including after a paused/unknown session.
     if s.keys.reset_slot != s.keys.rod {
@@ -1260,6 +1264,15 @@ mod rod_state_tests {
         }).collect();
         assert_eq!(keys, vec![ctx.settings().keys.reset_slot, '4']);
         drop(events);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn same_reset_and_rod_key_cannot_toggle_an_unknown_selection() {
+        let (ctx,input,dir) = fixture(false);
+        ctx.settings.write().keys.reset_slot = '4';
+        assert!(!ensure_rod_equipped(&ctx, &mut false));
+        assert!(input.events.lock().is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 
