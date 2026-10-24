@@ -81,9 +81,26 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
                 return;
             }
             Outcome::Ended => {
-                // Catch animations may change the held item after the bar ends.
-                // Re-establish selection on the next cast, after result handling,
-                // rather than marking an early toggle as a confirmed equipped rod.
+                // 1. Direct fast reset immediately after ending minigame to cancel catch animation on frame 1
+                let s = ctx.settings.read();
+                let fast_reset_enabled = s.features.fast_reset;
+                let reset_key = s.keys.reset_slot;
+                let rod_key = s.keys.rod;
+                drop(s);
+
+                if fast_reset_enabled {
+                    ctx.log_info(&format!("⚡ Fast reset: immediately canceling animation with slot [{reset_key}] -> rod [{rod_key}]"));
+                    actions::key_tap(ctx, Key::Char(reset_key));
+                    if !ctx.sleep_ms(35) {
+                        return;
+                    }
+                    actions::key_tap(ctx, Key::Char(rod_key));
+                    if !ctx.sleep_ms(80) {
+                        return;
+                    }
+                    rod_equipped = false;
+                }
+
                 rod_equipped = false;
 
                 let (verdict, text, result_frame) = verify_catch(ctx);
@@ -863,7 +880,7 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
         return (fruit::CatchVerdict::Unknown, String::new(), None);
     }
     let s = ctx.settings();
-    let deadline = Instant::now() + Duration::from_millis(400);
+    let deadline = Instant::now() + Duration::from_millis(1000);
     let max_reads = s.ocr.post_catch_reads.clamp(1, 3);
     let mut last = String::new();
     for read in 0..max_reads {
@@ -892,7 +909,7 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
                 }
             }
         }
-        if read + 1 == max_reads || !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms.min(25)) { break; }
+        if read + 1 == max_reads || !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms.min(150)) { break; }
     }
     if last.is_empty() { ctx.log_info("Reel text: (nothing read in drop area)"); }
     (fruit::CatchVerdict::Unknown, last, None)
@@ -1302,8 +1319,8 @@ mod tests {
         ctx.settings.write().ocr.post_catch_read_gap_ms = 70;
         let started = Instant::now();
         assert_eq!(verify_catch(&ctx).0, fruit::CatchVerdict::Caught);
-        assert!(started.elapsed() >= Duration::from_millis(25));
-        assert!(started.elapsed() < Duration::from_millis(400));
+        assert!(started.elapsed() >= Duration::from_millis(70));
+        assert!(started.elapsed() < Duration::from_millis(1000));
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1314,7 +1331,7 @@ mod tests {
         ctx.settings.write().ocr.post_catch_read_gap_ms = 10_000;
         let started = Instant::now();
         assert_eq!(verify_catch(&ctx).0, fruit::CatchVerdict::Unknown);
-        assert!(started.elapsed() < Duration::from_millis(400));
+        assert!(started.elapsed() < Duration::from_millis(1000));
         assert_eq!(ctx.session.lock().fish, 0);
         let _ = std::fs::remove_dir_all(dir);
     }

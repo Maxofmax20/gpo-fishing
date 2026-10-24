@@ -231,7 +231,11 @@ pub fn is_bait_depleted(ctx: &Ctx) -> bool {
 /// Scans the in-game bait menu using the trained neural network (with Windows OCR fallback).
 /// Returns: (BaitStock, is_menu_visible)
 pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, bool), String> {
-    if !ctx.alive() { return Err("Bait scan cancelled".into()); }
+    scan_bait_stock_for(ctx, false)
+}
+
+fn scan_bait_stock_for(ctx: &Ctx, automatic: bool) -> Result<(crate::core::bait::BaitStock, bool), String> {
+    if automatic && !ctx.alive() { return Err("Bait scan cancelled".into()); }
     let rect = ctx.roblox_rect().ok_or("Roblox window not found")?;
     let scan_rect = {
         let s = ctx.settings();
@@ -259,12 +263,29 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
 
     // Automatic fishing must not wait on a network vision service.
     // A missing menu is normal after a cast, not a reason to call Gemini.
-    if !ctx.alive() { return Err("Bait scan cancelled".into()); }
+    if automatic && !ctx.alive() { return Err("Bait scan cancelled".into()); }
+
+    let s = ctx.settings();
+    // 2. Try Gemini Vision if enabled and configured (fallback)
+    if !automatic && s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
+        match crate::core::gemini::scan_bait_stock_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
+            Ok(stock) => {
+                ctx.log_info(&format!(
+                    "🐟 Bait stock recognized via Gemini Vision ({}): Leg={:?}, Rare={:?}, Com={:?}",
+                    s.gemini.model, stock.legendary, stock.rare, stock.common
+                ));
+                return Ok((stock, true));
+            }
+            Err(e) => {
+                ctx.log_warn(&format!("Gemini Vision scan failed ({e}); falling back to Windows OCR"));
+            }
+        }
+    }
 
     // 3. Fallback to Windows OCR if available
     if ctx.platform.ocr.available() {
         if let Ok(text) = ctx.platform.ocr.read_with_timeout(&frame, std::time::Duration::from_millis(200)) {
-            if !ctx.alive() { return Err("Bait scan cancelled".into()); }
+            if automatic && !ctx.alive() { return Err("Bait scan cancelled".into()); }
             ctx.log_debug(&format!("Bait menu OCR raw text:\n{text}"));
             let is_visible = crate::core::bait::is_bait_menu_visible(&text);
             let stock = crate::core::bait::parse_bait_stock_with_frame(&text, &frame);
@@ -286,7 +307,7 @@ pub fn select_bait(ctx: &Ctx) -> bool {
     }
 
     if s.features.smart_bait {
-        let (stock, menu_visible) = match scan_bait_stock_raw(ctx) {
+        let (stock, menu_visible) = match scan_bait_stock_for(ctx, true) {
             Ok(res) => res,
             Err(e) => {
                 ctx.log_debug(&format!("Smart Bait: scan skipped: {e}"));
@@ -1246,7 +1267,7 @@ mod rod_state_tests {
     fn paused_bait_scan_never_starts_capture_or_network_work() {
         let (ctx,input,dir) = fixture(false);
         ctx.running.store(false, Ordering::SeqCst);
-        assert!(scan_bait_stock_raw(&ctx).is_err());
+        assert!(scan_bait_stock_for(&ctx, true).is_err());
         assert!(input.events.lock().is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
