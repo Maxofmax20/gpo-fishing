@@ -8,6 +8,7 @@ pub mod controller;
 pub mod digit_model;
 pub mod fruit;
 pub mod fruit_storage;
+pub mod pity_evidence;
 pub mod fish_recognition;
 pub mod platform;
 pub mod types;
