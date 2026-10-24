@@ -6,7 +6,6 @@ import { showToast, useStore } from "../lib/store";
 import PageBoundary from "../components/PageBoundary";
 import Toasts from "../components/Toasts";
 import { cx, Dot } from "../components/primitives";
-import { ConnectGate } from "../components/ConnectGate";
 import logo from "../assets/logo.png";
 import Dashboard from "../pages/Dashboard";
 const Journal = lazy(() => import("../pages/Journal"));
@@ -22,7 +21,7 @@ import { BookOpen, Download, Film, Gauge, Globe, GraduationCap, Layers, ListChec
 type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "vpn" | "multi" | "training" | "settings";
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: "dashboard", label: "Dashboard", icon: <Gauge size={17} /> },
+  { id: "dashboard", label: "Session", icon: <Gauge size={17} /> },
   { id: "journal", label: "History", icon: <BookOpen size={17} /> },
   { id: "setup", label: "Calibration", icon: <ListChecks size={17} /> },
   { id: "features", label: "Automation", icon: <SlidersHorizontal size={17} /> },
@@ -41,7 +40,6 @@ export default function Panel() {
   const version = useStore((s) => s.version);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [advanced, setAdvanced] = useState(false);
-  const [skipGate, setSkipGate] = useState(false);
   useEffect(() => {
     init().finally(() => api.panelShow());
   }, [init]);
@@ -65,9 +63,6 @@ export default function Panel() {
     return () => { window.clearTimeout(timer); window.clearInterval(interval); };
   }, [ready, autoUpdate, checkUpdate]);
 
-  useEffect(() => {
-    if (roblox) setSkipGate(false);
-  }, [roblox]);
 
   useEffect(() => {
     let t: number | undefined;
@@ -86,16 +81,16 @@ export default function Panel() {
     const w = getCurrentWindow();
     const subs = [w.onResized(schedule), w.onMoved(schedule)];
     return () => {
+      window.clearTimeout(t);
       subs.forEach((p) => p.then((u) => u()));
     };
   }, []);
 
-  const gated = ready && !roblox && !skipGate && !["settings", "journal", "training", "vpn", "multi", "macros"].includes(tab);
 
   return (
     <div className="h-full w-full bg-bg-glass">
       <div className="h-full w-full flex overflow-hidden">
-        <nav aria-label="Main navigation" className="w-14 shrink-0 flex flex-col items-center py-3 overflow-y-auto border-r border-line bg-black/20">
+        <nav aria-label="Main navigation" className="w-16 shrink-0 flex flex-col items-center py-3 overflow-y-auto border-r border-line bg-black/20">
           <img src={logo} alt="" draggable={false} className="w-9 h-9 rounded-xl mb-4 drag shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
           {TABS.filter((t) => advanced || !["macros", "vpn", "multi", "training"].includes(t.id)).map((t) => (
             <button
@@ -103,11 +98,11 @@ export default function Panel() {
               onClick={() => setTab(t.id)}
               title={t.label} aria-label={t.label} aria-current={tab === t.id ? "page" : undefined}
               className={cx(
-                "w-10 h-10 shrink-0 rounded-xl grid place-items-center mb-1 transition-colors",
+                "w-14 min-h-12 shrink-0 rounded-xl flex flex-col items-center justify-center gap-1 mb-1 transition-colors",
                 tab === t.id ? "bg-white/[0.1] text-fg" : "text-fg-mute hover:text-fg hover:bg-white/[0.05]",
               )}
             >
-              {t.icon}
+              {t.icon}<span className="text-[9px] leading-none max-w-full truncate px-0.5">{t.id === "features" ? "Automate" : t.id === "setup" ? "Calibrate" : t.label}</span>
             </button>
           ))}
           <button aria-label="Advanced tools" aria-expanded={advanced} title="Advanced tools: recorder, VPN, Multi Roblox and training"
@@ -122,7 +117,7 @@ export default function Panel() {
         </nav>
         <div className="flex-1 min-w-0 flex flex-col">
           <header className="h-11 flex items-center px-4 border-b border-line drag shrink-0">
-            <div className="font-semibold">{gated ? "GPO Autofish" : TABS.find((t) => t.id === tab)?.label}</div>
+            <div className="font-semibold">{TABS.find((t) => t.id === tab)?.label}</div>
             <div className="ml-auto flex items-center gap-1 no-drag">
               <button
                 className="h-7 px-2.5 mr-1 rounded-lg inline-flex items-center gap-1.5 text-[11px] font-medium bg-white/[0.06] text-fg-dim hover:bg-white/[0.12] hover:text-fg transition-colors"
@@ -133,7 +128,7 @@ export default function Panel() {
                     showToast("error", `Could not open Web UI: ${String(e)}`);
                   }
                 }}
-                title="Open authenticated Web Dashboard (token attached automatically)"
+                title="Open your authenticated remote dashboard"
               >
                 <Globe size={12} className="text-accent" />
                 Web UI
@@ -175,8 +170,7 @@ export default function Panel() {
           </header>
           <main className="flex-1 min-h-0 overflow-y-auto relative">
             {!ready && <Booting error={error} />}
-            {gated && <ConnectGate onSkip={() => setSkipGate(true)} />}
-            {ready && !gated && (
+            {ready && (
               <PageBoundary key={tab}>
               <Suspense fallback={<div role="status" className="p-4 text-fg-mute">Loading page…</div>}>
                 {tab === "dashboard" && <Dashboard onNavigate={(next) => { if (["macros", "vpn", "multi", "training"].includes(next)) setAdvanced(true); setTab(next); }} />}

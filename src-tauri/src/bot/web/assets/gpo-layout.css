@@ -43,3 +43,7 @@ body .text-label-sm { font-size: 12px; line-height: 18px; }
 
 /* Pulse the status dot, not readable status text. */
 #engine-status-text { animation: none; }
+
+.gpo-stop-button { width:100%; min-height:42px; margin-top:8px; border:1px solid #ff778166; border-radius:10px; background:#ff778110; color:#ffc0c6; font:600 13px/18px Inter,sans-serif; }
+.gpo-stop-button:hover { background:#ff778125; }
+[hidden] { display:none !important; }

@@ -215,3 +215,39 @@ async function gpoPaintHostline() {
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', gpoWireNav);
 }
+
+// Optional local button feedback; no fabricated game or hardware state.
+let _gpoAudio = null;
+function gpoSoundEnabled() { try { return localStorage.getItem('gpo_sound_alerts') === 'true'; } catch (_) { return false; } }
+function gpoClickSound() {
+  if (!gpoSoundEnabled()) return;
+  try {
+    const Context = window.AudioContext || window.webkitAudioContext;
+    if (!Context) return;
+    _gpoAudio ||= new Context();
+    if (_gpoAudio.state === 'suspended') void _gpoAudio.resume();
+    const tone = _gpoAudio.createOscillator(), gain = _gpoAudio.createGain();
+    tone.frequency.value = 520; gain.gain.setValueAtTime(.025, _gpoAudio.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.001, _gpoAudio.currentTime + .045);
+    tone.connect(gain); gain.connect(_gpoAudio.destination); tone.start(); tone.stop(_gpoAudio.currentTime + .05);
+  } catch (_) { /* audio is optional */ }
+}
+function gpoInitLocalControls() {
+  const choices = ['sound-toggle-btn','audio-toggle-btn','sfx-master-toggle'];
+  const paint = () => choices.forEach(id => {
+    const button = document.getElementById(id); if (!button) return;
+    const on = gpoSoundEnabled(); button.setAttribute('aria-pressed', String(on));
+    button.setAttribute('aria-label', on ? 'Turn sound effects off' : 'Turn sound effects on');
+    button.querySelectorAll('.material-symbols-outlined').forEach(icon => { icon.textContent = on ? 'volume_up' : 'volume_off'; });
+    ['sound-toggle-text','audio-toggle-label','sfx-label'].forEach(label => { const el=document.getElementById(label); if(el) el.textContent=on?'SFX ON':'SFX OFF'; });
+  });
+  choices.forEach(id => document.getElementById(id)?.addEventListener('click', () => {
+    try { localStorage.setItem('gpo_sound_alerts', String(!gpoSoundEnabled())); } catch (_) {}
+    paint(); gpoClickSound();
+  }));
+  document.getElementById('sfx-test-btn')?.addEventListener('click', () => { if(gpoSoundEnabled()) gpoClickSound(); else gpoToast('Enable sound effects first.'); });
+  document.addEventListener('click', event => { if(event.target.closest('button:not(:disabled),a[href]')) gpoClickSound(); });
+  const dot = document.getElementById('audio-status-badge'); if(dot) { dot.textContent=''; dot.setAttribute('aria-hidden','true'); }
+  paint();
+}
+if(typeof document !== 'undefined') document.addEventListener('DOMContentLoaded',gpoInitLocalControls);

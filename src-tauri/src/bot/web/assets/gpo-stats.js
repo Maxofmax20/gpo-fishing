@@ -58,7 +58,7 @@
     gpoSetText('vault-units', d.legendary_reserve != null ? d.legendary_reserve : '—');
     const running = d.is_running && !d.paused;
     gpoSetText('session-chip-text', 'SESSION • ' + (running ? d.state.toUpperCase() : (d.paused ? 'PAUSED' : 'IDLE')));
-    gpoSetText('session-state-pill', running ? 'OPTIMAL' : (d.paused ? 'PAUSED' : 'IDLE'));
+    gpoSetText('session-state-pill', running ? 'RUNNING' : (d.paused ? 'PAUSED' : 'IDLE'));
     gpoSetText('loop-rtt-text', ms + 'ms LOOP');
     renderLoot(d.recent_catches);
     gpoPaintPwr(document.getElementById('pwr-btn'), running);

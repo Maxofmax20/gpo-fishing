@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { Pause, Play, Repeat, Square } from "lucide-react";
+import { ArrowRight, Check, Fish, Focus, Pause, Play, Repeat, ShieldCheck, Square, TriangleAlert } from "lucide-react";
 import { api } from "../lib/ipc";
 import { showToast, useStore, isActive } from "../lib/store";
 import { useVisiblePoll } from "../lib/useVisiblePoll";
 import { STATE_LABEL } from "../lib/types";
-import { Button, CustomSelect, Pill, Section, cx, fmtRuntime } from "../components/primitives";
+import { Button, CustomSelect, Disclosure, Pill, cx, fmtRuntime } from "../components/primitives";
 import { StateBadge } from "../components/StateIcon";
 import { LogList } from "../components/LogList";
 import { LiveAreas } from "../components/LiveAreas";
@@ -34,8 +34,6 @@ export default function Dashboard({
     return () => clearInterval(t);
   }, [stats.runtime_s, active]);
 
-  const sessionNote = (n: number) => (active || state === "paused" ? `this run ${n}` : undefined);
-
   const hk = settings?.hotkeys.toggle ?? "F1";
   const updateSettings = useStore((s) => s.update);
   const [collectGate, setCollectGate] = useState(false);
@@ -43,11 +41,12 @@ export default function Dashboard({
   const [starting, setStarting] = useState(false);
 
   const doStart = async () => {
+    setStarting(true);
     try {
       await api.botToggle();
     } catch (e) {
       showToast("error", `Bot toggle failed: ${String(e)}`);
-    }
+    } finally { setStarting(false); }
   };
 
   // Start gate: pause/resume is never gated. A fresh start requires either
@@ -97,34 +96,77 @@ export default function Dashboard({
     }
   };
 
+  const configured = !!settings && settings.regions.bar.w > 0.02 && settings.regions.bar.h > 0.02 && !!settings.keys.rod;
+  const readiness = !roblox ? "Open Roblox to fish" : !roblox.is_foreground ? "Focus Roblox to continue" : !configured ? "Check your calibration" : "Ready for fishing";
+  const checks = [
+    { label: "Game", ok: !!roblox, value: roblox ? "Detected" : "Not found" },
+    { label: "Focus", ok: !!roblox?.is_foreground, value: roblox?.is_foreground ? "Active" : "Waiting" },
+    { label: "Calibration", ok: configured, value: configured ? "Configured" : "Needs setup" },
+  ];
   return (
-    <div className="pb-4">
-      <div className="px-4 pt-4 pb-3 flex items-center gap-3">
-        <StateBadge state={state} />
-        <div className="flex-1 min-w-0">
-          <div className="text-[15px] font-semibold leading-tight">{STATE_LABEL[state]}</div>
-          <div className="text-[12px] text-fg-dim truncate">
-            {detail ?? (roblox ? (roblox.is_foreground ? "Roblox focused" : "Roblox in background") : "Roblox not detected")}
+    <div className="pb-4 pt-4">
+      <section className="session-card mx-4 p-4" aria-label="Fishing session">
+        <div className="flex items-start gap-3">
+          <StateBadge state={state} />
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] uppercase tracking-[.12em] text-fg-dim font-semibold">Current session</div>
+            <h1 className="text-[20px] font-semibold leading-tight mt-1 break-words">{STATE_LABEL[state]}</h1>
+            <p className="text-[12px] text-fg-dim mt-1 leading-relaxed break-words" role="status">{detail || readiness}</p>
           </div>
         </div>
-        <div className="flex gap-1.5">
-          <Button
-            kind={active ? "default" : "primary"}
-            onClick={handleStartPress}
-            disabled={starting}
-            icon={active ? <Pause size={14} /> : <Play size={14} />}
-          >
-            {starting ? "Starting…" : active ? "Pause" : state === "paused" ? "Resume" : "Start"}
-          </Button>
-          {(active || state === "paused") && (
-            <Button kind="danger" onClick={() => api.botStop().catch((e) => showToast("error", `Bot stop failed: ${String(e)}`))} icon={<Square size={13} />} />
-          )}
+        <div className="grid grid-cols-3 gap-2 my-4">
+          {checks.map(check => <div key={check.label} className="text-xs min-w-0">
+            <div className="text-fg-mute">{check.label}</div>
+            <div className={cx("flex items-center gap-1 mt-1", check.ok ? "text-ok" : "text-warn")}>
+              {check.ok ? <Check size={12} className="shrink-0" /> : <TriangleAlert size={12} className="shrink-0" />}<span>{check.value}</span>
+            </div>
+          </div>)}
         </div>
+        <div className="flex gap-2">
+          <Button className="flex-1" kind={active ? "default" : "primary"} onClick={handleStartPress} busy={starting}
+            icon={active ? <Pause size={15} /> : <Play size={15} />}>
+            {starting ? "Please wait…" : active ? "Pause fishing" : state === "paused" ? "Resume fishing" : "Start fishing"}
+          </Button>
+          {(active || state === "paused") && <Button kind="danger" label="Stop fishing" title="Stop fishing" busy={starting}
+            onClick={async () => { setStarting(true); try { await api.botStop(); } catch (e) { showToast("error", `Stop failed: ${String(e)}`); } finally { setStarting(false); } }}
+            icon={<Square size={14} />}>Stop</Button>}
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-2 text-xs text-fg-mute">
+          <span><kbd className="font-mono text-fg-dim">{hk}</kbd> start / pause</span>
+          <span className="font-mono tabular-nums">{fmtRuntime(runtime)}</span>
+        </div>
+      </section>
+      <div className="grid grid-cols-2 gap-2 mx-4 my-3" aria-label="Session counters">
+        <SessionMetric label="Confirmed fish" value={stats.fish} detail={`${Math.round(stats.success_rate * 100)}% verified catch rate`} />
+        <SessionMetric label="Devil fruits" value={stats.fruits} detail={stats.last_fruit || "No fruit confirmed this session"} />
+        <SessionMetric label="Fruit pity" value={stats.pity_fruit ?? 0} detail="Fish since last confirmed fruit" />
+        <SessionMetric label="Legendary pity" value={stats.pity_legendary ?? 0} detail={settings?.fruit_storage?.all_seeing_eye ? "All-Seeing Eye enabled" : "Confirmed game counter"} />
       </div>
-      <CollectionStrip />
-      <div className="px-4 pb-3 text-[11px] text-fg-mute">
-        Press <span className="font-mono text-fg-dim">{hk}</span> anywhere to start or pause.
-      </div>
+      {onNavigate && <div className="mx-4 mb-4 grid grid-cols-2 gap-2">
+        <Button onClick={() => onNavigate("setup")} icon={<Focus size={14} />}>Calibration</Button>
+        <Button onClick={() => onNavigate("features")} icon={<ShieldCheck size={14} />}>Automation</Button>
+      </div>}
+      <section className="mx-4 mb-3 rounded-xl border border-line p-3" aria-label="Latest catch">
+        <div className="flex items-center gap-2 text-xs text-fg-mute"><Fish size={13} />Latest confirmed catch</div>
+        <div className="font-medium mt-1 truncate">{stats.last_fish || "Waiting for your first catch"}</div>
+        {(stats.unverified ?? 0) > 0 && <p className="text-xs text-warn mt-1">{stats.unverified} reels unverified · counters were not guessed.</p>}
+      </section>
+      <Disclosure title="Activity" hint="Recent events, errors and recovery decisions"><LogList height={220} /></Disclosure>
+      <Disclosure title="Live detection" hint="Open previews only when diagnosing calibration"><LiveAreas /></Disclosure>
+      <Disclosure title="Session details & all-time totals" hint="Pace, restock timing and saved statistics">
+        <Stat label="Fish / hour" value={Math.round(stats.fish_per_hour ?? 0)} />
+        <Stat label="Failed reels" value={stats.failed} />
+        <Stat label="Recoveries" value={stats.restarts} />
+        <Stat label="Bait restock" value={settings?.features.auto_purchase ? `${Math.max(0, (settings.purchase.every_n_catches ?? 10) - (stats.since_purchase ?? 0))} fish left` : "Disabled"} />
+        <Stat label="All-time fish" value={total.fish} />
+        <Stat label="All-time fruits" value={total.fruits} />
+        <Stat label="All-time time" value={fmtRuntime(totalRuntime)} />
+        <Stat label="Sessions" value={total.sessions} />
+        <Stat label="Estimated earnings" value={`~${(total.estimated_peli ?? 0).toLocaleString()} Peli`} />
+        {onNavigate && <div className="px-4 py-3"><Button size="sm" onClick={() => onNavigate("journal")} icon={<ArrowRight size={13} />}>Open catch history</Button></div>}
+      </Disclosure>
+      <Disclosure title="Custom automation" hint="Recorded sequences and playback"><QuickMacroRow onNavigate={onNavigate} /></Disclosure>
+      <Disclosure title="Training data collection" hint={settings?.fishing.trace ? "Recording enabled" : "Optional · recording off"}><CollectionStrip /><MlDataCard /></Disclosure>
       {collectGate && (
         <div className="absolute inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm px-6" onClick={() => setCollectGate(false)}>
           <div className="w-full max-w-[340px] rounded-2xl border border-line bg-[#0c101a] p-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -159,112 +201,6 @@ export default function Dashboard({
         onConfirm={() => { setPreflightFail(null); void handleStartPress(); }}
         onCancel={() => setPreflightFail(null)}
       />
-
-      <Section
-        title="Custom Automation"
-        action={
-          onNavigate && (
-            <button
-              onClick={() => onNavigate("macros")}
-              className="text-[11px] text-accent hover:underline flex items-center gap-1 font-medium cursor-pointer"
-            >
-              Open Studio →
-            </button>
-          )
-        }
-      >
-        <QuickMacroRow onNavigate={onNavigate} />
-      </Section>
-
-      <Section title="All time">
-        <Stat
-          label="Fish caught"
-          value={total.fish}
-          sub={sessionNote(stats.fish)}
-          extra={total.last_fish ? <Pill tone="accent">{total.last_fish.slice(0, 40)}</Pill> : undefined}
-        />
-        <Stat label="Failed reels" value={total.failed} sub={sessionNote(stats.failed)} />
-        <Stat
-          label="Devil fruits"
-          value={total.fruits}
-          sub={sessionNote(stats.fruits)}
-          extra={total.last_fruit ? <Pill tone="fruit">{total.last_fruit.slice(0, 40)}</Pill> : undefined}
-        />
-        <Stat
-          label="Fruit pity (since last fruit)"
-          value={stats.pity_fruit ?? 0}
-          extra={<Pill tone="warn">⚡ {stats.pity_fruit ?? 0} fish</Pill>}
-        />
-        <Stat
-          label="Legendary pity"
-          value={stats.pity_legendary ?? 0}
-          extra={<Pill tone="fruit">🌟 {stats.pity_legendary ?? 0} fish</Pill>}
-        />
-        <Stat label="Bait bought" value={total.bait_purchased} sub={sessionNote(stats.bait_purchased)} />
-        <Stat label="Time fishing" value={fmtRuntime(totalRuntime)} sub={active || state === "paused" ? `this run ${fmtRuntime(runtime)}` : undefined} />
-        <Stat label="Sessions" value={total.sessions} />
-        <Stat label="Unverified reels" value={total.unverified ?? 0} sub={sessionNote(stats.unverified ?? 0)} />
-        <Stat label="Confirmed catch rate" value={`${Math.round(stats.success_rate * 100)}%`} extra={<Bar pct={stats.success_rate} />} />
-        {stats.restarts > 0 && <Stat label="Recoveries" value={stats.restarts} />}
-        {total.last_spawn && <Stat label="Last spawn" value={total.last_spawn} />}
-      </Section>
-
-      <Section title="Schedules & Automation">
-        <Stat
-          label="Bait restock"
-          value={
-            settings?.features.auto_purchase
-              ? `${Math.max(0, (settings?.purchase.every_n_catches ?? 10) - (stats.since_purchase ?? 0))} fish left`
-              : "Disabled"
-          }
-          sub={settings?.features.auto_purchase ? `every ${settings?.purchase.every_n_catches ?? 10} fish` : undefined}
-          extra={
-            settings?.features.auto_purchase ? (
-              <Pill tone="accent">🛒 {stats.since_purchase ?? 0} / {settings?.purchase.every_n_catches ?? 10}</Pill>
-            ) : undefined
-          }
-        />
-        <Stat
-          label="Progress notification"
-          value={
-            settings?.webhook.progress
-              ? `${Math.max(0, (settings?.webhook.progress_every_n ?? 50) - (stats.since_progress ?? 0))} fish left`
-              : "Disabled"
-          }
-          sub={settings?.webhook.progress ? `every ${settings?.webhook.progress_every_n ?? 50} fish` : undefined}
-          extra={
-            settings?.webhook.progress ? (
-              <Pill tone="warn">📱 {stats.since_progress ?? 0} / {settings?.webhook.progress_every_n ?? 50}</Pill>
-            ) : undefined
-          }
-        />
-      </Section>
-
-      <Section title="Economy & Efficiency">
-        <Stat
-          label="Catch rate"
-          value={`${Math.round(stats.fish_per_hour ?? 0)} fish / hr`}
-          extra={<Pill tone="accent">⚡ Hourly pace</Pill>}
-        />
-        <Stat
-          label="Estimated earnings"
-          value={`~${(total.estimated_peli ?? (total.fish * 95)).toLocaleString()} Peli`}
-          sub={sessionNote(stats.estimated_peli ?? (stats.fish * 95))}
-          extra={<Pill tone="warn">💰 Fish market value</Pill>}
-        />
-      </Section>
-
-      <Section title="ML Data">
-        <MlDataCard />
-      </Section>
-
-      <Section title="Live">
-        <LiveAreas />
-      </Section>
-
-      <Section title="Activity">
-        <LogList height={220} />
-      </Section>
     </div>
   );
 }
@@ -415,14 +351,6 @@ function Stat({ label, value, extra, sub }: { label: string; value: React.ReactN
   );
 }
 
-function Bar({ pct }: { pct: number }) {
-  return (
-    <div className="w-24 h-1.5 rounded-full bg-white/10 overflow-hidden">
-      <div className={cx("h-full rounded-full", pct > 0.7 ? "bg-ok" : pct > 0.4 ? "bg-warn" : "bg-bad")} style={{ width: `${pct * 100}%` }} />
-    </div>
-  );
-}
-
 function QuickMacroRow({
   onNavigate,
 }: {
@@ -556,4 +484,8 @@ function QuickMacroRow({
       </div>
     </div>
   );
+}
+
+function SessionMetric({ label, value, detail }: { label: string; value: number; detail: string }) {
+  return <div className="metric-card"><div className="text-xs text-fg-dim">{label}</div><div className="metric-value mt-1">{value}</div><div className="text-xs text-fg-mute mt-1 leading-snug break-words">{detail}</div></div>;
 }

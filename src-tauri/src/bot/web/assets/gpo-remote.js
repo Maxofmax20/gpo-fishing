@@ -267,6 +267,7 @@
     }
     const macro = document.getElementById('main-macro-btn');
     if (macro) macro.disabled = !online;
+    const stop = document.getElementById('stop-fishing-btn'); if(stop) stop.disabled = !online;
     if (!online) gpoSetText('macro-status-text', 'Disconnected — awaiting PC');
     document.querySelectorAll('#fps-menu [data-fps]').forEach((b) => {
       const on = parseInt(b.getAttribute('data-fps'), 10) === streamFps;
@@ -355,11 +356,11 @@
     if (btn.dataset.running === String(running)) return;
     btn.dataset.running = String(running);
     if (running) {
-      btn.innerHTML = '<span class="material-symbols-outlined text-[24px] animate-spin">sync</span><span>STOP MACRO // HARVESTING</span>';
+      btn.innerHTML = '<span class="material-symbols-outlined text-[24px] animate-spin">sync</span><span>PAUSE FISHING</span>';
       btn.classList.remove('bg-primary-container', 'hover:bg-primary', 'text-on-primary', 'border-primary/40');
       btn.classList.add('bg-error-container', 'text-on-error-container', 'border-error/40', 'macro-active-pulse');
     } else {
-      btn.innerHTML = '<span class="material-symbols-outlined text-[24px]">play_arrow</span><span id="macro-btn-label">START MACRO</span>';
+      btn.innerHTML = '<span class="material-symbols-outlined text-[24px]">play_arrow</span><span id="macro-btn-label">START FISHING</span>';
       btn.classList.add('bg-primary-container', 'hover:bg-primary', 'text-on-primary', 'border-primary/40');
       btn.classList.remove('bg-error-container', 'text-on-error-container', 'border-error/40', 'macro-active-pulse');
     }
@@ -367,7 +368,13 @@
 
   function bindActions() {
     const macroBtn = gpoRebind(document.getElementById('main-macro-btn'));
-    if (macroBtn) macroBtn.addEventListener('click', toggleMacro);
+    if (macroBtn) {
+      macroBtn.addEventListener('click', toggleMacro);
+      const stop = document.createElement('button'); stop.id = 'stop-fishing-btn'; stop.type = 'button';
+      stop.className = 'gpo-stop-button'; stop.textContent = 'Stop session'; stop.setAttribute('aria-label','Stop fishing session');
+      stop.addEventListener('click', async () => { stop.disabled=true; try { await gpoAction('stop'); await refresh(); } catch(e) { toast('Stop failed: '+e.message); } finally { stop.disabled=false; } });
+      macroBtn.insertAdjacentElement('afterend',stop);
+    }
     // The legacy mock toasted "Remote Deck Connected" on every PWR press
     // without doing anything: strip it, keep the real toggle (+ click sound).
     const pwr = gpoRebind(document.getElementById('pwr-btn'));
@@ -395,20 +402,17 @@
     if (cast) cast.addEventListener('click', async () => {
       try { await gpoAction('recast'); } catch (e) { toast('Recast failed: ' + e.message); }
     });
-    // Fruit slot: taps hotbar key 2 (matches the deck's [2] FRUIT mapping).
     const skill = document.getElementById('sfx-skill-btn');
     if (skill) skill.addEventListener('click', async () => {
-      try {
-        await gpoPost('/api/key', { key: '2', tap: true });
-        toast('Sent key 2 (fruit slot)');
-      } catch (e) { toast('Slot key failed: ' + e.message); }
+      const key = lastStatus?.remote_keys?.fruit1;
+      if (!key) { toast('Fruit key unavailable — check PC configuration.'); return; }
+      try { await gpoPost('/api/key', { key, tap: true }); toast('Sent configured fruit slot ' + key); }
+      catch (e) { toast('Slot key failed: ' + e.message); }
     });
     // Emote button: the game exposes no emote API to drive — say so instead
     // of pretending the tap did something.
     const emote = document.querySelector('[aria-label="Emote Wave"]');
-    if (emote) emote.addEventListener('click', () => {
-      toast('Emotes have no game API — nothing sent');
-    });
+    if (emote) { emote.disabled = true; emote.title = 'Emotes are not supported by the game connection'; }
     // Type-on-PC + clipboard dialog (chat bubble button).
     const typeDlg = document.getElementById('type-dialog');
     const typeBox = document.getElementById('type-text');
@@ -461,6 +465,8 @@
 
   function paint(d, ms) {
     lastStatus = d;
+    gpoSetText('unmute-text', d.muted ? 'UNMUTE PC' : 'MUTE PC');
+    document.getElementById('unmute-btn')?.setAttribute('aria-label', d.muted ? 'Unmute PC audio' : 'Mute PC audio');
     paintStreamLabels();
     if (ms != null) gpoSetText('stream-rtt', ms + 'ms');
     const running = d.is_running && !d.paused;
@@ -502,7 +508,7 @@
       gpoPost('/api/mouse', { action: 'release_all' }).catch(() => {});
     };
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) release();
+      if (document.hidden) { release(); const img=document.getElementById('gpo-stream'); if(img) img.removeAttribute('src'); }
       else reloadStream();
     });
     window.addEventListener('pagehide', release);

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, useMemo } from "react";
+﻿import { useEffect, useState, useMemo, useDeferredValue } from "react";
 import { Fish, FolderOpen, RefreshCw, Search, Sparkles, Trash2 } from "lucide-react";
 import { api } from "../lib/ipc";
 import { showToast } from "../lib/store";
@@ -11,6 +11,9 @@ export default function Journal() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "fish" | "fruit">("all");
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
+  const [visibleCount, setVisibleCount] = useState(50);
+  useEffect(() => setVisibleCount(50), [deferredSearch, filter]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearing, setClearing] = useState(false);
 
@@ -55,16 +58,17 @@ export default function Journal() {
     return catches.filter((c) => {
       if (filter === "fish" && c.kind !== "fish") return false;
       if (filter === "fruit" && c.kind !== "fruit") return false;
-      if (search.trim()) {
-        const q = search.toLowerCase();
+      if (deferredSearch.trim()) {
+        const q = deferredSearch.toLowerCase();
         return c.name.toLowerCase().includes(q) || c.raw.toLowerCase().includes(q);
       }
       return true;
     });
-  }, [catches, filter, search]);
+  }, [catches, filter, deferredSearch]);
 
   return (
     <div className="pb-4 pt-2">
+      <div className="workflow-intro"><h1>Your catch history</h1><p>Confirmed catches from your saved journal. Search by title or original reading.</p></div>
       {/* Top summary stats */}
       <div className="px-4 mb-3 grid grid-cols-3 gap-2">
         <div className="glass rounded-xl p-3 border border-line bg-white/[0.02]">
@@ -92,6 +96,7 @@ export default function Journal() {
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-fg-mute" />
             <input
               type="text"
+              aria-label="Search catch history"
               placeholder="Search catches..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -101,9 +106,9 @@ export default function Journal() {
           <Button size="sm" onClick={openCsv} icon={<FolderOpen size={13} />}>
             Open CSV
           </Button>
-          <Button size="sm" onClick={refresh} icon={<RefreshCw size={13} className={loading ? "animate-spin" : ""} />} />
+          <Button size="sm" label="Refresh catch history" disabled={loading} onClick={refresh} icon={<RefreshCw size={13} className={loading ? "animate-spin" : ""} />} />
           {catches.length > 0 && (
-            <Button size="sm" kind="danger" onClick={() => setConfirmClear(true)} icon={<Trash2 size={13} />} />
+            <Button size="sm" label="Clear catch history" kind="danger" onClick={() => setConfirmClear(true)} icon={<Trash2 size={13} />} />
           )}
           <ConfirmModal
             open={confirmClear}
@@ -161,7 +166,7 @@ export default function Journal() {
           </div>
         ) : (
           <div className="divide-y divide-line max-h-[380px] overflow-y-auto">
-            {filtered.map((item, idx) => (
+            {filtered.slice(0, visibleCount).map((item, idx) => (
               <div key={idx} className="px-4 py-2.5 flex items-center gap-3 hover:bg-white/[0.02] transition-colors">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
@@ -178,6 +183,9 @@ export default function Journal() {
           </div>
         )}
       </Section>
+      {filtered.length > visibleCount && <div className="px-4 flex items-center justify-between gap-2 text-xs text-fg-mute">
+        <span>{visibleCount} of {filtered.length} shown</span><Button size="sm" onClick={() => setVisibleCount(n => n + 50)}>Show 50 more</Button>
+      </div>}
     </div>
   );
 }

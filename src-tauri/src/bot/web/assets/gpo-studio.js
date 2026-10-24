@@ -237,6 +237,20 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     bind();
+    document.querySelectorAll('[data-loop]').forEach(button => button.addEventListener('click', () => {
+      const count = Number(button.dataset.loop); window.selectLoop(button, count ? count + 'x' : '∞ Endless');
+    }));
+    document.querySelectorAll('[data-speed-index]').forEach(button => button.addEventListener('click', () => {
+      window.selectSpeed(button, '', Number(button.dataset.speedIndex));
+    }));
+    document.getElementById('play-once-btn')?.addEventListener('click', () => void playSelected(false));
+    document.getElementById('loop-play-btn')?.addEventListener('click', () => void playSelected(true));
+    const inspector = document.getElementById('inspector-toggle'), body = document.getElementById('inspector-body');
+    inspector?.setAttribute('aria-expanded', 'true');
+    inspector?.addEventListener('click', () => {
+      if (!body) return; const open = inspector.getAttribute('aria-expanded') === 'true';
+      inspector.setAttribute('aria-expanded', String(!open)); body.hidden = open;
+    });
     // Prime the inspector neutral: static mock rows must never present,
     // even before the first macro-list fetch lands.
     const inspBody = document.getElementById('inspector-body');
