@@ -1,31 +1,13 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
-import OntologyReviewBrowser from "./pages/OntologyReviewBrowser";
-import LabelReview from "./pages/LabelReview";
+const OntologyReviewBrowser = lazy(() => import("./pages/OntologyReviewBrowser"));
+const LabelReview = lazy(() => import("./pages/LabelReview"));
 import { ROUTES, resolveRoute } from "./lib/router";
 
 /**
- * # Why the desktop windows are lazy
- *
- * `Panel.tsx` statically imports `@tauri-apps/plugin-updater`, and `Settings.tsx`
- * does too. Those modules throw when evaluated outside the Tauri shell - they reach
- * for `window.__TAURI_INTERNALS__` at import time and dereference it.
- *
- * With a static import graph, merely having `Panel` in this file meant a plain
- * browser loading `/ontology-review` evaluated the updater plugin and crashed with
- * `Cannot read properties of undefined (reading 'transformCallback')` - a blank
- * page. That was a real failure, caught by loading the route in an actual browser
- * rather than by reading the source.
- *
- * Dynamic import fixes the cause rather than the symptom: the desktop windows, and
- * therefore the Tauri plugins, are now fetched ONLY when a route actually needs
- * them. A browser on `/ontology-review` loads none of that code, so it cannot break
- * from it.
- *
- * `OntologyReviewBrowser` stays eager: it is the browser path, and it imports no
- * Tauri plugin. The desktop windows are also eager-loaded in Tauri, where the
- * plugins are present, so the shipped app behaves exactly as before.
+ * Load only the selected window or browser route. Review workstations must not
+ * load Tauri plugins in a browser, and desktop startup must not parse research UI.
  */
 const Hud = lazy(() => import("./windows/Hud"));
 const Panel = lazy(() => import("./windows/Panel"));
@@ -124,6 +106,8 @@ document.addEventListener("contextmenu", (e) => e.preventDefault());
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <Root />
+    <Suspense fallback={<div className="h-full bg-bg text-fg-mute p-4">Loading…</div>}>
+      <Root />
+    </Suspense>
   </React.StrictMode>,
 );

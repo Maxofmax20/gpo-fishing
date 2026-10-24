@@ -103,7 +103,10 @@ fn repo_packager_scripts_present() {
 fn release_workflow_has_no_failure_hiding() {
     let wf = std::fs::read_to_string(repo_root().join(".github/workflows/release.yml"))
         .expect("release.yml readable");
-    let code_lines: Vec<&str> = wf
+    let quality = std::fs::read_to_string(repo_root().join(".github/workflows/quality.yml"))
+        .expect("shared quality workflow readable");
+    let combined = format!("{wf}\n{quality}");
+    let code_lines: Vec<&str> = combined
         .lines()
         .filter(|l| {
             let t = l.trim_start();
@@ -114,7 +117,17 @@ fn release_workflow_has_no_failure_hiding() {
     assert!(!code.contains("continue-on-error"), "critical release steps must not hide failures");
     assert!(!code.contains("|| true"), "critical release steps must not hide failures");
     assert!(wf.contains("check-versions"), "version gate must run in release");
-    assert!(wf.contains("cargo test"), "tests must gate the release");
+    let quality_job = wf.split("  quality-gates:").nth(1).expect("quality gate job")
+        .split("\n  # Build").next().unwrap();
+    assert!(quality_job.contains("uses: ./.github/workflows/quality.yml"), "release must call the tested shared workflow");
+    assert!(quality.contains("cargo test --locked"), "shared gate must run locked Rust tests");
+    assert!(quality.contains("npm test") && quality.contains("python -m pytest"), "all quality suites remain mandatory");
+    let publish = wf.split("  publish:").nth(1).expect("separate publication job");
+    assert!(publish.contains("needs: [quality-gates, release]"), "publication must depend on both all tests and the signed build");
+    assert!(publish.contains("sha256sum --check SHA256SUMS.txt"), "published files must pass checksum verification");
+    let build = wf.split("  release:").nth(1).unwrap().split("  publish:").next().unwrap();
+    assert!(build.contains("releaseDraft: true"), "parallel build can create only a private draft");
+    assert!(!build.contains("--draft=false"), "parallel build must not publish before tests");
     assert!(wf.contains("TAURI_SIGNING_PRIVATE_KEY"), "signing must use CI secrets");
     assert!(!wf.contains("PRIVATE KEY----") && !wf.contains("BEGIN PRIVATE"), "no keys in workflow");
 }

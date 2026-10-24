@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useUpdater } from "../lib/updater";
 import { api } from "../lib/ipc";
@@ -8,14 +8,14 @@ import { cx, Dot } from "../components/primitives";
 import { ConnectGate } from "../components/ConnectGate";
 import logo from "../assets/logo.png";
 import Dashboard from "../pages/Dashboard";
-import Journal from "../pages/Journal";
-import Setup from "../pages/Setup";
-import Features from "../pages/Features";
-import SettingsPage from "../pages/Settings";
-import Macros from "../pages/Macros";
-import VpnPage from "../pages/VpnPage";
-import MultiRobloxPage from "../pages/MultiRobloxPage";
-import TrainingCenter from "../pages/TrainingCenter";
+const Journal = lazy(() => import("../pages/Journal"));
+const Setup = lazy(() => import("../pages/Setup"));
+const Features = lazy(() => import("../pages/Features"));
+const SettingsPage = lazy(() => import("../pages/Settings"));
+const Macros = lazy(() => import("../pages/Macros"));
+const VpnPage = lazy(() => import("../pages/VpnPage"));
+const MultiRobloxPage = lazy(() => import("../pages/MultiRobloxPage"));
+const TrainingCenter = lazy(() => import("../pages/TrainingCenter"));
 import { BookOpen, Download, Film, Gauge, Globe, GraduationCap, Layers, ListChecks, Minus, Settings2, Shield, SlidersHorizontal, X } from "lucide-react";
 
 type Tab = "dashboard" | "journal" | "setup" | "features" | "macros" | "vpn" | "multi" | "training" | "settings";
@@ -170,7 +170,7 @@ export default function Panel() {
             {!ready && <Booting error={error} />}
             {gated && <ConnectGate onSkip={() => setSkipGate(true)} />}
             {ready && !gated && (
-              <>
+              <Suspense fallback={<div role="status" className="p-4 text-fg-mute">Loading page…</div>}>
                 {tab === "dashboard" && <Dashboard onNavigate={setTab} />}
                 {tab === "journal" && <Journal />}
                 {tab === "setup" && <Setup />}
@@ -180,7 +180,7 @@ export default function Panel() {
                 {tab === "multi" && <MultiRobloxPage />}
                 {tab === "training" && <TrainingCenter />}
                 {tab === "settings" && <SettingsPage />}
-              </>
+              </Suspense>
             )}
             <Toasts />
           </main>

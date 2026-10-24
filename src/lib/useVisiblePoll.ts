@@ -18,11 +18,17 @@ export function useVisiblePoll(fn: () => void | Promise<unknown>, ms: number, ac
       try { await ref.current(); } catch (e) { console.error("Polling failed", e); }
       finally { flight.current = false; }
     };
-    void tick();
-    const t = window.setInterval(tick, ms);
+    // Hidden windows have no interval at all, rather than waking just to skip.
+    let t: number | undefined;
     const onVis = () => {
-      void tick();
+      window.clearInterval(t);
+      t = undefined;
+      if (!document.hidden) {
+        void tick();
+        t = window.setInterval(tick, ms);
+      }
     };
+    onVis();
     document.addEventListener("visibilitychange", onVis);
     return () => {
       disposed = true;
