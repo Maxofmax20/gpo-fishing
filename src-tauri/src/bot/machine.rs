@@ -14,6 +14,7 @@ use super::trace::Trace;
 enum Outcome {
     Ended,
     Timeout,
+    CastFailed,
     Lost,
     Stopped,
     Disconnected(String),
@@ -24,6 +25,7 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
     let mut tracker = Tracker::default();
     let mut anti_afk_at = Instant::now();
     let mut rod_equipped = false;
+    actions::reset_rod_evidence(ctx);
 
     if !wait_for_roblox(ctx, false) {
         return;
@@ -32,7 +34,8 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
         return;
     }
     if !skip_setup && !actions::initial_setup(ctx, &mut rod_equipped) {
-        return;
+        if !ctx.alive() || ctx.state() == BotState::Paused { return; }
+        // Unknown equipment remains in short local recovery, never bite wait.
     }
 
     while ctx.alive() {
@@ -55,7 +58,9 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
             return;
         }
         if !actions::ensure_rod_equipped(ctx, &mut rod_equipped) {
-            return;
+            if !ctx.alive() || ctx.state() == BotState::Paused { return; }
+            if !ctx.sleep_ms(500) { return; }
+            continue;
         }
         if ctx.settings.read().features.auto_bait {
             if !actions::select_bait(ctx) {
@@ -132,6 +137,13 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
                         }
                     }
                 }
+            }
+            Outcome::CastFailed => {
+                rod_equipped = false;
+                ctx.log_warn("Cast did not start: Fishing Baits remained open; retrying bait selection and cast");
+                ctx.set_state(BotState::Recovering, Some("Cast not started; retrying bait and cast".into()));
+                if !ctx.sleep_ms(400) { return; }
+                continue;
             }
             Outcome::Timeout => {
                 if let Some(reason) = check_disconnect(ctx) {
@@ -494,6 +506,8 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
     }
     let started = Instant::now();
     let mut disconnect_checked_at = Instant::now() - Duration::from_secs(3600);
+    let mut cast_checked_at = Instant::now();
+    let mut cast_watch = actions::rod_state::CastWatch::default();
     let mut tracking_since: Option<Instant> = None;
     let mut confirm = 0u32;
     let mut misses = 0u32;
@@ -514,7 +528,8 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
     };
 
     loop {
-        if !ctx.alive() {
+        if !ctx.alive() || ctx.state() == BotState::Paused {
+            ctx.release_mouse();
             return Outcome::Stopped;
         }
         ctx.touch();
@@ -664,6 +679,20 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
             }
             None => {
                 confirm = 0;
+                // Observe failed casts only before a bite and outside the bar
+                // controller path. UI disappearance alone proves nothing.
+                if tracking_since.is_none() && started.elapsed() >= Duration::from_millis(800)
+                    && cast_checked_at.elapsed() >= Duration::from_millis(500)
+                    && !vision::has_bar(&frame, &palette) {
+                    cast_checked_at = Instant::now();
+                    let menu_open = actions::bait_menu_open(ctx);
+                    if !ctx.alive() || ctx.state() == BotState::Paused || !ctx.roblox_in_front() {
+                        ctx.release_mouse(); return Outcome::Stopped;
+                    }
+                    if cast_watch.observe(started.elapsed().as_millis() as u64, menu_open, actions::rod_state::RodEvidence::Unknown) {
+                        return Outcome::CastFailed;
+                    }
+                }
                 if let Some(t) = tracking_since {
                     if last_observation.is_some_and(|at| at.elapsed() >= Duration::from_millis(100)) {
                         ctx.release_mouse();
@@ -1098,12 +1127,13 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
                 ctx.set_state(BotState::Paused, Some(format!("Protected {fruit_name}: {}", outcome.detail())));
                 return false;
             }
-            if !actions::key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(150) {
-                if ctx.alive() { ctx.set_state(BotState::Paused, Some("Fruit workflow finished; rod could not be re-equipped".into())); }
-                return false;
+            *rod_equipped = false;
+            if !actions::ensure_rod_equipped(ctx, rod_equipped) {
+                // Storage policy has already allowed continuation. Equipment
+                // uncertainty uses normal local recovery, never a blind toggle.
+                return ctx.alive() && ctx.state() != BotState::Paused;
             }
             if let Some(fp) = actions::fishing_point(ctx) { ctx.platform.input.move_to(fp); }
-            *rod_equipped = true;
         } else if s.fruit_storage.pause_on_protected_fruit && is_protected {
             ctx.set_state(BotState::Paused, Some(format!("Protected {fruit_name} caught — inspect inventory")));
             return false;
