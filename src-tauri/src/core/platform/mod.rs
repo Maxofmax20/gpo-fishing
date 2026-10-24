@@ -4,6 +4,7 @@ use crate::core::types::{Frame, Key, MouseButton, PxPoint, PxRect, WindowInfo};
 
 pub mod capture_bounds;
 pub mod ocr_gate;
+pub mod playback_guard;
 pub mod mock;
 pub mod capture_broker;
 pub mod guarded_input;
