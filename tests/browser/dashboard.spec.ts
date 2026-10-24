@@ -13,6 +13,8 @@ for (const width of [360, 768, 1280]) for (const name of pages) {
     await page.route("http://gpo.test/**", async route => {
       const url = new URL(route.request().url());
       if (url.pathname.startsWith("/api/")) {
+        const authenticated = url.pathname === "/api/stream" ? url.searchParams.get("token") === "synthetic-test-token" : route.request().headers()["authorization"] === "Bearer synthetic-test-token";
+        if (!authenticated) { await route.fulfill({ status: 401, body: "Unauthorized" }); return; }
         if (offline) { await route.abort(); return; }
         if (url.pathname === "/api/action") { await route.fulfill({ status: 400, json: { ok: false, message: "Test command rejected" } }); return; }
         if (url.pathname === "/api/stream") { await route.abort(); return; }
@@ -20,7 +22,8 @@ for (const width of [360, 768, 1280]) for (const name of pages) {
           version: "test", fish: 0, fruits: 0, runtime_s: 0, macros: [], timers: [],
           settings: {}, total: {}, crafting: { is_crafting: false, crafted_count: 0 } } }); return;
       }
-      const relative = url.pathname.startsWith("/assets/") ? url.pathname.slice(1) : `${name}.html`;
+      const pageName = url.pathname === "/" ? "remote" : url.pathname.slice(1);
+      const relative = url.pathname.startsWith("/assets/") ? url.pathname.slice(1) : `${pages.includes(pageName) ? pageName : "remote"}.html`;
       const file = resolve(root, relative);
       if (!file.startsWith(root + "/")) { await route.abort(); return; }
       const mime: Record<string,string> = { ".css": "text/css", ".js": "text/javascript", ".html": "text/html", ".woff2": "font/woff2" };
@@ -49,6 +52,12 @@ for (const width of [360, 768, 1280]) for (const name of pages) {
     offline = false;
     await page.evaluate(async () => { await (window as any).gpoGet("/api/status"); });
     await expect(page.locator("#gpo-offline-banner")).toBeHidden();
+    expect(errors).toEqual([]);
+    const next = name === "stats" ? "/" : "/stats";
+    await page.locator(`[data-nav="${next}"]`).click();
+    await expect(page).toHaveURL(`http://gpo.test${next}`);
+    expect(await page.evaluate(() => sessionStorage.getItem("gpo-dashboard-token"))).toBe("synthetic-test-token");
+    await page.waitForTimeout(100);
     expect(errors).toEqual([]);
   });
 }

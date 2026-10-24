@@ -73,7 +73,7 @@
       }
     };
     c.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || c.getAttribute('aria-disabled') === 'true') return;
       dragging = true;
       c.setPointerCapture(e.pointerId);
       point(e);
@@ -100,6 +100,7 @@
       void refresh();
     });
     c.addEventListener('keydown', (e) => {
+      if (c.getAttribute('aria-disabled') === 'true') return;
       const current = Number(c.getAttribute('aria-valuenow')) || 0;
       const values = { ArrowLeft: current - 5, ArrowDown: current - 5, ArrowRight: current + 5, ArrowUp: current + 5, Home: 0, End: 100 };
       if (!(e.key in values)) return;
@@ -130,6 +131,14 @@
   }
 
   function paintFan(fan) {
+    const available = !!fan && fan.success !== false;
+    document.querySelectorAll('[data-fanmode], #turbo-toggle').forEach(button => {
+      button.disabled = !available;
+      button.title = available ? '' : 'Fan provider unavailable or still loading';
+    });
+    const slider = sliderContainer(0);
+    if (slider) slider.setAttribute('aria-disabled', String(!available));
+    if (!available) { gpoSetText('fan-mode-badge', 'UNAVAILABLE'); return; }
     const mode = (fan.current_mode || '').toLowerCase();
     const modes = ['quiet', 'balance', 'performance', 'turbo'];
     const labels = { quiet: 'QUIET', balance: 'BALANCE (AUTO)', performance: 'PERF', turbo: 'TURBO (MAX)' };
@@ -160,6 +169,9 @@
   }
 
   function paintLight(kb) {
+    const available = !!kb && kb.success !== false;
+    document.querySelectorAll('[data-rgb]').forEach(button => { button.disabled = !available; });
+    if (!available) { gpoSetText('rgb-preset-badge', 'UNAVAILABLE'); return; }
     const st = (kb && kb.status ? kb.status : 'Unknown').toLowerCase();
     const label = st === 'off' ? 'PRESET: OFF' : st === 'low' ? 'PRESET: LOW' : st === 'high' ? 'PRESET: HIGH' : 'PRESET: ' + st.toUpperCase();
     gpoSetText('rgb-preset-badge', label);
@@ -231,8 +243,8 @@
       const { data } = await gpoGet('/api/status');
       gpoNoteOnline(true);
       gpoSetText('bridge-sync-text', 'BRIDGE SYNCED');
-      if (data.fan) paintFan(data.fan);
-      if (data.keyboard_light) paintLight(data.keyboard_light);
+      paintFan(data.fan);
+      paintLight(data.keyboard_light);
       paintSlider('volume-fill', 'volume-badge', sliderContainer(1), data.volume != null ? data.volume : 0);
       paintSlider('brightness-fill', 'brightness-badge', sliderContainer(2), data.brightness != null ? data.brightness : 0);
       paintBosses(data.bosses);

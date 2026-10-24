@@ -1258,7 +1258,7 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
         }
         "recast" => {
             bot.recast();
-            "Rod recast triggered"
+            "Rod recast requested"
         }
         "buy_bait" => {
             let ok = crate::bot::actions::purchase(&bot.ctx());
@@ -1331,7 +1331,7 @@ fn handle_action(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<S
             // remote JSON is remote code execution, and the pinned minisign key
             // exists precisely to prevent that). The previous text claimed an
             // install would happen - it would not.
-            "Checked for updates. Use the in-app updater (Settings -> Check for updates) to install; it verifies the release signature."
+            "Update check requested. Use the in-app updater (Settings -> Check for updates) to install; it verifies the release signature."
         }
         _ => { send_action_error(stream, "Unknown action"); return; },
     };

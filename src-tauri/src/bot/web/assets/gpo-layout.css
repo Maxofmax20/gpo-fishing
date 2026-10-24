@@ -40,3 +40,6 @@ body .text-label-sm { font-size: 12px; line-height: 18px; }
 /* State must remain readable when power is off; opacity dims text and background together. */
 #pwr-btn.opacity-60 { opacity: 1; color: #ffc0c6; background: #382028; }
 .filter-pill { opacity: 1; color: #c7e6d8; }
+
+/* Pulse the status dot, not readable status text. */
+#engine-status-text { animation: none; }
