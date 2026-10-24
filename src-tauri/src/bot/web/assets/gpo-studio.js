@@ -218,18 +218,13 @@
         toast(running ? 'Macro paused' : 'Macro started');
       } catch (e) { toast('Failed: ' + e.message); }
     });
-    const alerts = document.getElementById('alerts-btn');
-    if (alerts) alerts.addEventListener('click', async () => {
-      try { const j = await gpoAction('toggle_spawn'); toast(j.message); }
-      catch (e) { toast('Failed: ' + e.message); }
-    });
   }
 
   async function refreshMeta() {
     try {
       const { data, ms } = await gpoGet('/api/status');
-      gpoSetText('sync-rtt-text', 'Stable (' + ms + 'ms)');
-      gpoSetText('studio-pity-text', 'Pity: ' + (data.pity_legendary || 0) + '/' + (data.pity_cap || 100));
+      gpoSetText('sync-rtt-text', 'API ' + ms + 'ms');
+      gpoSetText('studio-pity-text', 'Tracked pity: ' + (data.pity_legendary ?? '—') + '/' + (data.pity_cap ?? '—'));
       gpoSetText('studio-queue-text', 'Steps: ' + (lastRecorder ? lastRecorder.recorded_steps_count : 0));
       gpoPaintPwr(document.getElementById('pwr-btn'), data.is_running && !data.paused);
     } catch (e) { /* offline */ }
@@ -237,6 +232,20 @@
 
   document.addEventListener('DOMContentLoaded', () => {
     bind();
+    document.querySelectorAll('[data-loop]').forEach(button => button.addEventListener('click', () => {
+      const count = Number(button.dataset.loop); window.selectLoop(button, count ? count + 'x' : '∞ Endless');
+    }));
+    document.querySelectorAll('[data-speed-index]').forEach(button => button.addEventListener('click', () => {
+      window.selectSpeed(button, '', Number(button.dataset.speedIndex));
+    }));
+    document.getElementById('play-once-btn')?.addEventListener('click', () => void playSelected(false));
+    document.getElementById('loop-play-btn')?.addEventListener('click', () => void playSelected(true));
+    const inspector = document.getElementById('inspector-toggle'), body = document.getElementById('inspector-body');
+    inspector?.setAttribute('aria-expanded', 'true');
+    inspector?.addEventListener('click', () => {
+      if (!body) return; const open = inspector.getAttribute('aria-expanded') === 'true';
+      inspector.setAttribute('aria-expanded', String(!open)); body.hidden = open;
+    });
     // Prime the inspector neutral: static mock rows must never present,
     // even before the first macro-list fetch lands.
     const inspBody = document.getElementById('inspector-body');

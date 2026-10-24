@@ -3,7 +3,7 @@ import { BookOpen, Check, Circle, HeartPulse, PencilRuler, ScanText } from "luci
 import { api } from "../lib/ipc";
 import { showToast, useStore } from "../lib/store";
 import type { BaselineReport, DatasetReport, DatasetSample, HealthCheck, KnowledgeEntity, KnowledgeStats, MlAnnotation, MlModelStatus, OcrTest, TrainingReadiness, WikiSyncResult } from "../lib/types";
-import { Button, Kbd, KeyCapture, Pill, Row, Section, Segmented } from "../components/primitives";
+import { Button, Disclosure, Kbd, KeyCapture, Pill, Row, Section, Segmented } from "../components/primitives";
 import { RegionField } from "../components/RegionField";
 import { PointField } from "../components/PointField";
 
@@ -65,12 +65,13 @@ export default function Setup() {
 
   return (
     <div className="pb-4 pt-2">
+      <div className="workflow-intro"><h1>Make every input count</h1><p>Configure the game areas, verify the live readings, then return to your session.</p></div>
       <Section title="Getting started">
         <Row
           title={<span className="inline-flex items-center gap-2"><BookOpen size={14} className="text-accent" />How to set up</span>}
           sub="Six animated steps from an empty hotbar to your first catch."
           right={
-            <Button size="sm" kind="primary" onClick={() => api.guideOpen()}>
+            <Button size="sm" kind="primary" onClick={() => api.guideOpen().catch(e => showToast("error", `Guide failed: ${String(e)}`))}>
               Open guide
             </Button>
           }
@@ -124,7 +125,7 @@ export default function Setup() {
           title={<span className="inline-flex items-center gap-2"><PencilRuler size={14} className="text-accent" />Edit areas on screen</span>}
           sub={<>Drag both areas directly over the game. Press <Kbd>{s.hotkeys.overlay}</Kbd> any time, <Kbd>Tab</Kbd> switches, <Kbd>Enter</Kbd> saves.</>}
           right={
-            <Button size="sm" kind="primary" disabled={!roblox} onClick={() => api.overlayOpenRegions()}>
+            <Button size="sm" kind="primary" disabled={!roblox} onClick={() => api.overlayOpenRegions().catch(e => showToast("error", `Editor failed: ${String(e)}`))}>
               Open editor
             </Button>
           }
@@ -242,16 +243,18 @@ export default function Setup() {
             </div>
           </div>
         </Row>
-        <Row
+
+      </Section>
+
+      <Disclosure title="Advanced calibration & learning" hint="Knowledge base, labeling and dataset validation">
+        <Section title="Knowledge base">        <Row
           title="GPO knowledge base"
           sub="Local entity database (fruits, fish, bait, UI terms) used for perception matching. Wiki sync is opt-in and never overwrites curated entries."
           open={open === "kb"}
           onToggle={() => toggle("kb")}
         >
           <KnowledgePanel />
-        </Row>
-      </Section>
-
+        </Row></Section>
       <Section title="Learning dataset">
         <Row
           title="Uncertain observations"
@@ -272,7 +275,7 @@ export default function Setup() {
         >
           <MlDatasetPanel />
         </Row>
-      </Section>
+      </Section>      </Disclosure>
     </div>
   );
 }

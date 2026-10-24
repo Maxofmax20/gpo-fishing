@@ -11,7 +11,36 @@ use std::time::Duration;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-static LAST_FRAME: parking_lot::RwLock<Option<Vec<u8>>> = parking_lot::RwLock::new(None);
+struct EncodedFrame {
+    rect: crate::core::types::PxRect,
+    scale: usize,
+    quality: u8,
+    captured: std::time::Instant,
+    bytes: Arc<Vec<u8>>,
+}
+static JPEG_VARIANTS: parking_lot::Mutex<Vec<EncodedFrame>> = parking_lot::Mutex::new(Vec::new());
+const FRAME_TTL: Duration = Duration::from_millis(750);
+
+fn preview_jpeg(bot: &Arc<Bot>, scale: usize, quality: u8) -> Option<Arc<Vec<u8>>> {
+    let rect = bot.ctx().roblox_rect()?;
+    let mut variants = JPEG_VARIANTS.lock();
+    if let Some(frame) = variants.iter().find(|f| f.rect == rect && f.scale == scale && f.quality == quality && f.captured.elapsed() < Duration::from_millis(100)) {
+        return Some(frame.bytes.clone());
+    }
+    if let Ok(frame) = bot.ctx().platform.capture.grab_preview(rect) {
+        let now = std::time::Instant::now();
+        let captured = now.checked_sub(bot.ctx().platform.capture.preview_age(rect).unwrap_or_default()).unwrap_or(now);
+        let bytes = Arc::new(frame.downscale(scale.max(1)).to_jpeg_bytes(quality).ok()?);
+        variants.retain(|f| f.captured.elapsed() < FRAME_TTL && !(f.rect == rect && f.scale == scale && f.quality == quality));
+        if variants.len() >= 4 { variants.remove(0); }
+        variants.push(EncodedFrame {rect,scale,quality,captured,bytes:bytes.clone()});
+        return Some(bytes);
+    }
+    variants.iter().find(|f| f.rect == rect && f.scale == scale && f.quality == quality && f.captured.elapsed() < FRAME_TTL).map(|f|f.bytes.clone())
+}
+fn preview_age_ms() -> Option<u64> {
+    JPEG_VARIANTS.lock().iter().map(|f|f.captured.elapsed().as_millis() as u64).min()
+}
 static HELD_KEYS: parking_lot::RwLock<Vec<crate::core::types::Key>> =
     parking_lot::RwLock::new(Vec::new());
 static LAST_KEY_ACTIVITY: parking_lot::RwLock<Option<std::time::Instant>> =
@@ -24,6 +53,7 @@ static LAST_MOUSE_ACTIVITY: parking_lot::RwLock<Option<std::time::Instant>> =
     parking_lot::RwLock::new(None);
 static KEY_WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
 static TELEMETRY_STARTED: AtomicBool = AtomicBool::new(false);
+static TELEMETRY_DEMAND: parking_lot::RwLock<Option<std::time::Instant>> = parking_lot::RwLock::new(None);
 static LOCAL_IP: RwLock<Option<String>> = RwLock::new(None);
 static FAN_STATUS: RwLock<Option<crate::laptop_fan::FanStatus>> = RwLock::new(None);
 
@@ -146,6 +176,10 @@ fn ensure_telemetry_worker() {
         .spawn(|| {
             let mut ip_checked = None::<std::time::Instant>;
             loop {
+                if TELEMETRY_DEMAND.read().is_none_or(|at| at.elapsed() > Duration::from_secs(30)) {
+                    thread::sleep(Duration::from_secs(1));
+                    continue;
+                }
                 if ip_checked.is_none_or(|at| at.elapsed() >= Duration::from_secs(60)) {
                     let observed_ip = get_local_ip();
                     *LOCAL_IP.write() = observed_ip;
@@ -234,11 +268,11 @@ struct RequestJob {
     input_epoch: u64,
 }
 struct RequestLanes {
+    ctx: Arc<crate::bot::ctx::Ctx>,
     control: crossbeam_channel::Sender<RequestJob>,
     work: crossbeam_channel::Sender<RequestJob>,
     streams: crossbeam_channel::Sender<RequestJob>,
 }
-static INPUT_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn request_route(request: &str) -> (&str, &str, &str) {
     let mut parts = request
@@ -285,7 +319,7 @@ fn priority_request(request: &str) -> bool {
     let action = value.get("action").and_then(|a| a.as_str());
     matches!(
         (path, action),
-        ("/api/action", Some("pause"))
+        ("/api/action", Some("pause" | "stop"))
             | ("/api/craft" | "/api/macro/play", Some("stop"))
             | ("/api/mouse", Some("release_all" | "reset"))
     ) || (path == "/api/key" && value.get("key").and_then(|v| v.as_str()) == Some("release_all"))
@@ -311,7 +345,7 @@ impl RequestLanes {
                             let (_, path, _) = request_route(&job.request);
                             if is_input_route(path)
                                 && !priority_request(&job.request)
-                                && job.input_epoch != INPUT_EPOCH.load(Ordering::SeqCst)
+                                && job.input_epoch != bot.ctx().input_epoch.load(Ordering::SeqCst)
                             {
                                 send_action_error(
                                     &mut job.stream,
@@ -332,6 +366,7 @@ impl RequestLanes {
             tx
         }
         Self {
+            ctx: bot.ctx().clone(),
             control: lane("web-control", 2, 8, bot, settings),
             work: lane("web-action", 4, 16, bot, settings),
             streams: lane("web-stream", 4, 0, bot, settings),
@@ -349,7 +384,7 @@ impl RequestLanes {
         let job = RequestJob {
             stream,
             request,
-            input_epoch: INPUT_EPOCH.load(Ordering::SeqCst),
+            input_epoch: self.ctx.input_epoch.load(Ordering::SeqCst),
         };
         if let Err(error) = lane.try_send(job) {
             let mut job = error.into_inner();
@@ -897,25 +932,9 @@ fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>, query: &str) {
     }
 
     loop {
-        let frame_opt = bot
-            .ctx()
-            .roblox_rect()
-            .and_then(|r| bot.ctx().platform.capture.grab(r).ok())
-            .map(|f| if scale > 0 { f.downscale(scale) } else { f })
-            .and_then(|f| f.to_jpeg_bytes(quality).ok());
-
-        let bytes = match frame_opt {
-            Some(b) => {
-                *LAST_FRAME.write() = Some(b.clone());
-                b
-            }
-            None => match LAST_FRAME.read().as_ref() {
-                Some(b) => b.clone(),
-                None => {
-                    std::thread::sleep(Duration::from_millis(100));
-                    continue;
-                }
-            },
+        let Some(bytes) = preview_jpeg(bot, scale, quality) else {
+            // Close the stream rather than replaying stale imagery indefinitely.
+            break;
         };
 
         let part_header = format!(
@@ -937,6 +956,7 @@ fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>, query: &str) {
 }
 
 fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Settings>>) {
+    *TELEMETRY_DEMAND.write() = Some(std::time::Instant::now());
     let state = bot.state();
     let paused = bot.is_paused();
     let stats = bot.ctx().session.lock().stats();
@@ -1040,7 +1060,24 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         // True only while a Roblox window rect is resolvable. The MJPEG
         // endpoint replays the last frame when the game is gone, so the UI
         // must be able to tell live pixels from a stale replay.
-        "stream_live": bot.ctx().roblox_rect().is_some(),
+        "stream_live": bot.ctx().roblox_rect().is_some() && preview_age_ms().is_some_and(|age| age < FRAME_TTL.as_millis() as u64),
+    });
+    payload["frame_age_ms"] = json!(preview_age_ms());
+    payload["api_version"] = json!(2);
+    payload["control_metrics"]=json!(bot.ctx().control_metrics.snapshot());
+    payload["notification_queue"]=json!(bot.ctx().webhook.queue_depth());
+    payload["pity_cap"] = json!(s.fruit_storage.pity_cap);
+    let window=bot.ctx().platform.window.find();
+    payload["readiness"]=json!({
+        "game_found":window.is_some_and(|w|w.visible),
+        "focused":window.is_some_and(|w|w.visible && w.is_foreground),
+        "region_configured":s.regions.bar.w>0.02 && s.regions.bar.h>0.02,
+        "rod_indicator_configured":s.points.rod_slot.is_some(),
+    });
+    payload["capabilities"]=json!({
+        "api_version":2,"read_only_history":true,"craft_targets":true,
+        "input_coordinates":"normalised_client","max_drag_ms":5000,
+        "stream_limit":4,"frame_ttl_ms":FRAME_TTL.as_millis() as u64,
     });
 
     // Keep serde_json's macro expansion bounded as the status contract grows.
@@ -1171,31 +1208,8 @@ fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>, query: &str) {
         }
     }
 
-    let fresh_bytes = bot
-        .ctx()
-        .roblox_rect()
-        .and_then(|r| bot.ctx().platform.capture.grab(r).ok())
-        .map(|f| if scale > 0 { f.downscale(scale) } else { f })
-        .and_then(|f| f.to_jpeg_bytes(quality).ok());
-
-    if let Some(bytes) = fresh_bytes {
-        *LAST_FRAME.write() = Some(bytes.clone());
-        let header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            bytes.len()
-        );
-        let _ = stream.write_all(header.as_bytes());
-        let _ = stream.write_all(&bytes);
-        return;
-    }
-
-    if let Some(cached) = LAST_FRAME.read().as_ref() {
-        let header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            cached.len()
-        );
-        let _ = stream.write_all(header.as_bytes());
-        let _ = stream.write_all(cached);
+    if let Some(bytes) = preview_jpeg(bot, scale, quality) {
+        send_response(stream, "200 OK", "image/jpeg", &bytes);
         return;
     }
 
@@ -1284,10 +1298,10 @@ fn handle_drag(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let button = request.button.input();
     bot.ctx().platform.input.move_to(start);
     bot.ctx().platform.input.button(button, true);
-    let epoch = INPUT_EPOCH.load(Ordering::SeqCst);
+    let epoch = bot.ctx().input_epoch.load(Ordering::SeqCst);
     let steps = (request.duration_ms / 12).clamp(6, 25);
     for i in 1..=steps {
-        if INPUT_EPOCH.load(Ordering::SeqCst) != epoch {
+        if bot.ctx().input_epoch.load(Ordering::SeqCst) != epoch || !bot.ctx().roblox_in_front() {
             break;
         }
         let t = i as f32 / steps as f32;
@@ -1334,6 +1348,7 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let ry = request.ry.unwrap_or(0.0);
     let btn = request.button.input();
     if act == "release_all" || act == "reset" {
+        bot.ctx().input_epoch.fetch_add(1,Ordering::SeqCst);
         bot.ctx()
             .platform
             .input
@@ -1347,6 +1362,13 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
         return;
     }
 
+    if act=="up" {
+        bot.ctx().platform.input.button(btn,false);
+        HELD_MOUSE.write().retain(|&held|held!=btn);
+        send_json(stream,r#"{"ok":true}"#);
+        return;
+    }
+
     let Some(rect) = input_rect(stream, bot) else {
         return;
     };
@@ -1357,9 +1379,7 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     *LAST_MOUSE_ACTIVITY.write() = Some(std::time::Instant::now());
 
     {
-        let px = rect.x + (rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
-        let py = rect.y + (ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
-        let pt = crate::core::types::PxPoint { x: px, y: py };
+        let pt = relative_point(rect,rx,ry);
 
         match act {
             "down" => {
@@ -1834,8 +1854,17 @@ fn handle_action(
             }
             "Macro start requested"
         }
+        "stop" => {
+            bot.ctx().input_epoch.fetch_add(1, Ordering::SeqCst);
+            bot.ctx().platform.input.release_all();
+            bot.ctx().release_mouse();
+            crate::bot::crafting::stop_auto_craft();
+            crate::bot::recorder::stop_playback();
+            bot.stop();
+            "Macro stopped"
+        }
         "pause" => {
-            INPUT_EPOCH.fetch_add(1, Ordering::SeqCst);
+            bot.ctx().input_epoch.fetch_add(1, Ordering::SeqCst);
             bot.ctx().platform.input.release_all();
             bot.ctx().release_mouse();
             crate::bot::crafting::stop_auto_craft();
@@ -2508,7 +2537,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let input = Arc::new(RecordingInput::default());
         let platform = Platform {
-            window: Arc::new(MockWindow::default()),
+            window: Arc::new(MockWindow { info: parking_lot::Mutex::new(Some(WindowInfo {
+                client: PxRect { x:0,y:0,w:1920,h:1080 }, is_foreground:true,visible:true,dpi:96
+            })) }),
             capture: Arc::new(ScriptedCapture::default()),
             input: Arc::clone(&input) as Arc<dyn crate::core::platform::Input>,
             ocr: Arc::new(NoOcr),
@@ -2949,7 +2980,7 @@ mod tests {
                 "{name} must load vendored fonts"
             );
             assert!(
-                page.contains("GPO CYBERDECK"),
+                page.contains("GPO AUTOFISH"),
                 "{name} must carry the shell"
             );
         }
@@ -3055,8 +3086,3 @@ mod tests {
 #[cfg(test)]
 #[path = "web_server_validation_tests.rs"]
 mod validation_tests;
-
-/// Cancel queued/in-flight manual input before a signed updater takes over.
-pub fn cancel_pending_input() {
-    INPUT_EPOCH.fetch_add(1, Ordering::SeqCst);
-}

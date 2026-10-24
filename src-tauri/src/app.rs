@@ -45,6 +45,7 @@ pub fn build_state() -> AppState {
     init_logging(&dir);
 
     let store = Arc::new(Store::new(dir.clone()));
+    crate::bot::crafting::restore_status(store.dir());
     let settings = Arc::new(RwLock::new(store.load()));
     let platform = platform::build();
     let roblox = Arc::new(RwLock::new(platform.window.find()));

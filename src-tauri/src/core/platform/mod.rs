@@ -6,6 +6,7 @@ pub mod capture_bounds;
 pub mod ocr_gate;
 pub mod playback_guard;
 pub mod mock;
+pub mod capture_broker;
 pub mod guarded_input;
 #[cfg(windows)]
 pub mod windows;
@@ -33,6 +34,8 @@ pub trait GameWindow: Send + Sync {
 
 pub trait Capture: Send + Sync {
     fn grab(&self, rect: PxRect) -> Result<Frame>;
+    fn grab_preview(&self, rect: PxRect) -> Result<Frame> { self.grab(rect) }
+    fn preview_age(&self, _rect: PxRect) -> Option<std::time::Duration> { None }
 }
 
 pub trait Input: Send + Sync {
@@ -72,7 +75,7 @@ pub fn build() -> Platform {
     guarded_input::GuardedInput::watch(&input);
     Platform {
         window,
-        capture: Arc::new(windows::capture_dxgi::DxgiCapture::new()),
+        capture: Arc::new(capture_broker::PriorityCapture::new(Arc::new(windows::capture_dxgi::DxgiCapture::new()))),
         input,
         ocr: build_ocr(),
     }

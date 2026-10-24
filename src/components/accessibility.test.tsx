@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import ConfirmModal from "./ConfirmModal";
-import { CustomSelect, Row, Toggle } from "./primitives";
+import { Button, CustomSelect, Disclosure, Field, Row, Slider, Stepper, TextField, Toggle } from "./primitives";
 
 afterEach(cleanup);
 
@@ -39,4 +39,23 @@ it("cannot dismiss a busy operation with Escape or the backdrop", async () => {
   fireEvent.click(container.firstChild!);
   await userEvent.keyboard("{Escape}");
   expect(cancel).not.toHaveBeenCalled();
+});
+
+it("links field labels to numeric, text and range inputs and names icon controls", () => {
+  render(<><Field label="Tracking rate"><Slider value={30} min={1} max={60} onChange={() => {}} /></Field>
+    <Field label="Recovery count"><Stepper value={3} min={0} max={10} onChange={() => {}} /></Field>
+    <Field label="Preset name"><TextField value="My setup" onChange={() => {}} /></Field>
+    <Button label="Stop fishing" icon={<span aria-hidden>■</span>} onClick={() => {}} /></>);
+  expect(screen.getByRole("slider", { name: "Tracking rate" })).toHaveAttribute("aria-valuetext", "30");
+  expect(screen.getByRole("spinbutton", { name: "Recovery count" })).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Preset name" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Stop fishing" })).toBeInTheDocument();
+});
+it("does not mount expensive disclosure children until requested and unmounts on close", async () => {
+  render(<Disclosure title="Live detection"><p>Capture preview</p></Disclosure>);
+  expect(screen.queryByText("Capture preview")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Live detection" }));
+  expect(screen.getByText("Capture preview")).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Live detection" }));
+  expect(screen.queryByText("Capture preview")).not.toBeInTheDocument();
 });

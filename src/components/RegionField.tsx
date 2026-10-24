@@ -87,7 +87,7 @@ export function RegionField({ target, value }: { target: OverlayTarget; value: R
         )}
         {err && <div className="text-[11px] text-warn leading-snug">{err}</div>}
         <div className="flex gap-2 mt-auto flex-wrap">
-          <Button size="sm" disabled={!roblox} onClick={() => api.overlayOpen(target)} icon={<Crosshair size={13} />}>
+          <Button size="sm" disabled={!roblox} onClick={() => api.overlayOpen(target).catch(e => setErr(String(e)))} icon={<Crosshair size={13} />}>
             Draw
           </Button>
           {target === "bar_region" && (
@@ -95,7 +95,7 @@ export function RegionField({ target, value }: { target: OverlayTarget; value: R
               Auto-detect
             </Button>
           )}
-          <Button size="sm" kind="ghost" disabled={!roblox || busy} onClick={refresh} icon={<RefreshCw size={13} className={cx(busy && "animate-spin")} />} />
+          <Button size="sm" label="Refresh region preview" kind="ghost" disabled={!roblox || busy} onClick={refresh} icon={<RefreshCw size={13} className={cx(busy && "animate-spin")} />} />
         </div>
       </div>
     </div>
