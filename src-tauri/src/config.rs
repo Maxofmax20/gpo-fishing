@@ -894,24 +894,21 @@ impl Store {
     pub fn cancel_update_resume(&self, id: Option<&str>) -> Result<Option<(crate::core::update_handoff::ResumeIntent, bool)>, String> {
         let mut gate = self.update_gate.lock();
         let result = gate.cancel(id);
-        if let Some((intent, prepared)) = &result {
-            if *prepared {
-                let path = self.update_resume_path();
-                match fs::remove_file(&path) {
-                    Ok(()) => {},
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
-                    Err(_) => {
-                        // If directory deletion is denied, overwrite the existing
-                        // checkpoint with a durable non-resumable tombstone.
-                        use std::io::Write;
-                        let mut revoked = intent.clone();
-                        revoked.was_running = false;
-                        let bytes = serde_json::to_vec(&revoked).map_err(|e| e.to_string())?;
-                        let mut file = fs::OpenOptions::new().write(true).truncate(true).open(&path)
-                            .map_err(|_| "Could not revoke update checkpoint on disk; do not install or restart until storage permissions are fixed".to_string())?;
-                        file.write_all(&bytes).and_then(|_| file.sync_all())
-                            .map_err(|_| "Could not persist update cancellation; storage needs attention".to_string())?;
-                    }
+        let path = self.update_resume_path();
+        let revoke = result.as_ref().is_some_and(|(_, prepared)| *prepared)
+            || (id.is_none() && path.exists());
+        if revoke {
+            match fs::remove_file(&path) {
+                Ok(()) => {},
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+                Err(_) => {
+                    // A reader may deny deletion while permitting writes.
+                    // A malformed/non-resumable tombstone also fails closed.
+                    use std::io::Write;
+                    let mut file = fs::OpenOptions::new().write(true).truncate(true).open(&path)
+                        .map_err(|_| "Could not revoke update checkpoint on disk; do not install or restart until storage permissions are fixed".to_string())?;
+                    file.write_all(br#"{"revoked":true}"#).and_then(|_| file.sync_all())
+                        .map_err(|_| "Could not persist update cancellation; storage needs attention".to_string())?;
                 }
             }
         }
@@ -1683,8 +1680,8 @@ mod update_checkpoint_tests {
         // Simulate a reader that allows writes but denies deletion.
         let reader=fs::OpenOptions::new().read(true).share_mode(3).open(store.update_resume_path()).unwrap();
         assert!(store.cancel_update_resume(Some("locked")).unwrap().is_some());
-        let stored:crate::core::update_handoff::ResumeIntent=serde_json::from_slice(&fs::read(store.update_resume_path()).unwrap()).unwrap();
-        assert!(!stored.was_running);
+        let stored:serde_json::Value=serde_json::from_slice(&fs::read(store.update_resume_path()).unwrap()).unwrap();
+        assert_eq!(stored["revoked"], true);
         drop(reader);
         assert!(!Store::new(dir.clone()).take_update_resume("5.9.3"));
         let _=std::fs::remove_dir_all(dir);
