@@ -27,6 +27,7 @@ pub struct Ctx {
     pub mouse_held: AtomicBool,
     heartbeat_ms: AtomicU64,
     state: Mutex<(BotState, Instant)>,
+    last_stats_save: Mutex<Option<Instant>>,
     start: Instant,
 }
 
@@ -54,6 +55,7 @@ impl Ctx {
             mouse_held: AtomicBool::new(false),
             heartbeat_ms: AtomicU64::new(0),
             state: Mutex::new((BotState::Stopped, Instant::now())),
+            last_stats_save: Mutex::new(None),
             start: Instant::now(),
         }
     }
@@ -99,15 +101,24 @@ impl Ctx {
             // Visual telemetry must never stall the fishing controller.
             let _ = self.events.try_send(e);
         } else {
-            let _ = self.events.send(e);
+            // A wedged UI is not allowed to wedge cancellation or fishing.
+            // Tracing remains the durable log; snapshots reconcile UI state.
+            let _ = self.events.send_timeout(e, Duration::from_millis(2));
         }
     }
 
     pub fn emit_stats(&self) {
         let stats = self.session.lock().stats();
-        if let Err(e) = self.store.save_stats(&stats.total) {
-            tracing::warn!("stats save: {e}");
+        let mut saved = self.last_stats_save.lock();
+        // Frequent UI stats do not imply frequent disk writes. Pause/stop and
+        // initial startup flush immediately; crash loss is bounded to 5s.
+        if !self.alive() || saved.is_none_or(|at| at.elapsed() >= Duration::from_secs(5)) {
+            match self.store.save_stats(&stats.total) {
+                Ok(()) => *saved = Some(Instant::now()),
+                Err(e) => tracing::warn!("stats save: {e}"),
+            }
         }
+        drop(saved);
         self.emit(BotEvent::Stats(stats));
     }
 
@@ -177,7 +188,6 @@ impl Ctx {
     }
 
     pub fn hold_mouse(&self, down: bool) {
-        let down = down && self.alive() && self.roblox_in_front();
         let down = down && self.alive() && self.roblox_in_front();
         if self.mouse_held.swap(down, Ordering::SeqCst) != down {
             self.platform.input.button(MouseButton::Left, down);

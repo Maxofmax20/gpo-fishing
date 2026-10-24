@@ -691,16 +691,18 @@ pub fn play_macro(
     speed: Option<f32>,
     max_loops: Option<u32>,
 ) -> Result<(), String> {
-    if IS_PLAYING.swap(true, Ordering::SeqCst) {
-        return Err("A macro is already playing".into());
+    if speed.is_some_and(|value| !value.is_finite() || !(0.1..=100.0).contains(&value)) {
+        return Err("Playback speed must be between 0.1 and 100".into());
     }
-
     let list = load_macros(&store);
     let target = list
         .into_iter()
         .find(|m| m.id == name_or_id || m.name.eq_ignore_ascii_case(name_or_id))
         .ok_or_else(|| format!("Macro '{name_or_id}' not found"))?;
 
+    if IS_PLAYING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        return Err("A macro is already playing".into());
+    }
     let sp = speed.unwrap_or(1.0).clamp(0.1, 100.0);
     let target_loops = if loop_mode {
         max_loops.unwrap_or(0)

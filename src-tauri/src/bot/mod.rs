@@ -151,8 +151,11 @@ impl Bot {
 
     pub fn pause(&self) {
         self.generation.fetch_add(1, Ordering::SeqCst);
+        let was_running = self.ctx.running.swap(false, Ordering::SeqCst);
+        self.ctx.platform.input.release_all();
+        self.ctx.release_mouse();
         let _lifecycle = self.lifecycle.lock();
-        if !self.is_running() && self.state() != BotState::Recovering {
+        if !was_running && self.state() != BotState::Recovering {
             return;
         }
         self.paused.store(true, Ordering::SeqCst);
@@ -169,6 +172,7 @@ impl Bot {
     pub fn stop(&self) {
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.ctx.running.store(false, Ordering::SeqCst);
+        self.ctx.platform.input.release_all();
         self.ctx.release_mouse();
         let _lifecycle = self.lifecycle.lock();
         let was = self.state() != BotState::Stopped || self.is_paused();

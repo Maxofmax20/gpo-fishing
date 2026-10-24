@@ -135,9 +135,10 @@ pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
     // 1. If custom rod slot indicator point is set, inspect around it:
     if let Some(rel) = s.points.rod_slot {
         let px = rel.to_px(&rect);
+        if rect.w < 5 || rect.h < 5 { return None; }
         let patch = PxRect {
-            x: (px.x - 2).max(rect.x),
-            y: (px.y - 2).max(rect.y),
+            x: (px.x - 2).clamp(rect.x, rect.x.saturating_add(rect.w - 5)),
+            y: (px.y - 2).clamp(rect.y, rect.y.saturating_add(rect.h - 5)),
             w: 5,
             h: 5,
         };
@@ -155,36 +156,9 @@ pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
         }
     }
 
-    // 2. Auto-detect on standard Roblox bottom hotbar slot 1:
-    if rect.h > 100 && rect.w > 200 {
-        let scan_h = 50.min(rect.h - 10);
-        let scan_w = 260.min(rect.w);
-        let scan_y = rect.y + rect.h - scan_h - 5;
-        let scan_x = rect.x + (rect.w / 2).saturating_sub(260);
-        let scan_rect = PxRect {
-            x: scan_x.max(rect.x),
-            y: scan_y.max(rect.y),
-            w: scan_w,
-            h: scan_h,
-        };
-        if let Ok(frame) = ctx.platform.capture.grab(scan_rect) {
-            for y in 0..frame.h {
-                let mut run = 0;
-                for x in 0..frame.w {
-                    let (r, g, b) = frame.px(x, y);
-                    if r > 210 && g > 210 && b > 210 {
-                        run += 1;
-                        if run >= 15 {
-                            return Some(true);
-                        }
-                    } else {
-                        run = 0;
-                    }
-                }
-            }
-            return Some(false);
-        }
-    }
+    // An uncalibrated bright line cannot identify the configured rod slot:
+    // item text, other hotbar slots and ability icons produce the same pixels.
+    // Retain the state of our own validated input instead of guessing slot 1.
 
     None
 }
@@ -198,11 +172,11 @@ pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
             ctx.log_debug("Fishing rod already equipped (visual check confirmed)");
             *rod_equipped = true;
             return true;
-        } else {
-            ctx.log_debug("Visual check detected rod is unequipped");
-            *rod_equipped = false;
         }
-    } else if *rod_equipped {
+        // A dark/occluded indicator is weak negative evidence. It must not
+        // toggle a rod we just equipped; state is reset at known slot changes.
+    }
+    if *rod_equipped {
         ctx.log_debug("Fishing rod already equipped (state tracking)");
         return true;
     }
@@ -894,12 +868,9 @@ fn submit_action_frame(ctx: &Ctx, region_tag: &str, ocr_text: &str) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let png = match frame.to_png_bytes() {
-        Ok(b) => b,
-        Err(_) => return,
-    };
     ctx.ml.submit(crate::bot::ml_collect::SampleJob {
-        png,
+        png: Vec::new(),
+        frame: Some(frame.clone()),
         session_id: String::new(),
         task: crate::core::ml_dataset::MlTask::UiDetection,
         ui_label: None,
@@ -1214,5 +1185,59 @@ mod storage_replay_tests {
         let h = harness(&[]); h.ctx.running.store(false, Ordering::SeqCst);
         assert_eq!(store_fruit(&h.ctx, &catch("0/40"), "test-cancel"), StorageOutcome::Cancelled);
         assert!(h.input.events.lock().is_empty()); terminal(&h, "cancelled");
+    }
+}
+
+
+#[cfg(test)]
+mod rod_state_tests {
+    use super::*;
+    use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+    use parking_lot::RwLock;
+    use crate::config::{Settings, Store};
+    use crate::core::platform::{Platform, mock::{MockWindow, ScriptedCapture, RecordingInput, NoOcr, InputEvent}};
+    use crate::core::types::WindowInfo;
+    use crate::webhook::WebhookQueue;
+
+    fn fixture(calibrated: bool) -> (Ctx, Arc<RecordingInput>, std::path::PathBuf) {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!("gpo-rod-state-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::SeqCst)));
+        let info = WindowInfo { client: PxRect { x:0,y:0,w:800,h:600 }, is_foreground:true, visible:true, dpi:96 };
+        let mut settings = Settings::default();
+        settings.keys.rod = '4';
+        if calibrated { settings.points.rod_slot = Some(RelPoint {x:0.5,y:0.95}); }
+        let input = Arc::new(RecordingInput::default());
+        let (events, _rx) = crossbeam_channel::unbounded();
+        let ctx = Ctx::new(
+            Platform { window:Arc::new(MockWindow {info:parking_lot::Mutex::new(Some(info))}),
+                capture:Arc::new(ScriptedCapture::default()), input:input.clone(), ocr:Arc::new(NoOcr) },
+            Arc::new(RwLock::new(settings)), Arc::new(RwLock::new(Some(info))), events,
+            Arc::new(WebhookQueue::disabled()), Arc::new(Store::new(dir.clone())));
+        ctx.running.store(true, Ordering::SeqCst);
+        (ctx,input,dir)
+    }
+
+    #[test]
+    fn uncalibrated_hotbar_does_not_claim_slot_one_is_the_rod() {
+        let (ctx,input,dir) = fixture(false);
+        assert_eq!(is_rod_equipped(&ctx), None);
+        let mut equipped = false;
+        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        let events=input.events.lock();
+        assert_eq!(events.iter().filter(|e| matches!(e,InputEvent::Key(Key::Char('4'),true))).count(),1);
+        assert!(!events.iter().any(|e| matches!(e,InputEvent::Key(Key::Char('1'),true))));
+        drop(events);
+        let _=std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn weak_negative_indicator_never_unequips_remembered_rod() {
+        let (ctx,input,dir) = fixture(true);
+        let mut equipped = true;
+        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(equipped);
+        assert!(input.events.lock().is_empty());
+        let _=std::fs::remove_dir_all(dir);
     }
 }

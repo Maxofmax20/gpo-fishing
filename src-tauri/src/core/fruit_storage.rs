@@ -77,8 +77,10 @@ pub fn run_storage(io: &mut impl StorageIo, context: &FruitCatchContext) -> Stor
         Err(()) => return StorageOutcome::Cancelled,
     };
     match banner {
-        // Game contract: a completed store click only banners on failure.
-        None | Some(StorageBannerResult::Stored) => StorageOutcome::Stored,
+        // Input completion is not proof of a game-side store. A missing or
+        // unreadable banner remains uncertain and never authorizes a drop.
+        None => StorageOutcome::Unknown,
+        Some(StorageBannerResult::Stored) => StorageOutcome::Stored,
         Some(
             StorageBannerResult::Dropped { .. } | StorageBannerResult::DuplicateDropped { .. },
         ) => StorageOutcome::Dropped,
@@ -176,12 +178,21 @@ mod tests {
     #[test]
     fn store_success_has_no_cleanup_input() {
         let mut f = io();
-        f.banner = None;
+        f.banner = Some(StorageBannerResult::Stored);
         assert_eq!(
             run_storage(&mut f, &context("4/40")),
             StorageOutcome::Stored
         );
         assert_eq!(f.drops, 0);
+    }
+    #[test]
+    fn missing_banner_is_not_store_confirmation_or_drop_permission() {
+        let mut f = io();
+        f.banner = None;
+        assert_eq!(run_storage(&mut f, &context("4/40")), StorageOutcome::Unknown);
+        assert_eq!(f.drops, 0);
+        assert!(StorageOutcome::Unknown.may_resume(true, false));
+        assert!(!StorageOutcome::Unknown.may_resume(true, true));
     }
     #[test]
     fn already_dropped_has_no_more_inputs() {
