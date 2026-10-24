@@ -104,7 +104,7 @@ fn no_fruit_notification_drops_a_photo_it_already_had() {
     // must be there.
     let actions = source("src/bot/actions.rs");
     assert!(
-        actions.contains("ctx.webhook.fruit_storage_outcome(catch, &outcome, photo)"),
+        actions.contains("ctx.webhook.fruit_storage_outcome_with_id(catch, &outcome, photo, workflow_id)"),
         "the storage outcome notification must pass the captured photo."
     );
 }

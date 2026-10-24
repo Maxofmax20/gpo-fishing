@@ -120,7 +120,7 @@
         pushLog('Craft stopped', (data.crafting.crafted_count || 0) + ' batches • ' + TIERS[tier].title);
         toast('Auto-craft stop requested');
       } else {
-        const j = await gpoPost('/api/craft', { action: 'start', tier });
+        const j = await gpoPost('/api/craft', { action: 'start', tier, target_batches: target });
         craftStartMs = Date.now();
         paintCta(true);
         pushLog('Started: ' + TIERS[tier].title, 'target ' + target + 'x • ' + j.message);
@@ -135,25 +135,18 @@
       const { data } = await gpoGet('/api/status');
       const c = data.crafting || { is_crafting: false, crafted_count: 0, message: '' };
       paintCta(c.is_crafting);
-      gpoSetText('progress-counter', (c.crafted_count || 0) + ' / ' + target);
+      const confirmedTarget = c.target_batches ?? null;
+      const completed = c.crafted_count || 0;
+      gpoSetText('progress-counter', completed + (confirmedTarget ? ' / ' + confirmedTarget : '') + ' batches attempted');
       const fill = document.getElementById('progress-fill');
-      if (fill) fill.style.width = Math.min(100, Math.round(((c.crafted_count || 0) / target) * 100)) + '%';
-      if (c.is_crafting) {
-        gpoSetText('req-fish', (c.crafted_count || 0) + ' / ' + target + ' crafted');
-        gpoSetText('req-peli', c.tier ? String(c.tier).toUpperCase() : TIERS[tier].title.toUpperCase());
-        gpoSetText('estimated-time', craftStartMs ? ('Elapsed: ' + fmtElapsed(Date.now() - craftStartMs)) : 'Running…');
-        if (target && (c.crafted_count || 0) >= target) {
-          await gpoPost('/api/craft', { action: 'stop' });
-          paintCta(false);
-          pushLog('Target reached: ' + TIERS[tier].title, target + ' batches • auto-stopped');
-          toast('Craft target reached — auto-stopped');
-        }
-      } else if (craftStartMs && (c.message || '').toLowerCase().indexOf('finish') >= 0) {
-        pushLog('Finished: ' + TIERS[tier].title, c.message);
-        craftStartMs = 0;
-      }
+      if (fill) fill.style.width = confirmedTarget ? Math.min(100, Math.round(completed / confirmedTarget * 100)) + '%' : '0%';
+      gpoSetText('req-fish', completed + ' batches attempted');
+      gpoSetText('req-peli', c.tier ? String(c.tier).toUpperCase() : TIERS[tier].title);
+      gpoSetText('estimated-time', c.message || (c.state ? 'Job: ' + c.state : 'Ready to start'));
+      const pill = document.getElementById('craft-status-pill'); if (pill) pill.textContent = (c.state || (c.is_crafting ? 'running' : 'idle')).toUpperCase();
+      // The PC owns the target and completion. A hidden or closed page never controls the limit.
       gpoPaintPwr(document.getElementById('pwr-btn'), data.is_running && !data.paused);
-    } catch (e) { toast('Craft status or stop failed: ' + e.message); }
+    } catch (e) { /* shared offline banner reports the status failure */ }
   }
 
   function bind() {
@@ -192,11 +185,6 @@
         await gpoAction(running ? 'pause' : 'start');
         toast(running ? 'Macro paused' : 'Macro started');
       } catch (e) { toast('Failed: ' + e.message); }
-    });
-    const alerts = document.getElementById('alerts-btn');
-    if (alerts) alerts.addEventListener('click', async () => {
-      try { const j = await gpoAction('toggle_spawn'); toast(j.message); }
-      catch (e) { toast('Failed: ' + e.message); }
     });
   }
 

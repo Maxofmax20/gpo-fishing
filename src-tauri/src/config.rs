@@ -693,11 +693,12 @@ pub struct Store {
     /// Human-readable error from the last `load()` (e.g. corrupt file that
     /// was quarantined). Surfaced to the UI via `settings_load_error`.
     load_error: parking_lot::Mutex<Option<String>>,
+    catch_index: parking_lot::Mutex<Option<CatchIndex>>,
 }
 
 impl Store {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir, load_error: parking_lot::Mutex::new(None) }
+        Self { dir, load_error: parking_lot::Mutex::new(None), catch_index: parking_lot::Mutex::new(None) }
     }
 
     /// Error recorded during the last `load()`, if the settings file was
@@ -846,6 +847,65 @@ impl Store {
         }
         list.reverse();
         list
+    }
+
+    pub fn get_catches_page(&self, cursor: usize, limit: usize, kind: &str, query: &str, expected_revision: Option<&str>) -> Result<CatchPage, String> {
+        use std::io::{BufRead, BufReader, Seek, SeekFrom};
+        use std::hash::{Hash, Hasher};
+        if !(1..=200).contains(&limit) || !matches!(kind, "all" | "fish" | "fruit" | "unverified") || query.chars().count() > 200 {
+            return Err("Invalid history page: limit 1–200, recognised kind and query up to 200 characters required".into());
+        }
+        self.migrate_legacy_catches();
+        let path = self.catches_path();
+        let file = match fs::File::open(&path) {
+            Ok(file) => file,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(CatchPage { items:vec![], total:0, fish:0, fruits:0, next_cursor:None, revision:"empty".into() }),
+            Err(e) => return Err(format!("Could not open history: {e}")),
+        };
+        let meta = file.metadata().map_err(|e|e.to_string())?;
+        let revision = format!("{}-{}",meta.len(),meta.modified().ok().and_then(|t|t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0,|d|d.as_nanos()));
+        if expected_revision.is_some_and(|expected|expected!=revision) {return Err("Journal changed; refresh to load its current revision".into());}
+        let mut cache=self.catch_index.lock();
+        if cache.as_ref().is_none_or(|i|i.revision!=revision) {
+            let mut reader=BufReader::new(file.try_clone().map_err(|e|e.to_string())?);
+            let mut offsets=Vec::new(); let mut fish=0; let mut fruits=0; let mut offset=0;
+            let mut line=String::new();
+            loop {
+                line.clear();
+                let bytes=reader.read_line(&mut line).map_err(|e|e.to_string())?;
+                if bytes==0 {break;}
+                if !(offset==0 && line.starts_with("Timestamp")) && !line.trim().is_empty() {
+                    let columns=parse_csv_line(line.trim());
+                    if columns.len()>=3 {
+                        offsets.push(offset);
+                        if columns[1]=="fish" {fish+=1;} else if columns[1]=="fruit" {fruits+=1;}
+                    }
+                }
+                offset+=bytes as u64;
+            }
+            *cache=Some(CatchIndex{revision:revision.clone(),offsets,fish,fruits});
+        }
+        let index=cache.as_ref().unwrap();
+        if cursor>index.offsets.len() {return Err("History cursor is outside this revision".into());}
+        let mut reader=BufReader::new(file);
+        let mut items=Vec::with_capacity(limit);let mut next_cursor=None;
+        let query=query.to_lowercase();let mut line=String::new();
+        for scanned in cursor..index.offsets.len() {
+            let offset=index.offsets[index.offsets.len()-1-scanned];
+            reader.seek(SeekFrom::Start(offset)).map_err(|e|e.to_string())?;
+            line.clear();reader.read_line(&mut line).map_err(|e|e.to_string())?;
+            let columns=parse_csv_line(line.trim());
+            if columns.len()<3 || (kind!="all" && columns[1]!=kind) {continue;}
+            let raw=columns.get(3).cloned().unwrap_or_default();
+            if !query.is_empty() && !columns[2].to_lowercase().contains(&query) && !raw.to_lowercase().contains(&query) {continue;}
+            if items.len()==limit {next_cursor=Some(scanned);break;}
+            let mut hash=std::collections::hash_map::DefaultHasher::new();line.hash(&mut hash);
+            items.push(CatchPageRecord {id:format!("{offset:x}-{:x}",hash.finish()), timestamp:columns[0].clone(),kind:columns[1].clone(),name:columns[2].clone(),raw});
+        }
+        // Never return a page stitched together from different file revisions.
+        let after=fs::metadata(&path).map_err(|e|e.to_string())?;
+        if after.len()!=meta.len() || after.modified().ok()!=meta.modified().ok() {return Err("Journal changed; refresh to load its current revision".into());}
+        Ok(CatchPage {items,total:index.offsets.len(),fish:index.fish,fruits:index.fruits,next_cursor,revision})
     }
 
     pub fn clear_catches(&self) -> Result<(), String> {
@@ -1199,6 +1259,18 @@ pub fn backup_file(path: &Path) -> Option<PathBuf> {
     let stamp = current_time_str().replace([':', ' '], "-");
     let backup = path.with_extension(format!("backup-{stamp}.{}", path.extension().and_then(|e| e.to_str()).unwrap_or("bak")));
     fs::copy(path, &backup).ok().map(|_| backup)
+}
+
+struct CatchIndex { revision:String, offsets:Vec<u64>, fish:usize, fruits:usize }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatchPageRecord {
+    pub id:String, pub timestamp:String, pub kind:String, pub name:String, pub raw:String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CatchPage {
+    pub items:Vec<CatchPageRecord>, pub total:usize, pub fish:usize, pub fruits:usize,
+    pub next_cursor:Option<usize>, pub revision:String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1615,5 +1687,37 @@ mod tests {
         );
         assert!(loaded.training.readiness_min_shadow_events >= 20);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+
+#[cfg(test)]
+mod history_page_tests {
+    use super::*;
+    #[test]
+    fn pagination_is_complete_unicode_safe_stable_and_revision_checked() {
+        let dir=std::env::temp_dir().join(format!("gpo-history-pages-{}",std::process::id()));
+        fs::create_dir_all(&dir).unwrap();let store=Store::new(dir.clone());
+        let mut csv=String::from("Timestamp,Type,Name,RawText\\n");
+        // Construct real CSV without invoking legacy migration or game capture.
+        csv.clear();csv.push_str("Timestamp,Type,Name,RawText\n");
+        for n in 0..219 {csv.push_str(&format!("2026-10-24,fish,سمكة {n},raw {n}\n"));}
+        fs::write(dir.join("catches.csv"),csv).unwrap();
+        let first=store.get_catches_page(0,50,"all","",None).unwrap();
+        assert_eq!(first.total,219);assert_eq!(first.items[0].name,"سمكة 218");
+        let stable=first.items[0].id.clone();let mut all=first.items;
+        let mut cursor=first.next_cursor;
+        while let Some(next)=cursor {
+            let page=store.get_catches_page(next,50,"all","",Some(&first.revision)).unwrap();
+            all.extend(page.items);cursor=page.next_cursor;
+        }
+        assert_eq!(all.len(),219);
+        let ids:std::collections::HashSet<_>=all.iter().map(|r|&r.id).collect();assert_eq!(ids.len(),219);
+        assert_eq!(store.get_catches_page(0,50,"all","",None).unwrap().items[0].id,stable);
+        assert_eq!(store.get_catches_page(0,50,"all","سمكة 218",None).unwrap().items.len(),1);
+        store.record_catch("fruit","Kilo","new");
+        assert!(store.get_catches_page(50,50,"all","",Some(&first.revision)).is_err());
+        assert!(store.get_catches_page(0,201,"all","",None).is_err());
+        let _=fs::remove_dir_all(dir);
     }
 }

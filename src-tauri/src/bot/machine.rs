@@ -517,6 +517,7 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
         ctx.touch();
         if !ctx.roblox_in_front() {
             ctx.release_mouse();
+            ctx.emit(BotEvent::Reading(None));
             return Outcome::Lost;
         }
         let s = ctx.settings.read();
@@ -565,6 +566,7 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
         let (capture_rect, origin_dx) = bar_capture_rect(&client, bar_region);
         let Some(frame) = grab_rect(ctx, capture_rect) else {
             ctx.release_mouse();
+            ctx.emit(BotEvent::Reading(None));
             if !ctx.sleep_ms(100) {
                 return Outcome::Stopped;
             }

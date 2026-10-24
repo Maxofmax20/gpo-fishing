@@ -354,7 +354,7 @@ pub async fn region_preview(st: State<'_, AppState>, region: RelRect, max_dim: O
     let palette = st.settings.read().fishing.palette;
     let max_dim = max_dim.unwrap_or(320) as usize;
     blocking(move || {
-        let frame = capture.grab(region.to_px(&roblox)).map_err(|e| e.to_string())?;
+        let frame = capture.grab_preview(region.to_px(&roblox)).map_err(|e| e.to_string())?;
         let confidence = vision::confidence(&frame, &palette);
         let reading = vision::read(&frame, &palette);
         let small = frame.downscale(max_dim);
@@ -803,6 +803,12 @@ pub fn web_regenerate_token(app: AppHandle, st: State<'_, AppState>) -> Result<S
 #[tauri::command]
 pub fn catches_list(st: State<'_, AppState>) -> Vec<crate::config::CatchRecord> {
     st.store.get_catches()
+}
+
+#[tauri::command]
+pub async fn catches_page(st: State<'_, AppState>, cursor: Option<usize>, limit: Option<usize>, kind: Option<String>, query: Option<String>, revision: Option<String>) -> Result<crate::config::CatchPage, String> {
+    let store=st.store.clone();
+    blocking(move || store.get_catches_page(cursor.unwrap_or(0),limit.unwrap_or(50),kind.as_deref().unwrap_or("all"),query.as_deref().unwrap_or(""),revision.as_deref())).await
 }
 
 #[tauri::command]

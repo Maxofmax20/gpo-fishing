@@ -16,7 +16,15 @@
       background-color: #232329 !important;
     }
   </style>
-<link rel="stylesheet" href="/assets/gpo-layout.css?v=%%V%%"/></head><body class="bg-surface font-body-md text-body-md text-on-surface flex flex-col min-h-screen"><header class="fixed top-0 w-full z-50 pt-safe bg-surface/85 backdrop-blur-xl shadow-[0_1px_12px_rgba(0,0,0,0.4)]"><div class="h-20 px-space-md flex flex-col justify-center gap-space-xs"><div class="flex items-center justify-between"><div class="flex items-center gap-space-xs min-w-0"><div class="w-2 h-2 rounded-full bg-tertiary animate-pulse shadow-[0_0_8px_#4edea3]"></div><span class="font-label-sm text-label-sm uppercase tracking-wider text-on-surface-variant truncate" data-gpo="hostline">…</span></div><div class="flex items-center gap-space-sm shrink-0"><div class="px-space-xs py-0.5 rounded-full bg-surface-container-high flex items-center gap-1.5" data-live-pill><span class="w-1.5 h-1.5 data-live-pill rounded-full bg-tertiary"></span><span class="font-label-sm text-label-sm text-tertiary uppercase">CONNECTING</span></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></div><div class="flex items-center justify-between"><div class="flex items-center gap-space-sm"><span class="font-headline-md text-headline-md tracking-tight uppercase text-primary">GPO CYBERDECK</span><span class="font-label-md text-label-md text-on-surface-variant uppercase hidden min-[400px]:inline">/ Macro Studio</span></div><div class="flex items-center gap-space-xs"><button class="h-8 px-space-sm min-w-[44px] rounded bg-surface-container hover:bg-surface-bright active:scale-95 text-secondary flex items-center justify-center gap-1 transition-all" id="alerts-btn" onclick="audioEngine.click(700)" type="button"><span class="material-symbols-outlined text-[16px]">notifications_active</span><span class="font-label-sm text-label-sm uppercase hidden sm:inline">Alerts</span></button><button class="h-8 px-space-md min-w-[76px] rounded bg-primary-container text-on-primary hover:bg-primary active:scale-95 font-label-md text-label-md uppercase tracking-wider font-bold flex items-center justify-center shadow-[0_0_12px_rgba(6,182,212,0.35)] transition-all" id="pwr-btn" onclick="audioEngine.pwrClick()" type="button">PWR ON</button></div></div></div></header><main class="flex flex-col relative w-full pt-20 pb-24 bg-surface min-h-screen"><div class="flex flex-col w-full px-space-md py-space-sm gap-space-md">
+<link rel="stylesheet" href="/assets/gpo-layout.css?v=%%V%%"/></head><body class="bg-surface font-body-md text-body-md text-on-surface flex flex-col min-h-screen"><header class="gpo-header">
+<div class="gpo-brand"><span class="material-symbols-outlined" aria-hidden="true">phishing</span><div><strong>GPO AUTOFISH</strong><small data-gpo="hostline">Connecting to your PC…</small></div></div>
+<div class="gpo-header-actions">
+<button id="sound-toggle-btn" class="gpo-icon-button" type="button" aria-label="Toggle interface sounds"><span class="material-symbols-outlined" aria-hidden="true">volume_off</span></button>
+<button id="alerts-btn" class="gpo-icon-button" type="button" aria-label="Toggle fruit spawn alerts"><span class="material-symbols-outlined" aria-hidden="true">notifications</span></button>
+<button id="pwr-btn" class="gpo-primary-button" type="button" aria-label="Start or pause fishing">Start</button>
+<button id="profile-btn" class="gpo-icon-button" type="button" aria-label="Open system settings"><span class="material-symbols-outlined" aria-hidden="true">settings</span></button>
+</div>
+</header><main class="flex flex-col relative w-full pt-20 pb-24 bg-surface min-h-screen"><div class="flex flex-col w-full px-space-md py-space-sm gap-space-md">
 <!-- Header Quick HUD Status -->
 <div class="flex items-center justify-between bg-surface-container-low px-space-md py-space-sm rounded-lg shadow-sm border border-outline-variant/30">
 <div class="flex items-center gap-space-xs">
@@ -79,10 +87,10 @@
 </div>
 </div>
 <div class="flex items-center gap-1 shrink-0">
-<button id="macro-rename-btn" class="w-8 h-8 rounded bg-surface-container hover:bg-surface-bright active:scale-95 text-on-surface flex items-center justify-center transition-all" onclick="audioEngine.click(600)" type="button">
+<button id="macro-rename-btn" class="w-8 h-8 rounded bg-surface-container hover:bg-surface-bright active:scale-95 text-on-surface flex items-center justify-center transition-all" type="button">
 <span class="material-symbols-outlined text-[16px]">edit</span>
 </button>
-<button id="macro-delete-btn" class="w-8 h-8 rounded bg-surface-container hover:bg-error-container active:scale-95 text-error flex items-center justify-center transition-all" onclick="audioEngine.trash()" type="button">
+<button id="macro-delete-btn" class="w-8 h-8 rounded bg-surface-container hover:bg-error-container active:scale-95 text-error flex items-center justify-center transition-all" type="button">
 <span class="material-symbols-outlined text-[16px]">delete</span>
 </button>
 </div>
@@ -98,11 +106,11 @@
 <span class="font-label-sm text-label-sm text-secondary font-bold" id="active-loop-label">∞ Endless</span>
 </div>
 <div class="grid grid-cols-5 gap-1 bg-surface-container-lowest p-1 rounded-lg">
-<button class="loop-btn active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface" onclick="selectLoop(this, '1x')" type="button">1x</button>
-<button class="loop-btn active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface" onclick="selectLoop(this, '5x')" type="button">5x</button>
-<button class="loop-btn active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface" onclick="selectLoop(this, '10x')" type="button">10x</button>
-<button class="loop-btn active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface" onclick="selectLoop(this, '25x')" type="button">25x</button>
-<button class="loop-btn active-loop active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all bg-secondary-container text-on-secondary-container shadow-sm font-bold" onclick="selectLoop(this, '∞ Endless')" type="button">∞</button>
+<button class="loop-btn active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface" data-loop="1" type="button">1x</button>
+<button class="loop-btn active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface" data-loop="5" type="button">5x</button>
+<button class="loop-btn active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface" data-loop="10" type="button">10x</button>
+<button class="loop-btn active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface" data-loop="25" type="button">25x</button>
+<button class="loop-btn active-loop active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all bg-secondary-container text-on-secondary-container shadow-sm font-bold" data-loop="0" type="button">∞</button>
 </div>
 </div>
 <!-- Speed Multiplier -->
@@ -115,21 +123,21 @@
 <span class="font-label-sm text-label-sm text-primary font-bold" id="active-speed-label">1x (Native)</span>
 </div>
 <div class="grid grid-cols-6 gap-1 bg-surface-container-lowest p-1 rounded-lg">
-<button class="speed-btn active-speed active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all bg-primary text-on-primary font-bold shadow-[0_0_8px_rgba(76,215,246,0.5)] flex items-center justify-center" onclick="selectSpeed(this, '1x (Native)', 0)" type="button">1x</button>
-<button class="speed-btn active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all text-on-surface-variant hover:text-on-surface flex items-center justify-center" onclick="selectSpeed(this, '2x Overclock', 1)" type="button">2x</button>
-<button class="speed-btn active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all text-on-surface-variant hover:text-on-surface flex items-center justify-center" onclick="selectSpeed(this, '5x Accelerated', 2)" type="button">5x</button>
-<button class="speed-btn active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all text-on-surface-variant hover:text-on-surface flex items-center justify-center" onclick="selectSpeed(this, '10x Turbo', 3)" type="button">10x</button>
-<button class="speed-btn active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all text-on-surface-variant hover:text-on-surface flex items-center justify-center" onclick="selectSpeed(this, '25x Hyper', 4)" type="button">25x</button>
-<button class="speed-btn active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all text-on-surface-variant hover:text-primary flex items-center justify-center" onclick="selectSpeed(this, '100x Insane⚡', 5)" type="button">100⚡</button>
+<button class="speed-btn active-speed active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all bg-primary text-on-primary font-bold shadow-[0_0_8px_rgba(76,215,246,0.5)] flex items-center justify-center" data-speed-index="0" type="button">1x</button>
+<button class="speed-btn active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all text-on-surface-variant hover:text-on-surface flex items-center justify-center" data-speed-index="1" type="button">2x</button>
+<button class="speed-btn active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all text-on-surface-variant hover:text-on-surface flex items-center justify-center" data-speed-index="2" type="button">5x</button>
+<button class="speed-btn active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all text-on-surface-variant hover:text-on-surface flex items-center justify-center" data-speed-index="3" type="button">10x</button>
+<button class="speed-btn active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all text-on-surface-variant hover:text-on-surface flex items-center justify-center" data-speed-index="4" type="button">25x</button>
+<button class="speed-btn active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all text-on-surface-variant hover:text-primary flex items-center justify-center" data-speed-index="5" type="button">100⚡</button>
 </div>
 </div>
 <!-- Dual Action Play Triggers -->
 <div class="grid grid-cols-2 gap-space-sm pt-space-xs">
-<button class="h-12 bg-surface-bright hover:bg-surface-container-highest text-primary active:scale-95 transition-all rounded-lg font-label-md text-label-md uppercase tracking-wider font-bold flex items-center justify-center gap-1.5 shadow-sm" id="play-once-btn" onclick="triggerPlayOnce()" type="button">
+<button class="h-12 bg-surface-bright hover:bg-surface-container-highest text-primary active:scale-95 transition-all rounded-lg font-label-md text-label-md uppercase tracking-wider font-bold flex items-center justify-center gap-1.5 shadow-sm" id="play-once-btn" type="button">
 <span class="material-symbols-outlined text-[18px]">play_arrow</span>
 <span>Play Once</span>
 </button>
-<button class="h-12 bg-secondary-container hover:bg-secondary text-on-secondary-container hover:text-on-secondary active:scale-95 transition-all rounded-lg font-label-md text-label-md uppercase tracking-wider font-bold flex items-center justify-center gap-1.5 shadow-[0_0_16px_rgba(139,92,246,0.35)]" id="loop-play-btn" onclick="triggerLoopPlay()" type="button">
+<button class="h-12 bg-secondary-container hover:bg-secondary text-on-secondary-container hover:text-on-secondary active:scale-95 transition-all rounded-lg font-label-md text-label-md uppercase tracking-wider font-bold flex items-center justify-center gap-1.5 shadow-[0_0_16px_rgba(139,92,246,0.35)]" id="loop-play-btn" type="button">
 <span class="material-symbols-outlined text-[18px]" id="loop-icon">sync</span>
 <span id="loop-btn-label">Loop Play</span>
 </button>
@@ -138,7 +146,7 @@
 <!-- Card 3: Step Inspector -->
 <div class="flex flex-col bg-surface-container rounded-xl p-space-md gap-space-sm shadow-md mb-2">
 <!-- Collapsible Header -->
-<button class="w-full flex items-center justify-between text-left group active:scale-[0.99] transition-all" id="inspector-toggle" onclick="audioEngine.click(520)" type="button">
+<button class="w-full flex items-center justify-between text-left group active:scale-[0.99] transition-all" id="inspector-toggle" type="button">
 <div class="flex items-center gap-space-xs">
 <span class="material-symbols-outlined text-primary text-[20px] transition-transform duration-200" id="inspector-chevron">expand_more</span>
 <span class="font-label-md text-label-md uppercase tracking-wider text-on-surface">Step Inspector</span>
@@ -162,7 +170,7 @@
 </div>
 <div class="flex items-center gap-2 shrink-0">
 <span class="font-label-sm text-label-sm text-on-surface-variant font-mono bg-surface-container-lowest px-1.5 py-0.5 rounded">+462ms</span>
-<button class="w-6 h-6 rounded bg-surface-container hover:bg-error-container text-on-surface-variant hover:text-error active:scale-90 flex items-center justify-center opacity-60 group-hover:opacity-100 transition-all" onclick="removeStep(this)" type="button">
+<button class="w-6 h-6 rounded bg-surface-container hover:bg-error-container text-on-surface-variant hover:text-error active:scale-90 flex items-center justify-center opacity-60 group-hover:opacity-100 transition-all" type="button">
 <span class="material-symbols-outlined text-[14px]">close</span>
 </button>
 </div>
@@ -179,7 +187,7 @@
 </div>
 <div class="flex items-center gap-2 shrink-0">
 <span class="font-label-sm text-label-sm text-on-surface-variant font-mono bg-surface-container-lowest px-1.5 py-0.5 rounded">+739ms</span>
-<button class="w-6 h-6 rounded bg-surface-container hover:bg-error-container text-on-surface-variant hover:text-error active:scale-90 flex items-center justify-center opacity-60 group-hover:opacity-100 transition-all" onclick="removeStep(this)" type="button">
+<button class="w-6 h-6 rounded bg-surface-container hover:bg-error-container text-on-surface-variant hover:text-error active:scale-90 flex items-center justify-center opacity-60 group-hover:opacity-100 transition-all" type="button">
 <span class="material-symbols-outlined text-[14px]">close</span>
 </button>
 </div>
@@ -196,7 +204,7 @@
 </div>
 <div class="flex items-center gap-2 shrink-0">
 <span class="font-label-sm text-label-sm text-on-surface-variant font-mono bg-surface-container-lowest px-1.5 py-0.5 rounded">+900ms</span>
-<button class="w-6 h-6 rounded bg-surface-container hover:bg-error-container text-on-surface-variant hover:text-error active:scale-90 flex items-center justify-center opacity-60 group-hover:opacity-100 transition-all" onclick="removeStep(this)" type="button">
+<button class="w-6 h-6 rounded bg-surface-container hover:bg-error-container text-on-surface-variant hover:text-error active:scale-90 flex items-center justify-center opacity-60 group-hover:opacity-100 transition-all" type="button">
 <span class="material-symbols-outlined text-[14px]">close</span>
 </button>
 </div>
@@ -213,7 +221,7 @@
 </div>
 <div class="flex items-center gap-2 shrink-0">
 <span class="font-label-sm text-label-sm text-on-surface-variant font-mono bg-surface-container-lowest px-1.5 py-0.5 rounded">+1323ms</span>
-<button class="w-6 h-6 rounded bg-surface-container hover:bg-error-container text-on-surface-variant hover:text-error active:scale-90 flex items-center justify-center opacity-60 group-hover:opacity-100 transition-all" onclick="removeStep(this)" type="button">
+<button class="w-6 h-6 rounded bg-surface-container hover:bg-error-container text-on-surface-variant hover:text-error active:scale-90 flex items-center justify-center opacity-60 group-hover:opacity-100 transition-all" type="button">
 <span class="material-symbols-outlined text-[14px]">close</span>
 </button>
 </div>
@@ -230,7 +238,7 @@
 </div>
 <div class="flex items-center gap-2 shrink-0">
 <span class="font-label-sm text-label-sm text-on-surface-variant font-mono bg-surface-container-lowest px-1.5 py-0.5 rounded">+600ms</span>
-<button class="w-6 h-6 rounded bg-surface-container hover:bg-error-container text-on-surface-variant hover:text-error active:scale-90 flex items-center justify-center opacity-60 group-hover:opacity-100 transition-all" onclick="removeStep(this)" type="button">
+<button class="w-6 h-6 rounded bg-surface-container hover:bg-error-container text-on-surface-variant hover:text-error active:scale-90 flex items-center justify-center opacity-60 group-hover:opacity-100 transition-all" type="button">
 <span class="material-symbols-outlined text-[14px]">close</span>
 </button>
 </div>
@@ -238,7 +246,7 @@
 <!-- Timeline Tool Bar -->
 <div class="flex items-center justify-between pt-2 px-1">
 
-<button id="calibrate-btn" class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1 hover:text-on-surface active:scale-95 transition-transform" onclick="audioEngine.click(800)" type="button">
+<button id="calibrate-btn" class="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1 hover:text-on-surface active:scale-95 transition-transform" type="button">
 <span class="material-symbols-outlined text-[14px]">tune</span>
 <span>Check connection</span>
 </button>
@@ -257,450 +265,4 @@
 </div>
 </div>
 </div>
-<script>
-  // ==========================================
-  // PROCEDURAL WEB AUDIO API SYNTHESIS ENGINE
-  // ==========================================
-  class ProceduralAudioEngine {
-    constructor() {
-      this.ctx = null;
-      this.loopPulseInterval = null;
-    }
-
-    init() {
-      if (!this.ctx) {
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-        this.ctx = new AudioContextClass();
-      }
-      if (this.ctx.state === 'suspended') {
-        this.ctx.resume();
-      }
-    }
-
-    // Tactile electronic click
-    click(freq = 900, duration = 0.035, type = 'sine') {
-      try {
-        this.init();
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(Math.max(60, freq * 0.4), this.ctx.currentTime + duration);
-
-        gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
-
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-
-        osc.start();
-        osc.stop(this.ctx.currentTime + duration);
-      } catch (e) { console.warn(e); }
-    }
-
-    // Double alert beep for recording (880Hz -> 1760Hz)
-    recordingBleep(isStopping = false) {
-      try {
-        this.init();
-        const now = this.ctx.currentTime;
-        const freqs = isStopping ? [1760, 880] : [880, 1760];
-
-        freqs.forEach((freq, idx) => {
-          const osc = this.ctx.createOscillator();
-          const gain = this.ctx.createGain();
-          const start = now + (idx * 0.08);
-          const dur = 0.06;
-
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, start);
-
-          gain.gain.setValueAtTime(0.16, start);
-          gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
-
-          osc.connect(gain);
-          gain.connect(this.ctx.destination);
-
-          osc.start(start);
-          osc.stop(start + dur);
-        });
-      } catch (e) { console.warn(e); }
-    }
-
-    // Play Once: Sci-Fi rising power-up sequence
-    playPowerUp() {
-      try {
-        this.init();
-        const now = this.ctx.currentTime;
-
-        // Sub glide
-        const osc1 = this.ctx.createOscillator();
-        const gain1 = this.ctx.createGain();
-        osc1.type = 'sawtooth';
-        osc1.frequency.setValueAtTime(220, now);
-        osc1.frequency.exponentialRampToValueAtTime(880, now + 0.35);
-
-        // Filter sweep
-        const filter = this.ctx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(400, now);
-        filter.frequency.exponentialRampToValueAtTime(3200, now + 0.35);
-
-        gain1.gain.setValueAtTime(0.15, now);
-        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
-
-        osc1.connect(filter);
-        filter.connect(gain1);
-        gain1.connect(this.ctx.destination);
-
-        osc1.start(now);
-        osc1.stop(now + 0.38);
-
-        // Hi sparkle chime
-        const osc2 = this.ctx.createOscillator();
-        const gain2 = this.ctx.createGain();
-        osc2.type = 'sine';
-        osc2.frequency.setValueAtTime(1320, now + 0.22);
-        osc2.frequency.setValueAtTime(1760, now + 0.3);
-        gain2.gain.setValueAtTime(0.001, now);
-        gain2.gain.setValueAtTime(0.1, now + 0.22);
-        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-
-        osc2.connect(gain2);
-        gain2.connect(this.ctx.destination);
-        osc2.start(now + 0.22);
-        osc2.stop(now + 0.45);
-      } catch (e) { console.warn(e); }
-    }
-
-    // Continuous loop pulse trigger
-    startLoopPulse() {
-      this.stopLoopPulse();
-      const triggerPulse = () => {
-        try {
-          this.init();
-          const now = this.ctx.currentTime;
-          const osc = this.ctx.createOscillator();
-          const gain = this.ctx.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(330, now);
-          osc.frequency.exponentialRampToValueAtTime(660, now + 0.12);
-
-          gain.gain.setValueAtTime(0.08, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-
-          osc.connect(gain);
-          gain.connect(this.ctx.destination);
-          osc.start(now);
-          osc.stop(now + 0.12);
-        } catch (e) {}
-      };
-      triggerPulse();
-      this.loopPulseInterval = setInterval(triggerPulse, 600);
-    }
-
-    stopLoopPulse() {
-      if (this.loopPulseInterval) {
-        clearInterval(this.loopPulseInterval);
-        this.loopPulseInterval = null;
-      }
-    }
-
-    // Speed Selector Clicks (pitch scaled & electric zap)
-    speedClick(index) {
-      try {
-        this.init();
-        const now = this.ctx.currentTime;
-        if (index === 5) {
-          // 100x Zap chirp
-          const osc = this.ctx.createOscillator();
-          const gain = this.ctx.createGain();
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(3200, now);
-          osc.frequency.exponentialRampToValueAtTime(240, now + 0.08);
-          gain.gain.setValueAtTime(0.18, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-          osc.connect(gain);
-          gain.connect(this.ctx.destination);
-          osc.start(now);
-          osc.stop(now + 0.08);
-        } else {
-          const freqs = [350, 520, 780, 1100, 1550];
-          const freq = freqs[index] || 500;
-          const osc = this.ctx.createOscillator();
-          const gain = this.ctx.createGain();
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(freq, now);
-          gain.gain.setValueAtTime(0.12, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
-          osc.connect(gain);
-          gain.connect(this.ctx.destination);
-          osc.start(now);
-          osc.stop(now + 0.04);
-        }
-      } catch (e) { console.warn(e); }
-    }
-
-    // Step Inspector Trash sweep SFX
-    trash() {
-      try {
-        this.init();
-        const now = this.ctx.currentTime;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(540, now);
-        osc.frequency.exponentialRampToValueAtTime(110, now + 0.16);
-
-        gain.gain.setValueAtTime(0.15, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.16);
-      } catch (e) { console.warn(e); }
-    }
-
-    // Delay addition click SFX
-    delayClick() {
-      try {
-        this.init();
-        const now = this.ctx.currentTime;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(950, now);
-        osc.frequency.exponentialRampToValueAtTime(1420, now + 0.06);
-
-        gain.gain.setValueAtTime(0.14, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.06);
-      } catch (e) { console.warn(e); }
-    }
-
-    pwrClick() {
-      try {
-        this.init();
-        const now = this.ctx.currentTime;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(440, now);
-        osc.frequency.setValueAtTime(880, now + 0.08);
-        gain.gain.setValueAtTime(0.14, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-        osc.connect(gain);
-        gain.connect(this.ctx.destination);
-        osc.start(now);
-        osc.stop(now + 0.18);
-      } catch (e) { console.warn(e); }
-    }
-  }
-
-  const audioEngine = new ProceduralAudioEngine();
-
-  // Loop Selection Toggle
-  function selectLoop(btn, val) {
-    audioEngine.click(680, 0.04);
-    document.querySelectorAll('.loop-btn').forEach(b => {
-      b.className = 'loop-btn active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all text-on-surface-variant hover:text-on-surface';
-    });
-    btn.className = 'loop-btn active-loop active:scale-95 py-1.5 rounded text-center font-label-md text-label-md transition-all bg-secondary-container text-on-secondary-container shadow-sm font-bold';
-    const label = document.getElementById('active-loop-label');
-    if (label) label.textContent = val;
-  }
-
-  // Speed Multiplier Selection Toggle
-  function selectSpeed(btn, val, index) {
-    audioEngine.speedClick(index);
-    document.querySelectorAll('.speed-btn').forEach(b => {
-      b.className = 'speed-btn active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all text-on-surface-variant hover:text-on-surface flex items-center justify-center';
-    });
-    btn.className = 'speed-btn active-speed active:scale-95 py-1.5 rounded text-center font-label-sm text-label-sm transition-all bg-primary text-on-primary font-bold shadow-[0_0_8px_rgba(76,215,246,0.5)] flex items-center justify-center';
-    const label = document.getElementById('active-speed-label');
-    if (label) label.textContent = val;
-  }
-
-  // Collapsible Step Inspector
-  const inspectorToggle = document.getElementById('inspector-toggle');
-  const inspectorBody = document.getElementById('inspector-body');
-  const inspectorChevron = document.getElementById('inspector-chevron');
-
-  if (inspectorToggle && inspectorBody) {
-    inspectorToggle.addEventListener('click', () => {
-      const isHidden = inspectorBody.classList.contains('hidden');
-      if (isHidden) {
-        inspectorBody.classList.remove('hidden');
-        if (inspectorChevron) inspectorChevron.style.transform = 'rotate(0deg)';
-      } else {
-        inspectorBody.classList.add('hidden');
-        if (inspectorChevron) inspectorChevron.style.transform = 'rotate(-90deg)';
-      }
-    });
-  }
-
-  // Delete Individual Step Microinteraction
-  function removeStep(btn) {
-    audioEngine.trash();
-    const row = btn.closest('.step-row, .flex.items-center.justify-between');
-    if (row) {
-      row.style.opacity = '0';
-      row.style.transform = 'translateX(24px) scale(0.95)';
-      row.style.transition = 'all 0.22s ease-out';
-      setTimeout(() => {
-        row.remove();
-        updateStepCount();
-      }, 220);
-    }
-  }
-
-  function updateStepCount() {
-    const list = document.getElementById('inspector-body');
-    const badge = document.getElementById('step-count-badge');
-    if (list && badge) {
-      const steps = list.querySelectorAll('.step-row');
-      badge.textContent = `${steps.length} STEPS`;
-    }
-  }
-
-  // Play Once: Visual Sequential Scanner + Audio
-  function triggerPlayOnce() {
-    audioEngine.playPowerUp();
-    animateSequentialSteps();
-    const status = document.getElementById('engine-status-text');
-    const dot = document.getElementById('engine-status-dot');
-    if (status) {
-      status.textContent = 'EXECUTING';
-      status.className = 'font-label-sm text-label-sm uppercase px-2 py-0.5 rounded bg-surface-container text-primary font-bold tracking-wider animate-pulse transition-all duration-300';
-    }
-    if (dot) {
-      dot.className = 'w-2 h-2 rounded-full bg-primary animate-ping';
-    }
-    setTimeout(() => {
-      if (status && !isLooping) {
-        status.textContent = 'ENGINE IDLE';
-        status.className = 'font-label-sm text-label-sm uppercase px-2 py-0.5 rounded bg-surface-container text-tertiary font-bold tracking-wider transition-all duration-300';
-      }
-      if (dot && !isLooping) {
-        dot.className = 'w-2 h-2 rounded-full bg-tertiary animate-ping';
-      }
-    }, 2200);
-  }
-
-  function animateSequentialSteps() {
-    const rows = document.querySelectorAll('.step-row');
-    rows.forEach((row, i) => {
-      setTimeout(() => {
-        row.classList.add('step-active-scan');
-        audioEngine.click(750 + (i * 120), 0.025);
-        setTimeout(() => {
-          row.classList.remove('step-active-scan');
-        }, 400);
-      }, i * 360);
-    });
-  }
-
-  // Loop Play: Continuous Motion & Audio
-  let isLooping = false;
-  let loopInterval = null;
-  function triggerLoopPlay() {
-    const btn = document.getElementById('loop-play-btn');
-    const label = document.getElementById('loop-btn-label');
-    const icon = document.getElementById('loop-icon');
-    const status = document.getElementById('engine-status-text');
-    const dot = document.getElementById('engine-status-dot');
-    const badge = document.getElementById('play-status-badge');
-
-    isLooping = !isLooping;
-    if (isLooping) {
-      audioEngine.startLoopPulse();
-      animateSequentialSteps();
-      loopInterval = setInterval(animateSequentialSteps, 2000);
-
-      btn.classList.remove('bg-secondary-container', 'hover:bg-secondary');
-      btn.classList.add('bg-error-container', 'text-on-error-container', 'shadow-[0_0_16px_rgba(255,180,171,0.4)]');
-      label.textContent = 'STOP LOOP';
-      icon.classList.add('animate-spin');
-      if (status) {
-        status.textContent = 'LOOP RUNNING';
-        status.className = 'font-label-sm text-label-sm uppercase px-2 py-0.5 rounded bg-surface-container text-secondary font-bold tracking-wider animate-pulse';
-      }
-      if (badge) {
-        badge.textContent = 'ACTIVE';
-        badge.className = 'font-label-sm text-label-sm uppercase px-2 py-0.5 rounded-full bg-secondary-container text-on-secondary-container animate-pulse';
-      }
-      if (dot) dot.className = 'w-2 h-2 rounded-full bg-secondary animate-ping';
-    } else {
-      audioEngine.stopLoopPulse();
-      if (loopInterval) clearInterval(loopInterval);
-
-      btn.classList.add('bg-secondary-container', 'hover:bg-secondary');
-      btn.classList.remove('bg-error-container', 'text-on-error-container', 'shadow-[0_0_16px_rgba(255,180,171,0.4)]');
-      label.textContent = 'Loop Play';
-      icon.classList.remove('animate-spin');
-      if (status) {
-        status.textContent = 'ENGINE IDLE';
-        status.className = 'font-label-sm text-label-sm uppercase px-2 py-0.5 rounded bg-surface-container text-tertiary font-bold tracking-wider transition-all duration-300';
-      }
-      if (badge) {
-        badge.textContent = 'ARMED';
-        badge.className = 'font-label-sm text-label-sm uppercase px-2 py-0.5 rounded-full bg-surface-container-highest text-primary';
-      }
-      if (dot) dot.className = 'w-2 h-2 rounded-full bg-tertiary animate-ping';
-    }
-  }
-
-  // Record Button Haptic Toggle & Beacon Animation
-  const recordBtn = document.getElementById('record-btn');
-  const recordCard = document.getElementById('record-card');
-  const recordBadge = document.getElementById('record-badge');
-  const recordGlow = document.getElementById('record-glow');
-  let isRecording = false;
-
-  if (recordBtn) {
-    recordBtn.addEventListener('click', () => {
-      isRecording = !isRecording;
-      audioEngine.recordingBleep(!isRecording);
-
-      if (isRecording) {
-        recordBtn.classList.remove('bg-primary-container', 'hover:bg-primary', 'text-on-primary', 'shadow-[0_0_16px_rgba(6,182,212,0.4)]');
-        recordBtn.classList.add('bg-error', 'text-on-error', 'shadow-[0_0_20px_rgba(255,180,171,0.6)]');
-        recordBtn.innerHTML = `
-          <span class="w-2.5 h-2.5 rounded-full bg-on-error animate-ping"></span>
-          <span>STOP REC</span>
-        `;
-        if (recordCard) {
-          recordCard.classList.add('ring-1', 'ring-error/50');
-        }
-        if (recordBadge) {
-          recordBadge.textContent = 'REC ON';
-          recordBadge.className = 'font-label-sm text-label-sm uppercase px-2 py-0.5 rounded-full bg-error-container text-error font-bold animate-pulse';
-        }
-        if (recordGlow) {
-          recordGlow.className = 'absolute -right-8 -top-8 w-24 h-24 bg-error/25 rounded-full blur-xl pointer-events-none transition-all duration-300 animate-pulse';
-        }
-      } else {
-        recordBtn.classList.remove('bg-error', 'text-on-error', 'shadow-[0_0_20px_rgba(255,180,171,0.6)]');
-        recordBtn.classList.add('bg-primary-container', 'hover:bg-primary', 'text-on-primary', 'shadow-[0_0_16px_rgba(6,182,212,0.4)]');
-        recordBtn.innerHTML = `
-          <span class="w-2.5 h-2.5 rounded-full bg-on-primary animate-pulse"></span>
-          <span>Record</span>
-        `;
-        if (recordCard) {
-          recordCard.classList.remove('ring-1', 'ring-error/50');
-        }
-        if (recordBadge) {
-          recordBadge.textContent = 'Ready';
-          recordBadge.className = 'font-label-sm text-label-sm uppercase px-2 py-0.5 rounded-full bg-surface-container-highest text-tertiary';
-        }
-        if (recordGlow) {
-          recordGlow.className = 'absolute -right-8 -top-8 w-24 h-24 bg-primary/10 rounded-full blur-xl pointer-events-none transition-all duration-300';
-        }
-      }
-    });
-  }
-</script></main><nav class="fixed bottom-0 w-full z-50 pb-safe bg-surface/90 backdrop-blur-xl shadow-[0_-4px_16px_rgba(0,0,0,0.5)]" data-active-classes="text-primary relative after:content-[''] after:absolute after:top-0 after:left-1/4 after:right-1/4 after:h-[2px] after:bg-primary after:shadow-[0_0_8px_#ff7781]"><div class="flex items-center justify-around h-16 px-space-xs"><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface active:scale-95 transition-all" data-nav="/" href="/" onclick="audioEngine.click(480)"><span class="material-symbols-outlined text-[20px]">sports_esports</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Remote</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface active:scale-95 transition-all" data-nav="/stats" href="/stats" onclick="audioEngine.click(520)"><span class="material-symbols-outlined text-[20px]">query_stats</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Stats</span></a><a aria-current="page" class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 transition-colors text-primary relative after:content-[''] after:absolute after:top-0 after:left-1/4 after:right-1/4 after:h-[2px] after:bg-primary after:shadow-[0_0_8px_#ff7781]" data-nav="/studio" href="/studio" onclick="audioEngine.click(600)"><span class="material-symbols-outlined text-[20px]">fiber_manual_record</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Studio</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface active:scale-95 transition-all" data-nav="/craft" href="/craft" onclick="audioEngine.click(560)"><span class="material-symbols-outlined text-[20px]">construction</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Craft</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface active:scale-95 transition-all" data-nav="/system" href="/system" onclick="audioEngine.click(500)"><span class="material-symbols-outlined text-[20px]">tune</span><span class="font-label-sm text-label-sm uppercase tracking-wide">System</span></a></div></nav><script src="/assets/gpo-gesture.js?v=%%V%%"></script><script src="/assets/gpo-core.js?v=%%V%%"></script><script src="/assets/gpo-studio.js?v=%%V%%"></script></body></html>
+</main><nav class="fixed bottom-0 w-full z-50 pb-safe bg-surface/90 backdrop-blur-xl shadow-[0_-4px_16px_rgba(0,0,0,0.5)]" data-active-classes="text-primary relative after:content-[''] after:absolute after:top-0 after:left-1/4 after:right-1/4 after:h-[2px] after:bg-primary after:shadow-[0_0_8px_#ff7781]"><div class="flex items-center justify-around h-16 px-space-xs"><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface active:scale-95 transition-all" data-nav="/" href="/"><span class="material-symbols-outlined text-[20px]">sports_esports</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Remote</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface active:scale-95 transition-all" data-nav="/stats" href="/stats"><span class="material-symbols-outlined text-[20px]">query_stats</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Stats</span></a><a aria-current="page" class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 transition-colors text-primary relative after:content-[''] after:absolute after:top-0 after:left-1/4 after:right-1/4 after:h-[2px] after:bg-primary after:shadow-[0_0_8px_#ff7781]" data-nav="/studio" href="/studio"><span class="material-symbols-outlined text-[20px]">fiber_manual_record</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Studio</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface active:scale-95 transition-all" data-nav="/craft" href="/craft"><span class="material-symbols-outlined text-[20px]">construction</span><span class="font-label-sm text-label-sm uppercase tracking-wide">Craft</span></a><a class="flex flex-col items-center justify-center gap-1 min-w-[44px] min-h-[44px] flex-1 text-on-surface-variant hover:text-on-surface active:scale-95 transition-all" data-nav="/system" href="/system"><span class="material-symbols-outlined text-[20px]">tune</span><span class="font-label-sm text-label-sm uppercase tracking-wide">System</span></a></div></nav><script src="/assets/gpo-gesture.js?v=%%V%%"></script><script src="/assets/gpo-core.js?v=%%V%%"></script><script src="/assets/gpo-studio.js?v=%%V%%"></script></body></html>
