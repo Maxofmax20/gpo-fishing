@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Apple, Fish, Pause, Play, PanelRightClose, PanelRightOpen, Square } from "lucide-react";
 import { api, on } from "../lib/ipc";
-import { showToast, useStore, isActive } from "../lib/store";
+import { useStore, isActive } from "../lib/store";
 import { STATE_LABEL } from "../lib/types";
 import { cx, fmtRuntime } from "../components/primitives";
 import { StateBadge } from "../components/StateIcon";
@@ -15,12 +15,6 @@ export default function Hud() {
   const lastEvent = useStore((s) => s.lastEvent);
   const [runtime, setRuntime] = useState(stats.runtime_s);
   const [panelOpen, setPanelOpen] = useState(false);
-  const [pending, setPending] = useState(false);
-  const perform = async (action: () => Promise<unknown>) => {
-    if (pending) return;
-    setPending(true);
-    try { await action(); } catch (e) { showToast("error", `HUD action failed: ${String(e)}`); } finally { setPending(false); }
-  };
   const dragging = useRef(false);
 
   useEffect(() => {
@@ -46,7 +40,6 @@ export default function Hud() {
   const startDrag = async (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     dragging.current = true;
-    try {
     const win = getCurrentWindow();
     await win.startDragging();
     dragging.current = false;
@@ -57,7 +50,6 @@ export default function Hud() {
     const cx0 = pos.x + size.width / 2 - rb.client.x;
     const cy0 = pos.y - rb.client.y - 8;
     api.hudSetOffset({ x: Math.max(0, Math.min(1, cx0 / rb.client.w)), y: Math.max(0, Math.min(1, cy0 / rb.client.h)) });
-    } catch (e) { showToast("warn", `Could not move HUD: ${String(e)}`); } finally { dragging.current = false; }
   };
 
   return (
@@ -82,18 +74,16 @@ export default function Hud() {
             active ? "bg-warn-soft text-warn hover:bg-warn/30" : "bg-ok-soft text-ok hover:bg-ok/30",
           )}
           onPointerDown={(e) => e.stopPropagation()}
-          disabled={pending} aria-label={active ? "Pause fishing" : "Start fishing"} aria-busy={pending}
-          onClick={() => void perform(api.botToggle)}
+          onClick={() => api.botToggle()}
           title={active ? "Pause" : "Start"}
         >
           {active ? <Pause size={14} /> : <Play size={14} className="translate-x-px" />}
         </button>
-        {(active || state === "paused" || pending) && (
+        {(active || state === "paused") && (
           <button
             className="no-drag h-8 w-8 rounded-full grid place-items-center bg-white/[0.06] text-fg-dim hover:bg-bad-soft hover:text-bad transition-colors"
             onPointerDown={(e) => e.stopPropagation()}
-            aria-label="Stop fishing"
-            onClick={() => { void api.botStop().catch(e => showToast("error","Stop failed: " + String(e))); }}
+            onClick={() => api.botStop()}
             title="Stop"
           >
             <Square size={12} />
@@ -105,8 +95,7 @@ export default function Hud() {
             panelOpen ? "bg-accent-soft text-accent hover:bg-accent/30" : "bg-white/[0.06] text-fg-dim hover:bg-white/[0.12] hover:text-fg",
           )}
           onPointerDown={(e) => e.stopPropagation()}
-          disabled={pending} aria-label={panelOpen ? "Hide panel" : "Open panel"}
-          onClick={() => void perform(api.panelToggle)}
+          onClick={() => api.panelToggle()}
           title={panelOpen ? "Hide panel" : "Open panel"}
         >
           {panelOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}

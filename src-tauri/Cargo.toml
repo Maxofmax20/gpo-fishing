@@ -1,6 +1,6 @@
 [package]
 name = "gpo-autofish"
-version = "6.0.2"
+version = "6.0.3"
 description = "Grand Piece Online fishing companion"
 authors = ["arielldev"]
 edition = "2021"
