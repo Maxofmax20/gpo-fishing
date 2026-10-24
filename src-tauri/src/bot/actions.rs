@@ -648,6 +648,7 @@ pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Optio
     if !s.webhook.send_screenshot {
         return None;
     }
+    if !ctx.roblox_in_front() { return None; }
     let r = ctx.roblox_rect()?;
 
     if s.webhook.crop_fruit_screenshot {
@@ -669,13 +670,14 @@ pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Optio
         };
         let px_box = crop_rel.to_px(&r);
         if let Ok(frame) = ctx.platform.capture.grab(px_box) {
+            if !ctx.roblox_in_front() { return None; }
             if let Some(bytes) = fruit_notification_png(&frame) {
                 return Some(bytes);
             }
         }
     }
 
-    ctx.platform.capture.grab(r).ok()
+    ctx.platform.capture.grab(r).ok().filter(|_| ctx.roblox_in_front())
         .and_then(|f| fruit_notification_png(&f))
 }
 
@@ -686,6 +688,7 @@ pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_t
     if s.webhook.legendary_only && !is_high_tier {
         return None;
     }
+    if !ctx.roblox_in_front() { return None; }
     let r = ctx.roblox_rect()?;
 
     if s.webhook.crop_fruit_screenshot {
@@ -706,15 +709,15 @@ pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_t
         };
         let px_box = crop_rel.to_px(&r);
         if let Ok(frame) = ctx.platform.capture.grab(px_box) {
-            if let Ok(bytes) = frame.to_png_bytes() {
+            if !ctx.roblox_in_front() { return None; }
+            if let Some(bytes) = fruit_notification_png(&frame) {
                 return Some(bytes);
             }
         }
     }
 
-    ctx.platform.capture.grab(r).ok()
-        .map(|f| f.downscale(1280))
-        .and_then(|f| f.to_png_bytes().ok())
+    ctx.platform.capture.grab(r).ok().filter(|_| ctx.roblox_in_front())
+        .and_then(|f| fruit_notification_png(&f))
 }
 
 /// Store/drop locally, then publish one terminal outcome before any notification work.
@@ -1294,6 +1297,29 @@ mod rod_state_tests {
         assert!(scan_bait_stock_for(&ctx, true).is_err());
         assert!(input.events.lock().is_empty());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn notifications_discard_frames_if_focus_changes_during_capture() {
+        struct SwitchingCapture { window: Arc<MockWindow> }
+        impl crate::core::platform::Capture for SwitchingCapture {
+            fn grab(&self,_rect:PxRect)->crate::core::platform::Result<crate::core::types::Frame> {
+                *self.window.info.lock()=None;
+                Ok(crate::core::types::Frame::new(5,5,vec![255;100]))
+            }
+        }
+        for drop_photo in [false,true] {
+            let (mut ctx,_input,dir)=fixture(false);
+            let window=Arc::new(MockWindow {info: parking_lot::Mutex::new(*ctx.roblox.read())});
+            ctx.platform.window=window.clone();
+            ctx.platform.capture=Arc::new(SwitchingCapture {window});
+            ctx.settings.write().webhook.send_screenshot=true;
+            ctx.settings.write().webhook.send_drop_screenshot=true;
+            let settings=ctx.settings();
+            let photo=if drop_photo {capture_drop_screenshot(&ctx,&settings,true)} else {capture_fruit_screenshot(&ctx,&settings)};
+            assert!(photo.is_none(),"an Alt-Tab frame must never be sent");
+            let _=std::fs::remove_dir_all(dir);
+        }
     }
 
     #[test]
