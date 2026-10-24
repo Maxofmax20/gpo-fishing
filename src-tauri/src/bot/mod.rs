@@ -128,9 +128,10 @@ impl Bot {
         Ok(())
     }
 
-    pub fn resume_after_update(self: &Arc<Self>) -> Result<(), String> {
-        self.paused.store(true, Ordering::SeqCst);
-        self.start_checked()
+    pub fn control_generation(&self) -> u64 { self.generation.load(Ordering::SeqCst) }
+
+    pub fn resume_after_update(self: &Arc<Self>, generation: u64) -> Result<(), String> {
+        self.start_at_generation_with_resume(Some(generation), true)
     }
 
     pub fn ctx(&self) -> &Arc<Ctx> {
@@ -162,9 +163,16 @@ impl Bot {
     }
 
     fn start_at_generation(self: &Arc<Self>, expected: Option<u64>) -> Result<(), String> {
+        self.start_at_generation_with_resume(expected, false)
+    }
+
+    fn start_at_generation_with_resume(self: &Arc<Self>, expected: Option<u64>, update_resume: bool) -> Result<(), String> {
         let _lifecycle = self.lifecycle.lock();
         if expected.is_some_and(|g| self.generation.load(Ordering::SeqCst) != g) {
-            return Ok(());
+            return if update_resume { Err("Automatic update resume cancelled by a newer control action".into()) } else { Ok(()) };
+        }
+        if update_resume && self.ctx.store.update_gate.lock().pending() {
+            return Err("Automatic resume postponed by another update".into());
         }
         if self.is_running() {
             return Ok(());
@@ -177,6 +185,7 @@ impl Bot {
         }
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.halt();
+        if update_resume { self.paused.store(true, Ordering::SeqCst); }
         let resume = self.paused.swap(false, Ordering::SeqCst);
         if resume {
             self.ctx.session.lock().resume();
@@ -490,6 +499,17 @@ mod lifecycle_tests {
         while !bot.ctx.store.update_gate.lock().pending() {
             assert!(std::time::Instant::now()<deadline,"update request did not start");
             std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
+    #[test]
+    fn stop_or_pause_after_checkpoint_consumption_revokes_delayed_startup_resume() {
+        for pause in [false,true] {
+            let bot=bot(if pause { "startup-pause" } else { "startup-stop" });
+            let generation=bot.control_generation();
+            if pause { bot.pause(); } else { bot.stop(); }
+            assert!(bot.resume_after_update(generation).is_err());
+            assert!(!bot.is_running());
+            let _=std::fs::remove_dir_all(bot.ctx.store.dir());
         }
     }
     #[test]
