@@ -72,7 +72,13 @@ impl Bot {
             request_id:id.clone(), source:env!("CARGO_PKG_VERSION").into(),
             target:target.into(), created_ms:crate::events::now_ms(), was_running,
         };
-        self.ctx.store.update_gate.lock().begin(intent)?;
+        {
+            let mut gate = self.ctx.store.update_gate.lock();
+            if recorder::is_playing() || recorder::is_recording() || crafting::is_crafting_running() {
+                return Err("Finish recording, playback or crafting before installing an update".into());
+            }
+            gate.begin(intent)?;
+        }
         let mut quiesced = false;
         let result = (|| -> Result<(), String> {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
