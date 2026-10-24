@@ -66,6 +66,10 @@ async function gpoPost(path, body) {
     if (typeof gpoNoteOnline === 'function') gpoNoteOnline(false);
     throw new Error('backend unreachable');
   }
+  if (r.status === 401 || r.status === 403) {
+    if (typeof gpoNoteOnline === 'function') gpoNoteOnline(false, 'Authorization required — reopen Web UI from the desktop app.');
+    throw new Error('dashboard authorization rejected');
+  }
   let j = {};
   try { j = await r.json(); } catch (e) { throw new Error('bad backend response'); }
   const denied = r.status === 401 || r.status === 403;

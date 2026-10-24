@@ -80,7 +80,7 @@ export function LiveAreas() {
       <div className="grid gap-3 grid-cols-1 @[420px]:grid-cols-3">
         <Tile
           label="Fishing bar"
-          color="#4f8cff"
+          color="#fb5b68"
           preview={bar}
           fallbackRatio={0.5}
           status={reading ? (reading.hold ? "reeling · hold" : "reeling · release") : score >= 0.6 ? "bar visible" : active ? "waiting" : "idle"}

@@ -77,13 +77,13 @@ export default function MultiRobloxPage() {
     try {
       const res = await api.multiRobloxSetEnabled(enable);
       setStatus(res);
-      update((s) => {
+      await update((s) => {
         s.features.multi_roblox = enable;
       });
       setActionMsg({
         type: "success",
         text: enable
-          ? "Multi-Roblox active! Singleton locks and Error 773 protection claimed."
+          ? "Multi-Roblox enabled. Launch and connection results are shown per account."
           : "Multi-Roblox deactivated. Standard Roblox singleton restored.",
       });
     } catch (e) {

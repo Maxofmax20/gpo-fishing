@@ -478,26 +478,6 @@ export default function Features() {
         </Row>
       </Section>
 
-      <Section title="Multi-Account & Multi-Roblox">
-        <Row
-          title="Multiple Roblox Instances"
-          sub="Allows multiple Roblox clients to run simultaneously on different accounts without singleton collisions or Error 773 teleports."
-          right={
-            <Toggle
-              value={s.features.multi_roblox}
-              onChange={async (v) => {
-                update((x) => void (x.features.multi_roblox = v));
-                try {
-                  await api.multiRobloxSetEnabled(v);
-                } catch (e) {
-                  showToast("error", `Could not toggle Multi-Roblox: ${String(e)}`);
-                }
-              }}
-            />
-          }
-        />
-      </Section>
-
       <Section title="Notifications & Integrations">
         <Row
           title="Discord Rich Presence (RPC)"

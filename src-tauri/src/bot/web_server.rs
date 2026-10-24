@@ -569,7 +569,7 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         }));
     }
 
-    let payload = json!({
+    let mut payload = json!({
         "state": state_str,
         "paused": paused,
         "is_running": bot.is_running(),
@@ -579,9 +579,6 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         "fruits": stats.fruits,
         "pity_fruit": stats.pity_fruit,
         "pity_legendary": stats.pity_legendary,
-        "pity_cap": s.fruit_storage.pity_cap,
-        "pity_zero_only": s.webhook.pity_zero_only,
-        "continue_on_unconfirmed": s.fruit_storage.continue_on_unconfirmed,
         "success_rate": (stats.success_rate * 100.0).round(),
         "runtime_s": stats.runtime_s,
         "bait_purchased": stats.bait_purchased,
@@ -617,6 +614,11 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         // must be able to tell live pixels from a stale replay.
         "stream_live": bot.ctx().roblox_rect().is_some(),
     });
+
+    // Keep serde_json's macro expansion bounded as the status contract grows.
+    payload["pity_cap"] = json!(s.fruit_storage.pity_cap);
+    payload["pity_zero_only"] = json!(s.webhook.pity_zero_only);
+    payload["continue_on_unconfirmed"] = json!(s.fruit_storage.continue_on_unconfirmed);
 
     let body = payload.to_string();
     let resp = format!(

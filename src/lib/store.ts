@@ -121,11 +121,11 @@ export const useStore = create<Store>((set, get) => ({
       on("settings:invalidated", () => { void get().refresh().catch((e) => get().toast("error", `Could not refresh settings: ${String(e)}`)); });
       on("settings:changed", (p) => set({ settings: p }));
       on("bot:fruit_drop", (p) =>
-        set({ lastEvent: { kind: "fruit", text: p.is_legendary ? "Legendary devil fruit!" : "Devil fruit dropped!", ts: Date.now() } }),
+        set({ lastEvent: { kind: "fruit", text: p.is_legendary ? "Legendary fruit caught" : "Devil fruit caught", ts: Date.now() } }),
       );
       on("bot:fruit_spawn", (p) => set({ lastEvent: { kind: "spawn", text: `${p.name ?? "A fruit"} spawned${p.location ? ` at ${p.location}` : ""}`, ts: Date.now() } }));
       on("bot:purchase", (p) => set({ lastEvent: { kind: "purchase", text: `Bought ${p.amount} bait`, ts: Date.now() } }));
-      on("bot:recovery", (p) => set({ lastEvent: { kind: "recovery", text: `Recovered (#${p.attempt})`, ts: Date.now() } }));
+      on("bot:recovery", (p) => set({ lastEvent: { kind: "recovery", text: `Recovery attempt #${p.attempt}: ${p.reason}`, ts: Date.now() } }));
       on("bot:ml_session", (p) => {
         set({ ml: p });
         if (!p.collecting && p.session_id && (p.samples > 0 || p.reels > 0 || p.hard_examples > 0 || p.quality_ok === false)) {

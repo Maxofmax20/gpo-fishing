@@ -1,4 +1,8 @@
 @import "tailwindcss";
+/* The embedded web dashboard has its own compiled stylesheet. */
+@source not "../src-tauri/src/bot/web";
+@source not "../tests";
+@source not "../scripts";
 
 @theme {
   --color-bg: #08090b;

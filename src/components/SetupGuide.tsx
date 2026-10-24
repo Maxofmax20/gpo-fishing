@@ -160,12 +160,12 @@ function BarScene() {
         <rect x="302" y="70" width="18" height="34" rx="2" fill="#0b0d12" />
         <rect x="302" y="130" width="18" height="3" fill="#fff" />
         <rect x="288" y="20" width="46" height="180" rx="5" fill="#22c55e" fillOpacity="0.1" stroke="#22c55e" strokeWidth="1.5" />
-        <rect x="40" y="40" width="112" height="30" rx="8" fill="#4f8cff" />
+        <rect x="40" y="40" width="112" height="30" rx="8" fill="#fb5b68" />
         <text x="96" y="59" textAnchor="middle" fontSize="12" fontFamily="Inter, system-ui" fontWeight="600" fill="#fff">
           Auto-detect
         </text>
-        <path d="M152 55 H 270" stroke="#4f8cff" strokeWidth="1.2" strokeDasharray="4 4" />
-        <path d="M264 50l8 5-8 5" stroke="#4f8cff" strokeWidth="1.2" fill="none" />
+        <path d="M152 55 H 270" stroke="#fb5b68" strokeWidth="1.2" strokeDasharray="4 4" />
+        <path d="M264 50l8 5-8 5" stroke="#fb5b68" strokeWidth="1.2" fill="none" />
       </svg>
       <Callout className="left-[40px] top-[84px]" tone="ok">Bar matched 96%</Callout>
       <Callout className="left-[40px] bottom-3">tight box, just around the blue bar</Callout>

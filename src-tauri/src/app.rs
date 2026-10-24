@@ -218,9 +218,12 @@ fn spawn_event_forwarder(app: AppHandle, rx: Receiver<BotEvent>) {
                     last_reading = std::time::Instant::now();
                     for window in app.webview_windows().values() {
                         if window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false) {
-                            let _ = app.emit_to(window.label(), ev.channel(), &ev);
+                            let _ = app.emit_to(window.label(), ev.channel(), reading);
                         }
                     }
+                } else if let BotEvent::Roblox(info) = &ev {
+                    // Optional payloads must be emitted as null when the game disappears.
+                    let _ = app.emit(ev.channel(), info);
                 } else {
                     // Ordered state/results still reach hidden windows so reopening is consistent.
                     let _ = app.emit(ev.channel(), &ev);

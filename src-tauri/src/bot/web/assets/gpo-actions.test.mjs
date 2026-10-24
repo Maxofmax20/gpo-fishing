@@ -36,3 +36,11 @@ test("invalid JSON and rejected commands are never shown as success", async () =
     await assert.rejects(dom.window.gpoAction("invalid"), /Unknown action/);
   } finally { dom.window.close(); }
 });
+
+test("expired authorization has a useful reconnect message even with a plain-text response", async () => {
+  const dom = open(async () => ({ ok: false, status: 401, json: async () => { throw Error("text response"); } }));
+  try {
+    await assert.rejects(dom.window.gpoAction("start"), /authorization rejected/);
+    assert.match(dom.window.document.getElementById("gpo-offline-banner").textContent, /reopen Web UI/);
+  } finally { dom.window.close(); }
+});
