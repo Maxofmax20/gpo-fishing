@@ -4,7 +4,7 @@ import { api } from "../lib/ipc";
 import { showToast, useStore } from "../lib/store";
 import type { BaitTier } from "../lib/types";
 import { PointField } from "../components/PointField";
-import { Field, Button, cx, Kbd, KeyCapture, Pill, Row, Section, Segmented, Slider, Step, Steps, Stepper, TextField, Toggle } from "../components/primitives";
+import { Button, cx, Kbd, KeyCapture, Pill, Row, Section, Segmented, Slider, Step, Steps, Stepper, TextField, Toggle } from "../components/primitives";
 
 export default function Features() {
   const s = useStore((st) => st.settings);
@@ -25,7 +25,6 @@ export default function Features() {
   if (!s) {
     return (
       <div className="pb-4 pt-2">
-      <div className="workflow-intro"><h1>Your fishing, your rules</h1><p>Configure bait, fruit protection and alerts. Changes are saved after the app confirms them.</p></div>
         <div className="rounded-xl border border-line p-4 text-[12px] text-fg-dim">Loading settings…</div>
       </div>
     );
@@ -444,7 +443,7 @@ export default function Features() {
               />
             </Field>
             <div className="text-[11px] text-fg-dim pb-1.5 leading-normal">
-              Optionally pause after confirmed storage. A protected fruit still held in a slot, an unreadable protected outcome or an explicit storage error always pauses for your attention.
+              🚨 Automatically pauses fishing immediately after catching a protected fruit so you can safely inspect and store it.
             </div>
             <Field wide label="Keep Pity 0 Fruit (Never Drop)">
               <Toggle
@@ -652,6 +651,15 @@ export default function Features() {
           )}
         </Row>
       </Section>
+    </div>
+  );
+}
+
+function Field({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className="flex items-center min-h-10 py-1">
+      <div className={cx("text-fg-dim shrink-0", wide ? "flex-1 pr-3" : "w-32")}>{label}</div>
+      <div className="ml-auto shrink-0">{children}</div>
     </div>
   );
 }

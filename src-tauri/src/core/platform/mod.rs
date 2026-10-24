@@ -2,11 +2,7 @@ use std::sync::Arc;
 
 use crate::core::types::{Frame, Key, MouseButton, PxPoint, PxRect, WindowInfo};
 
-pub mod capture_bounds;
-pub mod ocr_gate;
-pub mod playback_guard;
 pub mod mock;
-pub mod capture_broker;
 pub mod guarded_input;
 #[cfg(windows)]
 pub mod windows;
@@ -34,8 +30,6 @@ pub trait GameWindow: Send + Sync {
 
 pub trait Capture: Send + Sync {
     fn grab(&self, rect: PxRect) -> Result<Frame>;
-    fn grab_preview(&self, rect: PxRect) -> Result<Frame> { self.grab(rect) }
-    fn preview_age(&self, _rect: PxRect) -> Option<std::time::Duration> { None }
 }
 
 pub trait Input: Send + Sync {
@@ -52,12 +46,6 @@ pub trait Input: Send + Sync {
 pub trait Ocr: Send + Sync {
     fn available(&self) -> bool;
     fn read(&self, frame: &Frame) -> Result<String>;
-    /// Optional per-read budget. Existing deterministic providers retain their
-    /// synchronous implementation; asynchronous providers must override this to
-    /// cancel on expiry and reject late results.
-    fn read_with_timeout(&self, frame: &Frame, _timeout: std::time::Duration) -> Result<String> {
-        self.read(frame)
-    }
 }
 
 #[derive(Clone)]
@@ -75,7 +63,7 @@ pub fn build() -> Platform {
     guarded_input::GuardedInput::watch(&input);
     Platform {
         window,
-        capture: Arc::new(capture_broker::PriorityCapture::new(Arc::new(windows::capture_dxgi::DxgiCapture::new()))),
+        capture: Arc::new(windows::capture_dxgi::DxgiCapture::new()),
         input,
         ocr: build_ocr(),
     }
@@ -94,19 +82,4 @@ fn build_ocr() -> Arc<dyn Ocr> {
 #[cfg(not(windows))]
 pub fn build() -> Platform {
     mock::platform()
-}
-
-#[cfg(test)]
-mod ocr_timeout_api_tests {
-    use super::*;
-    struct LegacyOcr;
-    impl Ocr for LegacyOcr {
-        fn available(&self) -> bool { true }
-        fn read(&self, _: &Frame) -> Result<String> { Ok("legacy provider".into()) }
-    }
-    #[test]
-    fn timeout_api_is_backward_compatible_for_existing_implementations() {
-        let provider: &dyn Ocr = &LegacyOcr;
-        assert_eq!(provider.read_with_timeout(&Frame::default(), std::time::Duration::from_millis(200)).unwrap(), "legacy provider");
-    }
 }

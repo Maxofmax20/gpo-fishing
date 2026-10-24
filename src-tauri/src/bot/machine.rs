@@ -36,7 +36,6 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
     }
 
     while ctx.alive() {
-        if ctx.store.update_boundary_reached() { ctx.release_mouse(); return; }
         ctx.touch();
         if anti_afk_at.elapsed() >= Duration::from_secs(480) {
             anti_afk_at = Instant::now();
@@ -91,11 +90,11 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
 
                 if fast_reset_enabled {
                     ctx.log_info(&format!("⚡ Fast reset: immediately canceling animation with slot [{reset_key}] -> rod [{rod_key}]"));
-                    if reset_key == rod_key || !actions::key_tap(ctx, Key::Char(reset_key)) { return; }
+                    actions::key_tap(ctx, Key::Char(reset_key));
                     if !ctx.sleep_ms(35) {
                         return;
                     }
-                    if !actions::key_tap(ctx, Key::Char(rod_key)) { return; }
+                    actions::key_tap(ctx, Key::Char(rod_key));
                     if !ctx.sleep_ms(80) {
                         return;
                     }
@@ -495,8 +494,6 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
     let mut tracking_since: Option<Instant> = None;
     let mut confirm = 0u32;
     let mut misses = 0u32;
-    let mut last_observation: Option<Instant> = None;
-    let mut blind_released = false;
     // Shadow sampling counter (observation only; see bot::shadow).
     let mut shadow_n: u64 = 0;
     let mut edge_warned = false;
@@ -512,14 +509,12 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
     };
 
     loop {
-        if !ctx.alive() || ctx.state() == BotState::Paused {
-            ctx.release_mouse();
+        if !ctx.alive() {
             return Outcome::Stopped;
         }
         ctx.touch();
         if !ctx.roblox_in_front() {
             ctx.release_mouse();
-            ctx.emit(BotEvent::Reading(None));
             return Outcome::Lost;
         }
         let s = ctx.settings.read();
@@ -557,8 +552,7 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
             }
         }
 
-        let cycle_started = Instant::now();
-        let grab_started = cycle_started;
+        let grab_started = Instant::now();
         let Some(client) = ctx.roblox_rect() else {
             if !ctx.sleep_ms(100) {
                 return Outcome::Stopped;
@@ -567,8 +561,6 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
         };
         let (capture_rect, origin_dx) = bar_capture_rect(&client, bar_region);
         let Some(frame) = grab_rect(ctx, capture_rect) else {
-            ctx.release_mouse();
-            ctx.emit(BotEvent::Reading(None));
             if !ctx.sleep_ms(100) {
                 return Outcome::Stopped;
             }
@@ -586,14 +578,11 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
         }
         match reading {
             Some(r) => {
-                if blind_released { tracker.reset(); }
-                last_observation = Some(now);
-                blind_released = false;
                 misses = 0;
                 if tracking_since.is_none() {
                     confirm += 1;
                     if confirm < confirm_frames {
-                        if !ctx.sleep(period.saturating_sub(cycle_started.elapsed())) {
+                        if !ctx.sleep(period) {
                             return Outcome::Stopped;
                         }
                         continue;
@@ -664,10 +653,6 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
             None => {
                 confirm = 0;
                 if let Some(t) = tracking_since {
-                    if last_observation.is_some_and(|at| at.elapsed() >= Duration::from_millis(100)) {
-                        ctx.release_mouse();
-                        blind_released = true;
-                    }
                     let bar_present = vision::has_bar(&frame, &palette);
                     if let Some(tr) = trace.as_mut() {
                         tr.blind(bar_present);
@@ -687,8 +672,7 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
             }
         }
 
-        ctx.control_metrics.record(cycle_started.elapsed(),period);
-        if !ctx.sleep(period.saturating_sub(cycle_started.elapsed())) {
+        if !ctx.sleep(period) {
             finish_trace(trace.take(), "stopped", ctx);
             return Outcome::Stopped;
         }
@@ -759,9 +743,12 @@ fn submit_ml_frame(
     if ctx.ml.active_session_id().is_none() {
         return;
     }
+    let png = match frame.to_png_bytes() {
+        Ok(b) => b,
+        Err(_) => return,
+    };
     ctx.ml.submit(crate::bot::ml_collect::SampleJob {
-        png: Vec::new(),
-        frame: Some(frame.clone()),
+        png,
         session_id: String::new(),
         task,
         ui_label,
@@ -883,73 +870,40 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
         return (fruit::CatchVerdict::Unknown, String::new(), None);
     }
     let s = ctx.settings();
-    let started = Instant::now();
-    let deadline = started + Duration::from_millis(1000);
-    let max_reads = s.ocr.post_catch_reads.clamp(1, 3);
+    // Catch accounting and local fish naming need verification even when
+    // fruit storage/alerts are off. A fading first read can be incomplete.
+    let max_reads = s.ocr.post_catch_reads.max(1);
     let mut last = String::new();
     for read in 0..max_reads {
-        if read > 0 && read + 1 == max_reads {
-            let late = Duration::from_millis(600).saturating_sub(started.elapsed());
-            if !late.is_zero() && !ctx.sleep(late) { break; }
-        }
-        if !ctx.alive() || Instant::now() >= deadline { break; }
         if let Some(frame) = grab_region(ctx, s.regions.drop) {
-            if let Ok(text) = ctx.platform.ocr.read_with_timeout(&frame, deadline.saturating_duration_since(Instant::now()).min(Duration::from_millis(200))) {
-                if !ctx.alive() { break; }
+            if let Ok(text) = ctx.platform.ocr.read(&frame) {
                 if !text.trim().is_empty() {
                     last = text.clone();
                     ctx.log_info(&format!("Reel text: {}", text.trim()));
-                    let verdict = fruit::detect_catch(&s.lexicon, &text);
-                    if verdict != fruit::CatchVerdict::Unknown {
-                        return (verdict, text, Some(frame));
+                    let v = fruit::detect_catch(&s.lexicon, &text);
+                    if v != fruit::CatchVerdict::Unknown {
+                        return (v, text, Some(frame));
                     }
-                }
-                // Fading/low-contrast banners can produce an empty first read.
-                // The second read is the same observation, not a new catch.
-                if !ctx.alive() || Instant::now() >= deadline { break; }
-                let enhanced = actions::catch_banner_ocr_frame(&frame);
-                if let Ok(retry) = ctx.platform.ocr.read_with_timeout(&enhanced, deadline.saturating_duration_since(Instant::now()).min(Duration::from_millis(200))) {
-                    if !ctx.alive() { break; }
-                    let verdict = fruit::detect_catch(&s.lexicon, &retry);
-                    if verdict != fruit::CatchVerdict::Unknown {
-                        ctx.log_info(&format!("Verified enhanced catch text: {}", retry.trim()));
-                        return (verdict, retry, Some(frame));
+                    let enhanced = actions::catch_banner_ocr_frame(&frame);
+                    if let Ok(retry) = ctx.platform.ocr.read(&enhanced) {
+                        let verified = fruit::detect_catch(&s.lexicon, &retry);
+                        if verified != fruit::CatchVerdict::Unknown {
+                            ctx.log_info(&format!("Verified enhanced catch text: {}", retry.trim()));
+                            return (verified, retry, Some(frame));
+                        }
                     }
-                    if last.is_empty() { last = retry; }
                 }
             }
         }
-        if read + 1 == max_reads || !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms.min(150)) { break; }
+        if read + 1 == max_reads { break; }
+        if !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms) {
+            break;
+        }
     }
-    if last.is_empty() { ctx.log_info("Reel text: (nothing read in drop area)"); }
+    if last.is_empty() {
+        ctx.log_info("Reel text: (nothing read in drop area)");
+    }
     (fruit::CatchVerdict::Unknown, last, None)
-}
-
-/// Called only after a fruit catch is confirmed, before any storage input.
-/// The configured catch-banner crop can omit the separate Legendary Pity line.
-fn read_fruit_pity(ctx: &Ctx, catch_text: &str, recorded: Option<&str>) -> Option<crate::core::pity_evidence::PityEvidence> {
-    // Preserve existing structured catch evidence, including protected zero.
-    // A later screen read cannot downgrade zero or replace known nonzero.
-    if let Some(evidence) = crate::core::pity_evidence::recorded(recorded) { return Some(evidence); }
-    if let Some(evidence) = crate::core::pity_evidence::parse(catch_text) { return Some(evidence); }
-    let deadline = Instant::now() + Duration::from_millis(700);
-    for read in 0..2 {
-        if !ctx.alive() || !ctx.roblox_in_front() || Instant::now() >= deadline { break; }
-        let Some(rect) = ctx.roblox_rect() else { break; };
-        if let Ok(frame) = ctx.platform.capture.grab(rect) {
-            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else { break; };
-            let timeout = remaining.min(Duration::from_millis(250));
-            if let Ok(text) = ctx.platform.ocr.read_with_timeout(&frame, timeout) {
-                if !ctx.alive() || !ctx.roblox_in_front() { break; }
-                if let Some(evidence) = crate::core::pity_evidence::parse(&text) { return Some(evidence); }
-            }
-        }
-        if read == 0 {
-            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else { break; };
-            if !ctx.sleep(remaining.min(Duration::from_millis(100))) { break; }
-        }
-    }
-    None
 }
 
 fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
@@ -980,19 +934,8 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         }
     }
     if let Some(mut d) = drop {
-        let pity = read_fruit_pity(ctx, first_text, d.pity.as_deref());
-        d.pity = pity.map(|evidence| evidence.text());
-        match pity {
-            Some(evidence) => ctx.log_info(&format!("Fruit pity verified locally: {}", evidence.text())),
-            None if s.webhook.pity_zero_only => ctx.log_warn("Pity-zero notification suppressed: confirmed fruit, but the Legendary Pity counter was unreadable after bounded local checks"),
-            None => ctx.log_debug("Fruit pity remains unreadable after bounded local checks"),
-        }
-        // Only verified labelled evidence reaches the immutable fruit policy.
-        // Passing the full-screen text to the old general parser would allow
-        // an unrelated HP/level zero fraction to manufacture pity zero.
-        let policy_pity = d.pity.clone().unwrap_or_default();
         let catch = crate::core::fruit_storage::FruitCatchContext::new(
-            &d, &policy_pity, s.fruit_storage.never_drop_legendary_or_mythical, s.fruit_storage.keep_pity_zero_fruit,
+            &d, first_text, s.fruit_storage.never_drop_legendary_or_mythical, s.fruit_storage.keep_pity_zero_fruit,
         );
         let fruit_name = catch.name.clone();
         let rarity = fruit::fruit_rarity(&fruit_name);
@@ -1097,13 +1040,12 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
                 ctx.set_state(BotState::Paused, Some(format!("Protected {fruit_name}: {}", outcome.detail())));
                 return false;
             }
-            *rod_equipped = false;
-            if !actions::ensure_rod_equipped(ctx, rod_equipped) {
-                // Storage policy has already allowed continuation. Equipment
-                // uncertainty uses normal local recovery, never a blind toggle.
-                return ctx.alive() && ctx.state() != BotState::Paused;
+            if !actions::key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(150) {
+                if ctx.alive() { ctx.set_state(BotState::Paused, Some("Fruit workflow finished; rod could not be re-equipped".into())); }
+                return false;
             }
             if let Some(fp) = actions::fishing_point(ctx) { ctx.platform.input.move_to(fp); }
+            *rod_equipped = true;
         } else if s.fruit_storage.pause_on_protected_fruit && is_protected {
             ctx.set_state(BotState::Paused, Some(format!("Protected {fruit_name} caught — inspect inventory")));
             return false;
@@ -1203,43 +1145,6 @@ mod tests {
         let ctx = Arc::new(Ctx::new(platform, Arc::new(RwLock::new(settings)), roblox, tx, Arc::new(WebhookQueue::disabled()), store));
         ctx.running.store(true, std::sync::atomic::Ordering::SeqCst);
         (ctx, rx)
-    }
-
-    #[test]
-    fn confirmed_fruit_pity_scan_is_labelled_bounded_and_preserves_nonzero() {
-        struct PityOcr {
-            texts: parking_lot::Mutex<std::collections::VecDeque<String>>,
-            budgets: parking_lot::Mutex<Vec<Duration>>,
-        }
-        impl crate::core::platform::Ocr for PityOcr {
-            fn available(&self) -> bool { true }
-            fn read(&self, _frame: &Frame) -> crate::core::platform::Result<String> { panic!("pity scan must supply its per-call timeout") }
-            fn read_with_timeout(&self, _frame: &Frame, timeout: Duration) -> crate::core::platform::Result<String> {
-                self.budgets.lock().push(timeout);
-                Ok(self.texts.lock().pop_front().unwrap_or_default())
-            }
-        }
-        for (texts, expected) in [
-            (vec!["Health 0/100", "Legendary Pity 0/40"], Some("0/40")),
-            (vec!["YOU GOT A DEVIL FRUIT DROP CHECK YOUR BA", "unreadable"], None),
-            (vec!["Fruit Pity 0/40 Legendary Pity 17/40"], Some("17/40")),
-            (vec!["HP 0/100 Level 0/40", "Pity unreadable Backpack 0/40"], None),
-        ] {
-            let cap = Arc::new(ScriptedCapture::default());
-            cap.push(blank());
-            let (mut ctx, _receiver) = make_ctx(cap, Arc::new(RecordingInput::default()));
-            let ocr = Arc::new(PityOcr { texts: parking_lot::Mutex::new(texts.into_iter().map(str::to_string).collect()), budgets: parking_lot::Mutex::new(Vec::new()) });
-            Arc::get_mut(&mut ctx).unwrap().platform.ocr = ocr.clone();
-            let result = read_fruit_pity(&ctx, "YOU GOT A DEVIL FRUIT DROP CHECK YOUR BA", None).map(|value| value.text());
-            assert_eq!(result.as_deref(), expected);
-            assert!(ocr.budgets.lock().len() <= 2);
-            assert!(ocr.budgets.lock().iter().all(|budget| *budget <= Duration::from_millis(250)));
-            let previous_reads = ocr.budgets.lock().len();
-            assert_eq!(read_fruit_pity(&ctx, "Pity unreadable", Some("0/40")).unwrap().current, 0);
-
-            assert_eq!(read_fruit_pity(&ctx, "Pity unreadable", Some("17/40")).unwrap().current, 17);
-            assert_eq!(ocr.budgets.lock().len(), previous_reads, "known nonzero must not be overwritten by an unrelated screen zero");
-        }
     }
 
     #[test]
@@ -1391,34 +1296,13 @@ mod tests {
     }
 
     #[test]
-    fn blank_ocr_can_be_recovered_from_the_same_enhanced_frame() {
-        let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["".into(), "Nev Item Shark".into()]);
-        let (verdict, _, _) = verify_catch(&ctx);
-        assert_eq!(verdict, fruit::CatchVerdict::Caught);
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn catch_verification_caps_the_configured_gap() {
-        // Oversized user gaps must not stall the recast loop.
+    fn catch_verification_waits_for_the_configured_gap() {
+        // Raw + enhanced OCR share frame one; frame two must still wait for the gap.
         let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["noise".into(), "noise".into(), "Nev Item Shark".into()]);
         ctx.settings.write().ocr.post_catch_read_gap_ms = 70;
         let started = Instant::now();
         assert_eq!(verify_catch(&ctx).0, fruit::CatchVerdict::Caught);
         assert!(started.elapsed() >= Duration::from_millis(70));
-        assert!(started.elapsed() < Duration::from_millis(1000));
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn absent_catch_banner_is_nonblocking_and_does_not_invent_a_catch() {
-        let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["".into(); 8]);
-        ctx.settings.write().ocr.post_catch_reads = 100;
-        ctx.settings.write().ocr.post_catch_read_gap_ms = 10_000;
-        let started = Instant::now();
-        assert_eq!(verify_catch(&ctx).0, fruit::CatchVerdict::Unknown);
-        assert!(started.elapsed() < Duration::from_millis(1000));
-        assert_eq!(ctx.session.lock().fish, 0);
         let _ = std::fs::remove_dir_all(dir);
     }
 

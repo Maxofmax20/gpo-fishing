@@ -8,7 +8,6 @@ pub mod controller;
 pub mod digit_model;
 pub mod fruit;
 pub mod fruit_storage;
-pub mod pity_evidence;
 pub mod fish_recognition;
 pub mod platform;
 pub mod types;
@@ -35,5 +34,3 @@ pub mod review;
 pub mod shadow_infer;
 pub mod training;
 pub mod workflow;
-
-pub mod update_handoff;

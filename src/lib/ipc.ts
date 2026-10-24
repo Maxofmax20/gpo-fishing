@@ -118,7 +118,6 @@ export const api = {
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   dataDir: () => invoke<string>("data_dir"),
   getCatches: () => invoke<CatchRecord[]>("catches_list"),
-  getCatchPage: (cursor = 0, kind = "all", query = "", revision: string | null = null) => invoke<import("./types").CatchPage>("catches_page", {cursor,limit:50,kind,query,revision}),
   clearCatches: () => invoke<void>("catches_clear"),
   openCatches: () => invoke<void>("catches_open"),
   settingsLoadError: () => invoke<string | null>("settings_load_error"),

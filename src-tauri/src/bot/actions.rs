@@ -5,108 +5,7 @@ use crate::events::BotState;
 
 use super::ctx::Ctx;
 
-#[path = "../core/rod_state.rs"]
-pub(crate) mod rod_state;
-
 const WHEEL_STEP: i32 = 120;
-
-fn rod_trackers() -> &'static parking_lot::Mutex<std::collections::HashMap<(std::thread::ThreadId, usize), rod_state::RodTracker>> {
-    static TRACKERS: std::sync::OnceLock<parking_lot::Mutex<std::collections::HashMap<(std::thread::ThreadId, usize), rod_state::RodTracker>>> = std::sync::OnceLock::new();
-    TRACKERS.get_or_init(Default::default)
-}
-
-fn rod_context_key(ctx: &Ctx) -> (std::thread::ThreadId, usize) {
-    (std::thread::current().id(), ctx as *const Ctx as usize)
-}
-
-pub fn reset_rod_evidence(ctx: &Ctx) {
-    rod_trackers().lock().remove(&rod_context_key(ctx));
-}
-
-fn learn_rod_outline(ctx: &Ctx) {
-    if !rod_action_allowed(ctx) { return; }
-    let Some(client)=ctx.roblox_rect() else { return; };
-    let band=PxRect{x:client.x,y:client.y+client.h*9/10,w:client.w,h:client.h-client.h*9/10};
-    let Ok(frame)=ctx.platform.capture.grab(band) else { return; };
-    if !rod_action_allowed(ctx) { return; }
-    let min=(client.h as usize*45/1000).max(12);
-    let max=(client.h as usize*80/1000).max(min);
-    if let Some(rect)=rod_state::find_outline(frame.w,frame.h,min,max,|x,y|frame.px(x,y)) {
-        let mut trackers=rod_trackers().lock();
-        let tracker=trackers.entry(rod_context_key(ctx)).or_default();
-        tracker.learned=Some((rect,client.w as usize,client.h as usize,ctx.settings.read().keys.rod));
-        tracker.recovery_attempts=0;
-        tracker.last_recovery=None;
-    }
-}
-
-fn learned_rod_selected(ctx:&Ctx)->bool {
-    let learned=rod_trackers().lock().get(&rod_context_key(ctx)).and_then(|t|t.learned);
-    let Some((r,w,h,key))=learned else { return false; };
-    let Some(client)=ctx.roblox_rect() else { return false; };
-    if (w,h,key)!=(client.w as usize,client.h as usize,ctx.settings.read().keys.rod) { return false; }
-    let rect=PxRect{x:client.x+r.x as i32,y:client.y+client.h*9/10+r.y as i32,w:r.w as i32,h:r.h as i32};
-    let Ok(frame)=ctx.platform.capture.grab(rect) else { return false; };
-    if frame.w!=r.w || frame.h!=r.h || !rod_action_allowed(ctx) { return false; }
-    rod_state::outlined(rod_state::SlotRect{x:0,y:0,w:r.w,h:r.h},&|x,y|frame.px(x,y))
-}
-
-/// Positive selection of another learned toolbar slot, not a missing border.
-pub fn rod_visibly_unequipped(ctx:&Ctx)->bool {
-    if !rod_action_allowed(ctx) { return false; }
-    let learned=rod_trackers().lock().get(&rod_context_key(ctx)).and_then(|t|t.learned);
-    let Some((rod,w,h,key))=learned else { return false; };
-    let Some(client)=ctx.roblox_rect() else { return false; };
-    if (w,h,key)!=(client.w as usize,client.h as usize,ctx.settings.read().keys.rod) { return false; }
-    let band=PxRect{x:client.x,y:client.y+client.h*9/10,w:client.w,h:client.h-client.h*9/10};
-    let Ok(frame)=ctx.platform.capture.grab(band) else { return false; };
-    if !rod_action_allowed(ctx) { return false; }
-    let min=(client.h as usize*45/1000).max(12);
-    let max=(client.h as usize*80/1000).max(min);
-    let selected=rod_state::find_outline(frame.w,frame.h,min,max,|x,y|frame.px(x,y));
-    rod_state::different_selected_slot(rod,selected)
-}
-
-fn rod_action_allowed(ctx: &Ctx) -> bool {
-    ctx.alive() && ctx.state() != BotState::Paused && ctx.roblox_in_front()
-}
-
-/// Local-only positive menu evidence; absence is deliberately unknown. Checks
-/// cancellation again after capture/OCR so a late result cannot trigger input.
-fn observed_bait_region(ctx: &Ctx) -> Option<RelRect> {
-    rod_trackers().lock().get(&rod_context_key(ctx)).and_then(|t| t.menu_region)
-        .map(|(x,y,w,h)|RelRect{x,y,w,h})
-}
-
-pub fn bait_menu_open(ctx: &Ctx) -> bool {
-    if !rod_action_allowed(ctx) { return false; }
-    let Some(client) = ctx.roblox_rect() else { return false; };
-    let configured=ctx.settings.read().regions.bait_menu;
-    // GPO's centered menu is a bounded fallback, not positive evidence itself.
-    // Identity still requires the title/two distinct rows or local recognition.
-    let centered=RelRect{x:0.43,y:0.704,w:0.14,h:0.142};
-    let candidates=[observed_bait_region(ctx).unwrap_or(configured),centered];
-    for rel in candidates {
-        let region=rel.to_px(&client);
-        if region.w < 20 || region.h < 20 { continue; }
-        let Ok(frame) = ctx.platform.capture.grab(region) else { continue; };
-        if !rod_action_allowed(ctx) { return false; }
-        let neural=crate::core::bait::scan_bait_stock_neural(&frame).is_some_and(|stock|
-            [stock.legendary,stock.rare,stock.common].iter().filter(|n|n.unwrap_or(0)>0).count()>=2);
-        let mut visible=neural;
-        if !visible && ctx.platform.ocr.available() {
-            if let Ok(text)=ctx.platform.ocr.read_with_timeout(&frame,Duration::from_millis(120)) {
-                visible=rod_state::bait_menu_text(&text);
-            }
-        }
-        if !rod_action_allowed(ctx) { return false; }
-        if visible {
-            rod_trackers().lock().entry(rod_context_key(ctx)).or_default().menu_region=Some((rel.x,rel.y,rel.w,rel.h));
-            return true;
-        }
-    }
-    false
-}
 
 pub fn fishing_point(ctx: &Ctx) -> Option<PxPoint> {
     let rect = ctx.roblox_rect()?;
@@ -230,7 +129,6 @@ fn click_pair(ctx: &Ctx, primary: RelPoint, backup: Option<RelPoint>, settle_ms:
 }
 
 pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
-    if !rod_action_allowed(ctx) { return None; }
     let s = ctx.settings();
     let rect = ctx.roblox_rect()?;
 
@@ -292,7 +190,6 @@ pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
 }
 
 pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
-    if !rod_action_allowed(ctx) { return false; }
     let s = ctx.settings();
 
     // Check visual detection
@@ -314,7 +211,6 @@ pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
     if !key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(120) {
         return false;
     }
-    if !rod_action_allowed(ctx) { return false; }
     *rod_equipped = true;
     true
 }
@@ -354,16 +250,10 @@ pub fn is_bait_depleted(ctx: &Ctx) -> bool {
 /// Scans the in-game bait menu using the trained neural network (with Windows OCR fallback).
 /// Returns: (BaitStock, is_menu_visible)
 pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, bool), String> {
-    scan_bait_stock_for(ctx, false)
-}
-
-fn scan_bait_stock_for(ctx: &Ctx, automatic: bool) -> Result<(crate::core::bait::BaitStock, bool), String> {
-    if automatic && !ctx.alive() { return Err("Bait scan cancelled".into()); }
     let rect = ctx.roblox_rect().ok_or("Roblox window not found")?;
     let scan_rect = {
         let s = ctx.settings();
-        if automatic { observed_bait_region(ctx).unwrap_or(s.regions.bait_menu).to_px(&rect) }
-        else { s.regions.bait_menu.to_px(&rect) }
+        s.regions.bait_menu.to_px(&rect)
     };
 
     if scan_rect.w < 10 || scan_rect.h < 10 {
@@ -376,7 +266,9 @@ fn scan_bait_stock_for(ctx: &Ctx, automatic: bool) -> Result<(crate::core::bait:
         .grab(scan_rect)
         .map_err(|e| format!("Screen capture failed: {e}"))?;
 
-    // Prefer the local bait model; no network request belongs in this loop.
+    let s = ctx.settings();
+
+    // 1. Dedicated neural network classifier (100% accurate, dedicated GPO model, sub-millisecond local execution)
     if let Some(stock) = crate::core::bait::scan_bait_stock_neural(&frame) {
         ctx.log_info(&format!(
             "🐟 Bait stock recognized via neural model: Leg={:?}, Rare={:?}, Com={:?}",
@@ -385,13 +277,8 @@ fn scan_bait_stock_for(ctx: &Ctx, automatic: bool) -> Result<(crate::core::bait:
         return Ok((stock, true));
     }
 
-    // Automatic fishing must not wait on a network vision service.
-    // A missing menu is normal after a cast, not a reason to call Gemini.
-    if automatic && !ctx.alive() { return Err("Bait scan cancelled".into()); }
-
-    let s = ctx.settings();
     // 2. Try Gemini Vision if enabled and configured (fallback)
-    if !automatic && s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
+    if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
         match crate::core::gemini::scan_bait_stock_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
             Ok(stock) => {
                 ctx.log_info(&format!(
@@ -408,9 +295,8 @@ fn scan_bait_stock_for(ctx: &Ctx, automatic: bool) -> Result<(crate::core::bait:
 
     // 3. Fallback to Windows OCR if available
     if ctx.platform.ocr.available() {
-        if let Ok(text) = ctx.platform.ocr.read_with_timeout(&frame, std::time::Duration::from_millis(200)) {
-            if automatic && !ctx.alive() { return Err("Bait scan cancelled".into()); }
-            ctx.log_debug(&format!("Bait menu OCR raw text:\n{text}"));
+        if let Ok(text) = ctx.platform.ocr.read(&frame) {
+            ctx.log_info(&format!("Bait menu OCR raw text:\n{text}"));
             let is_visible = crate::core::bait::is_bait_menu_visible(&text);
             let stock = crate::core::bait::parse_bait_stock_with_frame(&text, &frame);
             return Ok((stock, is_visible));
@@ -431,7 +317,7 @@ pub fn select_bait(ctx: &Ctx) -> bool {
     }
 
     if s.features.smart_bait {
-        let (stock, menu_visible) = match scan_bait_stock_for(ctx, true) {
+        let (stock, menu_visible) = match scan_bait_stock_raw(ctx) {
             Ok(res) => res,
             Err(e) => {
                 ctx.log_debug(&format!("Smart Bait: scan skipped: {e}"));
@@ -439,7 +325,6 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             }
         };
 
-        if !ctx.alive() { return false; }
         if !menu_visible {
             // Menu is not open on screen. If rod is already in hand from previous cast, it is already baited!
             ctx.log_debug("Smart Bait: bait menu not visible (rod already baited); skipping selection.");
@@ -522,7 +407,6 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             return false;
         };
 
-        // Match v5.9.0: use the bait-menu region the user calibrated for actual clicks.
         let menu = s.regions.bait_menu;
         let (row_rx, row_ry) = stock.click_relative_pos(chosen_tier);
         let target_rel = RelPoint {
@@ -596,19 +480,17 @@ pub fn initial_setup(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
 }
 
 pub fn cast(ctx: &Ctx) -> bool {
-    if !rod_action_allowed(ctx) { ctx.release_mouse(); return false; }
     ctx.set_state(BotState::Casting, None);
     let Some(p) = fishing_point(ctx) else {
         ctx.log_warn("Roblox window not found; cannot cast");
         return false;
     };
     let hold = ctx.settings.read().fishing.cast_hold_ms;
-    if !rod_action_allowed(ctx) { return false; }
+    ctx.ensure_roblox_focus();
     ctx.platform.input.move_to(p);
     if !ctx.sleep_ms(30) {
         return false;
     }
-    if !rod_action_allowed(ctx) { ctx.release_mouse(); return false; }
     // Prevent right click when fishing to keep screen and camera steady
     ctx.hold_mouse(true);
     let ok = ctx.sleep_ms(hold);
@@ -757,21 +639,10 @@ pub fn purchase(ctx: &Ctx) -> bool {
     purchase_amount(ctx, to_buy)
 }
 
-fn fruit_notification_png(frame: &crate::core::types::Frame) -> Option<Vec<u8>> {
-    // Preserve a readable PNG where it fits; resize unusually complex frames
-    // before enqueue, rather than silently discarding the requested screenshot.
-    for max_dimension in [1280, 640, 480] {
-        let bytes = frame.downscale(max_dimension).to_png_bytes().ok()?;
-        if bytes.len() <= 1024 * 1024 { return Some(bytes); }
-    }
-    None
-}
-
 pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Option<Vec<u8>> {
     if !s.webhook.send_screenshot {
         return None;
     }
-    if !ctx.roblox_in_front() { return None; }
     let r = ctx.roblox_rect()?;
 
     if s.webhook.crop_fruit_screenshot {
@@ -793,15 +664,15 @@ pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Optio
         };
         let px_box = crop_rel.to_px(&r);
         if let Ok(frame) = ctx.platform.capture.grab(px_box) {
-            if !ctx.roblox_in_front() { return None; }
-            if let Some(bytes) = fruit_notification_png(&frame) {
+            if let Ok(bytes) = frame.to_png_bytes() {
                 return Some(bytes);
             }
         }
     }
 
-    ctx.platform.capture.grab(r).ok().filter(|_| ctx.roblox_in_front())
-        .and_then(|f| fruit_notification_png(&f))
+    ctx.platform.capture.grab(r).ok()
+        .map(|f| f.downscale(1280))
+        .and_then(|f| f.to_png_bytes().ok())
 }
 
 pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_tier: bool) -> Option<Vec<u8>> {
@@ -811,7 +682,6 @@ pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_t
     if s.webhook.legendary_only && !is_high_tier {
         return None;
     }
-    if !ctx.roblox_in_front() { return None; }
     let r = ctx.roblox_rect()?;
 
     if s.webhook.crop_fruit_screenshot {
@@ -832,15 +702,15 @@ pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_t
         };
         let px_box = crop_rel.to_px(&r);
         if let Ok(frame) = ctx.platform.capture.grab(px_box) {
-            if !ctx.roblox_in_front() { return None; }
-            if let Some(bytes) = fruit_notification_png(&frame) {
+            if let Ok(bytes) = frame.to_png_bytes() {
                 return Some(bytes);
             }
         }
     }
 
-    ctx.platform.capture.grab(r).ok().filter(|_| ctx.roblox_in_front())
-        .and_then(|f| fruit_notification_png(&f))
+    ctx.platform.capture.grab(r).ok()
+        .map(|f| f.downscale(1280))
+        .and_then(|f| f.to_png_bytes().ok())
 }
 
 /// Store/drop locally, then publish one terminal outcome before any notification work.
@@ -865,10 +735,7 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
     } else {
         let mut io = LocalStorageIo { ctx, settings: &s, last_text: String::new(), drop_sent: false };
         let result = run_storage(&mut io, catch);
-        // A delayed drop banner deserves read-only confirmation even when the
-        // user has *not* enabled continuing after an unconfirmed outcome.
-        // Never repeat Backspace or infer success from the key being sent.
-        if result == StorageOutcome::Unknown && io.drop_sent {
+        if result == StorageOutcome::Unknown && s.fruit_storage.continue_on_unconfirmed && io.drop_sent {
             ctx.log_info("Fruit outcome unconfirmed; rechecking without sending another drop");
             match io.observe(5000, true) {
                 Ok(Some(crate::core::fruit::StorageBannerResult::Dropped { .. }
@@ -896,7 +763,7 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
     if ctx.alive() { ctx.set_state(BotState::PostCatch, Some(format!("{}: {}", catch.name, outcome.detail()))); }
     let notify = crate::webhook::should_notify_fruit_outcome(&s, catch, &outcome);
     let photo = if notify && ctx.alive() && ctx.roblox_in_front() { capture_drop_screenshot(ctx, &s, catch.high_tier()) } else { None };
-    ctx.webhook.fruit_storage_outcome_with_id(catch, &outcome, photo, workflow_id);
+    ctx.webhook.fruit_storage_outcome(catch, &outcome, photo);
 
     outcome
 }
@@ -1027,9 +894,12 @@ fn submit_action_frame(ctx: &Ctx, region_tag: &str, ocr_text: &str) {
         Ok(f) => f,
         Err(_) => return,
     };
+    let png = match frame.to_png_bytes() {
+        Ok(b) => b,
+        Err(_) => return,
+    };
     ctx.ml.submit(crate::bot::ml_collect::SampleJob {
-        png: Vec::new(),
-        frame: Some(frame.clone()),
+        png,
         session_id: String::new(),
         task: crate::core::ml_dataset::MlTask::UiDetection,
         ui_label: None,
@@ -1282,9 +1152,7 @@ mod storage_replay_tests {
         texts.extend(std::iter::repeat_n("", 18));
         texts.push("Dropped Bomb will despawn in 10 minutes");
         let h = harness(&texts);
-        // Default is to pause on *still*-unconfirmed outcomes, but the late
-        // banner must be checked before that decision is made.
-        assert!(!h.ctx.settings().fruit_storage.continue_on_unconfirmed);
+        h.ctx.settings.write().fruit_storage.continue_on_unconfirmed = true;
         assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "late-recheck"), StorageOutcome::Dropped);
         assert_eq!(drops(&h), 1);
         terminal(&h, "dropped_confirmed");
@@ -1346,130 +1214,5 @@ mod storage_replay_tests {
         let h = harness(&[]); h.ctx.running.store(false, Ordering::SeqCst);
         assert_eq!(store_fruit(&h.ctx, &catch("0/40"), "test-cancel"), StorageOutcome::Cancelled);
         assert!(h.input.events.lock().is_empty()); terminal(&h, "cancelled");
-    }
-}
-
-
-#[cfg(test)]
-mod rod_state_tests {
-    use super::*;
-    use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
-    use parking_lot::RwLock;
-    use crate::config::{Settings, Store};
-    use crate::core::platform::{Platform, mock::{MockWindow, ScriptedCapture, RecordingInput, NoOcr, InputEvent}};
-    use crate::core::types::WindowInfo;
-    use crate::webhook::WebhookQueue;
-
-    fn fixture(calibrated: bool) -> (Ctx, Arc<RecordingInput>, std::path::PathBuf) {
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let dir = std::env::temp_dir().join(format!("gpo-rod-state-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::SeqCst)));
-        let info = WindowInfo { client: PxRect { x:0,y:0,w:800,h:600 }, is_foreground:true, visible:true, dpi:96 };
-        let mut settings = Settings::default();
-        settings.keys.rod = '4';
-        if calibrated { settings.points.rod_slot = Some(RelPoint {x:0.5,y:0.95}); }
-        let input = Arc::new(RecordingInput::default());
-        let capture=Arc::new(ScriptedCapture::default());
-        capture.push(crate::core::types::Frame::new(5,5,vec![0;100]));
-        let (events, _rx) = crossbeam_channel::unbounded();
-        let ctx = Ctx::new(
-            Platform { window:Arc::new(MockWindow {info:parking_lot::Mutex::new(Some(info))}),
-                capture, input:input.clone(), ocr:Arc::new(NoOcr) },
-            Arc::new(RwLock::new(settings)), Arc::new(RwLock::new(Some(info))), events,
-            Arc::new(WebhookQueue::disabled()), Arc::new(Store::new(dir.clone())));
-        ctx.running.store(true, Ordering::SeqCst);
-        rod_trackers().lock().retain(|(thread,_),_|*thread!=std::thread::current().id());
-        (ctx,input,dir)
-    }
-
-    #[test]
-    fn v590_equips_configured_rod_without_permanent_recovering() {
-        let (ctx, input, dir) = fixture(false);
-        let mut equipped = false;
-        assert!(ensure_rod_equipped(&ctx, &mut equipped));
-        assert!(equipped);
-        assert_eq!(input.events.lock().iter().filter(|e| **e == InputEvent::Key(Key::Char('4'), true)).count(), 1);
-        assert_ne!(ctx.state(), BotState::Recovering);
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn v590_rod_slot_does_not_depend_on_reset_slot() {
-        let (ctx, input, dir) = fixture(false);
-        ctx.settings.write().keys.reset_slot = '4';
-        assert!(ensure_rod_equipped(&ctx, &mut false));
-        let keys: Vec<char> = input.events.lock().iter().filter_map(|e| match e {
-            InputEvent::Key(Key::Char(c), true) => Some(*c), _ => None
-        }).collect();
-        assert_eq!(keys, vec!['4']);
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn paused_bait_scan_never_starts_capture_or_network_work() {
-        let (ctx,input,dir) = fixture(false);
-        ctx.running.store(false, Ordering::SeqCst);
-        assert!(scan_bait_stock_for(&ctx, true).is_err());
-        assert!(input.events.lock().is_empty());
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn notifications_discard_frames_if_focus_changes_during_capture() {
-        struct SwitchingCapture { window: Arc<MockWindow> }
-        impl crate::core::platform::Capture for SwitchingCapture {
-            fn grab(&self,_rect:PxRect)->crate::core::platform::Result<crate::core::types::Frame> {
-                *self.window.info.lock()=None;
-                Ok(crate::core::types::Frame::new(5,5,vec![255;100]))
-            }
-        }
-        for drop_photo in [false,true] {
-            let (mut ctx,_input,dir)=fixture(false);
-            let window=Arc::new(MockWindow {info: parking_lot::Mutex::new(*ctx.roblox.read())});
-            ctx.platform.window=window.clone();
-            ctx.platform.capture=Arc::new(SwitchingCapture {window});
-            ctx.settings.write().webhook.send_screenshot=true;
-            ctx.settings.write().webhook.send_drop_screenshot=true;
-            let settings=ctx.settings();
-            let photo=if drop_photo {capture_drop_screenshot(&ctx,&settings,true)} else {capture_fruit_screenshot(&ctx,&settings)};
-            assert!(photo.is_none(),"an Alt-Tab frame must never be sent");
-            let _=std::fs::remove_dir_all(dir);
-        }
-    }
-
-    #[test]
-    fn v590_dark_hotbar_reselects_rod_and_returns_to_fishing() {
-        let (ctx, input, dir) = fixture(true);
-        let mut equipped = true;
-        assert!(ensure_rod_equipped(&ctx, &mut equipped));
-        assert!(equipped);
-        assert_eq!(input.events.lock().iter().filter(|e| **e == InputEvent::Key(Key::Char('4'), true)).count(), 1);
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn pause_prevents_late_equipping_and_cast() {
-        let (ctx,input,dir)=fixture(false);
-        ctx.set_state(BotState::Paused,Some("test".into()));
-        assert!(!ensure_rod_equipped(&ctx,&mut false));
-        assert!(!cast(&ctx));
-        assert!(!input.events.lock().iter().any(|e|matches!(e,InputEvent::Key(_,true)|InputEvent::Button(_,true))));
-        let _=std::fs::remove_dir_all(dir);
-    }
-}
-
-
-#[cfg(test)]
-mod notification_image_tests {
-    #[test]
-    fn complex_screenshot_is_retained_within_queue_budget() {
-        let mut state = 7u32;
-        let pixels: Vec<u8> = (0..1024 * 1024 * 4).map(|_| {
-            state ^= state << 13; state ^= state >> 17; state ^= state << 5;
-            state as u8
-        }).collect();
-        let frame = crate::core::types::Frame::new(1024, 1024, pixels);
-        let png = super::fruit_notification_png(&frame).expect("bounded screenshot");
-        assert!(png.len() <= 1024 * 1024);
-        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
 }

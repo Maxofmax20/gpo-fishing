@@ -1284,7 +1284,7 @@ fn telegram_escape(s: &str) -> String {
 /// v5.7.0 therefore REFUSES to install from here and directs the user to the
 /// signed in-app updater. The download-and-execute path is not reintroduced.
 pub fn check_and_apply_update(
-    _bot: Option<&Arc<Bot>>,
+    bot: Option<&Arc<Bot>>,
     token: Option<&str>,
     chat_id: Option<&str>,
     cur_ver: &str,
@@ -1345,7 +1345,12 @@ pub fn check_and_apply_update(
         let _ = post_telegram(tok, cid, &msg);
     }
 
-    // Viewing release notes must not arm an unattended restart.
+    // Persist "was running" so the signed in-app update can resume cleanly.
+    if let Some(b) = bot {
+        if b.is_running() {
+            let _ = b.ctx().store.save_resume_state(true);
+        }
+    }
     Ok(msg)
 }
 

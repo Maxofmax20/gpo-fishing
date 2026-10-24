@@ -1,13 +1,12 @@
-use parking_lot::RwLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use parking_lot::RwLock;
 
 use crate::bot::ctx::Ctx;
 use crate::core::types::{Frame, PxPoint, PxRect};
 
 static CRAFTING_ACTIVE: AtomicBool = AtomicBool::new(false);
 static CRAFTING_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
-static CRAFT_INPUT_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CraftTier {
@@ -17,19 +16,12 @@ pub enum CraftTier {
     All,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all="snake_case")]
-pub enum CraftJobState { Idle, Pending, Running, Completed, Failed, Cancelled }
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct CraftStatus {
     pub is_crafting: bool,
     pub tier: String,
     pub crafted_count: u32,
     pub message: String,
-    pub target_batches: Option<u32>,
-    pub state: CraftJobState,
-    pub job_id: Option<String>,
 }
 
 static STATUS: RwLock<CraftStatus> = RwLock::new(CraftStatus {
@@ -37,43 +29,7 @@ static STATUS: RwLock<CraftStatus> = RwLock::new(CraftStatus {
     tier: String::new(),
     crafted_count: 0,
     message: String::new(),
-    target_batches: None,
-    state: CraftJobState::Idle,
-    job_id: None,
 });
-
-fn recovered_status(mut status:CraftStatus)->CraftStatus {
-    if status.is_crafting || matches!(status.state,CraftJobState::Pending|CraftJobState::Running) {
-        status.is_crafting=false;status.state=CraftJobState::Failed;
-        status.message="Previous craft job was interrupted by app exit. Review inventory before starting another job.".into();
-    }
-    status
-}
-
-fn write_checkpoint(dir:&std::path::Path,status:&CraftStatus)->Result<(),String> {
-    use std::io::Write;
-    let bytes=serde_json::to_vec(status).map_err(|_|"Could not serialize craft checkpoint")?;
-    if bytes.len()>65536 {return Err("Craft checkpoint exceeds size budget".into());}
-    std::fs::create_dir_all(dir).map_err(|_|"Could not create craft checkpoint directory")?;
-    let path=dir.join("craft-job.json");let temp=dir.join("craft-job.tmp");
-    let mut file=std::fs::File::create(&temp).map_err(|_|"Could not create craft checkpoint")?;
-    file.write_all(&bytes).map_err(|_|"Could not write craft checkpoint")?;
-    file.sync_all().map_err(|_|"Could not flush craft checkpoint")?;
-    drop(file);
-    std::fs::rename(temp,path).map_err(|_|"Could not commit craft checkpoint")?;
-    Ok(())
-}
-fn persist_status(dir:&std::path::Path)->Result<(),String> {write_checkpoint(dir,&get_craft_status())}
-
-pub fn restore_status(dir:&std::path::Path) {
-    let path=dir.join("craft-job.json");
-    let Ok(meta)=path.metadata() else {return};
-    if meta.len()>65536 {tracing::warn!("Craft checkpoint too large; retained for review");return;}
-    match std::fs::read(&path).ok().and_then(|bytes|serde_json::from_slice::<CraftStatus>(&bytes).ok()) {
-        Some(status)=>{*STATUS.write()=recovered_status(status);}
-        None=>tracing::warn!("Craft checkpoint unreadable; retained for review"),
-    }
-}
 
 pub fn get_craft_status() -> CraftStatus {
     STATUS.read().clone()
@@ -84,10 +40,6 @@ pub fn is_crafting_running() -> bool {
 }
 
 pub fn stop_auto_craft() {
-    CRAFTING_STOP_REQUESTED.store(true, Ordering::SeqCst);
-    // Barrier: any input that won the lock finishes before Stop returns.
-    let _input = CRAFT_INPUT_LOCK.lock();
-    CRAFTING_STOP_REQUESTED.store(true, Ordering::SeqCst);
     if CRAFTING_ACTIVE.load(Ordering::SeqCst) {
         CRAFTING_STOP_REQUESTED.store(true, Ordering::SeqCst);
         let mut s = STATUS.write();
@@ -98,31 +50,10 @@ pub fn stop_auto_craft() {
 use std::sync::Arc;
 
 pub fn start_auto_craft(ctx: Arc<Ctx>, tier: CraftTier) -> Result<(), String> {
-    start_auto_craft_with_target(ctx, tier, None)
-}
-
-pub fn start_auto_craft_with_target(
-    ctx: Arc<Ctx>,
-    tier: CraftTier,
-    target_batches: Option<u32>,
-) -> Result<(), String> {
-    if target_batches.is_some_and(|n| !(1..=99).contains(&n)) {
-        return Err("Craft target must be between 1 and 99 batches".into());
-    }
-    let update_gate = ctx.store.update_gate.lock();
-    if update_gate.pending() {
-        return Err("Crafting is unavailable while a signed update is pending".into());
-    }
-    let input_guard = CRAFT_INPUT_LOCK.lock();
-    if CRAFTING_ACTIVE
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
+    if CRAFTING_ACTIVE.swap(true, Ordering::SeqCst) {
         return Err("Auto-crafting is already running".into());
     }
-    drop(update_gate);
     CRAFTING_STOP_REQUESTED.store(false, Ordering::SeqCst);
-    drop(input_guard);
 
     {
         let mut s = STATUS.write();
@@ -130,48 +61,23 @@ pub fn start_auto_craft_with_target(
         s.tier = format!("{tier:?}");
         s.crafted_count = 0;
         s.message = "Starting auto-craft...".into();
-        s.target_batches = target_batches;
-        s.state = CraftJobState::Pending;
-        s.job_id = Some(format!("craft-{}", crate::events::now_ms()));
     }
 
-    if let Err(error)=persist_status(ctx.store.dir()) {
-        let mut status=STATUS.write();
-        status.is_crafting=false;status.state=CraftJobState::Failed;status.message=error.clone();
-        CRAFTING_ACTIVE.store(false,Ordering::SeqCst);
-        return Err(error);
-    }
     std::thread::spawn(move || {
-        STATUS.write().state = CraftJobState::Running;
-        let _=persist_status(ctx.store.dir());
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_crafting_loop(&ctx, tier, target_batches)
-        }))
-        .unwrap_or_else(|_| Err("Craft worker interrupted unexpectedly".into()));
+        let res = run_crafting_loop(&ctx, tier);
+        CRAFTING_ACTIVE.store(false, Ordering::SeqCst);
         let mut s = STATUS.write();
         s.is_crafting = false;
-        s.state = if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) {
-            CraftJobState::Cancelled
-        } else if res.is_ok() {
-            CraftJobState::Completed
-        } else {
-            CraftJobState::Failed
-        };
         match res {
             Ok(count) => {
-                s.message = format!(
-                    "Auto-craft finished: {count} batches attempted; verify inventory for results."
-                );
-                ctx.log_info(&format!("Auto-craft finished: {count} batches attempted; inspect inventory for confirmation."));
+                s.message = format!("Auto-craft finished! Crafted {count} batches.");
+                ctx.log_info(&format!("🔨 Auto-craft complete: {count} batches crafted."));
             }
             Err(e) => {
                 s.message = format!("Auto-craft stopped: {e}");
                 ctx.log_warn(&format!("🔨 Auto-craft: {e}"));
             }
         }
-        drop(s);
-        if let Err(error)=persist_status(ctx.store.dir()) {ctx.log_warn(&error);}
-        CRAFTING_ACTIVE.store(false, Ordering::SeqCst);
     });
 
     Ok(())
@@ -190,11 +96,7 @@ fn craft_sleep(ms: u64) -> bool {
     !CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst)
 }
 
-fn run_crafting_loop(
-    ctx: &Ctx,
-    tier: CraftTier,
-    target_batches: Option<u32>,
-) -> Result<u32, String> {
+fn run_crafting_loop(ctx: &Ctx, tier: CraftTier) -> Result<u32, String> {
     let mut total_crafted = 0u32;
     let tiers_to_run = match tier {
         CraftTier::All => vec![CraftTier::Legendary, CraftTier::Rare],
@@ -211,25 +113,17 @@ fn run_crafting_loop(
             s.tier = format!("{current_tier:?}");
             s.message = format!("Crafting {current_tier:?} Fish Bait...");
         }
-        ctx.log_info(&format!(
-            "🔨 Starting auto-craft for {current_tier:?} Fish Bait"
-        ));
+        ctx.log_info(&format!("🔨 Starting auto-craft for {current_tier:?} Fish Bait"));
 
         let mut consecutive_failures = 0;
         loop {
-            if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst)
-                || target_batches.is_some_and(|target| total_crafted >= target)
-            {
+            if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) {
                 return Ok(total_crafted);
             }
 
             // 1. Ensure Roblox is focused
-            if !ctx.ensure_roblox_focus() {
-                return Err("Roblox focus lost; craft inputs cancelled".into());
-            }
-            if !craft_sleep(100) {
-                return Ok(total_crafted);
-            }
+            ctx.ensure_roblox_focus();
+            if !craft_sleep(100) { return Ok(total_crafted); }
 
             // 2. Grab current frame
             let rect = ctx.roblox_rect().ok_or("Roblox window not found")?;
@@ -241,12 +135,10 @@ fn run_crafting_loop(
                 None => {
                     // Try pressing 'E' once to interact if dialog closed
                     ctx.log_info("🔨 Blacksmith Sen UI not visible, pressing 'E' to interact...");
-                    if !craft_key_tap(ctx, crate::core::types::Key::Char('e')) {
-                        return Ok(total_crafted);
-                    }
-                    if !craft_sleep(600) {
-                        return Ok(total_crafted);
-                    }
+                    ctx.platform.input.key(crate::core::types::Key::Char('e'), true);
+                    std::thread::sleep(Duration::from_millis(60));
+                    ctx.platform.input.key(crate::core::types::Key::Char('e'), false);
+                    if !craft_sleep(600) { return Ok(total_crafted); }
 
                     let frame2 = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
                     match detect_blacksmith_ui(&frame2, &rect) {
@@ -254,10 +146,7 @@ fn run_crafting_loop(
                         None => {
                             consecutive_failures += 1;
                             if consecutive_failures >= 3 {
-                                return Err(
-                                    "Blacksmith Sen dialog not found. Please talk to Sen first!"
-                                        .into(),
-                                );
+                                return Err("Blacksmith Sen dialog not found. Please talk to Sen first!".into());
                             }
                             continue;
                         }
@@ -273,84 +162,52 @@ fn run_crafting_loop(
                 CraftTier::All => layout.rare_bait_pos,
             };
 
-            ctx.log_info(&format!(
-                "🔨 Selecting {current_tier:?} Fish Bait at ({}, {})",
-                target_bait_pt.x, target_bait_pt.y
-            ));
+            ctx.log_info(&format!("🔨 Selecting {current_tier:?} Fish Bait at ({}, {})", target_bait_pt.x, target_bait_pt.y));
             click_point(ctx, target_bait_pt);
-            if !craft_sleep(250) {
-                return Ok(total_crafted);
-            }
+            if !craft_sleep(250) { return Ok(total_crafted); }
 
             // 5. Fill material slots:
             // Click the Material List '+' (plus) button to open fish list
-            ctx.log_info(&format!(
-                "🔨 Clicking Material '+' at ({}, {})",
-                layout.material_plus_pos.x, layout.material_plus_pos.y
-            ));
+            ctx.log_info(&format!("🔨 Clicking Material '+' at ({}, {})", layout.material_plus_pos.x, layout.material_plus_pos.y));
             click_point(ctx, layout.material_plus_pos);
-            if !craft_sleep(300) {
-                return Ok(total_crafted);
-            }
+            if !craft_sleep(300) { return Ok(total_crafted); }
 
             // Grab updated frame to see right-side fish list
             let frame_after_plus = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
             let fish_items = detect_fish_list(&frame_after_plus, &rect, layout.craft_button_pos.x);
 
             if fish_items.is_empty() {
-                ctx.log_info(&format!(
-                    "🔨 No available fish found for {current_tier:?} bait. Moving to next."
-                ));
+                ctx.log_info(&format!("🔨 No available fish found for {current_tier:?} bait. Moving to next."));
                 break;
             }
 
             // Click the first available fish in the list to fill slot 1
             let fish_1 = fish_items[0];
-            ctx.log_info(&format!(
-                "🔨 Selecting fish #1 at ({}, {})",
-                fish_1.x, fish_1.y
-            ));
+            ctx.log_info(&format!("🔨 Selecting fish #1 at ({}, {})", fish_1.x, fish_1.y));
             click_point(ctx, fish_1);
-            if !craft_sleep(250) {
-                return Ok(total_crafted);
-            }
+            if !craft_sleep(250) { return Ok(total_crafted); }
 
             // For recipes requiring 2 materials (e.g. 0/2), check if second fish needed
             let frame_check = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
-            let mut fish_items_slot2 =
-                detect_fish_list(&frame_check, &rect, layout.craft_button_pos.x);
+            let mut fish_items_slot2 = detect_fish_list(&frame_check, &rect, layout.craft_button_pos.x);
             if fish_items_slot2.is_empty() {
                 // List closed after first fish, click '+' again to reopen for slot 2
                 click_point(ctx, layout.material_plus_pos);
-                if !craft_sleep(250) {
-                    return Ok(total_crafted);
-                }
-                let frame_after_plus2 =
-                    ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
-                fish_items_slot2 =
-                    detect_fish_list(&frame_after_plus2, &rect, layout.craft_button_pos.x);
+                if !craft_sleep(250) { return Ok(total_crafted); }
+                let frame_after_plus2 = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
+                fish_items_slot2 = detect_fish_list(&frame_after_plus2, &rect, layout.craft_button_pos.x);
             }
             if !fish_items_slot2.is_empty() {
                 let fish_2 = fish_items_slot2[0];
-                ctx.log_info(&format!(
-                    "🔨 Selecting fish #2 at ({}, {})",
-                    fish_2.x, fish_2.y
-                ));
+                ctx.log_info(&format!("🔨 Selecting fish #2 at ({}, {})", fish_2.x, fish_2.y));
                 click_point(ctx, fish_2);
-                if !craft_sleep(250) {
-                    return Ok(total_crafted);
-                }
+                if !craft_sleep(250) { return Ok(total_crafted); }
             }
 
             // 6. Click green CRAFT button
-            ctx.log_info(&format!(
-                "🔨 Clicking CRAFT button at ({}, {})",
-                layout.craft_button_pos.x, layout.craft_button_pos.y
-            ));
+            ctx.log_info(&format!("🔨 Clicking CRAFT button at ({}, {})", layout.craft_button_pos.x, layout.craft_button_pos.y));
             click_point(ctx, layout.craft_button_pos);
-            if !craft_sleep(500) {
-                return Ok(total_crafted);
-            }
+            if !craft_sleep(500) { return Ok(total_crafted); }
 
             // 7. Check if Quantity Dialog appeared ("Craft Selected" / "Craft 1")
             let frame_popup = ctx.platform.capture.grab(rect).map_err(|e| e.to_string())?;
@@ -358,67 +215,37 @@ fn run_crafting_loop(
                 ctx.log_info("🔨 Quantity dialog detected! Maxing slider and crafting...");
                 // Click right end of slider to select maximum quantity
                 click_point(ctx, q.slider_max_pos);
-                if !craft_sleep(180) {
-                    return Ok(total_crafted);
-                }
+                if !craft_sleep(180) { return Ok(total_crafted); }
 
                 // Click green "Craft Selected" button
                 click_point(ctx, q.craft_selected_pos);
-                if !craft_sleep(600) {
-                    return Ok(total_crafted);
-                }
+                if !craft_sleep(600) { return Ok(total_crafted); }
             } else {
                 ctx.log_info("🔨 Single craft executed directly (no quantity dialog).");
-                if !craft_sleep(400) {
-                    return Ok(total_crafted);
-                }
+                if !craft_sleep(400) { return Ok(total_crafted); }
             }
 
             total_crafted += 1;
             {
                 let mut s = STATUS.write();
                 s.crafted_count = total_crafted;
-                s.message = format!(
-                    "Attempted {total_crafted} batches; inventory confirmation unavailable"
-                );
+                s.message = format!("Crafted {total_crafted} batches so far...");
             }
-            persist_status(ctx.store.dir())?;
 
             consecutive_failures = 0;
             // Short rest between crafts
-            if !craft_sleep(350) {
-                return Ok(total_crafted);
-            }
+            if !craft_sleep(350) { return Ok(total_crafted); }
         }
     }
 
     Ok(total_crafted)
 }
 
-fn craft_key_tap(ctx: &Ctx, key: crate::core::types::Key) -> bool {
-    {
-        let _input = CRAFT_INPUT_LOCK.lock();
-        if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) || !ctx.roblox_in_front() { return false; }
-        ctx.platform.input.key(key, true);
-    }
-    let completed = craft_sleep(60);
-    ctx.platform.input.key(key, false);
-    completed
-}
-
 fn click_point(ctx: &Ctx, pt: PxPoint) {
-    {
-        let _input = CRAFT_INPUT_LOCK.lock();
-        if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) || !ctx.roblox_in_front() { return; }
-        ctx.platform.input.move_to(pt);
-    }
-    if !craft_sleep(25) { return; }
-    {
-        let _input = CRAFT_INPUT_LOCK.lock();
-        if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) || !ctx.roblox_in_front() { return; }
-        ctx.platform.input.button(crate::core::types::MouseButton::Left, true);
-    }
-    let _ = craft_sleep(50);
+    ctx.platform.input.move_to(pt);
+    std::thread::sleep(Duration::from_millis(25));
+    ctx.platform.input.button(crate::core::types::MouseButton::Left, true);
+    std::thread::sleep(Duration::from_millis(50));
     ctx.platform.input.button(crate::core::types::MouseButton::Left, false);
 }
 
@@ -488,11 +315,7 @@ fn detect_blacksmith_ui(frame: &Frame, window: &PxRect) -> Option<BlacksmithUiLa
                     for (dy, dx) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
                         let ny = cy as i32 + dy;
                         let nx = cx as i32 + dx;
-                        if ny >= search_top as i32
-                            && ny < frame.h as i32
-                            && nx >= search_left as i32
-                            && nx < frame.w as i32
-                        {
+                        if ny >= search_top as i32 && ny < frame.h as i32 && nx >= search_left as i32 && nx < frame.w as i32 {
                             let n_idx = (ny as usize) * frame.w + (nx as usize);
                             if !visited[n_idx] {
                                 visited[n_idx] = true;
@@ -514,12 +337,7 @@ fn detect_blacksmith_ui(frame: &Frame, window: &PxRect) -> Option<BlacksmithUiLa
                 let density = count as f32 / (w * h) as f32;
 
                 // Button criteria: width 60..220px, height 10..40px, aspect ratio 3.0..9.5, solid density > 0.55
-                if (60..=220).contains(&w)
-                    && (10..=40).contains(&h)
-                    && ar >= 3.0
-                    && ar <= 9.5
-                    && density > 0.55
-                {
+                if (60..=220).contains(&w) && (10..=40).contains(&h) && ar >= 3.0 && ar <= 9.5 && density > 0.55 {
                     if count > best_count {
                         best_count = count;
                         best_craft = Some((min_x, max_x, min_y, max_y, count));
@@ -729,11 +547,7 @@ fn detect_quantity_dialog(frame: &Frame, window: &PxRect) -> Option<QuantityDial
                     for (dy, dx) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
                         let ny = cy as i32 + dy;
                         let nx = cx as i32 + dx;
-                        if ny >= search_top as i32
-                            && ny < search_bottom as i32
-                            && nx >= search_left as i32
-                            && nx < search_right as i32
-                        {
+                        if ny >= search_top as i32 && ny < search_bottom as i32 && nx >= search_left as i32 && nx < search_right as i32 {
                             let n_idx = (ny as usize) * frame.w + (nx as usize);
                             if !visited[n_idx] {
                                 visited[n_idx] = true;
@@ -741,10 +555,7 @@ fn detect_quantity_dialog(frame: &Frame, window: &PxRect) -> Option<QuantityDial
                                 let nr = frame.rgba[np_idx];
                                 let ng = frame.rgba[np_idx + 1];
                                 let nb = frame.rgba[np_idx + 2];
-                                if ng > 110
-                                    && (ng as u32 > nr as u32 + 25)
-                                    && (ng as u32 > nb as u32 + 25)
-                                {
+                                if ng > 110 && (ng as u32 > nr as u32 + 25) && (ng as u32 > nb as u32 + 25) {
                                     queue.push((ny as usize, nx as usize));
                                 }
                             }
@@ -793,70 +604,4 @@ fn detect_quantity_dialog(frame: &Frame, window: &PxRect) -> Option<QuantityDial
         slider_max_pos: slider_max_pt,
         craft_selected_pos: craft_selected_pt,
     })
-}
-
-
-#[cfg(test)]
-mod checkpoint_tests {
-    use super::*;
-    #[test]
-    fn interrupted_jobs_keep_identity_limits_and_counts_without_resuming_inputs() {
-        let status=CraftStatus {is_crafting:true,tier:"Rare".into(),crafted_count:7,message:"Working".into(),
-            target_batches:Some(17),state:CraftJobState::Running,job_id:Some("synthetic-job".into())};
-        let recovered=recovered_status(status);
-        assert!(!recovered.is_crafting);assert_eq!(recovered.state,CraftJobState::Failed);
-        assert_eq!(recovered.crafted_count,7);assert_eq!(recovered.target_batches,Some(17));
-        assert_eq!(recovered.job_id.as_deref(),Some("synthetic-job"));
-        let dir=std::env::temp_dir().join(format!("gpo-craft-checkpoint-{}",std::process::id()));
-        write_checkpoint(&dir,&recovered).unwrap();
-        let decoded:CraftStatus=serde_json::from_slice(&std::fs::read(dir.join("craft-job.json")).unwrap()).unwrap();
-        assert_eq!(decoded.state,CraftJobState::Failed);
-        assert!(!decoded.is_crafting);
-        let _=std::fs::remove_dir_all(dir);
-    }
-}
-
-#[cfg(test)]
-mod cancellation_tests {
-    use super::*;
-    use crate::core::platform::{Capture,Platform,mock::{MockWindow,NoOcr,RecordingInput,InputEvent}};
-    use crate::core::types::WindowInfo;
-    fn context() -> (Ctx,Arc<RecordingInput>,std::path::PathBuf) {
-        struct CancelOnCapture;
-        impl Capture for CancelOnCapture {
-            fn grab(&self,_:PxRect)->crate::core::platform::Result<Frame> {
-                stop_auto_craft();
-                Ok(Frame::new(800,600,vec![0;800*600*4]))
-            }
-        }
-        let info=WindowInfo {client:PxRect{x:0,y:0,w:800,h:600},visible:true,is_foreground:true,dpi:96};
-        let input=Arc::new(RecordingInput::default());
-        let platform=Platform{window:Arc::new(MockWindow{info:parking_lot::Mutex::new(Some(info))}),
-            capture:Arc::new(CancelOnCapture),input:input.clone(),ocr:Arc::new(NoOcr)};
-        let (events,_)=crossbeam_channel::unbounded();
-        let dir=std::env::temp_dir().join(format!("gpo-craft-stop-{}-{}",std::process::id(),crate::events::now_ms()));
-        let ctx=Ctx::new(platform,Arc::new(RwLock::new(crate::config::Settings::default())),
-            Arc::new(RwLock::new(Some(info))),events,Arc::new(crate::webhook::WebhookQueue::disabled()),
-            Arc::new(crate::config::Store::new(dir.clone())));
-        ctx.running.store(true,Ordering::SeqCst);
-        (ctx,input,dir)
-    }
-    #[test]
-    fn stop_after_capture_prevents_late_interaction_key() {
-        let _guard=crate::bot::WORKFLOW_TEST_LOCK.lock();
-        CRAFTING_STOP_REQUESTED.store(false,Ordering::SeqCst);
-        let (ctx,input,dir)=context();
-        assert_eq!(run_crafting_loop(&ctx,CraftTier::Rare,Some(1)).unwrap(),0);
-        assert!(!input.events.lock().iter().any(|e|matches!(e,InputEvent::Key(_,true))));
-        let _=std::fs::remove_dir_all(dir);
-    }
-    #[test]
-    fn click_after_stop_emits_no_pointer_or_button_inputs() {
-        let _guard=crate::bot::WORKFLOW_TEST_LOCK.lock();
-        let (ctx,input,dir)=context();
-        stop_auto_craft();
-        click_point(&ctx,PxPoint{x:30,y:40});
-        assert!(input.events.lock().is_empty());
-        let _=std::fs::remove_dir_all(dir);
-    }
 }

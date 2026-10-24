@@ -1,10 +1,7 @@
-use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
+use std::sync::Arc;
 use std::time::Duration;
 
-use crossbeam_channel::{bounded, Receiver, Sender};
-#[cfg(test)]
-use crossbeam_channel::unbounded;
-use std::sync::OnceLock;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use parking_lot::RwLock;
 use serde_json::{json, Value};
 
@@ -19,7 +16,7 @@ const COLOR_GOLD: u32 = 0xF59E0B;
 const COLOR_GREEN: u32 = 0x22C55E;
 const COLOR_RED: u32 = 0xEF4444;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Notification {
     pub title: String,
     pub desc: String,
@@ -29,69 +26,30 @@ pub struct Notification {
     pub custom_telegram_html: Option<String>,
 }
 
-#[derive(Clone)]
 enum Delivery {
     Message(Notification),
     Spawn(Notification, SpawnInfo),
-    FruitOutcome(Notification, bool, String),
+    FruitOutcome(Notification, bool),
 }
 
 pub struct WebhookQueue {
-    pending: Arc<AtomicUsize>,
     tx: Option<Sender<Delivery>>,
-    priority_tx: Option<Sender<Delivery>>,
     settings: Option<Arc<RwLock<Settings>>>,
 }
 
 impl WebhookQueue {
     pub fn disabled() -> Self {
-        Self { pending: Arc::new(AtomicUsize::new(0)), tx: None, priority_tx: None, settings: None }
+        Self { tx: None, settings: None }
     }
 
     pub fn start(settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) -> Arc<Self> {
-        let (tx, rx) = bounded::<Delivery>(8);
-        let (priority_tx, priority_rx) = bounded::<Delivery>(8);
+        let (tx, rx) = unbounded::<Delivery>();
         let s2 = Arc::clone(&settings);
-        let pending=Arc::new(AtomicUsize::new(0));
-        let worker_pending=Arc::clone(&pending);
         std::thread::Builder::new()
             .name("webhook".into())
-            .spawn(move || worker(rx, priority_rx, s2, events, worker_pending))
+            .spawn(move || worker(rx, s2, events))
             .expect("spawn webhook worker");
-        Arc::new(Self { pending, tx: Some(tx), priority_tx: Some(priority_tx), settings: Some(settings) })
-    }
-
-    fn enqueue(&self, mut delivery: Delivery, priority: bool) {
-        // A slow provider must never grow RAM or block the controller.
-        // At most 16 messages * 1 MiB photo bytes are queued.
-        let notification = match &mut delivery {
-            Delivery::Message(n) | Delivery::Spawn(n, _) | Delivery::FruitOutcome(n, _, _) => n,
-        };
-        if notification.photo.as_ref().is_some_and(|p| p.len() > 1024 * 1024) {
-            notification.photo = None;
-            tracing::warn!("Notification screenshot exceeded 1 MiB budget; keeping text details");
-        }
-        let sender = if priority { self.priority_tx.as_ref().or(self.tx.as_ref()) } else { self.tx.as_ref() };
-        if let Some(tx) = sender {
-            self.pending.fetch_add(1, Ordering::SeqCst);
-            if tx.try_send(delivery).is_err() {
-                self.pending.fetch_sub(1, Ordering::SeqCst);
-                tracing::warn!("Notification queue full; delivery not accepted (fishing continues)");
-            }
-        }
-    }
-
-    pub fn queue_depth(&self)->usize {
-        self.tx.as_ref().map_or(0,|q|q.len())+self.priority_tx.as_ref().map_or(0,|q|q.len())
-    }
-
-    pub fn flush_pending(&self, timeout: Duration, continue_waiting: impl Fn() -> bool) -> bool {
-        let deadline=std::time::Instant::now()+timeout;
-        while self.pending.load(Ordering::SeqCst)>0 {
-            if !continue_waiting() || std::time::Instant::now()>=deadline { return false; }
-            std::thread::sleep(Duration::from_millis(10));
-        }
-        continue_waiting()
+        Arc::new(Self { tx: Some(tx), settings: Some(settings) })
     }
 
     fn enabled(&self) -> bool {
@@ -122,7 +80,9 @@ impl WebhookQueue {
         if !self.enabled() {
             return;
         }
-        self.enqueue(Delivery::Message(notif), false);
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(Delivery::Message(notif));
+        }
     }
 
     pub fn test(&self) -> Result<(), String> {
@@ -235,18 +195,14 @@ impl WebhookQueue {
     }
 
     pub fn fruit_storage_outcome(&self, catch: &FruitCatchContext, outcome: &StorageOutcome, photo: Option<Vec<u8>>) {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let id=format!("fruit-{}-{}",crate::events::now_ms(),NEXT.fetch_add(1,std::sync::atomic::Ordering::Relaxed));
-        self.fruit_storage_outcome_with_id(catch,outcome,photo,&id);
-    }
-
-    pub fn fruit_storage_outcome_with_id(&self, catch: &FruitCatchContext, outcome: &StorageOutcome, photo: Option<Vec<u8>>, id: &str) {
         let Some(settings) = &self.settings else { return; };
         let settings = settings.read();
         if let Some(notification) = storage_notification(&settings, catch, outcome, photo) {
             drop(settings);
             if self.enabled() {
-                self.enqueue(Delivery::FruitOutcome(notification, catch.pity_zero, id.into()), true);
+                if let Some(tx) = &self.tx {
+                    let _ = tx.send(Delivery::FruitOutcome(notification, catch.pity_zero));
+                }
             }
         }
     }
@@ -377,7 +333,9 @@ impl WebhookQueue {
         // Enrichment and transport belong to the notification worker. The
         // spawn observer never waits for a network request or changes control.
         if self.enabled() {
-            self.enqueue(Delivery::Spawn(notification, info.clone()), false);
+            if let Some(tx) = &self.tx {
+                let _ = tx.send(Delivery::Spawn(notification, info.clone()));
+            }
         }
     }
 
@@ -425,7 +383,7 @@ fn embed(title: &str, desc: &str, color: u32, fields: Vec<Value>) -> Value {
         "description": desc,
         "color": color,
         "fields": fields,
-        "footer": { "text": concat!("GPO Autofish ", env!("CARGO_PKG_VERSION")) },
+        "footer": { "text": "GPO Autofish v4" },
         "timestamp": chrono_now(),
     })
 }
@@ -468,17 +426,11 @@ fn escape_html(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
-fn http_client() -> Result<&'static reqwest::blocking::Client, String> {
-    static CLIENT: OnceLock<Result<reqwest::blocking::Client, String>> = OnceLock::new();
-    CLIENT.get_or_init(|| reqwest::blocking::Client::builder()
-        .connect_timeout(Duration::from_secs(3))
-        .timeout(Duration::from_secs(10))
-        .build().map_err(|_| "Could not initialise notification transport".to_string()))
-        .as_ref().map_err(Clone::clone)
-}
-
 fn post_discord(url: &str, body: &Value) -> Result<u16, String> {
-    let client = http_client()?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
     let resp = client.post(url).json(body).send().map_err(|e| e.to_string())?;
     let status = resp.status();
     if status.is_success() {
@@ -489,7 +441,10 @@ fn post_discord(url: &str, body: &Value) -> Result<u16, String> {
 }
 
 fn post_discord_photo(url: &str, body: &Value, photo: &[u8]) -> Result<u16, String> {
-    let client = http_client()?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
     let part = reqwest::blocking::multipart::Part::bytes(photo.to_vec())
         .file_name("catch.png")
         .mime_str("image/png")
@@ -507,7 +462,10 @@ fn post_discord_photo(url: &str, body: &Value, photo: &[u8]) -> Result<u16, Stri
 }
 
 pub fn post_telegram(token: &str, chat_id: &str, html: &str) -> Result<u16, String> {
-    let client = http_client()?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
     let url = format!("https://api.telegram.org/bot{token}/sendMessage");
     let body = json!({
         "chat_id": chat_id,
@@ -520,7 +478,8 @@ pub fn post_telegram(token: &str, chat_id: &str, html: &str) -> Result<u16, Stri
     if status.is_success() {
         Ok(status.as_u16())
     } else {
-        Err(format!("Telegram returned HTTP {}", status.as_u16()))
+        let err_body = resp.text().unwrap_or_default();
+        Err(format!("Telegram error {}: {}", status.as_u16(), err_body))
     }
 }
 
@@ -531,7 +490,10 @@ pub fn post_telegram_with_button(
     btn_text: &str,
     btn_url: &str,
 ) -> Result<u16, String> {
-    let client = http_client()?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
     let url = format!("https://api.telegram.org/bot{token}/sendMessage");
     let body = json!({
         "chat_id": chat_id,
@@ -549,13 +511,17 @@ pub fn post_telegram_with_button(
     if status.is_success() {
         Ok(status.as_u16())
     } else {
-        Err(format!("Telegram returned HTTP {}", status.as_u16()))
+        let err_body = resp.text().unwrap_or_default();
+        Err(format!("Telegram error {}: {}", status.as_u16(), err_body))
     }
 }
 
 
 pub fn post_telegram_photo(token: &str, chat_id: &str, photo: &[u8], caption: &str) -> Result<u16, String> {
-    let client = http_client()?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
     let url = format!("https://api.telegram.org/bot{token}/sendPhoto");
     let part = reqwest::blocking::multipart::Part::bytes(photo.to_vec())
         .file_name("catch.png")
@@ -584,7 +550,8 @@ pub fn post_telegram_photo(token: &str, chat_id: &str, photo: &[u8], caption: &s
     if status.is_success() {
         Ok(status.as_u16())
     } else {
-        Err(format!("Telegram photo returned HTTP {}", status.as_u16()))
+        let err_body = resp.text().unwrap_or_default();
+        Err(format!("Telegram photo error {}: {}", status.as_u16(), err_body))
     }
 }
 
@@ -616,59 +583,23 @@ fn storage_notification(settings: &Settings, catch: &FruitCatchContext, outcome:
 
 fn delivery_log(events: &Sender<BotEvent>, message: String) {
     tracing::warn!("{message}");
-    let _ = events.try_send(BotEvent::Log(LogLine { ts: crate::events::now_ms(), level: crate::events::LogLevel::Warn, msg: message }));
+    let _ = events.send(BotEvent::Log(LogLine { ts: crate::events::now_ms(), level: crate::events::LogLevel::Warn, msg: message }));
 }
 
 fn delivery_allowed(settings: &Settings, delivery: &Delivery) -> bool {
     settings.webhook.enabled && (!settings.webhook.pity_zero_only
-        || matches!(delivery, Delivery::FruitOutcome(_, true, _)))
+        || matches!(delivery, Delivery::FruitOutcome(_, true)))
 }
 
-struct InFlightDelivery(Arc<AtomicUsize>);
-impl Drop for InFlightDelivery {
-    fn drop(&mut self) { self.0.fetch_sub(1, Ordering::SeqCst); }
-}
-
-fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>, pending: Arc<AtomicUsize>) {
-    let outbox=crate::notification_outbox::Outbox::new(crate::app::data_dir().join("notification-outbox"));
-    let mut retry_at=std::time::Instant::now();
-    let mut replay=std::collections::VecDeque::from(outbox.pending());
-    loop {
-        // Fresh pity outcomes take precedence over a retry backlog.
-        let (delivery, from_queue) = if let Ok(delivery)=priority_rx.try_recv() {(delivery,true)} else {
-            if retry_at.elapsed()>=Duration::from_secs(60) {
-                retry_at=std::time::Instant::now();
-                replay=std::collections::VecDeque::from(outbox.pending());
-            }
-            if let Some(record)=replay.pop_front() {
-                (Delivery::FruitOutcome(record.notification,record.pity_zero,record.id),false)
-            } else {crossbeam_channel::select_biased! {
-                recv(priority_rx) -> item => match item { Ok(item) => (item,true), Err(_) => break },
-                recv(rx) -> item => match item { Ok(item) => (item,true), Err(_) => break },
-                default(Duration::from_secs(1)) => continue,
-            }}
-        };
-        // Replays were already persisted; only RAM intake owns a producer count.
-        let _in_flight=from_queue.then(|| InFlightDelivery(Arc::clone(&pending)));
+fn worker(rx: Receiver<Delivery>, settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) {
+    for delivery in rx.iter() {
         // Apply current consent/filtering again: changing modes must discard
         // already-queued nonzero catches, routine alerts and world spawns.
         if !delivery_allowed(&settings.read(), &delivery) { continue; }
-        let (mut notif, spawn, record_info) = match delivery {
-            Delivery::Message(notification) => (notification,None,None),
-            Delivery::FruitOutcome(notification,pity_zero,id) => {
-                let record=outbox.load_or_create(&id,pity_zero,&notification);
-                match record {
-                    Ok(record) if record.completed => continue,
-                    Ok(record) => (notification,None,Some(record)),
-                    Err(error) => {
-                        delivery_log(&events,format!("Notification could not be persisted: {error}; trying in-memory delivery"));
-                        (notification,None,None)
-                    }
-                }
-            },
-            Delivery::Spawn(notification, info) => (notification,Some(info),None),
+        let (mut notif, spawn) = match delivery {
+            Delivery::Message(notification) | Delivery::FruitOutcome(notification, _) => (notification, None),
+            Delivery::Spawn(notification, info) => (notification, Some(info)),
         };
-        let mut record=record_info;
         if let Some(info) = spawn {
             // Clone before calling Gemini: never hold a settings lock over IO.
             let gemini = settings.read().gemini.clone();
@@ -692,7 +623,7 @@ fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc
         };
 
         // 1. Discord delivery
-        if (provider == "discord" || provider == "both") && !url.trim().is_empty() && !record.as_ref().is_some_and(|r|r.discord_done) {
+        if (provider == "discord" || provider == "both") && !url.trim().is_empty() {
             let discord_fields: Vec<Value> = notif.fields.iter().map(|(k, v)| field(k, v)).collect();
             let mut emb = embed(&notif.title, &notif.desc, notif.color, discord_fields);
             if notif.photo.is_some() {
@@ -707,23 +638,21 @@ fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc
                     post_discord(&url, &body)
                 };
                 match res {
-                    Ok(_) => {
-                        if let Some(record)=record.as_mut() {record.discord_done=true;let _=outbox.save(record);}
-                        break;
-                    }
+                    Ok(_) => break,
                     Err(e) => {
                         // reqwest errors echo the request URL, which IS the
                         // secret webhook URL — redact before logging.
                         let safe = crate::core::secrets::redact(&e, &[&url]);
                         delivery_log(&events, format!("Discord notification attempt {} failed: {safe}", attempt + 1));
-                        if attempt < 2 { std::thread::sleep(delay); delay *= 2; }
+                        std::thread::sleep(delay);
+                        delay *= 2;
                     }
                 }
             }
         }
 
         // 2. Telegram delivery
-        if (provider == "telegram" || provider == "both") && !tg_token.trim().is_empty() && !tg_chat.trim().is_empty() && !record.as_ref().is_some_and(|r|r.telegram_done) {
+        if (provider == "telegram" || provider == "both") && !tg_token.trim().is_empty() && !tg_chat.trim().is_empty() {
             let tg_text = if let Some(ref custom) = notif.custom_telegram_html {
                 custom.clone()
             } else {
@@ -755,27 +684,15 @@ fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc
                     },
                     |text| post_telegram(&tg_token, &tg_chat, text));
                 match res {
-                    Ok(_) => {
-                        if let Some(record)=record.as_mut() {record.telegram_done=true;let _=outbox.save(record);}
-                        break;
-                    }
+                    Ok(_) => break,
                     Err(e) => {
                         // Telegram API URLs embed the bot token — redact it.
                         let safe = crate::core::secrets::redact(&e, &[&tg_token, &tg_chat]);
                         delivery_log(&events, format!("Telegram notification attempt {} failed: {safe}", attempt + 1));
-                        if attempt < 2 { std::thread::sleep(delay); delay *= 2; }
+                        std::thread::sleep(delay);
+                        delay *= 2;
                     }
                 }
-            }
-        }
-        if let Some(record)=record.as_mut() {
-            let discord_needed=(provider=="discord" || provider=="both") && !url.trim().is_empty();
-            let telegram_needed=(provider=="telegram" || provider=="both") && !tg_token.trim().is_empty() && !tg_chat.trim().is_empty();
-            record.completed=(discord_needed || telegram_needed) && (!discord_needed || record.discord_done) && (!telegram_needed || record.telegram_done);
-            if record.completed {record.notification.photo=None;}
-            if let Err(error)=outbox.save(record) {delivery_log(&events,format!("Notification acknowledgement could not be saved: {error}"));}
-            if record.completed {
-                let _=events.try_send(BotEvent::Log(LogLine{ts:crate::events::now_ms(),level:crate::events::LogLevel::Info,msg:"Fruit outcome notification delivered".into()}));
             }
         }
     }
@@ -809,7 +726,7 @@ mod fruit_delivery_tests {
         settings.gemini.api_key = "unused-test-key".into();
         let settings = Arc::new(RwLock::new(settings));
         let (tx, rx) = unbounded(); // no transport worker; no external requests
-        let queue = WebhookQueue { pending: Arc::new(AtomicUsize::new(0)), tx: Some(tx), priority_tx: None, settings: Some(settings.clone()) };
+        let queue = WebhookQueue { tx: Some(tx), settings: Some(settings.clone()) };
         let info = SpawnInfo { text: "A Kilo has spawned at Orange Town".into(), name: Some("Kilo".into()), location: Some("Orange Town".into()), is_ase: false, custom_telegram_message: None };
         queue.spawn(&info, None);
         assert!(settings.try_write().is_some(), "producer must release settings locks");
@@ -866,13 +783,13 @@ mod fruit_delivery_tests {
         s.webhook.telegram_chat_id = "unused-test-chat".into();
         let settings = Arc::new(RwLock::new(s));
         let (tx, rx) = unbounded();
-        let queue = WebhookQueue { pending: Arc::new(AtomicUsize::new(0)), tx: Some(tx), priority_tx: None, settings: Some(settings) };
+        let queue = WebhookQueue { tx: Some(tx), settings: Some(settings) };
         let d = DropInfo { name: None, pity: Some("0/40".into()), text: "0/40".into(), is_legendary: false, custom_telegram_message: None };
         queue.fruit_drop(&d, Some(vec![1]));
         assert!(rx.try_recv().is_err(), "no screenshot or notification before storage");
         queue.fruit_storage_outcome(&catch("0/40"), &StorageOutcome::Stored, Some(vec![2]));
         match rx.try_recv().unwrap() {
-            Delivery::FruitOutcome(n, true, _) => { assert!(n.title.contains("Stored")); assert_eq!(n.photo, Some(vec![2])); }
+            Delivery::FruitOutcome(n, true) => { assert!(n.title.contains("Stored")); assert_eq!(n.photo, Some(vec![2])); }
             _ => panic!("expected one post-storage result"),
         }
         assert!(rx.try_recv().is_err());
@@ -886,31 +803,10 @@ mod fruit_delivery_tests {
         assert!(delivery_allowed(&s, &unrelated));
         s.webhook.pity_zero_only = true;
         assert!(!delivery_allowed(&s, &unrelated));
-        assert!(!delivery_allowed(&s, &Delivery::FruitOutcome(notification.clone(), false,"synthetic".into())));
-        assert!(delivery_allowed(&s, &Delivery::FruitOutcome(notification.clone(), true,"synthetic".into())));
+        assert!(!delivery_allowed(&s, &Delivery::FruitOutcome(notification.clone(), false)));
+        assert!(delivery_allowed(&s, &Delivery::FruitOutcome(notification.clone(), true)));
         s.webhook.enabled = false;
-        assert!(!delivery_allowed(&s, &Delivery::FruitOutcome(notification, true,"synthetic".into())));
-    }
-
-    #[test]
-    fn queue_pressure_never_blocks_and_priority_has_reserved_capacity() {
-        let mut s = Settings::default();
-        s.webhook.enabled = true;
-        s.webhook.telegram_bot_token = "synthetic-test-token".into();
-        s.webhook.telegram_chat_id = "synthetic-test-chat".into();
-        let (tx, rx) = bounded(1);
-        let (priority_tx, priority_rx) = bounded(1);
-        let q = WebhookQueue { pending: Arc::new(AtomicUsize::new(0)), tx: Some(tx), priority_tx: Some(priority_tx), settings: Some(Arc::new(RwLock::new(s))) };
-        let at = std::time::Instant::now();
-        q.notify_message("first", "routine");
-        q.notify_message("full", "must not block");
-        q.fruit_storage_outcome(&catch("0/40"), &StorageOutcome::Stored, Some(vec![1; 1024 * 1024 + 1]));
-        assert!(at.elapsed() < Duration::from_millis(100));
-        assert_eq!(rx.len(), 1);
-        match priority_rx.try_recv().unwrap() {
-            Delivery::FruitOutcome(n, true, _) => assert!(n.photo.is_none()),
-            _ => panic!("priority result must not compete with routine messages"),
-        }
+        assert!(!delivery_allowed(&s, &Delivery::FruitOutcome(notification, true)));
     }
 
     #[test] fn photo_failure_falls_back_to_text() {
@@ -926,20 +822,5 @@ mod fruit_delivery_tests {
     }
     #[test] fn delivery_failure_is_returned() {
         assert!(deliver_telegram("Stored", None, |_, _| Ok(200), |_| Err("offline".into())).is_err());
-    }
-}
-
-#[cfg(test)]
-mod update_drain_tests {
-    use super::*;
-    #[test]
-    fn update_waits_for_inflight_notification_and_honors_cancellation() {
-        let queue=WebhookQueue::disabled();
-        queue.pending.store(1,Ordering::SeqCst);
-        let in_flight=InFlightDelivery(Arc::clone(&queue.pending));
-        assert!(!queue.flush_pending(Duration::from_millis(20),||true));
-        assert!(!queue.flush_pending(Duration::from_secs(5),||false));
-        drop(in_flight);
-        assert!(queue.flush_pending(Duration::from_millis(1),||true));
     }
 }

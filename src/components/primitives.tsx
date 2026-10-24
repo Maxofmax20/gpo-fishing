@@ -164,8 +164,6 @@ export function Button({
   className,
   icon,
   title,
-  label,
-  busy = false,
 }: {
   children?: ReactNode;
   onClick?: () => void;
@@ -176,24 +174,20 @@ export function Button({
   icon?: ReactNode;
   /** Hover tooltip. Also the accessible description, so it is not decoration. */
   title?: string;
-  label?: string;
-  busy?: boolean;
 }) {
   const base =
     "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium select-none whitespace-nowrap transition-[background-color,border-color,box-shadow,transform,color,filter] duration-150 outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-elev hover:-translate-y-px active:translate-y-0 active:scale-[0.97] disabled:opacity-40 disabled:pointer-events-none";
   const sizes = size === "sm" ? "h-8 px-3 text-[12px]" : "h-9 px-3.5 text-[13px]";
   const kinds = {
     default: "bg-white/[0.06] hover:bg-white/[0.1] border border-line-strong hover:border-white/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_1px_2px_rgba(0,0,0,0.3)]",
-    primary: "bg-accent text-white hover:brightness-110 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_14px_rgba(251,91,104,0.22)]",
+    primary: "bg-accent text-white hover:brightness-110 shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_14px_rgba(79,140,255,0.35)]",
     danger: "bg-bad-soft text-bad hover:bg-bad/25 border border-bad/30",
     ghost: "hover:bg-white/[0.06] text-fg-dim hover:text-fg",
   }[kind];
   return (
     <button
       type="button"
-      disabled={disabled || busy}
-      aria-label={label ?? title}
-      aria-busy={busy || undefined}
+      disabled={disabled}
       onClick={onClick}
       title={title}
       className={cx(base, sizes, kinds, className)}
@@ -221,7 +215,6 @@ export function Slider({
   format?: (v: number) => string;
   width?: number;
 }) {
-  const labelledBy = useContext(FieldLabel);
   const [local, setLocal] = useState(value);
   useEffect(() => setLocal(value), [value]);
   const pct = ((local - min) / (max - min)) * 100;
@@ -232,8 +225,6 @@ export function Slider({
         <div className="absolute left-0 h-[3px] rounded-full bg-accent" style={{ width: `${pct}%` }} />
         <input
           type="range"
-          aria-labelledby={labelledBy}
-          aria-valuetext={format(local)}
           min={min}
           max={max}
           step={step}
@@ -268,22 +259,18 @@ export function Stepper({
   onChange: (v: number) => void;
   suffix?: string;
 }) {
-  const labelledBy = useContext(FieldLabel);
   const clamp = (v: number) => Math.min(max, Math.max(min, v));
   return (
     <div className="inline-flex items-center rounded-lg border border-line-strong bg-white/[0.04] overflow-hidden">
       <button
         type="button"
         className="w-8 h-8 hover:bg-white/[0.08] text-fg-dim active:bg-white/[0.12]"
-        aria-label="Decrease value"
         onClick={() => onChange(clamp(value - step))}
       >
         −
       </button>
       <input
         type="number"
-        min={min} max={max} step={step}
-        aria-labelledby={labelledBy}
         value={value}
         onChange={(e) => onChange(clamp(Number(e.target.value) || 0))}
         className="w-14 h-8 bg-transparent text-center font-mono text-[12px] tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
@@ -292,7 +279,6 @@ export function Stepper({
       <button
         type="button"
         className="w-8 h-8 hover:bg-white/[0.08] text-fg-dim active:bg-white/[0.12]"
-        aria-label="Increase value"
         onClick={() => onChange(clamp(value + step))}
       >
         +
@@ -475,7 +461,6 @@ export function CustomSelect<T extends string>({
 }
 
 export function KeyCapture({ value, onChange, single }: { value: string; onChange: (v: string) => void; single?: boolean }) {
-  const labelledBy = useContext(FieldLabel);
   const [listening, setListening] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -507,8 +492,6 @@ export function KeyCapture({ value, onChange, single }: { value: string; onChang
     <button
       ref={ref}
       type="button"
-      aria-labelledby={labelledBy}
-      aria-pressed={listening}
       onClick={() => setListening(true)}
       onBlur={() => setListening(false)}
       className={cx(
@@ -538,13 +521,11 @@ export function TextField({
   mono?: boolean;
   className?: string;
 }) {
-  const labelledBy = useContext(FieldLabel);
   const [local, setLocal] = useState(value);
   useEffect(() => setLocal(value), [value]);
   return (
     <input
       type={type}
-      aria-labelledby={labelledBy}
       value={local}
       placeholder={placeholder}
       onChange={(e) => setLocal(e.target.value)}
@@ -589,27 +570,4 @@ export function fmtRuntime(s: number) {
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-}
-
-/** A form label shared by native inputs and custom controls. */
-export function Field({ label, children, wide }: { label: string; children: ReactNode; wide?: boolean }) {
-  const id = useId();
-  return <div className={cx("form-field", wide && "form-field-wide")}>
-    <div id={id} className="text-fg-dim min-w-0">{label}</div>
-    <FieldLabel.Provider value={id}><div className="form-control min-w-0">{children}</div></FieldLabel.Provider>
-  </div>;
-}
-
-/** Collapsed sections do not mount captures, polling or research tools. */
-export function Disclosure({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
-  return <section className="mx-4 mb-3 rounded-xl border border-line bg-white/[0.02] overflow-hidden">
-    <button type="button" className="w-full flex items-center gap-3 p-3 text-left hover:bg-white/[0.03]"
-      aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(v => !v)}>
-      <div className="flex-1 min-w-0"><div className="font-medium">{title}</div>{hint && <div className="text-xs text-fg-dim mt-0.5">{hint}</div>}</div>
-      <ChevronDown size={15} className={cx("shrink-0 transition-transform", open && "rotate-180")} />
-    </button>
-    {open && <div id={id} className="border-t border-line pt-2 pb-1">{children}</div>}
-  </section>;
 }

@@ -1398,9 +1398,3 @@ export type DecisionResult = {
   pendingTotal: number;
   message: string;
 };
-
-export type CatchPageRecord = CatchRecord & { id: string };
-export type CatchPage = {
-  items: CatchPageRecord[]; total: number; fish: number; fruits: number;
-  next_cursor: number | null; revision: string;
-};

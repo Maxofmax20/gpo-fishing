@@ -45,7 +45,6 @@ pub fn build_state() -> AppState {
     init_logging(&dir);
 
     let store = Arc::new(Store::new(dir.clone()));
-    crate::bot::crafting::restore_status(store.dir());
     let settings = Arc::new(RwLock::new(store.load()));
     let platform = platform::build();
     let roblox = Arc::new(RwLock::new(platform.window.find()));
@@ -142,15 +141,13 @@ pub fn setup(app: &AppHandle, st: &AppState) -> Result<(), Box<dyn std::error::E
     }
 
     // Check if macro was running prior to update/restart
-    if st.store.take_update_resume(env!("CARGO_PKG_VERSION")) {
+    if st.store.take_resume_state() {
         tracing::info!("Found resume_state! Auto-resuming macro after update...");
         let bot = Arc::clone(&st.bot);
         let webhook = Arc::clone(&st.webhook);
-        // Any control action since process startup revokes automatic resume.
-        let generation = 0;
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_secs(3));
-            if let Err(error) = bot.resume_after_update(generation) { tracing::warn!("Update resume postponed: {error}"); return; }
+            bot.start();
             let cur_ver = env!("CARGO_PKG_VERSION");
             webhook.notify_message(
                 "🚀 Auto-Resumed Fishing",
