@@ -11,7 +11,36 @@ use std::time::Duration;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-static LAST_FRAME: parking_lot::RwLock<Option<Vec<u8>>> = parking_lot::RwLock::new(None);
+struct EncodedFrame {
+    rect: crate::core::types::PxRect,
+    scale: usize,
+    quality: u8,
+    captured: std::time::Instant,
+    bytes: Arc<Vec<u8>>,
+}
+static JPEG_VARIANTS: parking_lot::Mutex<Vec<EncodedFrame>> = parking_lot::Mutex::new(Vec::new());
+const FRAME_TTL: Duration = Duration::from_millis(750);
+
+fn preview_jpeg(bot: &Arc<Bot>, scale: usize, quality: u8) -> Option<Arc<Vec<u8>>> {
+    let rect = bot.ctx().roblox_rect()?;
+    let mut variants = JPEG_VARIANTS.lock();
+    if let Some(frame) = variants.iter().find(|f| f.rect == rect && f.scale == scale && f.quality == quality && f.captured.elapsed() < Duration::from_millis(100)) {
+        return Some(frame.bytes.clone());
+    }
+    if let Ok(frame) = bot.ctx().platform.capture.grab_preview(rect) {
+        let now = std::time::Instant::now();
+        let captured = now.checked_sub(bot.ctx().platform.capture.preview_age(rect).unwrap_or_default()).unwrap_or(now);
+        let bytes = Arc::new(frame.downscale(scale.max(1)).to_jpeg_bytes(quality).ok()?);
+        variants.retain(|f| f.captured.elapsed() < FRAME_TTL && !(f.rect == rect && f.scale == scale && f.quality == quality));
+        if variants.len() >= 4 { variants.remove(0); }
+        variants.push(EncodedFrame {rect,scale,quality,captured,bytes:bytes.clone()});
+        return Some(bytes);
+    }
+    variants.iter().find(|f| f.rect == rect && f.scale == scale && f.quality == quality && f.captured.elapsed() < FRAME_TTL).map(|f|f.bytes.clone())
+}
+fn preview_age_ms() -> Option<u64> {
+    JPEG_VARIANTS.lock().iter().map(|f|f.captured.elapsed().as_millis() as u64).min()
+}
 static HELD_KEYS: parking_lot::RwLock<Vec<crate::core::types::Key>> =
     parking_lot::RwLock::new(Vec::new());
 static LAST_KEY_ACTIVITY: parking_lot::RwLock<Option<std::time::Instant>> =
@@ -24,6 +53,7 @@ static LAST_MOUSE_ACTIVITY: parking_lot::RwLock<Option<std::time::Instant>> =
     parking_lot::RwLock::new(None);
 static KEY_WATCHDOG_STARTED: AtomicBool = AtomicBool::new(false);
 static TELEMETRY_STARTED: AtomicBool = AtomicBool::new(false);
+static TELEMETRY_DEMAND: parking_lot::RwLock<Option<std::time::Instant>> = parking_lot::RwLock::new(None);
 static LOCAL_IP: RwLock<Option<String>> = RwLock::new(None);
 static FAN_STATUS: RwLock<Option<crate::laptop_fan::FanStatus>> = RwLock::new(None);
 
@@ -146,6 +176,10 @@ fn ensure_telemetry_worker() {
         .spawn(|| {
             let mut ip_checked = None::<std::time::Instant>;
             loop {
+                if TELEMETRY_DEMAND.read().is_none_or(|at| at.elapsed() > Duration::from_secs(30)) {
+                    thread::sleep(Duration::from_secs(1));
+                    continue;
+                }
                 if ip_checked.is_none_or(|at| at.elapsed() >= Duration::from_secs(60)) {
                     let observed_ip = get_local_ip();
                     *LOCAL_IP.write() = observed_ip;
@@ -897,25 +931,9 @@ fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>, query: &str) {
     }
 
     loop {
-        let frame_opt = bot
-            .ctx()
-            .roblox_rect()
-            .and_then(|r| bot.ctx().platform.capture.grab(r).ok())
-            .map(|f| if scale > 0 { f.downscale(scale) } else { f })
-            .and_then(|f| f.to_jpeg_bytes(quality).ok());
-
-        let bytes = match frame_opt {
-            Some(b) => {
-                *LAST_FRAME.write() = Some(b.clone());
-                b
-            }
-            None => match LAST_FRAME.read().as_ref() {
-                Some(b) => b.clone(),
-                None => {
-                    std::thread::sleep(Duration::from_millis(100));
-                    continue;
-                }
-            },
+        let Some(bytes) = preview_jpeg(bot, scale, quality) else {
+            // Close the stream rather than replaying stale imagery indefinitely.
+            break;
         };
 
         let part_header = format!(
@@ -937,6 +955,7 @@ fn stream_mjpeg(mut stream: TcpStream, bot: &Arc<Bot>, query: &str) {
 }
 
 fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Settings>>) {
+    *TELEMETRY_DEMAND.write() = Some(std::time::Instant::now());
     let state = bot.state();
     let paused = bot.is_paused();
     let stats = bot.ctx().session.lock().stats();
@@ -1040,7 +1059,9 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         // True only while a Roblox window rect is resolvable. The MJPEG
         // endpoint replays the last frame when the game is gone, so the UI
         // must be able to tell live pixels from a stale replay.
-        "stream_live": bot.ctx().roblox_rect().is_some(),
+        "stream_live": bot.ctx().roblox_rect().is_some() && preview_age_ms().is_some_and(|age| age < FRAME_TTL.as_millis() as u64),
+        "frame_age_ms": preview_age_ms(),
+        "api_version": 2,
     });
 
     // Keep serde_json's macro expansion bounded as the status contract grows.
@@ -1171,31 +1192,8 @@ fn send_screenshot(stream: &mut TcpStream, bot: &Arc<Bot>, query: &str) {
         }
     }
 
-    let fresh_bytes = bot
-        .ctx()
-        .roblox_rect()
-        .and_then(|r| bot.ctx().platform.capture.grab(r).ok())
-        .map(|f| if scale > 0 { f.downscale(scale) } else { f })
-        .and_then(|f| f.to_jpeg_bytes(quality).ok());
-
-    if let Some(bytes) = fresh_bytes {
-        *LAST_FRAME.write() = Some(bytes.clone());
-        let header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            bytes.len()
-        );
-        let _ = stream.write_all(header.as_bytes());
-        let _ = stream.write_all(&bytes);
-        return;
-    }
-
-    if let Some(cached) = LAST_FRAME.read().as_ref() {
-        let header = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nCache-Control: no-cache, no-store, must-revalidate\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-            cached.len()
-        );
-        let _ = stream.write_all(header.as_bytes());
-        let _ = stream.write_all(cached);
+    if let Some(bytes) = preview_jpeg(bot, scale, quality) {
+        send_response(stream, "200 OK", "image/jpeg", &bytes);
         return;
     }
 
