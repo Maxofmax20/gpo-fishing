@@ -142,13 +142,13 @@ pub fn setup(app: &AppHandle, st: &AppState) -> Result<(), Box<dyn std::error::E
     }
 
     // Check if macro was running prior to update/restart
-    if st.store.take_resume_state() {
+    if st.store.take_update_resume(env!("CARGO_PKG_VERSION")) {
         tracing::info!("Found resume_state! Auto-resuming macro after update...");
         let bot = Arc::clone(&st.bot);
         let webhook = Arc::clone(&st.webhook);
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_secs(3));
-            bot.start();
+            if let Err(error) = bot.resume_after_update() { tracing::warn!("Update resume postponed: {error}"); return; }
             let cur_ver = env!("CARGO_PKG_VERSION");
             webhook.notify_message(
                 "🚀 Auto-Resumed Fishing",

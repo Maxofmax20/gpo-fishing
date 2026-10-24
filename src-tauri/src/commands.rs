@@ -2074,3 +2074,15 @@ mod tests {
         assert_eq!(r.blocking_requirement, "none — all gates pass");
     }
 }
+
+#[tauri::command]
+pub async fn update_prepare(st: State<'_, AppState>, version: String) -> Result<String, String> {
+    let bot=Arc::clone(&st.bot);
+    blocking(move || bot.prepare_update(&version)).await
+}
+
+#[tauri::command]
+pub async fn update_cancel(st: State<'_, AppState>, request_id: String) -> Result<(), String> {
+    let bot=Arc::clone(&st.bot);
+    blocking(move || bot.cancel_update(&request_id)).await
+}

@@ -36,6 +36,7 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
     }
 
     while ctx.alive() {
+        if ctx.store.update_boundary_reached() { ctx.release_mouse(); return; }
         ctx.touch();
         if anti_afk_at.elapsed() >= Duration::from_secs(480) {
             anti_afk_at = Instant::now();
