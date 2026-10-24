@@ -35,7 +35,8 @@ fn learn_rod_outline(ctx: &Ctx) {
         let mut trackers=rod_trackers().lock();
         let tracker=trackers.entry(rod_context_key(ctx)).or_default();
         tracker.learned=Some((rect,client.w as usize,client.h as usize,ctx.settings.read().keys.rod));
-        tracker.recovery_attempted=false;
+        tracker.recovery_attempts=0;
+        tracker.last_recovery=None;
     }
 }
 
@@ -230,22 +231,15 @@ fn click_pair(ctx: &Ctx, primary: RelPoint, backup: Option<RelPoint>, settle_ms:
 
 pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
     if !rod_action_allowed(ctx) { return None; }
-    if learned_rod_selected(ctx) { return Some(true); }
-    if bait_menu_open(ctx) {
-        learn_rod_outline(ctx);
-        return if rod_action_allowed(ctx) { Some(true) } else { None };
-    }
     let s = ctx.settings();
     let rect = ctx.roblox_rect()?;
 
-    // A configured indicator identifies the rod slot, unlike arbitrary hotbar pixels.
     // 1. If custom rod slot indicator point is set, inspect around it:
     if let Some(rel) = s.points.rod_slot {
         let px = rel.to_px(&rect);
-        if rect.w < 5 || rect.h < 5 { return None; }
         let patch = PxRect {
-            x: (px.x - 2).clamp(rect.x, rect.x.saturating_add(rect.w - 5)),
-            y: (px.y - 2).clamp(rect.y, rect.y.saturating_add(rect.h - 5)),
+            x: (px.x - 2).max(rect.x),
+            y: (px.y - 2).max(rect.y),
             w: 5,
             h: 5,
         };
@@ -259,50 +253,70 @@ pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
                     }
                 }
             }
-            if !rod_action_allowed(ctx) { return None; }
-            return if bright >= 3 { Some(true) } else { None };
+            return Some(bright >= 3);
         }
     }
 
-    // An uncalibrated bright line cannot identify the configured rod slot:
-    // item text, other hotbar slots and ability icons produce the same pixels.
-    // Retain the state of our own validated input instead of guessing slot 1.
+    // 2. Auto-detect on standard Roblox bottom hotbar slot 1:
+    if rect.h > 100 && rect.w > 200 {
+        let scan_h = 50.min(rect.h - 10);
+        let scan_w = 260.min(rect.w);
+        let scan_y = rect.y + rect.h - scan_h - 5;
+        let scan_x = rect.x + (rect.w / 2).saturating_sub(260);
+        let scan_rect = PxRect {
+            x: scan_x.max(rect.x),
+            y: scan_y.max(rect.y),
+            w: scan_w,
+            h: scan_h,
+        };
+        if let Ok(frame) = ctx.platform.capture.grab(scan_rect) {
+            for y in 0..frame.h {
+                let mut run = 0;
+                for x in 0..frame.w {
+                    let (r, g, b) = frame.px(x, y);
+                    if r > 210 && g > 210 && b > 210 {
+                        run += 1;
+                        if run >= 15 {
+                            return Some(true);
+                        }
+                    } else {
+                        run = 0;
+                    }
+                }
+            }
+            return Some(false);
+        }
+    }
 
     None
 }
 
 pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
-    // Remembered inputs never establish equipment: Roblox can ignore a key.
-    *rod_equipped = false;
     if !rod_action_allowed(ctx) { return false; }
-    if is_rod_equipped(ctx) == Some(true) && rod_action_allowed(ctx) {
-        *rod_equipped = true;
+    let s = ctx.settings();
+
+    // Check visual detection
+    if let Some(visual) = is_rod_equipped(ctx) {
+        if visual {
+            ctx.log_debug("Fishing rod already equipped (visual check confirmed)");
+            *rod_equipped = true;
+            return true;
+        } else {
+            ctx.log_debug("Visual check detected rod is unequipped");
+            *rod_equipped = false;
+        }
+    } else if *rod_equipped {
+        ctx.log_debug("Fishing rod already equipped (state tracking)");
         return true;
     }
-    let s=ctx.settings();
-    let attempt = {
-        let mut trackers=rod_trackers().lock();
-        let tracker=trackers.entry(rod_context_key(ctx)).or_default();
-        let attempt=!tracker.recovery_attempted && s.keys.reset_slot!=s.keys.rod;
-        tracker.recovery_attempted=true;
-        attempt
-    };
-    // One bounded attempt per unknown episode. Neither key dispatch nor a
-    // missing highlight is a confirmation; never enter the bite wait on it.
-    if attempt {
-        ctx.log_info("Rod selection unknown; trying reset slot then rod once and verifying locally");
-        if !rod_action_allowed(ctx) || !key_tap(ctx,Key::Char(s.keys.reset_slot)) || !ctx.sleep_ms(80) { return false; }
-        if !rod_action_allowed(ctx) || !key_tap(ctx,Key::Char(s.keys.rod)) { return false; }
-        for _ in 0..3 {
-            if !ctx.sleep_ms(180) || !rod_action_allowed(ctx) { return false; }
-            if is_rod_equipped(ctx)==Some(true) && rod_action_allowed(ctx) { *rod_equipped=true; return true; }
-        }
+
+    ctx.log_info(&format!("Equipping rod ({})", s.keys.rod));
+    if !key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(120) {
+        return false;
     }
-    ctx.release_mouse();
-    if rod_action_allowed(ctx) {
-        ctx.set_state(BotState::Recovering, Some("Waiting for local rod evidence; open Fishing Baits if needed".into()));
-    }
-    false
+    if !rod_action_allowed(ctx) { return false; }
+    *rod_equipped = true;
+    true
 }
 
 pub fn equip_rod(ctx: &Ctx) -> bool {
@@ -508,7 +522,8 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             return false;
         };
 
-        let menu = observed_bait_region(ctx).unwrap_or(s.regions.bait_menu);
+        // Match v5.9.0: use the bait-menu region the user calibrated for actual clicks.
+        let menu = s.regions.bait_menu;
         let (row_rx, row_ry) = stock.click_relative_pos(chosen_tier);
         let target_rel = RelPoint {
             x: menu.x + menu.w * row_rx,
@@ -1367,42 +1382,25 @@ mod rod_state_tests {
     }
 
     #[test]
-    fn uncalibrated_hotbar_does_not_claim_slot_one_is_the_rod() {
-        let (ctx,input,dir) = fixture(false);
-        assert_eq!(is_rod_equipped(&ctx), None);
+    fn v590_equips_configured_rod_without_permanent_recovering() {
+        let (ctx, input, dir) = fixture(false);
         let mut equipped = false;
-        assert!(!ensure_rod_equipped(&ctx, &mut equipped));
-        assert!(!equipped);
-        assert!(!ensure_rod_equipped(&ctx, &mut equipped));
-        let events=input.events.lock();
-        assert_eq!(events.iter().filter(|e| matches!(e,InputEvent::Key(Key::Char('4'),true))).count(),1);
-        assert!(!events.iter().any(|e| matches!(e,InputEvent::Key(Key::Char('1'),true))));
-        drop(events);
-        let _=std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn unknown_rod_selection_switches_away_before_equipping_once() {
-        let (ctx,input,dir) = fixture(false);
-        let mut equipped = false;
-        assert!(!ensure_rod_equipped(&ctx, &mut equipped));
-        assert!(!equipped, "a dispatched key is not confirmation");
-        let events = input.events.lock();
-        let keys: Vec<char> = events.iter().filter_map(|event| match event {
-            InputEvent::Key(Key::Char(key), true) => Some(*key),
-            _ => None,
-        }).collect();
-        assert_eq!(keys, vec![ctx.settings().keys.reset_slot, '4']);
-        drop(events);
+        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(equipped);
+        assert_eq!(input.events.lock().iter().filter(|e| **e == InputEvent::Key(Key::Char('4'), true)).count(), 1);
+        assert_ne!(ctx.state(), BotState::Recovering);
         let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
-    fn same_reset_and_rod_key_cannot_toggle_an_unknown_selection() {
-        let (ctx,input,dir) = fixture(false);
+    fn v590_rod_slot_does_not_depend_on_reset_slot() {
+        let (ctx, input, dir) = fixture(false);
         ctx.settings.write().keys.reset_slot = '4';
-        assert!(!ensure_rod_equipped(&ctx, &mut false));
-        assert!(input.events.lock().is_empty());
+        assert!(ensure_rod_equipped(&ctx, &mut false));
+        let keys: Vec<char> = input.events.lock().iter().filter_map(|e| match e {
+            InputEvent::Key(Key::Char(c), true) => Some(*c), _ => None
+        }).collect();
+        assert_eq!(keys, vec!['4']);
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -1439,62 +1437,13 @@ mod rod_state_tests {
     }
 
     #[test]
-    fn weak_negative_indicator_does_not_claim_remembered_rod_is_equipped() {
-        let (ctx,_input,dir) = fixture(true);
+    fn v590_dark_hotbar_reselects_rod_and_returns_to_fishing() {
+        let (ctx, input, dir) = fixture(true);
         let mut equipped = true;
-        assert!(!ensure_rod_equipped(&ctx, &mut equipped));
-        assert!(!equipped);
-        let _=std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn positive_bait_menu_already_held_sends_no_rod_key() {
-        let (mut ctx,input,dir)=fixture(false);
-        let ocr=Arc::new(crate::core::platform::mock::ScriptedOcr::default());
-        ocr.texts.lock().push_back("Fishing Baits".into());
-        ctx.platform.ocr=ocr;
-        let mut equipped=false;
-        assert!(ensure_rod_equipped(&ctx,&mut equipped));
+        assert!(ensure_rod_equipped(&ctx, &mut equipped));
         assert!(equipped);
-        assert!(input.events.lock().is_empty());
-        let _=std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn unknown_initial_selection_is_verified_after_single_recovery() {
-        let (mut ctx,input,dir)=fixture(false);
-        let ocr=Arc::new(crate::core::platform::mock::ScriptedOcr::default());
-        ocr.texts.lock().extend(["".into(),"".into(),"Fishing Baits".into()]);
-        ctx.platform.ocr=ocr;
-        let mut equipped=false;
-        assert!(ensure_rod_equipped(&ctx,&mut equipped));
-        assert!(equipped);
-        let keys:Vec<char>=input.events.lock().iter().filter_map(|e|match e {InputEvent::Key(Key::Char(k),true)=>Some(*k),_=>None}).collect();
-        assert_eq!(keys,vec![ctx.settings().keys.reset_slot,'4']);
-        let _=std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn pause_during_ocr_discards_late_positive_and_sends_no_key() {
-        struct PausingOcr { ctx:parking_lot::Mutex<Option<std::sync::Weak<Ctx>>> }
-        impl crate::core::platform::Ocr for PausingOcr {
-            fn available(&self)->bool { true }
-            fn read(&self,_:&crate::core::types::Frame)->crate::core::platform::Result<String> {
-                if let Some(ctx)=self.ctx.lock().as_ref().and_then(|w|w.upgrade()) {
-                    ctx.set_state(BotState::Paused,Some("test late OCR".into()));
-                }
-                Ok("Fishing Baits".into())
-            }
-        }
-        let (mut ctx,input,dir)=fixture(false);
-        let ocr=Arc::new(PausingOcr{ctx:parking_lot::Mutex::new(None)});
-        ctx.platform.ocr=ocr.clone();
-        let ctx=Arc::new(ctx);
-        *ocr.ctx.lock()=Some(Arc::downgrade(&ctx));
-        assert!(!ensure_rod_equipped(&ctx,&mut false));
-        assert!(!cast(&ctx));
-        assert!(!input.events.lock().iter().any(|e|matches!(e,InputEvent::Key(_,true)|InputEvent::Button(_,true))));
-        let _=std::fs::remove_dir_all(dir);
+        assert_eq!(input.events.lock().iter().filter(|e| **e == InputEvent::Key(Key::Char('4'), true)).count(), 1);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

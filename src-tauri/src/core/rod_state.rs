@@ -122,7 +122,8 @@ pub fn find_outline(
 #[derive(Default)]
 pub struct RodTracker {
     pub learned: Option<(SlotRect, usize, usize, char)>,
-    pub recovery_attempted: bool,
+    pub recovery_attempts: u8,
+    pub last_recovery: Option<std::time::Instant>,
     pub menu_region: Option<(f32, f32, f32, f32)>,
 }
 

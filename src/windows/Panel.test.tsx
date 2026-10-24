@@ -14,7 +14,7 @@ import Panel from "./Panel";
 afterEach(cleanup);
 it("keeps settings accessible without Roblox and hides specialist navigation initially", async () => {
   render(<Panel />);
-  expect(screen.getByText("Fishing dashboard")).toBeVisible();
+  expect(screen.getByText("Connect Roblox")).toBeVisible();
   expect(screen.queryByRole("button", { name: "Training" })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Settings" }));
   expect(await screen.findByText("Offline settings")).toBeVisible();
@@ -29,5 +29,5 @@ it("reveals advanced tools and returns safely when the group closes", async () =
   expect(await screen.findByText("VPN settings")).toBeVisible();
   fireEvent.click(advanced);
   expect(screen.queryByRole("button", { name: "VPN & Relay" })).not.toBeInTheDocument();
-  expect(screen.getByText("Fishing dashboard")).toBeVisible();
+  expect(screen.getByText("Connect Roblox")).toBeVisible();
 });
