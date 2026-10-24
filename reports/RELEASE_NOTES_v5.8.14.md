@@ -6,6 +6,8 @@
 - Suppress automatic progress, spawn, bait, recovery and other unrelated queued notifications while strict mode is enabled. Explicit user-requested Test delivery still works.
 - A genuinely unconfirmed pity-zero result is labelled unconfirmed, with the post-attempt screenshot when available. It never falsely claims storage succeeded.
 - Avoid capturing/encoding screenshots for notifications the active filter will discard.
+- Recover visible yellow drop confirmations using a bounded, high-contrast OCR fallback on the same frame; accept small one-character OCR errors only when both drop and expiry/ground evidence are present.
+- Add regression coverage for the visible Bomb drop case, duplicate-only banners, world-spawn messages and contradictory failed-drop text.
 - Keep valuable-fruit protection, one-drop-attempt behavior and pauses for genuinely unconfirmed outcomes.
 - Include v5.8.13 lighter startup, hidden-window polling improvements, dependency audit fixes and faster cached release workflow.
 - Warm the production dependency cache on main so subsequent release tags can use it; GitHub does not share one tag's cache directly with another tag.
