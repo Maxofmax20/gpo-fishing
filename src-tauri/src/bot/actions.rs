@@ -1131,7 +1131,6 @@ mod storage_replay_tests {
     fn yellow_banner_fallback_confirms_without_a_second_drop_input() {
         let h = harness(&[
             "You can only store one of each fruit!",
-            "You can only store one of each fruit!",
             "Dr0p text unreadable",
             "Drcpped Bomb will despawn in 10 minutes",
         ]);
