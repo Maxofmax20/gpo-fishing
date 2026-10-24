@@ -634,6 +634,16 @@ pub fn purchase(ctx: &Ctx) -> bool {
     purchase_amount(ctx, to_buy)
 }
 
+fn fruit_notification_png(frame: &crate::core::types::Frame) -> Option<Vec<u8>> {
+    // Preserve a readable PNG where it fits; resize unusually complex frames
+    // before enqueue, rather than silently discarding the requested screenshot.
+    for max_dimension in [1280, 640, 480] {
+        let bytes = frame.downscale(max_dimension).to_png_bytes().ok()?;
+        if bytes.len() <= 1024 * 1024 { return Some(bytes); }
+    }
+    None
+}
+
 pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Option<Vec<u8>> {
     if !s.webhook.send_screenshot {
         return None;
@@ -659,15 +669,14 @@ pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Optio
         };
         let px_box = crop_rel.to_px(&r);
         if let Ok(frame) = ctx.platform.capture.grab(px_box) {
-            if let Ok(bytes) = frame.to_png_bytes() {
+            if let Some(bytes) = fruit_notification_png(&frame) {
                 return Some(bytes);
             }
         }
     }
 
     ctx.platform.capture.grab(r).ok()
-        .map(|f| f.downscale(1280))
-        .and_then(|f| f.to_png_bytes().ok())
+        .and_then(|f| fruit_notification_png(&f))
 }
 
 pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_tier: bool) -> Option<Vec<u8>> {
@@ -1295,5 +1304,22 @@ mod rod_state_tests {
         assert!(equipped);
         assert!(input.events.lock().is_empty());
         let _=std::fs::remove_dir_all(dir);
+    }
+}
+
+
+#[cfg(test)]
+mod notification_image_tests {
+    #[test]
+    fn complex_screenshot_is_retained_within_queue_budget() {
+        let mut state = 7u32;
+        let pixels: Vec<u8> = (0..1024 * 1024 * 4).map(|_| {
+            state ^= state << 13; state ^= state >> 17; state ^= state << 5;
+            state as u8
+        }).collect();
+        let frame = crate::core::types::Frame::new(1024, 1024, pixels);
+        let png = super::fruit_notification_png(&frame).expect("bounded screenshot");
+        assert!(png.len() <= 1024 * 1024);
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
     }
 }
