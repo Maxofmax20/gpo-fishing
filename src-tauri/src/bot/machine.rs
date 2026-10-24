@@ -90,16 +90,18 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
 
                 if fast_reset_enabled {
                     ctx.log_info(&format!("⚡ Fast reset: immediately canceling animation with slot [{reset_key}] -> rod [{rod_key}]"));
-                    actions::key_tap(ctx, Key::Char(reset_key));
+                    if reset_key == rod_key || !actions::key_tap(ctx, Key::Char(reset_key)) { return; }
                     if !ctx.sleep_ms(35) {
                         return;
                     }
-                    actions::key_tap(ctx, Key::Char(rod_key));
+                    if !actions::key_tap(ctx, Key::Char(rod_key)) { return; }
                     if !ctx.sleep_ms(80) {
                         return;
                     }
-                    rod_equipped = true;
+                    rod_equipped = false;
                 }
+
+                rod_equipped = false;
 
                 let (verdict, text, result_frame) = verify_catch(ctx);
                 // Training-data collection: one sample per ended reel, only
@@ -878,12 +880,19 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
         return (fruit::CatchVerdict::Unknown, String::new(), None);
     }
     let s = ctx.settings();
-    let max_reads = s.ocr.post_catch_reads.max(1);
+    let started = Instant::now();
+    let deadline = started + Duration::from_millis(1000);
+    let max_reads = s.ocr.post_catch_reads.clamp(1, 3);
     let mut last = String::new();
     for read in 0..max_reads {
-        if !ctx.alive() { break; }
+        if read > 0 && read + 1 == max_reads {
+            let late = Duration::from_millis(600).saturating_sub(started.elapsed());
+            if !late.is_zero() && !ctx.sleep(late) { break; }
+        }
+        if !ctx.alive() || Instant::now() >= deadline { break; }
         if let Some(frame) = grab_region(ctx, s.regions.drop) {
-            if let Ok(text) = ctx.platform.ocr.read(&frame) {
+            if let Ok(text) = ctx.platform.ocr.read_with_timeout(&frame, deadline.saturating_duration_since(Instant::now()).min(Duration::from_millis(200))) {
+                if !ctx.alive() { break; }
                 if !text.trim().is_empty() {
                     last = text.clone();
                     ctx.log_info(&format!("Reel text: {}", text.trim()));
@@ -894,9 +903,10 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
                 }
                 // Fading/low-contrast banners can produce an empty first read.
                 // The second read is the same observation, not a new catch.
-                if !ctx.alive() { break; }
+                if !ctx.alive() || Instant::now() >= deadline { break; }
                 let enhanced = actions::catch_banner_ocr_frame(&frame);
-                if let Ok(retry) = ctx.platform.ocr.read(&enhanced) {
+                if let Ok(retry) = ctx.platform.ocr.read_with_timeout(&enhanced, deadline.saturating_duration_since(Instant::now()).min(Duration::from_millis(200))) {
+                    if !ctx.alive() { break; }
                     let verdict = fruit::detect_catch(&s.lexicon, &retry);
                     if verdict != fruit::CatchVerdict::Unknown {
                         ctx.log_info(&format!("Verified enhanced catch text: {}", retry.trim()));
@@ -906,7 +916,7 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
                 }
             }
         }
-        if read + 1 == max_reads || !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms) { break; }
+        if read + 1 == max_reads || !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms.min(150)) { break; }
     }
     if last.is_empty() { ctx.log_info("Reel text: (nothing read in drop area)"); }
     (fruit::CatchVerdict::Unknown, last, None)
@@ -1310,13 +1320,26 @@ mod tests {
     }
 
     #[test]
-    fn catch_verification_waits_for_the_configured_gap() {
-        // Raw + enhanced OCR share frame one; frame two must still wait for the gap.
+    fn catch_verification_caps_the_configured_gap() {
+        // Oversized user gaps must not stall the recast loop.
         let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["noise".into(), "noise".into(), "Nev Item Shark".into()]);
         ctx.settings.write().ocr.post_catch_read_gap_ms = 70;
         let started = Instant::now();
         assert_eq!(verify_catch(&ctx).0, fruit::CatchVerdict::Caught);
         assert!(started.elapsed() >= Duration::from_millis(70));
+        assert!(started.elapsed() < Duration::from_millis(1000));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn absent_catch_banner_is_nonblocking_and_does_not_invent_a_catch() {
+        let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["".into(); 8]);
+        ctx.settings.write().ocr.post_catch_reads = 100;
+        ctx.settings.write().ocr.post_catch_read_gap_ms = 10_000;
+        let started = Instant::now();
+        assert_eq!(verify_catch(&ctx).0, fruit::CatchVerdict::Unknown);
+        assert!(started.elapsed() < Duration::from_millis(1000));
+        assert_eq!(ctx.session.lock().fish, 0);
         let _ = std::fs::remove_dir_all(dir);
     }
 
