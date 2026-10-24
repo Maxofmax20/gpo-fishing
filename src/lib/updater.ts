@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { invoke } from "@tauri-apps/api/core";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { showToast } from "./store";
 
@@ -31,20 +32,30 @@ export const useUpdater = create<Updater>((set, get) => ({
     const update = get().available;
     if (!update || get().busy) return;
     set({ busy: true, message: `Downloading ${update.version}…` });
+    let handoff: string | null = null;
     try {
       let downloaded = 0;
       let total: number | undefined;
       let shown = "";
-      await update.downloadAndInstall((progress) => {
+      await update.download((progress) => {
         if (progress.event === "Started") { total = progress.data.contentLength; downloaded = 0; }
         if (progress.event === "Progress") downloaded += progress.data.chunkLength;
-        const message = progress.event === "Finished" ? "Verifying and installing…"
+        const message = progress.event === "Finished" ? "Download complete; verifying…"
           : total ? `Downloading ${Math.min(100, Math.floor(downloaded * 100 / total))}%`
           : `Downloading ${(downloaded / 1048576).toFixed(1)} MB`;
         if (message !== shown) { shown = message; set({ message }); }
       }, { timeout: 120000 });
-      set({ message: "Installed. Restart the app to use the new version." });
+      set({ message: "Waiting for the current reel or fruit workflow to finish…" });
+      handoff = await invoke<string>("update_prepare", { version: update.version });
+      set({ message: "Installing; fishing will resume after restart if it was running." });
+      await update.install();
+      set({ message: "Installed. Reopening with your saved fishing state…" });
     } catch (e) {
+      if (handoff) {
+        await invoke("update_cancel", { requestId: handoff }).catch((recovery) => {
+          showToast("error", "Update recovery needs attention: " + String(recovery));
+        });
+      }
       set({ message: `Update failed: ${String(e)}. You can retry.` });
       showToast("error", `Update failed: ${String(e)}`);
     } finally { set({ busy: false }); }

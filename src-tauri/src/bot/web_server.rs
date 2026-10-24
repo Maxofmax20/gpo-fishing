@@ -3055,3 +3055,8 @@ mod tests {
 #[cfg(test)]
 #[path = "web_server_validation_tests.rs"]
 mod validation_tests;
+
+/// Cancel queued/in-flight manual input before a signed updater takes over.
+pub fn cancel_pending_input() {
+    INPUT_EPOCH.fetch_add(1, Ordering::SeqCst);
+}
