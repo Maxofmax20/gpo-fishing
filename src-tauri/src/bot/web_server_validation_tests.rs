@@ -143,3 +143,18 @@ fn status_reports_configured_keys() {
     assert_eq!(value["remote_keys"]["rod"], "4");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+
+#[test]
+fn explicit_stop_is_supported_and_routes_through_reserved_control_lane() {
+    let request=format!("POST /api/action HTTP/1.1{}{}","\r\n\r\n",r#"{"action":"stop"}"#);
+    assert!(priority_request(&request));
+    let (bot,input,dir)=input_test_bot();
+    let response=drive(&bot,"action",r#"{"action":"stop"}"#);
+    assert!(response.starts_with("HTTP/1.1 200"));
+    assert!(!bot.is_running());
+    assert_eq!(bot.state(),crate::events::BotState::Stopped);
+    // Mock input has no native device; Stop must not synthesize a new press.
+    assert!(!input.events.lock().iter().any(|e|matches!(e,InputEvent::Button(_,true)|InputEvent::Key(_,true))));
+    let _=std::fs::remove_dir_all(dir);
+}

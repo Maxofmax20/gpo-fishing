@@ -127,7 +127,7 @@ export default function Dashboard({
             icon={active ? <Pause size={15} /> : <Play size={15} />}>
             {starting ? "Please wait…" : active ? "Pause fishing" : state === "paused" ? "Resume fishing" : "Start fishing"}
           </Button>
-          {(active || state === "paused") && <Button kind="danger" label="Stop fishing" title="Stop fishing" busy={starting}
+          {(active || state === "paused" || starting) && <Button kind="danger" label="Stop fishing" title="Stop fishing"
             onClick={async () => { setStarting(true); try { await api.botStop(); } catch (e) { showToast("error", `Stop failed: ${String(e)}`); } finally { setStarting(false); } }}
             icon={<Square size={14} />}>Stop</Button>}
         </div>

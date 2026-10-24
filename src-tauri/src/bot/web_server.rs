@@ -319,7 +319,7 @@ fn priority_request(request: &str) -> bool {
     let action = value.get("action").and_then(|a| a.as_str());
     matches!(
         (path, action),
-        ("/api/action", Some("pause"))
+        ("/api/action", Some("pause" | "stop"))
             | ("/api/craft" | "/api/macro/play", Some("stop"))
             | ("/api/mouse", Some("release_all" | "reset"))
     ) || (path == "/api/key" && value.get("key").and_then(|v| v.as_str()) == Some("release_all"))
@@ -1063,6 +1063,18 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
     });
     payload["frame_age_ms"] = json!(preview_age_ms());
     payload["api_version"] = json!(2);
+    let window=bot.ctx().platform.window.find();
+    payload["readiness"]=json!({
+        "game_found":window.is_some_and(|w|w.visible),
+        "focused":window.is_some_and(|w|w.visible && w.is_foreground),
+        "calibrated":s.regions.bar.w>0.02 && s.regions.bar.h>0.02,
+        "rod_indicator_calibrated":s.points.rod_slot.is_some(),
+    });
+    payload["capabilities"]=json!({
+        "api_version":2,"read_only_history":true,"craft_targets":true,
+        "input_coordinates":"normalised_client","max_drag_ms":5000,
+        "stream_limit":4,"frame_ttl_ms":FRAME_TTL.as_millis() as u64,
+    });
 
     // Keep serde_json's macro expansion bounded as the status contract grows.
     payload["pity_cap"] = json!(s.fruit_storage.pity_cap);
@@ -1355,9 +1367,7 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     *LAST_MOUSE_ACTIVITY.write() = Some(std::time::Instant::now());
 
     {
-        let px = rect.x + (rx.clamp(0.0, 1.0) * rect.w as f32).round() as i32;
-        let py = rect.y + (ry.clamp(0.0, 1.0) * rect.h as f32).round() as i32;
-        let pt = crate::core::types::PxPoint { x: px, y: py };
+        let pt = relative_point(rect,rx,ry);
 
         match act {
             "down" => {
@@ -1831,6 +1841,15 @@ fn handle_action(
                 return;
             }
             "Macro start requested"
+        }
+        "stop" => {
+            INPUT_EPOCH.fetch_add(1, Ordering::SeqCst);
+            bot.ctx().platform.input.release_all();
+            bot.ctx().release_mouse();
+            crate::bot::crafting::stop_auto_craft();
+            crate::bot::recorder::stop_playback();
+            bot.stop();
+            "Macro stopped"
         }
         "pause" => {
             INPUT_EPOCH.fetch_add(1, Ordering::SeqCst);

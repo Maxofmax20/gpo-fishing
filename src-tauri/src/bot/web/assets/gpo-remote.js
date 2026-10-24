@@ -472,8 +472,10 @@
     const running = d.is_running && !d.paused;
     paintMacroBtn(running);
     gpoPaintPwr(document.getElementById('pwr-btn'), running);
-    gpoSetText('macro-status-text', running ? ('● ' + d.state + ' • harvesting') : 'Ready • macro idle');
-    gpoSetText('macro-profile-text', 'Profile: GPO Farm v' + (d.version || '—'));
+    const ready = d.readiness ? d.readiness.game_found && d.readiness.focused : d.stream_live;
+    gpoSetText('macro-status-text', running ? String(d.state || 'Running') : d.paused ? 'Paused — resume when ready' : ready ? 'Game ready • macro idle' : 'Awaiting Roblox focus');
+    gpoSetText('macro-profile-text', 'GPO Autofish v' + (d.version || '—'));
+    gpoSetText('macro-btn-label', running ? 'PAUSE FISHING' : d.paused ? 'RESUME FISHING' : 'START FISHING');
     gpoSetText('stream-event-text', d.last_spawn || 'No spawn alerts yet');
     const muted = !!d.muted;
     gpoSetText('unmute-text', muted ? 'MUTE' : 'UNMUTE');

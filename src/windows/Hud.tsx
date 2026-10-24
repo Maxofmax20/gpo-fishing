@@ -88,12 +88,12 @@ export default function Hud() {
         >
           {active ? <Pause size={14} /> : <Play size={14} className="translate-x-px" />}
         </button>
-        {(active || state === "paused") && (
+        {(active || state === "paused" || pending) && (
           <button
             className="no-drag h-8 w-8 rounded-full grid place-items-center bg-white/[0.06] text-fg-dim hover:bg-bad-soft hover:text-bad transition-colors"
             onPointerDown={(e) => e.stopPropagation()}
-            disabled={pending} aria-label="Stop fishing"
-            onClick={() => void perform(api.botStop)}
+            aria-label="Stop fishing"
+            onClick={() => { void api.botStop().catch(e => showToast("error","Stop failed: " + String(e))); }}
             title="Stop"
           >
             <Square size={12} />
