@@ -922,6 +922,32 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
     (fruit::CatchVerdict::Unknown, last, None)
 }
 
+/// Called only after a fruit catch is confirmed, before any storage input.
+/// The configured catch-banner crop can omit the separate Legendary Pity line.
+fn read_fruit_pity(ctx: &Ctx, catch_text: &str, recorded: Option<&str>) -> Option<crate::core::pity_evidence::PityEvidence> {
+    // Preserve the existing structured nonzero catch reading. A regular fruit
+    // pity counter elsewhere on screen must not turn it into legendary zero.
+    if let Some(evidence) = crate::core::pity_evidence::recorded_nonzero(recorded) { return Some(evidence); }
+    if let Some(evidence) = crate::core::pity_evidence::parse(catch_text) { return Some(evidence); }
+    let deadline = Instant::now() + Duration::from_millis(700);
+    for read in 0..2 {
+        if !ctx.alive() || !ctx.roblox_in_front() || Instant::now() >= deadline { break; }
+        let Some(rect) = ctx.roblox_rect() else { break; };
+        if let Ok(frame) = ctx.platform.capture.grab(rect) {
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else { break; };
+            let timeout = remaining.min(Duration::from_millis(250));
+            if let Ok(text) = ctx.platform.ocr.read_with_timeout(&frame, timeout) {
+                if let Some(evidence) = crate::core::pity_evidence::parse(&text) { return Some(evidence); }
+            }
+        }
+        if read == 0 {
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else { break; };
+            if !ctx.sleep(remaining.min(Duration::from_millis(100))) { break; }
+        }
+    }
+    None
+}
+
 fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
     ctx.set_state(BotState::PostCatch, None);
     let s = ctx.settings();
@@ -950,8 +976,19 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         }
     }
     if let Some(mut d) = drop {
+        let pity = read_fruit_pity(ctx, first_text, d.pity.as_deref());
+        d.pity = pity.map(|evidence| evidence.text());
+        match pity {
+            Some(evidence) => ctx.log_info(&format!("Fruit pity verified locally: {}", evidence.text())),
+            None if s.webhook.pity_zero_only => ctx.log_warn("Pity-zero notification suppressed: confirmed fruit, but the Legendary Pity counter was unreadable after bounded local checks"),
+            None => ctx.log_debug("Fruit pity remains unreadable after bounded local checks"),
+        }
+        // Only verified labelled evidence reaches the immutable fruit policy.
+        // Passing the full-screen text to the old general parser would allow
+        // an unrelated HP/level zero fraction to manufacture pity zero.
+        let policy_pity = d.pity.clone().unwrap_or_default();
         let catch = crate::core::fruit_storage::FruitCatchContext::new(
-            &d, first_text, s.fruit_storage.never_drop_legendary_or_mythical, s.fruit_storage.keep_pity_zero_fruit,
+            &d, &policy_pity, s.fruit_storage.never_drop_legendary_or_mythical, s.fruit_storage.keep_pity_zero_fruit,
         );
         let fruit_name = catch.name.clone();
         let rarity = fruit::fruit_rarity(&fruit_name);
@@ -1161,6 +1198,41 @@ mod tests {
         let ctx = Arc::new(Ctx::new(platform, Arc::new(RwLock::new(settings)), roblox, tx, Arc::new(WebhookQueue::disabled()), store));
         ctx.running.store(true, std::sync::atomic::Ordering::SeqCst);
         (ctx, rx)
+    }
+
+    #[test]
+    fn confirmed_fruit_pity_scan_is_labelled_bounded_and_preserves_nonzero() {
+        struct PityOcr {
+            texts: parking_lot::Mutex<std::collections::VecDeque<String>>,
+            budgets: parking_lot::Mutex<Vec<Duration>>,
+        }
+        impl crate::core::platform::Ocr for PityOcr {
+            fn available(&self) -> bool { true }
+            fn read(&self, _frame: &Frame) -> crate::core::platform::Result<String> { panic!("pity scan must supply its per-call timeout") }
+            fn read_with_timeout(&self, _frame: &Frame, timeout: Duration) -> crate::core::platform::Result<String> {
+                self.budgets.lock().push(timeout);
+                Ok(self.texts.lock().pop_front().unwrap_or_default())
+            }
+        }
+        for (texts, expected) in [
+            (vec!["Health 0/100", "Legendary Pity 0/40"], Some("0/40")),
+            (vec!["YOU GOT A DEVIL FRUIT DROP CHECK YOUR BA", "unreadable"], None),
+            (vec!["Fruit Pity 0/40 Legendary Pity 17/40"], Some("17/40")),
+            (vec!["HP 0/100 Level 0/40", "Pity unreadable Backpack 0/40"], None),
+        ] {
+            let cap = Arc::new(ScriptedCapture::default());
+            cap.push(blank());
+            let (mut ctx, _receiver) = make_ctx(cap, Arc::new(RecordingInput::default()));
+            let ocr = Arc::new(PityOcr { texts: parking_lot::Mutex::new(texts.into_iter().map(str::to_string).collect()), budgets: parking_lot::Mutex::new(Vec::new()) });
+            Arc::get_mut(&mut ctx).unwrap().platform.ocr = ocr.clone();
+            let result = read_fruit_pity(&ctx, "YOU GOT A DEVIL FRUIT DROP CHECK YOUR BA", None).map(|value| value.text());
+            assert_eq!(result.as_deref(), expected);
+            assert!(ocr.budgets.lock().len() <= 2);
+            assert!(ocr.budgets.lock().iter().all(|budget| *budget <= Duration::from_millis(250)));
+            let previous_reads = ocr.budgets.lock().len();
+            assert_eq!(read_fruit_pity(&ctx, "Pity unreadable", Some("17/40")).unwrap().current, 17);
+            assert_eq!(ocr.budgets.lock().len(), previous_reads, "known nonzero must not be overwritten by an unrelated screen zero");
+        }
     }
 
     #[test]
