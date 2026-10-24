@@ -444,7 +444,7 @@ export default function Features() {
               />
             </Field>
             <div className="text-[11px] text-fg-dim pb-1.5 leading-normal">
-              🚨 Automatically pauses fishing immediately after catching a protected fruit so you can safely inspect and store it.
+              Optionally pause after confirmed storage. A protected fruit still held in a slot, an unreadable protected outcome or an explicit storage error always pauses for your attention.
             </div>
             <Field wide label="Keep Pity 0 Fruit (Never Drop)">
               <Toggle
@@ -655,4 +655,3 @@ export default function Features() {
     </div>
   );
 }
-

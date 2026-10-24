@@ -609,18 +609,20 @@ fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc
     let mut retry_at=std::time::Instant::now();
     let mut replay=std::collections::VecDeque::from(outbox.pending());
     loop {
-        let replayed=if retry_at.elapsed()>=Duration::from_secs(60) {
-            retry_at=std::time::Instant::now();
-            replay=std::collections::VecDeque::from(outbox.pending());
-            replay.pop_front()
-        } else { replay.pop_front() };
-        let delivery = if let Some(record)=replayed {
-            Delivery::FruitOutcome(record.notification,record.pity_zero,record.id)
-        } else { crossbeam_channel::select_biased! {
-            recv(priority_rx) -> item => match item { Ok(item) => item, Err(_) => break },
-            recv(rx) -> item => match item { Ok(item) => item, Err(_) => break },
-            default(Duration::from_secs(1)) => continue,
-        }};
+        // Fresh pity outcomes take precedence over a retry backlog.
+        let delivery = if let Ok(delivery)=priority_rx.try_recv() {delivery} else {
+            if retry_at.elapsed()>=Duration::from_secs(60) {
+                retry_at=std::time::Instant::now();
+                replay=std::collections::VecDeque::from(outbox.pending());
+            }
+            if let Some(record)=replay.pop_front() {
+                Delivery::FruitOutcome(record.notification,record.pity_zero,record.id)
+            } else {crossbeam_channel::select_biased! {
+                recv(priority_rx) -> item => match item { Ok(item) => item, Err(_) => break },
+                recv(rx) -> item => match item { Ok(item) => item, Err(_) => break },
+                default(Duration::from_secs(1)) => continue,
+            }}
+        };
         // Apply current consent/filtering again: changing modes must discard
         // already-queued nonzero catches, routine alerts and world spawns.
         if !delivery_allowed(&settings.read(), &delivery) { continue; }

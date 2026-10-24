@@ -81,8 +81,13 @@ impl Outbox {
             return Err("Outbox storage budget reached; pending records retained".into());
         }
         let temp=path.with_extension("tmp");
-        std::fs::write(&temp,bytes).map_err(|_|"Could not write outcome checkpoint")?;
+        use std::io::Write;
+        let mut file=std::fs::File::create(&temp).map_err(|_|"Could not create outcome checkpoint")?;
+        file.write_all(&bytes).map_err(|_|"Could not write outcome checkpoint")?;
+        file.sync_all().map_err(|_|"Could not flush outcome checkpoint")?;
+        drop(file);
         std::fs::rename(temp,path).map_err(|_|"Could not commit outcome checkpoint")?;
+        if let Ok(dir)=std::fs::File::open(&self.dir) {let _=dir.sync_all();}
         Ok(())
     }
 }

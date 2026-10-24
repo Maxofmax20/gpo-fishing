@@ -1060,9 +1060,9 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
         // endpoint replays the last frame when the game is gone, so the UI
         // must be able to tell live pixels from a stale replay.
         "stream_live": bot.ctx().roblox_rect().is_some() && preview_age_ms().is_some_and(|age| age < FRAME_TTL.as_millis() as u64),
-        "frame_age_ms": preview_age_ms(),
-        "api_version": 2,
     });
+    payload["frame_age_ms"] = json!(preview_age_ms());
+    payload["api_version"] = json!(2);
 
     // Keep serde_json's macro expansion bounded as the status contract grows.
     payload["pity_cap"] = json!(s.fruit_storage.pity_cap);
