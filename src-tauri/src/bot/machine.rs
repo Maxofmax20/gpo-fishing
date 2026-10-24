@@ -25,6 +25,8 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
     let mut tracker = Tracker::default();
     let mut anti_afk_at = Instant::now();
     let mut rod_equipped = false;
+    let mut rejected_casts = 0u8;
+    let mut failed_bait_selections = 0u8;
     actions::reset_rod_evidence(ctx);
 
     if !wait_for_roblox(ctx, false) {
@@ -64,10 +66,18 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
         }
         if ctx.settings.read().features.auto_bait {
             if !actions::select_bait(ctx) {
-                if ctx.state() == BotState::Paused || !ctx.alive() {
+                if ctx.state() == BotState::Paused || !ctx.alive() { return; }
+                failed_bait_selections = failed_bait_selections.saturating_add(1);
+                if failed_bait_selections >= 3 {
+                    ctx.log_warn("Bait selection failed three times; pausing instead of retrying indefinitely");
+                    ctx.set_state(BotState::Paused, Some("Bait selection repeatedly failed: check bait calibration and ensure the app panel is not covering the bait menu".into()));
                     return;
                 }
+                ctx.set_state(BotState::Recovering, Some("Bait selection failed; retrying locally".into()));
+                if !ctx.sleep_ms(500) { return; }
+                continue;
             }
+            failed_bait_selections = 0;
         }
         if !actions::cast(ctx) {
             return;
@@ -87,6 +97,7 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
                 return;
             }
             Outcome::Ended => {
+                rejected_casts = 0;
                 // 1. Direct fast reset immediately after ending minigame to cancel catch animation on frame 1
                 let s = ctx.settings.read();
                 let fast_reset_enabled = s.features.fast_reset;
@@ -140,12 +151,19 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
             }
             Outcome::CastFailed => {
                 rod_equipped = false;
-                ctx.log_warn("Cast did not start: bait menu remained open or another toolbar slot was selected; retrying bait and cast");
-                ctx.set_state(BotState::Recovering, Some("Cast not started; retrying bait and cast".into()));
-                if !ctx.sleep_ms(400) { return; }
+                rejected_casts = rejected_casts.saturating_add(1);
+                ctx.log_warn("Cast rejected: another toolbar slot is visibly selected; checking rod before retry");
+                if rejected_casts >= 3 {
+                    ctx.log_warn("Three confirmed rejected casts; pausing rather than looping forever");
+                    ctx.set_state(BotState::Paused, Some("Three rejected casts: check rod slot and bait calibration".into()));
+                    return;
+                }
+                ctx.set_state(BotState::Recovering, Some("Rod not selected; recovering before recast".into()));
+                if !ctx.sleep_ms(500) { return; }
                 continue;
             }
             Outcome::Timeout => {
+                rejected_casts = 0;
                 if let Some(reason) = check_disconnect(ctx) {
                     if handle_disconnect_flow(ctx, &reason, &mut rod_equipped) {
                         continue;
@@ -157,6 +175,7 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
                 ctx.log_debug("No bite; recasting");
             }
             Outcome::Lost => {
+                rejected_casts = 0;
                 if let Some(reason) = check_disconnect(ctx) {
                     if handle_disconnect_flow(ctx, &reason, &mut rod_equipped) {
                         continue;
@@ -685,17 +704,16 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
                     && cast_checked_at.elapsed() >= Duration::from_millis(500)
                     && !vision::has_bar(&frame, &palette) {
                     cast_checked_at = Instant::now();
-                    let menu_open = actions::bait_menu_open(ctx);
-                    if !ctx.alive() || ctx.state() == BotState::Paused || !ctx.roblox_in_front() {
-                        ctx.release_mouse(); return Outcome::Stopped;
-                    }
-                    let rod = if !menu_open && actions::rod_visibly_unequipped(ctx) {
+                    // A visible Fishing Baits menu is not proof of a failed
+                    // cast: the selected-bait overlay persists in GPO. Avoid
+                    // the expensive repeated menu OCR in the cast loop.
+                    let rod = if actions::rod_visibly_unequipped(ctx) {
                         actions::rod_state::RodEvidence::Unequipped
                     } else { actions::rod_state::RodEvidence::Unknown };
                     if !ctx.alive() || ctx.state() == BotState::Paused || !ctx.roblox_in_front() {
                         ctx.release_mouse(); return Outcome::Stopped;
                     }
-                    if cast_watch.observe(started.elapsed().as_millis() as u64, menu_open, rod) {
+                    if cast_watch.observe(started.elapsed().as_millis() as u64, false, rod) {
                         return Outcome::CastFailed;
                     }
                 }
