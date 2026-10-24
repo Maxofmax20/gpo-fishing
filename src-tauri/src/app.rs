@@ -145,7 +145,8 @@ pub fn setup(app: &AppHandle, st: &AppState) -> Result<(), Box<dyn std::error::E
         tracing::info!("Found resume_state! Auto-resuming macro after update...");
         let bot = Arc::clone(&st.bot);
         let webhook = Arc::clone(&st.webhook);
-        let generation = bot.control_generation();
+        // Any control action since process startup revokes automatic resume.
+        let generation = 0;
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_secs(3));
             if let Err(error) = bot.resume_after_update(generation) { tracing::warn!("Update resume postponed: {error}"); return; }

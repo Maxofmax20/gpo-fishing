@@ -97,7 +97,6 @@ impl Bot {
                 self.finalize_ml_session("update checkpoint");
             }
             self.ctx.store.save_stats(&self.ctx.session.lock().lifetime()).map_err(|e| e.to_string())?;
-            self.ctx.store.save(&self.ctx.settings()).map_err(|e| e.to_string())?;
             self.ctx.store.commit_update_resume(&id)?;
             self.ctx.emit_stats();
             Ok(())
@@ -105,7 +104,7 @@ impl Bot {
         if let Err(error) = result {
             // If preparation had already quiesced the session, recover it on
             // failure, provided a newer Stop/Pause did not revoke this request.
-            let request = self.ctx.store.cancel_update_resume(Some(&id));
+            let request = self.ctx.store.cancel_update_resume(Some(&id))?;
             if quiesced && request.is_some() && was_running && !self.is_running()
                 && self.generation.load(Ordering::SeqCst) == generation
                 && self.state() == BotState::Paused
@@ -119,7 +118,7 @@ impl Bot {
 
     pub fn cancel_update(self: &Arc<Self>, id: &str) -> Result<(), String> {
         let generation = self.generation.load(Ordering::SeqCst);
-        let request = self.ctx.store.cancel_update_resume(Some(id));
+        let request = self.ctx.store.cancel_update_resume(Some(id))?;
         if request.is_some_and(|(intent, prepared)| intent.was_running && prepared)
             && !self.is_running()
         {
@@ -158,7 +157,7 @@ impl Bot {
     }
 
     pub fn start_checked(self: &Arc<Self>) -> Result<(), String> {
-        self.ctx.store.cancel_update_resume(None);
+        self.ctx.store.cancel_update_resume(None)?;
         self.start_at_generation(None)
     }
 
@@ -233,7 +232,7 @@ impl Bot {
     }
 
     pub fn pause(&self) {
-        self.ctx.store.cancel_update_resume(None);
+        if let Err(error) = self.ctx.store.cancel_update_resume(None) { self.ctx.log_error(&error); }
         self.generation.fetch_add(1, Ordering::SeqCst);
         let was_running = self.ctx.running.swap(false, Ordering::SeqCst);
         self.ctx.platform.input.release_all();
@@ -254,7 +253,7 @@ impl Bot {
     }
 
     pub fn stop(&self) {
-        self.ctx.store.cancel_update_resume(None);
+        if let Err(error) = self.ctx.store.cancel_update_resume(None) { self.ctx.log_error(&error); }
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.ctx.running.store(false, Ordering::SeqCst);
         self.ctx.platform.input.release_all();

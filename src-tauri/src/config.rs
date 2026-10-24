@@ -891,11 +891,31 @@ impl Store {
         let bytes = serde_json::to_vec(&intent).map_err(|e| e.to_string())?;
         write_atomic(&self.update_resume_path(), &bytes).map_err(|e| e.to_string())
     }
-    pub fn cancel_update_resume(&self, id: Option<&str>) -> Option<(crate::core::update_handoff::ResumeIntent, bool)> {
+    pub fn cancel_update_resume(&self, id: Option<&str>) -> Result<Option<(crate::core::update_handoff::ResumeIntent, bool)>, String> {
         let mut gate = self.update_gate.lock();
         let result = gate.cancel(id);
-        if result.is_some() { let _ = fs::remove_file(self.update_resume_path()); }
-        result
+        if let Some((intent, prepared)) = &result {
+            if *prepared {
+                let path = self.update_resume_path();
+                match fs::remove_file(&path) {
+                    Ok(()) => {},
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+                    Err(_) => {
+                        // If directory deletion is denied, overwrite the existing
+                        // checkpoint with a durable non-resumable tombstone.
+                        use std::io::Write;
+                        let mut revoked = intent.clone();
+                        revoked.was_running = false;
+                        let bytes = serde_json::to_vec(&revoked).map_err(|e| e.to_string())?;
+                        let mut file = fs::OpenOptions::new().write(true).truncate(true).open(&path)
+                            .map_err(|_| "Could not revoke update checkpoint on disk; do not install or restart until storage permissions are fixed".to_string())?;
+                        file.write_all(&bytes).and_then(|_| file.sync_all())
+                            .map_err(|_| "Could not persist update cancellation; storage needs attention".to_string())?;
+                    }
+                }
+            }
+        }
+        Ok(result)
     }
     pub fn take_update_resume(&self, version: &str) -> bool {
         let path = self.update_resume_path();
