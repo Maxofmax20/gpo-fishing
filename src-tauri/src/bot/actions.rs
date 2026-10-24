@@ -181,6 +181,13 @@ pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
         return true;
     }
 
+    // Establish a known selection first. Pressing the rod key while it is
+    // already selected unequips it, including after a paused/unknown session.
+    if s.keys.reset_slot != s.keys.rod {
+        if !key_tap(ctx, Key::Char(s.keys.reset_slot)) || !ctx.sleep_ms(60) {
+            return false;
+        }
+    }
     ctx.log_info(&format!("Equipping rod ({})", s.keys.rod));
     if !key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(120) {
         return false;
@@ -224,6 +231,7 @@ pub fn is_bait_depleted(ctx: &Ctx) -> bool {
 /// Scans the in-game bait menu using the trained neural network (with Windows OCR fallback).
 /// Returns: (BaitStock, is_menu_visible)
 pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, bool), String> {
+    if !ctx.alive() { return Err("Bait scan cancelled".into()); }
     let rect = ctx.roblox_rect().ok_or("Roblox window not found")?;
     let scan_rect = {
         let s = ctx.settings();
@@ -240,9 +248,7 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
         .grab(scan_rect)
         .map_err(|e| format!("Screen capture failed: {e}"))?;
 
-    let s = ctx.settings();
-
-    // 1. Dedicated neural network classifier (100% accurate, dedicated GPO model, sub-millisecond local execution)
+    // Prefer the local bait model; no network request belongs in this loop.
     if let Some(stock) = crate::core::bait::scan_bait_stock_neural(&frame) {
         ctx.log_info(&format!(
             "🐟 Bait stock recognized via neural model: Leg={:?}, Rare={:?}, Com={:?}",
@@ -251,26 +257,15 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
         return Ok((stock, true));
     }
 
-    // 2. Try Gemini Vision if enabled and configured (fallback)
-    if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
-        match crate::core::gemini::scan_bait_stock_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
-            Ok(stock) => {
-                ctx.log_info(&format!(
-                    "🐟 Bait stock recognized via Gemini Vision ({}): Leg={:?}, Rare={:?}, Com={:?}",
-                    s.gemini.model, stock.legendary, stock.rare, stock.common
-                ));
-                return Ok((stock, true));
-            }
-            Err(e) => {
-                ctx.log_warn(&format!("Gemini Vision scan failed ({e}); falling back to Windows OCR"));
-            }
-        }
-    }
+    // Automatic fishing must not wait on a network vision service.
+    // A missing menu is normal after a cast, not a reason to call Gemini.
+    if !ctx.alive() { return Err("Bait scan cancelled".into()); }
 
     // 3. Fallback to Windows OCR if available
     if ctx.platform.ocr.available() {
-        if let Ok(text) = ctx.platform.ocr.read(&frame) {
-            ctx.log_info(&format!("Bait menu OCR raw text:\n{text}"));
+        if let Ok(text) = ctx.platform.ocr.read_with_timeout(&frame, std::time::Duration::from_millis(200)) {
+            if !ctx.alive() { return Err("Bait scan cancelled".into()); }
+            ctx.log_debug(&format!("Bait menu OCR raw text:\n{text}"));
             let is_visible = crate::core::bait::is_bait_menu_visible(&text);
             let stock = crate::core::bait::parse_bait_stock_with_frame(&text, &frame);
             return Ok((stock, is_visible));
@@ -299,6 +294,7 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             }
         };
 
+        if !ctx.alive() { return false; }
         if !menu_visible {
             // Menu is not open on screen. If rod is already in hand from previous cast, it is already baited!
             ctx.log_debug("Smart Bait: bait menu not visible (rod already baited); skipping selection.");
@@ -1229,6 +1225,30 @@ mod rod_state_tests {
         assert!(!events.iter().any(|e| matches!(e,InputEvent::Key(Key::Char('1'),true))));
         drop(events);
         let _=std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn unknown_rod_selection_switches_away_before_equipping_once() {
+        let (ctx,input,dir) = fixture(false);
+        let mut equipped = false;
+        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        let events = input.events.lock();
+        let keys: Vec<char> = events.iter().filter_map(|event| match event {
+            InputEvent::Key(Key::Char(key), true) => Some(*key),
+            _ => None,
+        }).collect();
+        assert_eq!(keys, vec![ctx.settings().keys.reset_slot, '4']);
+        drop(events);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn paused_bait_scan_never_starts_capture_or_network_work() {
+        let (ctx,input,dir) = fixture(false);
+        ctx.running.store(false, Ordering::SeqCst);
+        assert!(scan_bait_stock_raw(&ctx).is_err());
+        assert!(input.events.lock().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -81,25 +81,10 @@ pub fn run(ctx: &Arc<Ctx>, skip_setup: bool) {
                 return;
             }
             Outcome::Ended => {
-                // 1. Direct fast reset immediately after ending minigame to cancel catch animation on frame 1
-                let s = ctx.settings.read();
-                let fast_reset_enabled = s.features.fast_reset;
-                let reset_key = s.keys.reset_slot;
-                let rod_key = s.keys.rod;
-                drop(s);
-
-                if fast_reset_enabled {
-                    ctx.log_info(&format!("⚡ Fast reset: immediately canceling animation with slot [{reset_key}] -> rod [{rod_key}]"));
-                    actions::key_tap(ctx, Key::Char(reset_key));
-                    if !ctx.sleep_ms(35) {
-                        return;
-                    }
-                    actions::key_tap(ctx, Key::Char(rod_key));
-                    if !ctx.sleep_ms(80) {
-                        return;
-                    }
-                    rod_equipped = true;
-                }
+                // Catch animations may change the held item after the bar ends.
+                // Re-establish selection on the next cast, after result handling,
+                // rather than marking an early toggle as a confirmed equipped rod.
+                rod_equipped = false;
 
                 let (verdict, text, result_frame) = verify_catch(ctx);
                 // Training-data collection: one sample per ended reel, only
@@ -878,12 +863,13 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
         return (fruit::CatchVerdict::Unknown, String::new(), None);
     }
     let s = ctx.settings();
-    let max_reads = s.ocr.post_catch_reads.max(1);
+    let deadline = Instant::now() + Duration::from_millis(400);
+    let max_reads = s.ocr.post_catch_reads.clamp(1, 3);
     let mut last = String::new();
     for read in 0..max_reads {
-        if !ctx.alive() { break; }
+        if !ctx.alive() || Instant::now() >= deadline { break; }
         if let Some(frame) = grab_region(ctx, s.regions.drop) {
-            if let Ok(text) = ctx.platform.ocr.read(&frame) {
+            if let Ok(text) = ctx.platform.ocr.read_with_timeout(&frame, deadline.saturating_duration_since(Instant::now()).min(Duration::from_millis(200))) {
                 if !text.trim().is_empty() {
                     last = text.clone();
                     ctx.log_info(&format!("Reel text: {}", text.trim()));
@@ -894,9 +880,9 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
                 }
                 // Fading/low-contrast banners can produce an empty first read.
                 // The second read is the same observation, not a new catch.
-                if !ctx.alive() { break; }
+                if !ctx.alive() || Instant::now() >= deadline { break; }
                 let enhanced = actions::catch_banner_ocr_frame(&frame);
-                if let Ok(retry) = ctx.platform.ocr.read(&enhanced) {
+                if let Ok(retry) = ctx.platform.ocr.read_with_timeout(&enhanced, deadline.saturating_duration_since(Instant::now()).min(Duration::from_millis(200))) {
                     let verdict = fruit::detect_catch(&s.lexicon, &retry);
                     if verdict != fruit::CatchVerdict::Unknown {
                         ctx.log_info(&format!("Verified enhanced catch text: {}", retry.trim()));
@@ -906,7 +892,7 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
                 }
             }
         }
-        if read + 1 == max_reads || !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms) { break; }
+        if read + 1 == max_reads || !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms.min(25)) { break; }
     }
     if last.is_empty() { ctx.log_info("Reel text: (nothing read in drop area)"); }
     (fruit::CatchVerdict::Unknown, last, None)
