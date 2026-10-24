@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 use std::time::Duration;
 
 use crossbeam_channel::{bounded, Receiver, Sender};
@@ -37,6 +37,7 @@ enum Delivery {
 }
 
 pub struct WebhookQueue {
+    pending: Arc<AtomicUsize>,
     tx: Option<Sender<Delivery>>,
     priority_tx: Option<Sender<Delivery>>,
     settings: Option<Arc<RwLock<Settings>>>,
@@ -44,18 +45,20 @@ pub struct WebhookQueue {
 
 impl WebhookQueue {
     pub fn disabled() -> Self {
-        Self { tx: None, priority_tx: None, settings: None }
+        Self { pending: Arc::new(AtomicUsize::new(0)), tx: None, priority_tx: None, settings: None }
     }
 
     pub fn start(settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) -> Arc<Self> {
         let (tx, rx) = bounded::<Delivery>(8);
         let (priority_tx, priority_rx) = bounded::<Delivery>(8);
         let s2 = Arc::clone(&settings);
+        let pending=Arc::new(AtomicUsize::new(0));
+        let worker_pending=Arc::clone(&pending);
         std::thread::Builder::new()
             .name("webhook".into())
-            .spawn(move || worker(rx, priority_rx, s2, events))
+            .spawn(move || worker(rx, priority_rx, s2, events, worker_pending))
             .expect("spawn webhook worker");
-        Arc::new(Self { tx: Some(tx), priority_tx: Some(priority_tx), settings: Some(settings) })
+        Arc::new(Self { pending, tx: Some(tx), priority_tx: Some(priority_tx), settings: Some(settings) })
     }
 
     fn enqueue(&self, mut delivery: Delivery, priority: bool) {
@@ -69,13 +72,26 @@ impl WebhookQueue {
             tracing::warn!("Notification screenshot exceeded 1 MiB budget; keeping text details");
         }
         let sender = if priority { self.priority_tx.as_ref().or(self.tx.as_ref()) } else { self.tx.as_ref() };
-        if sender.is_some_and(|tx| tx.try_send(delivery).is_err()) {
-            tracing::warn!("Notification queue full; delivery not accepted (fishing continues)");
+        if let Some(tx) = sender {
+            self.pending.fetch_add(1, Ordering::SeqCst);
+            if tx.try_send(delivery).is_err() {
+                self.pending.fetch_sub(1, Ordering::SeqCst);
+                tracing::warn!("Notification queue full; delivery not accepted (fishing continues)");
+            }
         }
     }
 
     pub fn queue_depth(&self)->usize {
         self.tx.as_ref().map_or(0,|q|q.len())+self.priority_tx.as_ref().map_or(0,|q|q.len())
+    }
+
+    pub fn flush_pending(&self, timeout: Duration, continue_waiting: impl Fn() -> bool) -> bool {
+        let deadline=std::time::Instant::now()+timeout;
+        while self.pending.load(Ordering::SeqCst)>0 {
+            if !continue_waiting() || std::time::Instant::now()>=deadline { return false; }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        continue_waiting()
     }
 
     fn enabled(&self) -> bool {
@@ -608,25 +624,32 @@ fn delivery_allowed(settings: &Settings, delivery: &Delivery) -> bool {
         || matches!(delivery, Delivery::FruitOutcome(_, true, _)))
 }
 
-fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) {
+struct InFlightDelivery(Arc<AtomicUsize>);
+impl Drop for InFlightDelivery {
+    fn drop(&mut self) { self.0.fetch_sub(1, Ordering::SeqCst); }
+}
+
+fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>, pending: Arc<AtomicUsize>) {
     let outbox=crate::notification_outbox::Outbox::new(crate::app::data_dir().join("notification-outbox"));
     let mut retry_at=std::time::Instant::now();
     let mut replay=std::collections::VecDeque::from(outbox.pending());
     loop {
         // Fresh pity outcomes take precedence over a retry backlog.
-        let delivery = if let Ok(delivery)=priority_rx.try_recv() {delivery} else {
+        let (delivery, from_queue) = if let Ok(delivery)=priority_rx.try_recv() {(delivery,true)} else {
             if retry_at.elapsed()>=Duration::from_secs(60) {
                 retry_at=std::time::Instant::now();
                 replay=std::collections::VecDeque::from(outbox.pending());
             }
             if let Some(record)=replay.pop_front() {
-                Delivery::FruitOutcome(record.notification,record.pity_zero,record.id)
+                (Delivery::FruitOutcome(record.notification,record.pity_zero,record.id),false)
             } else {crossbeam_channel::select_biased! {
-                recv(priority_rx) -> item => match item { Ok(item) => item, Err(_) => break },
-                recv(rx) -> item => match item { Ok(item) => item, Err(_) => break },
+                recv(priority_rx) -> item => match item { Ok(item) => (item,true), Err(_) => break },
+                recv(rx) -> item => match item { Ok(item) => (item,true), Err(_) => break },
                 default(Duration::from_secs(1)) => continue,
             }}
         };
+        // Replays were already persisted; only RAM intake owns a producer count.
+        let _in_flight=from_queue.then(|| InFlightDelivery(Arc::clone(&pending)));
         // Apply current consent/filtering again: changing modes must discard
         // already-queued nonzero catches, routine alerts and world spawns.
         if !delivery_allowed(&settings.read(), &delivery) { continue; }
@@ -786,7 +809,7 @@ mod fruit_delivery_tests {
         settings.gemini.api_key = "unused-test-key".into();
         let settings = Arc::new(RwLock::new(settings));
         let (tx, rx) = unbounded(); // no transport worker; no external requests
-        let queue = WebhookQueue { tx: Some(tx), priority_tx: None, settings: Some(settings.clone()) };
+        let queue = WebhookQueue { pending: Arc::new(AtomicUsize::new(0)), tx: Some(tx), priority_tx: None, settings: Some(settings.clone()) };
         let info = SpawnInfo { text: "A Kilo has spawned at Orange Town".into(), name: Some("Kilo".into()), location: Some("Orange Town".into()), is_ase: false, custom_telegram_message: None };
         queue.spawn(&info, None);
         assert!(settings.try_write().is_some(), "producer must release settings locks");
@@ -843,7 +866,7 @@ mod fruit_delivery_tests {
         s.webhook.telegram_chat_id = "unused-test-chat".into();
         let settings = Arc::new(RwLock::new(s));
         let (tx, rx) = unbounded();
-        let queue = WebhookQueue { tx: Some(tx), priority_tx: None, settings: Some(settings) };
+        let queue = WebhookQueue { pending: Arc::new(AtomicUsize::new(0)), tx: Some(tx), priority_tx: None, settings: Some(settings) };
         let d = DropInfo { name: None, pity: Some("0/40".into()), text: "0/40".into(), is_legendary: false, custom_telegram_message: None };
         queue.fruit_drop(&d, Some(vec![1]));
         assert!(rx.try_recv().is_err(), "no screenshot or notification before storage");
@@ -877,7 +900,7 @@ mod fruit_delivery_tests {
         s.webhook.telegram_chat_id = "synthetic-test-chat".into();
         let (tx, rx) = bounded(1);
         let (priority_tx, priority_rx) = bounded(1);
-        let q = WebhookQueue { tx: Some(tx), priority_tx: Some(priority_tx), settings: Some(Arc::new(RwLock::new(s))) };
+        let q = WebhookQueue { pending: Arc::new(AtomicUsize::new(0)), tx: Some(tx), priority_tx: Some(priority_tx), settings: Some(Arc::new(RwLock::new(s))) };
         let at = std::time::Instant::now();
         q.notify_message("first", "routine");
         q.notify_message("full", "must not block");
@@ -903,5 +926,20 @@ mod fruit_delivery_tests {
     }
     #[test] fn delivery_failure_is_returned() {
         assert!(deliver_telegram("Stored", None, |_, _| Ok(200), |_| Err("offline".into())).is_err());
+    }
+}
+
+#[cfg(test)]
+mod update_drain_tests {
+    use super::*;
+    #[test]
+    fn update_waits_for_inflight_notification_and_honors_cancellation() {
+        let queue=WebhookQueue::disabled();
+        queue.pending.store(1,Ordering::SeqCst);
+        let in_flight=InFlightDelivery(Arc::clone(&queue.pending));
+        assert!(!queue.flush_pending(Duration::from_millis(20),||true));
+        assert!(!queue.flush_pending(Duration::from_secs(5),||false));
+        drop(in_flight);
+        assert!(queue.flush_pending(Duration::from_millis(1),||true));
     }
 }
