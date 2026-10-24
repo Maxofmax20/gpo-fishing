@@ -25,6 +25,9 @@ use crate::events::{BotEvent, BotState};
 use crate::webhook::WebhookQueue;
 use ctx::Ctx;
 
+#[cfg(test)]
+pub static WORKFLOW_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 pub struct Bot {
     ctx: Arc<Ctx>,
     thread: Mutex<Option<JoinHandle<()>>>,
@@ -72,7 +75,13 @@ impl Bot {
             request_id:id.clone(), source:env!("CARGO_PKG_VERSION").into(),
             target:target.into(), created_ms:crate::events::now_ms(), was_running,
         };
-        self.ctx.store.update_gate.lock().begin(intent)?;
+        {
+            let mut gate = self.ctx.store.update_gate.lock();
+            if recorder::is_playing() || recorder::is_recording() || crafting::is_crafting_running() {
+                return Err("Finish recording, playback or crafting before installing an update".into());
+            }
+            gate.begin(intent)?;
+        }
         let mut quiesced = false;
         let result = (|| -> Result<(), String> {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
@@ -97,7 +106,6 @@ impl Bot {
                 self.finalize_ml_session("update checkpoint");
             }
             self.ctx.store.save_stats(&self.ctx.session.lock().lifetime()).map_err(|e| e.to_string())?;
-            self.ctx.store.save(&self.ctx.settings()).map_err(|e| e.to_string())?;
             self.ctx.store.commit_update_resume(&id)?;
             self.ctx.emit_stats();
             Ok(())
@@ -105,7 +113,7 @@ impl Bot {
         if let Err(error) = result {
             // If preparation had already quiesced the session, recover it on
             // failure, provided a newer Stop/Pause did not revoke this request.
-            let request = self.ctx.store.cancel_update_resume(Some(&id));
+            let request = self.ctx.store.cancel_update_resume(Some(&id))?;
             if quiesced && request.is_some() && was_running && !self.is_running()
                 && self.generation.load(Ordering::SeqCst) == generation
                 && self.state() == BotState::Paused
@@ -119,7 +127,7 @@ impl Bot {
 
     pub fn cancel_update(self: &Arc<Self>, id: &str) -> Result<(), String> {
         let generation = self.generation.load(Ordering::SeqCst);
-        let request = self.ctx.store.cancel_update_resume(Some(id));
+        let request = self.ctx.store.cancel_update_resume(Some(id))?;
         if request.is_some_and(|(intent, prepared)| intent.was_running && prepared)
             && !self.is_running()
         {
@@ -128,9 +136,10 @@ impl Bot {
         Ok(())
     }
 
-    pub fn resume_after_update(self: &Arc<Self>) -> Result<(), String> {
-        self.paused.store(true, Ordering::SeqCst);
-        self.start_checked()
+    pub fn control_generation(&self) -> u64 { self.generation.load(Ordering::SeqCst) }
+
+    pub fn resume_after_update(self: &Arc<Self>, generation: u64) -> Result<(), String> {
+        self.start_at_generation_with_resume(Some(generation), true)
     }
 
     pub fn ctx(&self) -> &Arc<Ctx> {
@@ -157,14 +166,21 @@ impl Bot {
     }
 
     pub fn start_checked(self: &Arc<Self>) -> Result<(), String> {
-        self.ctx.store.cancel_update_resume(None);
+        self.ctx.store.cancel_update_resume(None)?;
         self.start_at_generation(None)
     }
 
     fn start_at_generation(self: &Arc<Self>, expected: Option<u64>) -> Result<(), String> {
+        self.start_at_generation_with_resume(expected, false)
+    }
+
+    fn start_at_generation_with_resume(self: &Arc<Self>, expected: Option<u64>, update_resume: bool) -> Result<(), String> {
         let _lifecycle = self.lifecycle.lock();
         if expected.is_some_and(|g| self.generation.load(Ordering::SeqCst) != g) {
-            return Ok(());
+            return if update_resume { Err("Automatic update resume cancelled by a newer control action".into()) } else { Ok(()) };
+        }
+        if update_resume && self.ctx.store.update_gate.lock().pending() {
+            return Err("Automatic resume postponed by another update".into());
         }
         if self.is_running() {
             return Ok(());
@@ -177,6 +193,7 @@ impl Bot {
         }
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.halt();
+        if update_resume { self.paused.store(true, Ordering::SeqCst); }
         let resume = self.paused.swap(false, Ordering::SeqCst);
         if resume {
             self.ctx.session.lock().resume();
@@ -224,7 +241,7 @@ impl Bot {
     }
 
     pub fn pause(&self) {
-        self.ctx.store.cancel_update_resume(None);
+        if let Err(error) = self.ctx.store.cancel_update_resume(None) { self.ctx.log_error(&error); }
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.ctx.input_epoch.fetch_add(1, Ordering::SeqCst);
         let was_running = self.ctx.running.swap(false, Ordering::SeqCst);
@@ -246,7 +263,7 @@ impl Bot {
     }
 
     pub fn stop(&self) {
-        self.ctx.store.cancel_update_resume(None);
+        if let Err(error) = self.ctx.store.cancel_update_resume(None) { self.ctx.log_error(&error); }
         crate::bot::crafting::stop_auto_craft();
         crate::bot::recorder::stop_playback();
         self.ctx.input_epoch.fetch_add(1, Ordering::SeqCst);
@@ -497,7 +514,20 @@ mod lifecycle_tests {
         }
     }
     #[test]
+    fn stop_or_pause_after_checkpoint_consumption_revokes_delayed_startup_resume() {
+        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
+        for pause in [false,true] {
+            let bot=bot(if pause { "startup-pause" } else { "startup-stop" });
+            let generation=bot.control_generation();
+            if pause { bot.pause(); } else { bot.stop(); }
+            assert!(bot.resume_after_update(generation).is_err());
+            assert!(!bot.is_running());
+            let _=std::fs::remove_dir_all(bot.ctx.store.dir());
+        }
+    }
+    #[test]
     fn update_waits_for_boundary_and_stop_revokes_resume() {
+        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
         let bot=bot("update-boundary");
         bot.ctx.running.store(true,Ordering::SeqCst);
         let worker=Arc::clone(&bot);
@@ -515,6 +545,7 @@ mod lifecycle_tests {
     }
     #[test]
     fn paused_update_failure_never_starts_fishing() {
+        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
         let bot=bot("update-paused");
         let id=bot.prepare_update("99.0.0").unwrap();
         bot.cancel_update(&id).unwrap();
@@ -523,6 +554,7 @@ mod lifecycle_tests {
     }
     #[test]
     fn pause_during_reel_cancels_install_preparation() {
+        let _guard = WORKFLOW_TEST_LOCK.lock().unwrap();
         let bot=bot("update-cancel");
         bot.ctx.running.store(true,Ordering::SeqCst);
         let worker=Arc::clone(&bot);
