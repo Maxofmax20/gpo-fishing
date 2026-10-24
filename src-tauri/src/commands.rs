@@ -354,7 +354,7 @@ pub async fn region_preview(st: State<'_, AppState>, region: RelRect, max_dim: O
     let palette = st.settings.read().fishing.palette;
     let max_dim = max_dim.unwrap_or(320) as usize;
     blocking(move || {
-        let frame = capture.grab(region.to_px(&roblox)).map_err(|e| e.to_string())?;
+        let frame = capture.grab_preview(region.to_px(&roblox)).map_err(|e| e.to_string())?;
         let confidence = vision::confidence(&frame, &palette);
         let reading = vision::read(&frame, &palette);
         let small = frame.downscale(max_dim);

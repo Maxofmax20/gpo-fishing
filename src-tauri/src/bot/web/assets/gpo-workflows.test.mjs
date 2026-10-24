@@ -55,3 +55,15 @@ test('crafting sends the target to the PC and never enforces completion from a b
   assert.equal(commands.filter(c=>c.path==='/api/craft' && c.body.action==='stop').length,0);
   assert.match(win.document.getElementById('progress-counter').textContent,/batches attempted/);
 });
+
+test('incomplete statistics snapshots never fabricate a pity cap or show undefined',async()=>{
+  const {win}=await page('stats');
+  assert.doesNotMatch(win.document.body.textContent,/undefined|NaN|telemetry encrypted|42 Sparks/i);
+  assert.equal(win.document.getElementById('pity-cap').textContent,'—');
+  assert.match(win.document.getElementById('pity-remaining-text').textContent,/unavailable/i);
+});
+test('paused remote sessions offer Resume and keep a real Stop control',async()=>{
+  const {win}=await page('remote');
+  assert.equal(win.document.getElementById('macro-btn-label').textContent,'RESUME FISHING');
+  assert.ok(win.document.getElementById('stop-fishing-btn'));
+});

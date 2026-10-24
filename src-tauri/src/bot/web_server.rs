@@ -268,11 +268,11 @@ struct RequestJob {
     input_epoch: u64,
 }
 struct RequestLanes {
+    ctx: Arc<crate::bot::ctx::Ctx>,
     control: crossbeam_channel::Sender<RequestJob>,
     work: crossbeam_channel::Sender<RequestJob>,
     streams: crossbeam_channel::Sender<RequestJob>,
 }
-static INPUT_EPOCH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn request_route(request: &str) -> (&str, &str, &str) {
     let mut parts = request
@@ -345,7 +345,7 @@ impl RequestLanes {
                             let (_, path, _) = request_route(&job.request);
                             if is_input_route(path)
                                 && !priority_request(&job.request)
-                                && job.input_epoch != INPUT_EPOCH.load(Ordering::SeqCst)
+                                && job.input_epoch != bot.ctx().input_epoch.load(Ordering::SeqCst)
                             {
                                 send_action_error(
                                     &mut job.stream,
@@ -366,6 +366,7 @@ impl RequestLanes {
             tx
         }
         Self {
+            ctx: bot.ctx().clone(),
             control: lane("web-control", 2, 8, bot, settings),
             work: lane("web-action", 4, 16, bot, settings),
             streams: lane("web-stream", 4, 0, bot, settings),
@@ -383,7 +384,7 @@ impl RequestLanes {
         let job = RequestJob {
             stream,
             request,
-            input_epoch: INPUT_EPOCH.load(Ordering::SeqCst),
+            input_epoch: self.ctx.input_epoch.load(Ordering::SeqCst),
         };
         if let Err(error) = lane.try_send(job) {
             let mut job = error.into_inner();
@@ -1063,6 +1064,7 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
     });
     payload["frame_age_ms"] = json!(preview_age_ms());
     payload["api_version"] = json!(2);
+    payload["pity_cap"] = json!(s.fruit_storage.pity_cap);
     let window=bot.ctx().platform.window.find();
     payload["readiness"]=json!({
         "game_found":window.is_some_and(|w|w.visible),
@@ -1294,10 +1296,10 @@ fn handle_drag(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let button = request.button.input();
     bot.ctx().platform.input.move_to(start);
     bot.ctx().platform.input.button(button, true);
-    let epoch = INPUT_EPOCH.load(Ordering::SeqCst);
+    let epoch = bot.ctx().input_epoch.load(Ordering::SeqCst);
     let steps = (request.duration_ms / 12).clamp(6, 25);
     for i in 1..=steps {
-        if INPUT_EPOCH.load(Ordering::SeqCst) != epoch {
+        if bot.ctx().input_epoch.load(Ordering::SeqCst) != epoch {
             break;
         }
         let t = i as f32 / steps as f32;
@@ -1843,7 +1845,7 @@ fn handle_action(
             "Macro start requested"
         }
         "stop" => {
-            INPUT_EPOCH.fetch_add(1, Ordering::SeqCst);
+            bot.ctx().input_epoch.fetch_add(1, Ordering::SeqCst);
             bot.ctx().platform.input.release_all();
             bot.ctx().release_mouse();
             crate::bot::crafting::stop_auto_craft();
@@ -1852,7 +1854,7 @@ fn handle_action(
             "Macro stopped"
         }
         "pause" => {
-            INPUT_EPOCH.fetch_add(1, Ordering::SeqCst);
+            bot.ctx().input_epoch.fetch_add(1, Ordering::SeqCst);
             bot.ctx().platform.input.release_all();
             bot.ctx().release_mouse();
             crate::bot::crafting::stop_auto_craft();
@@ -2966,7 +2968,7 @@ mod tests {
                 "{name} must load vendored fonts"
             );
             assert!(
-                page.contains("GPO CYBERDECK"),
+                page.contains("GPO AUTOFISH"),
                 "{name} must carry the shell"
             );
         }

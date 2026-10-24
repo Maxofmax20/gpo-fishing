@@ -170,6 +170,8 @@ impl Bot {
     }
 
     pub fn stop(&self) {
+        crate::bot::crafting::stop_auto_craft();
+        crate::bot::recorder::stop_playback();
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.ctx.running.store(false, Ordering::SeqCst);
         self.ctx.platform.input.release_all();

@@ -35,19 +35,20 @@
 
   function paint(d, ms) {
     gpoSetText('fish-counter', d.fish);
-    gpoSetText('catch-rate-text', d.success_rate + '% Catch Rate');
+    gpoSetText('catch-rate-text', Number.isFinite(d.success_rate) ? d.success_rate + '% verified catch rate' : 'Catch rate unavailable');
     const trend = document.getElementById('trend-pill');
     if (trend) trend.textContent = (d.success_rate ?? 0) + '% verified';
     gpoSetText('fruit-counter', d.fruits);
-    gpoSetText('fruit-pity-text', 'Pity • ' + d.pity_fruit + ' Sparks');
-    const cap = Math.max(1, d.pity_cap || 100);
-    const pity = Math.max(0, Math.min(cap, d.pity_legendary || 0));
-    gpoSetText('pity-val', pity);
+    gpoSetText('fruit-pity-text', Number.isFinite(d.pity_fruit) ? d.pity_fruit + ' tracked catches since fruit' : 'Pity reading unavailable');
+    const cap = Number.isFinite(d.pity_cap) && d.pity_cap > 0 ? d.pity_cap : null;
+    const pity = Number.isFinite(d.pity_legendary) ? Math.max(0, d.pity_legendary) : null;
+    gpoSetText('pity-val', pity ?? '—');
+    gpoSetText('pity-cap', cap ?? '—');
     const fill = document.getElementById('pity-fill-bar');
-    if (fill) fill.style.width = (pity * 100 / cap) + '%';
-    gpoSetText('pity-remaining-text', (cap - pity) + ' REMAINING');
+    if (fill) fill.style.width = (pity !== null && cap ? Math.min(100,pity * 100 / cap) : 0) + '%';
+    gpoSetText('pity-remaining-text', cap && pity !== null ? Math.max(0,cap-pity) + ' tracked catches remaining' : 'Pity cap unavailable');
     gpoSetText('session-stopwatch', gpoFmtRuntime(d.runtime_s));
-    gpoSetText('auto-orders-count', d.bait_purchased);
+    gpoSetText('auto-orders-count', d.bait_purchased ?? '—');
     const left = Math.max(0, (d.every_n_catches || 0) - (d.since_purchase || 0));
     gpoSetText('last-buy-text', d.auto_purchase ? ('Next buy: ' + left + ' fish') : 'Auto-buy disabled');
     gpoSetText('restock-done', d.since_purchase || 0);
@@ -57,7 +58,7 @@
     gpoSetText('active-tier-val', (d.bait_tier || '—').toUpperCase());
     gpoSetText('vault-units', d.legendary_reserve != null ? d.legendary_reserve : '—');
     const running = d.is_running && !d.paused;
-    gpoSetText('session-chip-text', 'SESSION • ' + (running ? d.state.toUpperCase() : (d.paused ? 'PAUSED' : 'IDLE')));
+    gpoSetText('session-chip-text', 'SESSION • ' + (running ? String(d.state || 'Running').toUpperCase() : (d.paused ? 'PAUSED' : 'IDLE')));
     gpoSetText('session-state-pill', running ? 'RUNNING' : (d.paused ? 'PAUSED' : 'IDLE'));
     gpoSetText('loop-rtt-text', ms + 'ms LOOP');
     renderLoot(d.recent_catches);

@@ -196,7 +196,8 @@ function gpoSetText(id, text) {
 // Shared PWR button visuals: cyan ON while running, dim OFF otherwise.
 function gpoPaintPwr(btn, running) {
   if (!btn) return;
-  const label = running ? 'PWR ON' : 'PWR OFF';
+  const label = running ? 'Pause' : 'Start';
+  btn.setAttribute('aria-label', running ? 'Pause fishing' : 'Start fishing');
   if (btn.textContent !== label) btn.textContent = label;
   btn.classList.toggle('opacity-60', !running);
 }
