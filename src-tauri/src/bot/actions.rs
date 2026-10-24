@@ -135,9 +135,10 @@ pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
     // 1. If custom rod slot indicator point is set, inspect around it:
     if let Some(rel) = s.points.rod_slot {
         let px = rel.to_px(&rect);
+        if rect.w < 5 || rect.h < 5 { return None; }
         let patch = PxRect {
-            x: (px.x - 2).max(rect.x),
-            y: (px.y - 2).max(rect.y),
+            x: (px.x - 2).clamp(rect.x, rect.x.saturating_add(rect.w - 5)),
+            y: (px.y - 2).clamp(rect.y, rect.y.saturating_add(rect.h - 5)),
             w: 5,
             h: 5,
         };
@@ -155,36 +156,9 @@ pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
         }
     }
 
-    // 2. Auto-detect on standard Roblox bottom hotbar slot 1:
-    if rect.h > 100 && rect.w > 200 {
-        let scan_h = 50.min(rect.h - 10);
-        let scan_w = 260.min(rect.w);
-        let scan_y = rect.y + rect.h - scan_h - 5;
-        let scan_x = rect.x + (rect.w / 2).saturating_sub(260);
-        let scan_rect = PxRect {
-            x: scan_x.max(rect.x),
-            y: scan_y.max(rect.y),
-            w: scan_w,
-            h: scan_h,
-        };
-        if let Ok(frame) = ctx.platform.capture.grab(scan_rect) {
-            for y in 0..frame.h {
-                let mut run = 0;
-                for x in 0..frame.w {
-                    let (r, g, b) = frame.px(x, y);
-                    if r > 210 && g > 210 && b > 210 {
-                        run += 1;
-                        if run >= 15 {
-                            return Some(true);
-                        }
-                    } else {
-                        run = 0;
-                    }
-                }
-            }
-            return Some(false);
-        }
-    }
+    // An uncalibrated bright line cannot identify the configured rod slot:
+    // item text, other hotbar slots and ability icons produce the same pixels.
+    // Retain the state of our own validated input instead of guessing slot 1.
 
     None
 }
@@ -198,11 +172,11 @@ pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
             ctx.log_debug("Fishing rod already equipped (visual check confirmed)");
             *rod_equipped = true;
             return true;
-        } else {
-            ctx.log_debug("Visual check detected rod is unequipped");
-            *rod_equipped = false;
         }
-    } else if *rod_equipped {
+        // A dark/occluded indicator is weak negative evidence. It must not
+        // toggle a rod we just equipped; state is reset at known slot changes.
+    }
+    if *rod_equipped {
         ctx.log_debug("Fishing rod already equipped (state tracking)");
         return true;
     }
@@ -894,12 +868,9 @@ fn submit_action_frame(ctx: &Ctx, region_tag: &str, ocr_text: &str) {
         Ok(f) => f,
         Err(_) => return,
     };
-    let png = match frame.to_png_bytes() {
-        Ok(b) => b,
-        Err(_) => return,
-    };
     ctx.ml.submit(crate::bot::ml_collect::SampleJob {
-        png,
+        png: Vec::new(),
+        frame: Some(frame.clone()),
         session_id: String::new(),
         task: crate::core::ml_dataset::MlTask::UiDetection,
         ui_label: None,

@@ -494,6 +494,8 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
     let mut tracking_since: Option<Instant> = None;
     let mut confirm = 0u32;
     let mut misses = 0u32;
+    let mut last_observation: Option<Instant> = None;
+    let mut blind_released = false;
     // Shadow sampling counter (observation only; see bot::shadow).
     let mut shadow_n: u64 = 0;
     let mut edge_warned = false;
@@ -552,7 +554,8 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
             }
         }
 
-        let grab_started = Instant::now();
+        let cycle_started = Instant::now();
+        let grab_started = cycle_started;
         let Some(client) = ctx.roblox_rect() else {
             if !ctx.sleep_ms(100) {
                 return Outcome::Stopped;
@@ -561,6 +564,7 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
         };
         let (capture_rect, origin_dx) = bar_capture_rect(&client, bar_region);
         let Some(frame) = grab_rect(ctx, capture_rect) else {
+            ctx.release_mouse();
             if !ctx.sleep_ms(100) {
                 return Outcome::Stopped;
             }
@@ -578,11 +582,14 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
         }
         match reading {
             Some(r) => {
+                if blind_released { tracker.reset(); }
+                last_observation = Some(now);
+                blind_released = false;
                 misses = 0;
                 if tracking_since.is_none() {
                     confirm += 1;
                     if confirm < confirm_frames {
-                        if !ctx.sleep(period) {
+                        if !ctx.sleep(period.saturating_sub(cycle_started.elapsed())) {
                             return Outcome::Stopped;
                         }
                         continue;
@@ -653,6 +660,10 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
             None => {
                 confirm = 0;
                 if let Some(t) = tracking_since {
+                    if last_observation.is_some_and(|at| at.elapsed() >= Duration::from_millis(100)) {
+                        ctx.release_mouse();
+                        blind_released = true;
+                    }
                     let bar_present = vision::has_bar(&frame, &palette);
                     if let Some(tr) = trace.as_mut() {
                         tr.blind(bar_present);
@@ -672,7 +683,7 @@ fn fish_cycle(ctx: &Ctx, tracker: &mut Tracker) -> Outcome {
             }
         }
 
-        if !ctx.sleep(period) {
+        if !ctx.sleep(period.saturating_sub(cycle_started.elapsed())) {
             finish_trace(trace.take(), "stopped", ctx);
             return Outcome::Stopped;
         }
@@ -743,12 +754,9 @@ fn submit_ml_frame(
     if ctx.ml.active_session_id().is_none() {
         return;
     }
-    let png = match frame.to_png_bytes() {
-        Ok(b) => b,
-        Err(_) => return,
-    };
     ctx.ml.submit(crate::bot::ml_collect::SampleJob {
-        png,
+        png: Vec::new(),
+        frame: Some(frame.clone()),
         session_id: String::new(),
         task,
         ui_label,
@@ -870,39 +878,37 @@ fn verify_catch(ctx: &Ctx) -> (fruit::CatchVerdict, String, Option<crate::core::
         return (fruit::CatchVerdict::Unknown, String::new(), None);
     }
     let s = ctx.settings();
-    // Catch accounting and local fish naming need verification even when
-    // fruit storage/alerts are off. A fading first read can be incomplete.
     let max_reads = s.ocr.post_catch_reads.max(1);
     let mut last = String::new();
     for read in 0..max_reads {
+        if !ctx.alive() { break; }
         if let Some(frame) = grab_region(ctx, s.regions.drop) {
             if let Ok(text) = ctx.platform.ocr.read(&frame) {
                 if !text.trim().is_empty() {
                     last = text.clone();
                     ctx.log_info(&format!("Reel text: {}", text.trim()));
-                    let v = fruit::detect_catch(&s.lexicon, &text);
-                    if v != fruit::CatchVerdict::Unknown {
-                        return (v, text, Some(frame));
+                    let verdict = fruit::detect_catch(&s.lexicon, &text);
+                    if verdict != fruit::CatchVerdict::Unknown {
+                        return (verdict, text, Some(frame));
                     }
-                    let enhanced = actions::catch_banner_ocr_frame(&frame);
-                    if let Ok(retry) = ctx.platform.ocr.read(&enhanced) {
-                        let verified = fruit::detect_catch(&s.lexicon, &retry);
-                        if verified != fruit::CatchVerdict::Unknown {
-                            ctx.log_info(&format!("Verified enhanced catch text: {}", retry.trim()));
-                            return (verified, retry, Some(frame));
-                        }
+                }
+                // Fading/low-contrast banners can produce an empty first read.
+                // The second read is the same observation, not a new catch.
+                if !ctx.alive() { break; }
+                let enhanced = actions::catch_banner_ocr_frame(&frame);
+                if let Ok(retry) = ctx.platform.ocr.read(&enhanced) {
+                    let verdict = fruit::detect_catch(&s.lexicon, &retry);
+                    if verdict != fruit::CatchVerdict::Unknown {
+                        ctx.log_info(&format!("Verified enhanced catch text: {}", retry.trim()));
+                        return (verdict, retry, Some(frame));
                     }
+                    if last.is_empty() { last = retry; }
                 }
             }
         }
-        if read + 1 == max_reads { break; }
-        if !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms) {
-            break;
-        }
+        if read + 1 == max_reads || !ctx.sleep_ms(s.ocr.post_catch_read_gap_ms) { break; }
     }
-    if last.is_empty() {
-        ctx.log_info("Reel text: (nothing read in drop area)");
-    }
+    if last.is_empty() { ctx.log_info("Reel text: (nothing read in drop area)"); }
     (fruit::CatchVerdict::Unknown, last, None)
 }
 

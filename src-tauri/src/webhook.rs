@@ -1,7 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crossbeam_channel::{unbounded, Receiver, Sender};
+use crossbeam_channel::{bounded, Receiver, Sender};
+#[cfg(test)]
+use crossbeam_channel::unbounded;
+use std::sync::OnceLock;
 use parking_lot::RwLock;
 use serde_json::{json, Value};
 
@@ -34,22 +37,40 @@ enum Delivery {
 
 pub struct WebhookQueue {
     tx: Option<Sender<Delivery>>,
+    priority_tx: Option<Sender<Delivery>>,
     settings: Option<Arc<RwLock<Settings>>>,
 }
 
 impl WebhookQueue {
     pub fn disabled() -> Self {
-        Self { tx: None, settings: None }
+        Self { tx: None, priority_tx: None, settings: None }
     }
 
     pub fn start(settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) -> Arc<Self> {
-        let (tx, rx) = unbounded::<Delivery>();
+        let (tx, rx) = bounded::<Delivery>(8);
+        let (priority_tx, priority_rx) = bounded::<Delivery>(8);
         let s2 = Arc::clone(&settings);
         std::thread::Builder::new()
             .name("webhook".into())
-            .spawn(move || worker(rx, s2, events))
+            .spawn(move || worker(rx, priority_rx, s2, events))
             .expect("spawn webhook worker");
-        Arc::new(Self { tx: Some(tx), settings: Some(settings) })
+        Arc::new(Self { tx: Some(tx), priority_tx: Some(priority_tx), settings: Some(settings) })
+    }
+
+    fn enqueue(&self, mut delivery: Delivery, priority: bool) {
+        // A slow provider must never grow RAM or block the controller.
+        // At most 16 messages * 1 MiB photo bytes are queued.
+        let notification = match &mut delivery {
+            Delivery::Message(n) | Delivery::Spawn(n, _) | Delivery::FruitOutcome(n, _) => n,
+        };
+        if notification.photo.as_ref().is_some_and(|p| p.len() > 1024 * 1024) {
+            notification.photo = None;
+            tracing::warn!("Notification screenshot exceeded 1 MiB budget; keeping text details");
+        }
+        let sender = if priority { self.priority_tx.as_ref().or(self.tx.as_ref()) } else { self.tx.as_ref() };
+        if sender.is_some_and(|tx| tx.try_send(delivery).is_err()) {
+            tracing::warn!("Notification queue full; delivery not accepted (fishing continues)");
+        }
     }
 
     fn enabled(&self) -> bool {
@@ -80,9 +101,7 @@ impl WebhookQueue {
         if !self.enabled() {
             return;
         }
-        if let Some(tx) = &self.tx {
-            let _ = tx.send(Delivery::Message(notif));
-        }
+        self.enqueue(Delivery::Message(notif), false);
     }
 
     pub fn test(&self) -> Result<(), String> {
@@ -200,9 +219,7 @@ impl WebhookQueue {
         if let Some(notification) = storage_notification(&settings, catch, outcome, photo) {
             drop(settings);
             if self.enabled() {
-                if let Some(tx) = &self.tx {
-                    let _ = tx.send(Delivery::FruitOutcome(notification, catch.pity_zero));
-                }
+                self.enqueue(Delivery::FruitOutcome(notification, catch.pity_zero), true);
             }
         }
     }
@@ -333,9 +350,7 @@ impl WebhookQueue {
         // Enrichment and transport belong to the notification worker. The
         // spawn observer never waits for a network request or changes control.
         if self.enabled() {
-            if let Some(tx) = &self.tx {
-                let _ = tx.send(Delivery::Spawn(notification, info.clone()));
-            }
+            self.enqueue(Delivery::Spawn(notification, info.clone()), false);
         }
     }
 
@@ -383,7 +398,7 @@ fn embed(title: &str, desc: &str, color: u32, fields: Vec<Value>) -> Value {
         "description": desc,
         "color": color,
         "fields": fields,
-        "footer": { "text": "GPO Autofish v4" },
+        "footer": { "text": concat!("GPO Autofish ", env!("CARGO_PKG_VERSION")) },
         "timestamp": chrono_now(),
     })
 }
@@ -426,11 +441,17 @@ fn escape_html(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
-fn post_discord(url: &str, body: &Value) -> Result<u16, String> {
-    let client = reqwest::blocking::Client::builder()
+fn http_client() -> Result<&'static reqwest::blocking::Client, String> {
+    static CLIENT: OnceLock<Result<reqwest::blocking::Client, String>> = OnceLock::new();
+    CLIENT.get_or_init(|| reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(3))
         .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+        .build().map_err(|_| "Could not initialise notification transport".to_string()))
+        .as_ref().map_err(Clone::clone)
+}
+
+fn post_discord(url: &str, body: &Value) -> Result<u16, String> {
+    let client = http_client()?;
     let resp = client.post(url).json(body).send().map_err(|e| e.to_string())?;
     let status = resp.status();
     if status.is_success() {
@@ -441,10 +462,7 @@ fn post_discord(url: &str, body: &Value) -> Result<u16, String> {
 }
 
 fn post_discord_photo(url: &str, body: &Value, photo: &[u8]) -> Result<u16, String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = http_client()?;
     let part = reqwest::blocking::multipart::Part::bytes(photo.to_vec())
         .file_name("catch.png")
         .mime_str("image/png")
@@ -462,10 +480,7 @@ fn post_discord_photo(url: &str, body: &Value, photo: &[u8]) -> Result<u16, Stri
 }
 
 pub fn post_telegram(token: &str, chat_id: &str, html: &str) -> Result<u16, String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = http_client()?;
     let url = format!("https://api.telegram.org/bot{token}/sendMessage");
     let body = json!({
         "chat_id": chat_id,
@@ -478,8 +493,7 @@ pub fn post_telegram(token: &str, chat_id: &str, html: &str) -> Result<u16, Stri
     if status.is_success() {
         Ok(status.as_u16())
     } else {
-        let err_body = resp.text().unwrap_or_default();
-        Err(format!("Telegram error {}: {}", status.as_u16(), err_body))
+        Err(format!("Telegram returned HTTP {}", status.as_u16()))
     }
 }
 
@@ -490,10 +504,7 @@ pub fn post_telegram_with_button(
     btn_text: &str,
     btn_url: &str,
 ) -> Result<u16, String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = http_client()?;
     let url = format!("https://api.telegram.org/bot{token}/sendMessage");
     let body = json!({
         "chat_id": chat_id,
@@ -511,17 +522,13 @@ pub fn post_telegram_with_button(
     if status.is_success() {
         Ok(status.as_u16())
     } else {
-        let err_body = resp.text().unwrap_or_default();
-        Err(format!("Telegram error {}: {}", status.as_u16(), err_body))
+        Err(format!("Telegram returned HTTP {}", status.as_u16()))
     }
 }
 
 
 pub fn post_telegram_photo(token: &str, chat_id: &str, photo: &[u8], caption: &str) -> Result<u16, String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = http_client()?;
     let url = format!("https://api.telegram.org/bot{token}/sendPhoto");
     let part = reqwest::blocking::multipart::Part::bytes(photo.to_vec())
         .file_name("catch.png")
@@ -550,8 +557,7 @@ pub fn post_telegram_photo(token: &str, chat_id: &str, photo: &[u8], caption: &s
     if status.is_success() {
         Ok(status.as_u16())
     } else {
-        let err_body = resp.text().unwrap_or_default();
-        Err(format!("Telegram photo error {}: {}", status.as_u16(), err_body))
+        Err(format!("Telegram photo returned HTTP {}", status.as_u16()))
     }
 }
 
@@ -583,7 +589,7 @@ fn storage_notification(settings: &Settings, catch: &FruitCatchContext, outcome:
 
 fn delivery_log(events: &Sender<BotEvent>, message: String) {
     tracing::warn!("{message}");
-    let _ = events.send(BotEvent::Log(LogLine { ts: crate::events::now_ms(), level: crate::events::LogLevel::Warn, msg: message }));
+    let _ = events.try_send(BotEvent::Log(LogLine { ts: crate::events::now_ms(), level: crate::events::LogLevel::Warn, msg: message }));
 }
 
 fn delivery_allowed(settings: &Settings, delivery: &Delivery) -> bool {
@@ -591,8 +597,12 @@ fn delivery_allowed(settings: &Settings, delivery: &Delivery) -> bool {
         || matches!(delivery, Delivery::FruitOutcome(_, true)))
 }
 
-fn worker(rx: Receiver<Delivery>, settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) {
-    for delivery in rx.iter() {
+fn worker(rx: Receiver<Delivery>, priority_rx: Receiver<Delivery>, settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) {
+    loop {
+        let delivery = crossbeam_channel::select_biased! {
+            recv(priority_rx) -> item => match item { Ok(item) => item, Err(_) => break },
+            recv(rx) -> item => match item { Ok(item) => item, Err(_) => break },
+        };
         // Apply current consent/filtering again: changing modes must discard
         // already-queued nonzero catches, routine alerts and world spawns.
         if !delivery_allowed(&settings.read(), &delivery) { continue; }
@@ -644,8 +654,7 @@ fn worker(rx: Receiver<Delivery>, settings: Arc<RwLock<Settings>>, events: Sende
                         // secret webhook URL — redact before logging.
                         let safe = crate::core::secrets::redact(&e, &[&url]);
                         delivery_log(&events, format!("Discord notification attempt {} failed: {safe}", attempt + 1));
-                        std::thread::sleep(delay);
-                        delay *= 2;
+                        if attempt < 2 { std::thread::sleep(delay); delay *= 2; }
                     }
                 }
             }
@@ -689,8 +698,7 @@ fn worker(rx: Receiver<Delivery>, settings: Arc<RwLock<Settings>>, events: Sende
                         // Telegram API URLs embed the bot token — redact it.
                         let safe = crate::core::secrets::redact(&e, &[&tg_token, &tg_chat]);
                         delivery_log(&events, format!("Telegram notification attempt {} failed: {safe}", attempt + 1));
-                        std::thread::sleep(delay);
-                        delay *= 2;
+                        if attempt < 2 { std::thread::sleep(delay); delay *= 2; }
                     }
                 }
             }
@@ -726,7 +734,7 @@ mod fruit_delivery_tests {
         settings.gemini.api_key = "unused-test-key".into();
         let settings = Arc::new(RwLock::new(settings));
         let (tx, rx) = unbounded(); // no transport worker; no external requests
-        let queue = WebhookQueue { tx: Some(tx), settings: Some(settings.clone()) };
+        let queue = WebhookQueue { tx: Some(tx), priority_tx: None, settings: Some(settings.clone()) };
         let info = SpawnInfo { text: "A Kilo has spawned at Orange Town".into(), name: Some("Kilo".into()), location: Some("Orange Town".into()), is_ase: false, custom_telegram_message: None };
         queue.spawn(&info, None);
         assert!(settings.try_write().is_some(), "producer must release settings locks");
@@ -783,7 +791,7 @@ mod fruit_delivery_tests {
         s.webhook.telegram_chat_id = "unused-test-chat".into();
         let settings = Arc::new(RwLock::new(s));
         let (tx, rx) = unbounded();
-        let queue = WebhookQueue { tx: Some(tx), settings: Some(settings) };
+        let queue = WebhookQueue { tx: Some(tx), priority_tx: None, settings: Some(settings) };
         let d = DropInfo { name: None, pity: Some("0/40".into()), text: "0/40".into(), is_legendary: false, custom_telegram_message: None };
         queue.fruit_drop(&d, Some(vec![1]));
         assert!(rx.try_recv().is_err(), "no screenshot or notification before storage");
@@ -807,6 +815,27 @@ mod fruit_delivery_tests {
         assert!(delivery_allowed(&s, &Delivery::FruitOutcome(notification.clone(), true)));
         s.webhook.enabled = false;
         assert!(!delivery_allowed(&s, &Delivery::FruitOutcome(notification, true)));
+    }
+
+    #[test]
+    fn queue_pressure_never_blocks_and_priority_has_reserved_capacity() {
+        let mut s = Settings::default();
+        s.webhook.enabled = true;
+        s.webhook.telegram_bot_token = "synthetic-test-token".into();
+        s.webhook.telegram_chat_id = "synthetic-test-chat".into();
+        let (tx, rx) = bounded(1);
+        let (priority_tx, priority_rx) = bounded(1);
+        let q = WebhookQueue { tx: Some(tx), priority_tx: Some(priority_tx), settings: Some(Arc::new(RwLock::new(s))) };
+        let at = std::time::Instant::now();
+        q.notify_message("first", "routine");
+        q.notify_message("full", "must not block");
+        q.fruit_storage_outcome(&catch("0/40"), &StorageOutcome::Stored, Some(vec![1; 1024 * 1024 + 1]));
+        assert!(at.elapsed() < Duration::from_millis(100));
+        assert_eq!(rx.len(), 1);
+        match priority_rx.try_recv().unwrap() {
+            Delivery::FruitOutcome(n, true) => assert!(n.photo.is_none()),
+            _ => panic!("priority result must not compete with routine messages"),
+        }
     }
 
     #[test] fn photo_failure_falls_back_to_text() {
