@@ -28,14 +28,14 @@ fn counter_number(token: &str) -> Option<u32> {
     clean.parse().ok()
 }
 
-/// Existing structured nonzero evidence is conservative: never replace it
-/// with a different zero counter found elsewhere in a full-screen scan.
-pub fn recorded_nonzero(raw: Option<&str>) -> Option<PityEvidence> {
+/// Preserve existing catch-banner evidence, including protected zero. A later
+/// full-screen scan must not downgrade verified zero or replace nonzero.
+pub fn recorded(raw: Option<&str>) -> Option<PityEvidence> {
     let raw = raw?.trim();
     let (current, total) = raw.split_once('/')?;
     let current = counter_number(current.trim())?;
     let total = counter_number(total.trim())?;
-    if current == 0 || !matches!(total, 40 | 100) || current > total {
+    if !matches!(total, 40 | 100) || current > total {
         return None;
     }
     Some(PityEvidence {
@@ -177,8 +177,8 @@ mod tests {
         assert_eq!(parse("Pity 0/40 Legendary Pity 17/40").unwrap().current, 17);
         assert_eq!(parse("Legendary Pity 17/40 Pity 0/40").unwrap().current, 17);
         assert_eq!(parse("Guaranteed Pity 0/100").unwrap().current, 0);
-        assert_eq!(recorded_nonzero(Some("17/40")).unwrap().current, 17);
-        assert_eq!(recorded_nonzero(Some("0/40")), None);
+        assert_eq!(recorded(Some("17/40")).unwrap().current, 17);
+        assert_eq!(recorded(Some("0/40")).unwrap().current, 0);
     }
     #[test]
     fn conflicting_counters_are_not_guessed() {
