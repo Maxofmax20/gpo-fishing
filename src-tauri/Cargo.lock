@@ -1560,7 +1560,7 @@ dependencies = [
 
 [[package]]
 name = "gpo-autofish"
-version = "5.9.2"
+version = "5.9.3-beta.1"
 dependencies = [
  "base64 0.22.1",
  "crossbeam-channel",
@@ -1570,6 +1570,7 @@ dependencies = [
  "reqwest 0.12.28",
  "serde",
  "serde_json",
+ "semver",
  "strsim",
  "tauri",
  "tauri-build",

@@ -296,9 +296,15 @@ pub fn toggle_recording() -> Result<bool, String> {
 }
 
 pub fn start_recording(mode: RecordMode) -> Result<(), String> {
+    let update_store = STORE_REF.read().clone();
+    let update_gate = update_store.as_ref().map(|store| store.update_gate.lock());
+    if update_gate.as_ref().is_some_and(|gate| gate.pending()) {
+        return Err("Recording is unavailable while a signed update is pending".into());
+    }
     if IS_RECORDING.swap(true, Ordering::SeqCst) {
         return Err("Already recording a macro".into());
     }
+    drop(update_gate);
     let now = Instant::now();
     *ACTIVE_RECORDING.write() = Some(ActiveRecording {
         _mode: mode,
@@ -695,7 +701,12 @@ pub fn play_macro(
     if speed.is_some_and(|value| !value.is_finite() || !(0.1..=100.0).contains(&value)) {
         return Err("Playback speed must be between 0.1 and 100".into());
     }
+    let update_gate = store.update_gate.lock();
+    if update_gate.pending() {
+        return Err("Playback is unavailable while a signed update is pending".into());
+    }
     let target = claim_playback(load_macros(&store), name_or_id, &IS_PLAYING)?;
+    drop(update_gate);
     let sp = speed.unwrap_or(1.0).clamp(0.1, 100.0);
     let target_loops = if loop_mode {
         max_loops.unwrap_or(0)
@@ -1062,6 +1073,7 @@ mod tests {
 
     #[test]
     fn playback_from_the_app_works_while_fishing_is_stopped() {
+        let _guard = crate::bot::WORKFLOW_TEST_LOCK.lock().unwrap();
         use crate::core::platform::{GameWindow, Platform};
         use crate::core::platform::mock::{InputEvent, NoOcr, RecordingInput, ScriptedCapture};
         use crate::core::types::PxRect;

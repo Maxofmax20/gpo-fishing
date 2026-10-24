@@ -689,6 +689,7 @@ pub enum ConfigError {
 }
 
 pub struct Store {
+    pub(crate) update_gate: parking_lot::Mutex<crate::core::update_handoff::UpdateGate>,
     dir: PathBuf,
     /// Human-readable error from the last `load()` (e.g. corrupt file that
     /// was quarantined). Surfaced to the UI via `settings_load_error`.
@@ -697,7 +698,7 @@ pub struct Store {
 
 impl Store {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir, load_error: parking_lot::Mutex::new(None) }
+        Self { update_gate: parking_lot::Mutex::new(Default::default()), dir, load_error: parking_lot::Mutex::new(None) }
     }
 
     /// Error recorded during the last `load()`, if the settings file was
@@ -879,6 +880,50 @@ impl Store {
             return Ok(None);
         }
         backup_file(&p).map(Some).ok_or_else(|| "Cannot reset: backup of settings.json failed".to_string())
+    }
+
+    pub fn update_boundary_reached(&self) -> bool { self.update_gate.lock().boundary() }
+    fn update_resume_path(&self) -> PathBuf { self.dir.join("update-resume.json") }
+    pub fn commit_update_resume(&self, id: &str) -> Result<(), String> {
+        let mut gate = self.update_gate.lock();
+        let intent = gate.prepare(id)?;
+        fs::create_dir_all(&self.dir).map_err(|e| e.to_string())?;
+        let bytes = serde_json::to_vec(&intent).map_err(|e| e.to_string())?;
+        write_atomic(&self.update_resume_path(), &bytes).map_err(|e| e.to_string())
+    }
+    pub fn cancel_update_resume(&self, id: Option<&str>) -> Result<Option<(crate::core::update_handoff::ResumeIntent, bool)>, String> {
+        let mut gate = self.update_gate.lock();
+        let result = gate.cancel(id);
+        let path = self.update_resume_path();
+        let revoke = result.as_ref().is_some_and(|(_, prepared)| *prepared)
+            || (id.is_none() && path.exists());
+        if revoke {
+            match fs::remove_file(&path) {
+                Ok(()) => {},
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+                Err(_) => {
+                    // A reader may deny deletion while permitting writes.
+                    // A malformed/non-resumable tombstone also fails closed.
+                    use std::io::Write;
+                    let mut file = fs::OpenOptions::new().write(true).truncate(true).open(&path)
+                        .map_err(|_| "Could not revoke update checkpoint on disk; do not install or restart until storage permissions are fixed".to_string())?;
+                    file.write_all(br#"{"revoked":true}"#).and_then(|_| file.sync_all())
+                        .map_err(|_| "Could not persist update cancellation; storage needs attention".to_string())?;
+                }
+            }
+        }
+        Ok(result)
+    }
+    pub fn take_update_resume(&self, version: &str) -> bool {
+        let path = self.update_resume_path();
+        if fs::metadata(&path).is_ok_and(|meta| meta.len() > 4096) {
+            let _ = fs::remove_file(&path);
+            return false;
+        }
+        let bytes = fs::read(&path).ok();
+        if bytes.is_some() && fs::remove_file(&path).is_err() { return false; }
+        bytes.and_then(|bytes| serde_json::from_slice::<crate::core::update_handoff::ResumeIntent>(&bytes).ok())
+            .is_some_and(|intent| intent.valid_for(version, crate::events::now_ms()))
     }
 
     pub fn resume_state_path(&self) -> PathBuf {
@@ -1615,5 +1660,48 @@ mod tests {
         );
         assert!(loaded.training.readiness_min_shadow_events >= 20);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+#[cfg(test)]
+mod update_checkpoint_tests {
+    use super::*;
+    #[cfg(windows)]
+    #[test]
+    fn locked_checkpoint_is_durably_revoked_before_restart() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let dir=std::env::temp_dir().join(format!("gpo-update-locked-{}-{}",std::process::id(),crate::events::now_ms()));
+        let store=Store::new(dir.clone());
+        store.update_gate.lock().begin(crate::core::update_handoff::ResumeIntent {
+            request_id:"locked".into(),source:"5.9.2".into(),target:"5.9.3".into(),
+            created_ms:crate::events::now_ms(),was_running:true,
+        }).unwrap();
+        store.update_boundary_reached();
+        store.commit_update_resume("locked").unwrap();
+        // Simulate a reader that allows writes but denies deletion.
+        let reader=fs::OpenOptions::new().read(true).share_mode(3).open(store.update_resume_path()).unwrap();
+        assert!(store.cancel_update_resume(Some("locked")).unwrap().is_some());
+        let stored:serde_json::Value=serde_json::from_slice(&fs::read(store.update_resume_path()).unwrap()).unwrap();
+        assert_eq!(stored["revoked"], true);
+        drop(reader);
+        assert!(!Store::new(dir.clone()).take_update_resume("5.9.3"));
+        let _=std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn update_checkpoint_is_consumed_once_and_legacy_resume_is_not_used() {
+        let dir=std::env::temp_dir().join(format!("gpo-update-checkpoint-{}-{}",std::process::id(),crate::events::now_ms()));
+        let store=Store::new(dir.clone());
+        store.update_gate.lock().begin(crate::core::update_handoff::ResumeIntent {
+            request_id:"checkpoint".into(),source:"5.9.2".into(),target:"5.9.3".into(),
+            created_ms:crate::events::now_ms(),was_running:true,
+        }).unwrap();
+        store.update_boundary_reached();
+        store.commit_update_resume("checkpoint").unwrap();
+        let restarted=Store::new(dir.clone());
+        assert!(restarted.take_update_resume("5.9.3"));
+        assert!(!restarted.take_update_resume("5.9.3"));
+        store.save_resume_state(true).unwrap();
+        assert!(!restarted.take_update_resume("5.9.3"));
+        let _=std::fs::remove_dir_all(dir);
     }
 }

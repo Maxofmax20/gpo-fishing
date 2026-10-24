@@ -66,6 +66,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::snapshot,
             commands::bot_start,
+            commands::update_prepare,
+            commands::update_cancel,
             commands::bot_pause,
             commands::bot_stop,
             commands::bot_toggle,
