@@ -241,12 +241,12 @@ impl Bot {
     }
 
     pub fn pause(&self) {
-        if let Err(error) = self.ctx.store.cancel_update_resume(None) { self.ctx.log_error(&error); }
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.ctx.input_epoch.fetch_add(1, Ordering::SeqCst);
         let was_running = self.ctx.running.swap(false, Ordering::SeqCst);
         self.ctx.platform.input.release_all();
         self.ctx.release_mouse();
+        if let Err(error) = self.ctx.store.cancel_update_resume(None) { self.ctx.log_error(&error); }
         let _lifecycle = self.lifecycle.lock();
         if !was_running && self.state() != BotState::Recovering {
             return;
@@ -263,7 +263,6 @@ impl Bot {
     }
 
     pub fn stop(&self) {
-        if let Err(error) = self.ctx.store.cancel_update_resume(None) { self.ctx.log_error(&error); }
         crate::bot::crafting::stop_auto_craft();
         crate::bot::recorder::stop_playback();
         self.ctx.input_epoch.fetch_add(1, Ordering::SeqCst);
@@ -271,6 +270,7 @@ impl Bot {
         self.ctx.running.store(false, Ordering::SeqCst);
         self.ctx.platform.input.release_all();
         self.ctx.release_mouse();
+        if let Err(error) = self.ctx.store.cancel_update_resume(None) { self.ctx.log_error(&error); }
         let _lifecycle = self.lifecycle.lock();
         let was = self.state() != BotState::Stopped || self.is_paused();
         self.paused.store(false, Ordering::SeqCst);
