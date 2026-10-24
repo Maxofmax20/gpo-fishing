@@ -36,7 +36,8 @@ jobs:
         with:
           workspaces: src-tauri -> target
           shared-key: windows-release-v1
-          cache-on-failure: true
+          prefix-key: v1-complete-rust
+          cache-on-failure: false
       - run: npm ci
       - run: npm run build
       - name: Warm production dependency cache without publishing or signing
