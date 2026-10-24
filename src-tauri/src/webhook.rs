@@ -29,6 +29,7 @@ pub struct Notification {
 enum Delivery {
     Message(Notification),
     Spawn(Notification, SpawnInfo),
+    FruitOutcome(Notification, bool),
 }
 
 pub struct WebhookQueue {
@@ -73,6 +74,9 @@ impl WebhookQueue {
     }
 
     fn send(&self, notif: Notification) {
+        if self.settings.as_ref().is_some_and(|s| s.read().webhook.pity_zero_only) {
+            return;
+        }
         if !self.enabled() {
             return;
         }
@@ -145,6 +149,9 @@ impl WebhookQueue {
     }
 
     pub fn fruit_drop(&self, d: &DropInfo, photo: Option<Vec<u8>>) {
+        if self.settings.as_ref().is_some_and(|s| s.read().webhook.pity_zero_only) {
+            return; // strict mode has one post-workflow notification, no early duplicate
+        }
         let fruit_name = d.name.as_deref().unwrap_or("Devil Fruit");
         let rarity = crate::core::fruit::fruit_rarity(fruit_name);
         let is_ase = self.settings.as_ref().map(|s| s.read().fruit_storage.all_seeing_eye).unwrap_or(true);
@@ -192,7 +199,11 @@ impl WebhookQueue {
         let settings = settings.read();
         if let Some(notification) = storage_notification(&settings, catch, outcome, photo) {
             drop(settings);
-            self.send(notification);
+            if self.enabled() {
+                if let Some(tx) = &self.tx {
+                    let _ = tx.send(Delivery::FruitOutcome(notification, catch.pity_zero));
+                }
+            }
         }
     }
 
@@ -544,8 +555,19 @@ pub fn post_telegram_photo(token: &str, chat_id: &str, photo: &[u8], caption: &s
     }
 }
 
+pub(crate) fn should_notify_fruit_outcome(settings: &Settings, catch: &FruitCatchContext, outcome: &StorageOutcome) -> bool {
+    if !settings.webhook.enabled || !settings.webhook.fruit_drop { return false; }
+    if settings.webhook.pity_zero_only {
+        // An unreadable pity is not zero, even for a known legendary fruit.
+        // Failed/unknown results retain honest labels and occur only AFTER the
+        // attempted workflow, so a genuine pity-zero catch is never silently lost.
+        return catch.pity_zero && !matches!(outcome, StorageOutcome::Cancelled);
+    }
+    !settings.webhook.legendary_only || catch.high_tier()
+}
+
 fn storage_notification(settings: &Settings, catch: &FruitCatchContext, outcome: &StorageOutcome, photo: Option<Vec<u8>>) -> Option<Notification> {
-    if !settings.webhook.enabled || !settings.webhook.fruit_drop || (settings.webhook.legendary_only && !catch.high_tier()) { return None; }
+    if !should_notify_fruit_outcome(settings, catch, outcome) { return None; }
     let status = outcome.label();
     let detail = if let StorageOutcome::Failed(reason) = outcome { format!("{status}: {reason}") } else { status.into() };
     Some(Notification {
@@ -564,10 +586,18 @@ fn delivery_log(events: &Sender<BotEvent>, message: String) {
     let _ = events.send(BotEvent::Log(LogLine { ts: crate::events::now_ms(), level: crate::events::LogLevel::Warn, msg: message }));
 }
 
+fn delivery_allowed(settings: &Settings, delivery: &Delivery) -> bool {
+    settings.webhook.enabled && (!settings.webhook.pity_zero_only
+        || matches!(delivery, Delivery::FruitOutcome(_, true)))
+}
+
 fn worker(rx: Receiver<Delivery>, settings: Arc<RwLock<Settings>>, events: Sender<BotEvent>) {
     for delivery in rx.iter() {
+        // Apply current consent/filtering again: changing modes must discard
+        // already-queued nonzero catches, routine alerts and world spawns.
+        if !delivery_allowed(&settings.read(), &delivery) { continue; }
         let (mut notif, spawn) = match delivery {
-            Delivery::Message(notification) => (notification, None),
+            Delivery::Message(notification) | Delivery::FruitOutcome(notification, _) => (notification, None),
             Delivery::Spawn(notification, info) => (notification, Some(info)),
         };
         if let Some(info) = spawn {
@@ -705,7 +735,7 @@ mod fruit_delivery_tests {
                 assert_eq!(context.name, info.name);
                 assert!(notification.custom_telegram_html.unwrap().contains("Kilo"));
             }
-            Delivery::Message(_) => panic!("enrichment context must travel to the worker"),
+            _ => panic!("enrichment context must travel to the worker"),
         }
     }
     fn catch(raw: &str) -> FruitCatchContext {
@@ -724,6 +754,61 @@ mod fruit_delivery_tests {
         s.webhook.fruit_drop = true; s.webhook.enabled = false;
         assert!(storage_notification(&s, &catch("0/40"), &StorageOutcome::Stored, None).is_none());
     }
+    #[test]
+    fn strict_pity_zero_rejects_nonzero_and_unreadable_legendary_catches() {
+        let mut s = Settings::default(); s.webhook.enabled = true; s.webhook.pity_zero_only = true;
+        for name in ["Pika", "Devil Fruit"] {
+            for pity in [None, Some("4/40")] {
+                let d = DropInfo { name: Some(name.into()), pity: pity.map(str::to_string), text: String::new(), is_legendary: true, custom_telegram_message: None };
+                let c = FruitCatchContext::new(&d, "", true, true);
+                assert!(storage_notification(&s, &c, &StorageOutcome::Stored, Some(vec![1])).is_none());
+            }
+        }
+        for raw in ["0/40", "0/100"] {
+            for outcome in [StorageOutcome::Stored, StorageOutcome::Dropped] {
+                let n = storage_notification(&s, &catch(raw), &outcome, Some(vec![7])).unwrap();
+                assert!(n.title.contains(outcome.label()));
+                assert_eq!(n.photo, Some(vec![7]));
+            }
+            let n = storage_notification(&s, &catch(raw), &StorageOutcome::Unknown, None).unwrap();
+            assert!(n.title.contains("unconfirmed"), "never mislabel a failed workflow as stored");
+        }
+        assert!(storage_notification(&s, &catch("0/40"), &StorageOutcome::Cancelled, None).is_none());
+    }
+
+    #[test]
+    fn strict_mode_suppresses_pre_action_duplicate_queue_messages() {
+        let mut s = Settings::default(); s.webhook.enabled = true; s.webhook.pity_zero_only = true;
+        s.webhook.telegram_bot_token = "unused-test-token".into();
+        s.webhook.telegram_chat_id = "unused-test-chat".into();
+        let settings = Arc::new(RwLock::new(s));
+        let (tx, rx) = unbounded();
+        let queue = WebhookQueue { tx: Some(tx), settings: Some(settings) };
+        let d = DropInfo { name: None, pity: Some("0/40".into()), text: "0/40".into(), is_legendary: false, custom_telegram_message: None };
+        queue.fruit_drop(&d, Some(vec![1]));
+        assert!(rx.try_recv().is_err(), "no screenshot or notification before storage");
+        queue.fruit_storage_outcome(&catch("0/40"), &StorageOutcome::Stored, Some(vec![2]));
+        match rx.try_recv().unwrap() {
+            Delivery::FruitOutcome(n, true) => { assert!(n.title.contains("Stored")); assert_eq!(n.photo, Some(vec![2])); }
+            _ => panic!("expected one post-storage result"),
+        }
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn enabling_strict_mode_discards_already_queued_unrelated_alerts() {
+        let mut s = Settings::default(); s.webhook.enabled = true;
+        let notification = storage_notification(&s, &catch("0/40"), &StorageOutcome::Stored, None).unwrap();
+        let unrelated = Delivery::Message(notification.clone());
+        assert!(delivery_allowed(&s, &unrelated));
+        s.webhook.pity_zero_only = true;
+        assert!(!delivery_allowed(&s, &unrelated));
+        assert!(!delivery_allowed(&s, &Delivery::FruitOutcome(notification.clone(), false)));
+        assert!(delivery_allowed(&s, &Delivery::FruitOutcome(notification.clone(), true)));
+        s.webhook.enabled = false;
+        assert!(!delivery_allowed(&s, &Delivery::FruitOutcome(notification, true)));
+    }
+
     #[test] fn photo_failure_falls_back_to_text() {
         let mut text_calls = 0;
         assert_eq!(deliver_telegram("Stored", Some(&[1]), |_, _| Err("photo failed".into()), |_| { text_calls += 1; Ok(200) }), Ok(200));

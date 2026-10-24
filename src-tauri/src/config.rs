@@ -296,6 +296,8 @@ pub struct Webhook {
     pub purchase: bool,
     pub recovery: bool,
     pub legendary_only: bool,
+    /// Notify only verified pity-zero catches, after the storage workflow.
+    pub pity_zero_only: bool,
     pub send_screenshot: bool,
     pub send_catch_screenshot: bool,
     pub send_drop_screenshot: bool,
@@ -319,6 +321,7 @@ impl Default for Webhook {
             purchase: true,
             recovery: true,
             legendary_only: true,
+            pity_zero_only: false,
             send_screenshot: true,
             send_catch_screenshot: false,
             send_drop_screenshot: true,

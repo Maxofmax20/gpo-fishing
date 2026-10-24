@@ -16,3 +16,29 @@ concurrency:
 jobs:
   quality-gates:
     uses: ./.github/workflows/quality.yml
+
+  # GitHub caches are scoped to refs. Warm the production cache on the default
+  # branch so future release tags can restore it; a previous tag's cache is not
+  # visible to the next tag.
+  production-cache:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: windows-release-v1
+          cache-on-failure: true
+      - run: npm ci
+      - run: npm run build
+      - name: Warm production dependency cache without publishing or signing
+        run: cargo build --release --locked
+        working-directory: src-tauri

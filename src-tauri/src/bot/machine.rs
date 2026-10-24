@@ -1002,19 +1002,14 @@ fn post_catch(ctx: &Ctx, first_text: &str, rod_equipped: &mut bool) -> bool {
         ctx.emit_stats();
         ctx.emit(BotEvent::FruitDrop(d.clone()));
 
-        // Screenshot on catch: Sent ONLY when pity is actually 0, or when getting a verified Legendary/Mythical fruit!
-        let wants_catch_photo = s.webhook.send_screenshot && (
-            s.webhook.send_catch_screenshot
-            || is_pity_zero
-            || is_known_legendary_or_mythical
-        );
-
-        let photo = if wants_catch_photo {
-            actions::capture_fruit_screenshot(ctx, &s)
-        } else {
-            None
-        };
-        if s.webhook.fruit_drop && (is_high_tier || !s.webhook.legendary_only) {
+        // Strict pity-zero mode sends only the post-workflow result. Never
+        // encode a catch screenshot that the notification filter will discard.
+        if !s.webhook.pity_zero_only && s.webhook.enabled && s.webhook.fruit_drop
+            && (is_high_tier || !s.webhook.legendary_only)
+        {
+            let wants_catch_photo = s.webhook.send_screenshot
+                && (s.webhook.send_catch_screenshot || is_pity_zero || is_known_legendary_or_mythical);
+            let photo = if wants_catch_photo { actions::capture_fruit_screenshot(ctx, &s) } else { None };
             ctx.webhook.fruit_drop(&d, photo);
         }
         if is_protected {

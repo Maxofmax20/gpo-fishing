@@ -752,7 +752,8 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
     ctx.log_info(&format!("{}: {}", catch.name, outcome.detail()));
     // Publish the completion before capture/encoding or queued HTTP delivery.
     if ctx.alive() { ctx.set_state(BotState::PostCatch, Some(format!("{}: {}", catch.name, outcome.detail()))); }
-    let photo = if ctx.alive() && ctx.roblox_in_front() { capture_drop_screenshot(ctx, &s, catch.high_tier()) } else { None };
+    let notify = crate::webhook::should_notify_fruit_outcome(&s, catch, &outcome);
+    let photo = if notify && ctx.alive() && ctx.roblox_in_front() { capture_drop_screenshot(ctx, &s, catch.high_tier()) } else { None };
     ctx.webhook.fruit_storage_outcome(catch, &outcome, photo);
 
     outcome
