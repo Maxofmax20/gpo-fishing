@@ -1302,6 +1302,14 @@ mod tests {
     }
 
     #[test]
+    fn blank_ocr_can_be_recovered_from_the_same_enhanced_frame() {
+        let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["".into(), "Nev Item Shark".into()]);
+        let (verdict, _, _) = verify_catch(&ctx);
+        assert_eq!(verdict, fruit::CatchVerdict::Caught);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn catch_verification_waits_for_the_configured_gap() {
         // Raw + enhanced OCR share frame one; frame two must still wait for the gap.
         let (ctx, dir) = make_collect_ctx(vec![blank()], vec!["noise".into(), "noise".into(), "Nev Item Shark".into()]);

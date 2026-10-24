@@ -11,7 +11,7 @@ Keep a lead integrator and up to three workers. Give each worker an isolated Git
 
 Preserve app identity, signing/updater keys, credentials, calibration, models, presets and collected data. The user's current preference is to keep the running macro open and receive installers: do not close, install, restart or apply private settings automatically. Do not use computer-use unless subsequently authorized.
 
-Fishing responsiveness takes priority over streams, diagnostics and training. Invalid remote requests must have zero side effects. Stop/focus-loss must release held inputs independently of telemetry or streaming pressure. Protected-fruit safeguards remain authoritative; distinguish requested, assumed, confirmed and unknown outcomes.
+Fishing responsiveness takes priority over streams, diagnostics and training. Invalid remote requests must have zero side effects. Reproduce malformed input only against an isolated synthetic-input server, never an older live server that may turn it into real input. Stop/focus-loss must release held inputs independently of telemetry or streaming pressure. Protected-fruit safeguards remain authoritative; distinguish requested, assumed, confirmed and unknown outcomes.
 
 Reuse typed commands and capability/status contracts across Tauri and HTTP. Preserve routes and older supported clients with adapters. Never report accepted/queued as completed. Keep black/red compact styling, HUD transparency/focus behaviour and advanced features; remove mock behaviour rather than masking it with another script.
 

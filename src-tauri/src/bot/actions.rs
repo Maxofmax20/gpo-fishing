@@ -1187,3 +1187,57 @@ mod storage_replay_tests {
         assert!(h.input.events.lock().is_empty()); terminal(&h, "cancelled");
     }
 }
+
+
+#[cfg(test)]
+mod rod_state_tests {
+    use super::*;
+    use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+    use parking_lot::RwLock;
+    use crate::config::{Settings, Store};
+    use crate::core::platform::{Platform, mock::{MockWindow, ScriptedCapture, RecordingInput, NoOcr, InputEvent}};
+    use crate::core::types::WindowInfo;
+    use crate::webhook::WebhookQueue;
+
+    fn fixture(calibrated: bool) -> (Ctx, Arc<RecordingInput>, std::path::PathBuf) {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!("gpo-rod-state-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::SeqCst)));
+        let info = WindowInfo { client: PxRect { x:0,y:0,w:800,h:600 }, is_foreground:true, visible:true, dpi:96 };
+        let mut settings = Settings::default();
+        settings.keys.rod = '4';
+        if calibrated { settings.points.rod_slot = Some(RelPoint {x:0.5,y:0.95}); }
+        let input = Arc::new(RecordingInput::default());
+        let (events, _rx) = crossbeam_channel::unbounded();
+        let ctx = Ctx::new(
+            Platform { window:Arc::new(MockWindow {info:parking_lot::Mutex::new(Some(info))}),
+                capture:Arc::new(ScriptedCapture::default()), input:input.clone(), ocr:Arc::new(NoOcr) },
+            Arc::new(RwLock::new(settings)), Arc::new(RwLock::new(Some(info))), events,
+            Arc::new(WebhookQueue::disabled()), Arc::new(Store::new(dir.clone())));
+        ctx.running.store(true, Ordering::SeqCst);
+        (ctx,input,dir)
+    }
+
+    #[test]
+    fn uncalibrated_hotbar_does_not_claim_slot_one_is_the_rod() {
+        let (ctx,input,dir) = fixture(false);
+        assert_eq!(is_rod_equipped(&ctx), None);
+        let mut equipped = false;
+        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        let events=input.events.lock();
+        assert_eq!(events.iter().filter(|e| matches!(e,InputEvent::Key(Key::Char('4'),true))).count(),1);
+        assert!(!events.iter().any(|e| matches!(e,InputEvent::Key(Key::Char('1'),true))));
+        drop(events);
+        let _=std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn weak_negative_indicator_never_unequips_remembered_rod() {
+        let (ctx,input,dir) = fixture(true);
+        let mut equipped = true;
+        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(equipped);
+        assert!(input.events.lock().is_empty());
+        let _=std::fs::remove_dir_all(dir);
+    }
+}
