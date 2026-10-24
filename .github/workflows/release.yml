@@ -109,6 +109,15 @@ jobs:
         shell: pwsh
         run: |
           $dir = 'src-tauri/target/release/bundle/nsis'
+          # Match the names GitHub exposes publicly before hashing or packing.
+          Get-ChildItem $dir -File |
+            Where-Object { $_.Name -match '_x64-setup\.exe(\.sig)?$' } |
+            ForEach-Object {
+              $canonicalName = $_.Name.Replace(' ', '.')
+              if ($canonicalName -ne $_.Name) {
+                Rename-Item -LiteralPath $_.FullName -NewName $canonicalName
+              }
+            }
           $exe = Get-ChildItem $dir -Filter '*_x64-setup.exe' | Select-Object -First 1
           if (-not $exe) { Write-Error 'signed installer missing'; exit 1 }
           if (-not (Test-Path "$dir/$($exe.BaseName).exe.sig")) { Write-Error 'updater signature missing'; exit 1 }
