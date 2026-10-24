@@ -89,11 +89,6 @@
         await refresh();
       } catch (e) { toast('Failed: ' + e.message); }
     });
-    const alerts = document.getElementById('alerts-btn');
-    if (alerts) alerts.addEventListener('click', async () => {
-      try { const j = await gpoAction('toggle_spawn'); toast(j.message); await refresh(); }
-      catch (e) { toast('Failed: ' + e.message); }
-    });
     const chime = () => {
       try { if (typeof soundEngine !== 'undefined' && soundEngine) soundEngine.playSyncChime(); } catch (e) {}
     };
@@ -108,8 +103,6 @@
     });
     const loop = document.getElementById('loop-stat-chip');
     if (loop) loop.addEventListener('click', () => { chime(); refresh(); });
-    const profile = document.getElementById('profile-btn');
-    if (profile) profile.addEventListener('click', () => { location.href = '/system'; });
     // Data cards: tap re-syncs from the backend (real numbers replace the
     // mock +1/+2 increments the rebound handlers used to fake).
     ['fish-caught-card', 'devil-fruits-card', 'pity-gauge-card'].forEach((id) => {

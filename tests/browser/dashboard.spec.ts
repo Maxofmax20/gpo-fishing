@@ -33,6 +33,13 @@ for (const width of [320, 360, 768, 1280]) for (const name of pages) {
     expect(page.url()).not.toContain("token=");
     expect(await page.evaluate(() => sessionStorage.getItem("gpo-dashboard-token"))).toBe("synthetic-test-token");
     await page.waitForTimeout(250);
+    await page.evaluate(()=>document.fonts.ready);
+    const brokenIcons=await page.locator(".material-symbols-outlined").evaluateAll(icons=>icons.filter(icon=>{
+      const size=Number.parseFloat(getComputedStyle(icon).fontSize);
+      return icon.getBoundingClientRect().width>size*1.8;
+    }).map(icon=>icon.textContent));
+    expect(brokenIcons,"Bundled icon ligatures must render as icons").toEqual([]);
+
     if (width === 360) await page.screenshot({ path: `test-results/${name}-phone.png`, fullPage: true });
     const accessibility = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze();
     if (width === 360) await writeFile(`test-results/${name}-accessibility.json`, JSON.stringify(accessibility.violations, null, 2));

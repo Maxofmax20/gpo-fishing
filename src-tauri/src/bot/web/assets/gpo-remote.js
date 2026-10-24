@@ -382,11 +382,6 @@
       try { if (typeof audio !== 'undefined' && audio) audio.playClick(1200); } catch (e) {}
       toggleMacro();
     });
-    const alerts = gpoRebind(document.getElementById('alerts-btn'));
-    if (alerts) alerts.addEventListener('click', async () => {
-      try { const j = await gpoAction('toggle_spawn'); toast(j.message); await refresh(); }
-      catch (e) { toast('Alerts toggle failed: ' + e.message); }
-    });
     const wire = (id, action, okMsg) => {
       const el = document.getElementById(id);
       if (!el) return;

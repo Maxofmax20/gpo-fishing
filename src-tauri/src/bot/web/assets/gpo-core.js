@@ -252,3 +252,13 @@ function gpoInitLocalControls() {
   paint();
 }
 if(typeof document !== 'undefined') document.addEventListener('DOMContentLoaded',gpoInitLocalControls);
+
+if(typeof document!=='undefined') document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('profile-btn')?.addEventListener('click',()=>{location.href='/system';});
+  document.getElementById('alerts-btn')?.addEventListener('click',async()=>{
+    try {
+      const response=await gpoAction('toggle_spawn');
+      gpoToast(response.message || 'Spawn alert preference saved');
+    } catch(error) {gpoToast('Could not change spawn alerts: '+error.message);}
+  });
+});

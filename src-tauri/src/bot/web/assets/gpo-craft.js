@@ -186,11 +186,6 @@
         toast(running ? 'Macro paused' : 'Macro started');
       } catch (e) { toast('Failed: ' + e.message); }
     });
-    const alerts = document.getElementById('alerts-btn');
-    if (alerts) alerts.addEventListener('click', async () => {
-      try { const j = await gpoAction('toggle_spawn'); toast(j.message); }
-      catch (e) { toast('Failed: ' + e.message); }
-    });
   }
 
   document.addEventListener('DOMContentLoaded', () => {

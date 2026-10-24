@@ -1207,10 +1207,12 @@ mod rod_state_tests {
         settings.keys.rod = '4';
         if calibrated { settings.points.rod_slot = Some(RelPoint {x:0.5,y:0.95}); }
         let input = Arc::new(RecordingInput::default());
+        let capture=Arc::new(ScriptedCapture::default());
+        capture.push(crate::core::types::Frame::new(5,5,vec![0;100]));
         let (events, _rx) = crossbeam_channel::unbounded();
         let ctx = Ctx::new(
             Platform { window:Arc::new(MockWindow {info:parking_lot::Mutex::new(Some(info))}),
-                capture:Arc::new(ScriptedCapture::default()), input:input.clone(), ocr:Arc::new(NoOcr) },
+                capture, input:input.clone(), ocr:Arc::new(NoOcr) },
             Arc::new(RwLock::new(settings)), Arc::new(RwLock::new(Some(info))), events,
             Arc::new(WebhookQueue::disabled()), Arc::new(Store::new(dir.clone())));
         ctx.running.store(true, Ordering::SeqCst);

@@ -1069,8 +1069,8 @@ fn send_status(stream: &mut TcpStream, bot: &Arc<Bot>, settings: &Arc<RwLock<Set
     payload["readiness"]=json!({
         "game_found":window.is_some_and(|w|w.visible),
         "focused":window.is_some_and(|w|w.visible && w.is_foreground),
-        "calibrated":s.regions.bar.w>0.02 && s.regions.bar.h>0.02,
-        "rod_indicator_calibrated":s.points.rod_slot.is_some(),
+        "region_configured":s.regions.bar.w>0.02 && s.regions.bar.h>0.02,
+        "rod_indicator_configured":s.points.rod_slot.is_some(),
     });
     payload["capabilities"]=json!({
         "api_version":2,"read_only_history":true,"craft_targets":true,
@@ -1357,6 +1357,13 @@ fn handle_mouse(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
             .button(crate::core::types::MouseButton::Right, false);
         HELD_MOUSE.write().clear();
         send_json(stream, r#"{"ok":true}"#);
+        return;
+    }
+
+    if act=="up" {
+        bot.ctx().platform.input.button(btn,false);
+        HELD_MOUSE.write().retain(|&held|held!=btn);
+        send_json(stream,r#"{"ok":true}"#);
         return;
     }
 
@@ -2528,7 +2535,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let input = Arc::new(RecordingInput::default());
         let platform = Platform {
-            window: Arc::new(MockWindow::default()),
+            window: Arc::new(MockWindow { info: parking_lot::Mutex::new(Some(WindowInfo {
+                client: PxRect { x:0,y:0,w:1920,h:1080 }, is_foreground:true,visible:true,dpi:96
+            })) }),
             capture: Arc::new(ScriptedCapture::default()),
             input: Arc::clone(&input) as Arc<dyn crate::core::platform::Input>,
             ocr: Arc::new(NoOcr),
