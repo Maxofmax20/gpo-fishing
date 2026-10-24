@@ -806,8 +806,9 @@ pub fn catches_list(st: State<'_, AppState>) -> Vec<crate::config::CatchRecord> 
 }
 
 #[tauri::command]
-pub fn catches_page(st: State<'_, AppState>, cursor: Option<usize>, limit: Option<usize>, kind: Option<String>, query: Option<String>, revision: Option<String>) -> Result<crate::config::CatchPage, String> {
-    st.store.get_catches_page(cursor.unwrap_or(0),limit.unwrap_or(50),kind.as_deref().unwrap_or("all"),query.as_deref().unwrap_or(""),revision.as_deref())
+pub async fn catches_page(st: State<'_, AppState>, cursor: Option<usize>, limit: Option<usize>, kind: Option<String>, query: Option<String>, revision: Option<String>) -> Result<crate::config::CatchPage, String> {
+    let store=st.store.clone();
+    blocking(move || store.get_catches_page(cursor.unwrap_or(0),limit.unwrap_or(50),kind.as_deref().unwrap_or("all"),query.as_deref().unwrap_or(""),revision.as_deref())).await
 }
 
 #[tauri::command]

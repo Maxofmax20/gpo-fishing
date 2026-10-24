@@ -1299,7 +1299,7 @@ fn handle_drag(stream: &mut TcpStream, bot: &Arc<Bot>, body: &str) {
     let epoch = bot.ctx().input_epoch.load(Ordering::SeqCst);
     let steps = (request.duration_ms / 12).clamp(6, 25);
     for i in 1..=steps {
-        if bot.ctx().input_epoch.load(Ordering::SeqCst) != epoch {
+        if bot.ctx().input_epoch.load(Ordering::SeqCst) != epoch || !bot.ctx().roblox_in_front() {
             break;
         }
         let t = i as f32 / steps as f32;
