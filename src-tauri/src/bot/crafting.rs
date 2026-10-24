@@ -7,6 +7,7 @@ use crate::core::types::{Frame, PxPoint, PxRect};
 
 static CRAFTING_ACTIVE: AtomicBool = AtomicBool::new(false);
 static CRAFTING_STOP_REQUESTED: AtomicBool = AtomicBool::new(false);
+static CRAFT_INPUT_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CraftTier {
@@ -83,6 +84,10 @@ pub fn is_crafting_running() -> bool {
 }
 
 pub fn stop_auto_craft() {
+    CRAFTING_STOP_REQUESTED.store(true, Ordering::SeqCst);
+    // Barrier: any input that won the lock finishes before Stop returns.
+    let _input = CRAFT_INPUT_LOCK.lock();
+    CRAFTING_STOP_REQUESTED.store(true, Ordering::SeqCst);
     if CRAFTING_ACTIVE.load(Ordering::SeqCst) {
         CRAFTING_STOP_REQUESTED.store(true, Ordering::SeqCst);
         let mut s = STATUS.write();
@@ -108,6 +113,7 @@ pub fn start_auto_craft_with_target(
     if update_gate.pending() {
         return Err("Crafting is unavailable while a signed update is pending".into());
     }
+    let input_guard = CRAFT_INPUT_LOCK.lock();
     if CRAFTING_ACTIVE
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
@@ -116,6 +122,7 @@ pub fn start_auto_craft_with_target(
     }
     drop(update_gate);
     CRAFTING_STOP_REQUESTED.store(false, Ordering::SeqCst);
+    drop(input_guard);
 
     {
         let mut s = STATUS.write();
@@ -234,13 +241,9 @@ fn run_crafting_loop(
                 None => {
                     // Try pressing 'E' once to interact if dialog closed
                     ctx.log_info("🔨 Blacksmith Sen UI not visible, pressing 'E' to interact...");
-                    ctx.platform
-                        .input
-                        .key(crate::core::types::Key::Char('e'), true);
-                    std::thread::sleep(Duration::from_millis(60));
-                    ctx.platform
-                        .input
-                        .key(crate::core::types::Key::Char('e'), false);
+                    if !craft_key_tap(ctx, crate::core::types::Key::Char('e')) {
+                        return Ok(total_crafted);
+                    }
                     if !craft_sleep(600) {
                         return Ok(total_crafted);
                     }
@@ -392,16 +395,31 @@ fn run_crafting_loop(
     Ok(total_crafted)
 }
 
+fn craft_key_tap(ctx: &Ctx, key: crate::core::types::Key) -> bool {
+    {
+        let _input = CRAFT_INPUT_LOCK.lock();
+        if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) || !ctx.roblox_in_front() { return false; }
+        ctx.platform.input.key(key, true);
+    }
+    let completed = craft_sleep(60);
+    ctx.platform.input.key(key, false);
+    completed
+}
+
 fn click_point(ctx: &Ctx, pt: PxPoint) {
-    ctx.platform.input.move_to(pt);
-    std::thread::sleep(Duration::from_millis(25));
-    ctx.platform
-        .input
-        .button(crate::core::types::MouseButton::Left, true);
-    std::thread::sleep(Duration::from_millis(50));
-    ctx.platform
-        .input
-        .button(crate::core::types::MouseButton::Left, false);
+    {
+        let _input = CRAFT_INPUT_LOCK.lock();
+        if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) || !ctx.roblox_in_front() { return; }
+        ctx.platform.input.move_to(pt);
+    }
+    if !craft_sleep(25) { return; }
+    {
+        let _input = CRAFT_INPUT_LOCK.lock();
+        if CRAFTING_STOP_REQUESTED.load(Ordering::SeqCst) || !ctx.roblox_in_front() { return; }
+        ctx.platform.input.button(crate::core::types::MouseButton::Left, true);
+    }
+    let _ = craft_sleep(50);
+    ctx.platform.input.button(crate::core::types::MouseButton::Left, false);
 }
 
 #[derive(Debug, Clone)]
@@ -794,6 +812,51 @@ mod checkpoint_tests {
         let decoded:CraftStatus=serde_json::from_slice(&std::fs::read(dir.join("craft-job.json")).unwrap()).unwrap();
         assert_eq!(decoded.state,CraftJobState::Failed);
         assert!(!decoded.is_crafting);
+        let _=std::fs::remove_dir_all(dir);
+    }
+}
+
+#[cfg(test)]
+mod cancellation_tests {
+    use super::*;
+    use crate::core::platform::{Capture,Platform,mock::{MockWindow,NoOcr,RecordingInput,InputEvent}};
+    use crate::core::types::WindowInfo;
+    fn context() -> (Ctx,Arc<RecordingInput>,std::path::PathBuf) {
+        struct CancelOnCapture;
+        impl Capture for CancelOnCapture {
+            fn grab(&self,_:PxRect)->crate::core::platform::Result<Frame> {
+                stop_auto_craft();
+                Ok(Frame::new(800,600,vec![0;800*600*4]))
+            }
+        }
+        let info=WindowInfo {client:PxRect{x:0,y:0,w:800,h:600},visible:true,is_foreground:true,dpi:96};
+        let input=Arc::new(RecordingInput::default());
+        let platform=Platform{window:Arc::new(MockWindow{info:parking_lot::Mutex::new(Some(info))}),
+            capture:Arc::new(CancelOnCapture),input:input.clone(),ocr:Arc::new(NoOcr)};
+        let (events,_)=crossbeam_channel::unbounded();
+        let dir=std::env::temp_dir().join(format!("gpo-craft-stop-{}-{}",std::process::id(),crate::events::now_ms()));
+        let ctx=Ctx::new(platform,Arc::new(RwLock::new(crate::config::Settings::default())),
+            Arc::new(RwLock::new(Some(info))),events,Arc::new(crate::webhook::WebhookQueue::disabled()),
+            Arc::new(crate::config::Store::new(dir.clone())));
+        ctx.running.store(true,Ordering::SeqCst);
+        (ctx,input,dir)
+    }
+    #[test]
+    fn stop_after_capture_prevents_late_interaction_key() {
+        let _guard=crate::bot::WORKFLOW_TEST_LOCK.lock();
+        CRAFTING_STOP_REQUESTED.store(false,Ordering::SeqCst);
+        let (ctx,input,dir)=context();
+        assert_eq!(run_crafting_loop(&ctx,CraftTier::Rare,Some(1)).unwrap(),0);
+        assert!(!input.events.lock().iter().any(|e|matches!(e,InputEvent::Key(_,true))));
+        let _=std::fs::remove_dir_all(dir);
+    }
+    #[test]
+    fn click_after_stop_emits_no_pointer_or_button_inputs() {
+        let _guard=crate::bot::WORKFLOW_TEST_LOCK.lock();
+        let (ctx,input,dir)=context();
+        stop_auto_craft();
+        click_point(&ctx,PxPoint{x:30,y:40});
+        assert!(input.events.lock().is_empty());
         let _=std::fs::remove_dir_all(dir);
     }
 }

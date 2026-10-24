@@ -5,7 +5,107 @@ use crate::events::BotState;
 
 use super::ctx::Ctx;
 
+#[path = "../core/rod_state.rs"]
+pub(crate) mod rod_state;
+
 const WHEEL_STEP: i32 = 120;
+
+fn rod_trackers() -> &'static parking_lot::Mutex<std::collections::HashMap<(std::thread::ThreadId, usize), rod_state::RodTracker>> {
+    static TRACKERS: std::sync::OnceLock<parking_lot::Mutex<std::collections::HashMap<(std::thread::ThreadId, usize), rod_state::RodTracker>>> = std::sync::OnceLock::new();
+    TRACKERS.get_or_init(Default::default)
+}
+
+fn rod_context_key(ctx: &Ctx) -> (std::thread::ThreadId, usize) {
+    (std::thread::current().id(), ctx as *const Ctx as usize)
+}
+
+pub fn reset_rod_evidence(ctx: &Ctx) {
+    rod_trackers().lock().remove(&rod_context_key(ctx));
+}
+
+fn learn_rod_outline(ctx: &Ctx) {
+    if !rod_action_allowed(ctx) { return; }
+    let Some(client)=ctx.roblox_rect() else { return; };
+    let band=PxRect{x:client.x,y:client.y+client.h*9/10,w:client.w,h:client.h-client.h*9/10};
+    let Ok(frame)=ctx.platform.capture.grab(band) else { return; };
+    if !rod_action_allowed(ctx) { return; }
+    let min=(client.h as usize*45/1000).max(12);
+    let max=(client.h as usize*80/1000).max(min);
+    if let Some(rect)=rod_state::find_outline(frame.w,frame.h,min,max,|x,y|frame.px(x,y)) {
+        let mut trackers=rod_trackers().lock();
+        let tracker=trackers.entry(rod_context_key(ctx)).or_default();
+        tracker.learned=Some((rect,client.w as usize,client.h as usize,ctx.settings.read().keys.rod));
+        tracker.recovery_attempted=false;
+    }
+}
+
+fn learned_rod_selected(ctx:&Ctx)->bool {
+    let learned=rod_trackers().lock().get(&rod_context_key(ctx)).and_then(|t|t.learned);
+    let Some((r,w,h,key))=learned else { return false; };
+    let Some(client)=ctx.roblox_rect() else { return false; };
+    if (w,h,key)!=(client.w as usize,client.h as usize,ctx.settings.read().keys.rod) { return false; }
+    let rect=PxRect{x:client.x+r.x as i32,y:client.y+client.h*9/10+r.y as i32,w:r.w as i32,h:r.h as i32};
+    let Ok(frame)=ctx.platform.capture.grab(rect) else { return false; };
+    if frame.w!=r.w || frame.h!=r.h || !rod_action_allowed(ctx) { return false; }
+    rod_state::outlined(rod_state::SlotRect{x:0,y:0,w:r.w,h:r.h},&|x,y|frame.px(x,y))
+}
+
+/// Positive selection of another learned toolbar slot, not a missing border.
+pub fn rod_visibly_unequipped(ctx:&Ctx)->bool {
+    if !rod_action_allowed(ctx) { return false; }
+    let learned=rod_trackers().lock().get(&rod_context_key(ctx)).and_then(|t|t.learned);
+    let Some((rod,w,h,key))=learned else { return false; };
+    let Some(client)=ctx.roblox_rect() else { return false; };
+    if (w,h,key)!=(client.w as usize,client.h as usize,ctx.settings.read().keys.rod) { return false; }
+    let band=PxRect{x:client.x,y:client.y+client.h*9/10,w:client.w,h:client.h-client.h*9/10};
+    let Ok(frame)=ctx.platform.capture.grab(band) else { return false; };
+    if !rod_action_allowed(ctx) { return false; }
+    let min=(client.h as usize*45/1000).max(12);
+    let max=(client.h as usize*80/1000).max(min);
+    let selected=rod_state::find_outline(frame.w,frame.h,min,max,|x,y|frame.px(x,y));
+    rod_state::different_selected_slot(rod,selected)
+}
+
+fn rod_action_allowed(ctx: &Ctx) -> bool {
+    ctx.alive() && ctx.state() != BotState::Paused && ctx.roblox_in_front()
+}
+
+/// Local-only positive menu evidence; absence is deliberately unknown. Checks
+/// cancellation again after capture/OCR so a late result cannot trigger input.
+fn observed_bait_region(ctx: &Ctx) -> Option<RelRect> {
+    rod_trackers().lock().get(&rod_context_key(ctx)).and_then(|t| t.menu_region)
+        .map(|(x,y,w,h)|RelRect{x,y,w,h})
+}
+
+pub fn bait_menu_open(ctx: &Ctx) -> bool {
+    if !rod_action_allowed(ctx) { return false; }
+    let Some(client) = ctx.roblox_rect() else { return false; };
+    let configured=ctx.settings.read().regions.bait_menu;
+    // GPO's centered menu is a bounded fallback, not positive evidence itself.
+    // Identity still requires the title/two distinct rows or local recognition.
+    let centered=RelRect{x:0.43,y:0.704,w:0.14,h:0.142};
+    let candidates=[observed_bait_region(ctx).unwrap_or(configured),centered];
+    for rel in candidates {
+        let region=rel.to_px(&client);
+        if region.w < 20 || region.h < 20 { continue; }
+        let Ok(frame) = ctx.platform.capture.grab(region) else { continue; };
+        if !rod_action_allowed(ctx) { return false; }
+        let neural=crate::core::bait::scan_bait_stock_neural(&frame).is_some_and(|stock|
+            [stock.legendary,stock.rare,stock.common].iter().filter(|n|n.unwrap_or(0)>0).count()>=2);
+        let mut visible=neural;
+        if !visible && ctx.platform.ocr.available() {
+            if let Ok(text)=ctx.platform.ocr.read_with_timeout(&frame,Duration::from_millis(120)) {
+                visible=rod_state::bait_menu_text(&text);
+            }
+        }
+        if !rod_action_allowed(ctx) { return false; }
+        if visible {
+            rod_trackers().lock().entry(rod_context_key(ctx)).or_default().menu_region=Some((rel.x,rel.y,rel.w,rel.h));
+            return true;
+        }
+    }
+    false
+}
 
 pub fn fishing_point(ctx: &Ctx) -> Option<PxPoint> {
     let rect = ctx.roblox_rect()?;
@@ -129,9 +229,16 @@ fn click_pair(ctx: &Ctx, primary: RelPoint, backup: Option<RelPoint>, settle_ms:
 }
 
 pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
+    if !rod_action_allowed(ctx) { return None; }
+    if learned_rod_selected(ctx) { return Some(true); }
+    if bait_menu_open(ctx) {
+        learn_rod_outline(ctx);
+        return if rod_action_allowed(ctx) { Some(true) } else { None };
+    }
     let s = ctx.settings();
     let rect = ctx.roblox_rect()?;
 
+    // A configured indicator identifies the rod slot, unlike arbitrary hotbar pixels.
     // 1. If custom rod slot indicator point is set, inspect around it:
     if let Some(rel) = s.points.rod_slot {
         let px = rel.to_px(&rect);
@@ -152,7 +259,8 @@ pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
                     }
                 }
             }
-            return Some(bright >= 3);
+            if !rod_action_allowed(ctx) { return None; }
+            return if bright >= 3 { Some(true) } else { None };
         }
     }
 
@@ -164,40 +272,37 @@ pub fn is_rod_equipped(ctx: &Ctx) -> Option<bool> {
 }
 
 pub fn ensure_rod_equipped(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
-    let s = ctx.settings();
-
-    // Check visual detection
-    if let Some(visual) = is_rod_equipped(ctx) {
-        if visual {
-            ctx.log_debug("Fishing rod already equipped (visual check confirmed)");
-            *rod_equipped = true;
-            return true;
-        }
-        // A dark/occluded indicator is weak negative evidence. It must not
-        // toggle a rod we just equipped; state is reset at known slot changes.
-    }
-    if *rod_equipped {
-        ctx.log_debug("Fishing rod already equipped (state tracking)");
+    // Remembered inputs never establish equipment: Roblox can ignore a key.
+    *rod_equipped = false;
+    if !rod_action_allowed(ctx) { return false; }
+    if is_rod_equipped(ctx) == Some(true) && rod_action_allowed(ctx) {
+        *rod_equipped = true;
         return true;
     }
-
-    if s.keys.reset_slot == s.keys.rod {
-        ctx.log_warn("Rod and reset slot must be different; choose a separate reset slot in Settings");
-        return false;
-    }
-    // Establish a known selection first. Pressing the rod key while it is
-    // already selected unequips it, including after a paused/unknown session.
-    if s.keys.reset_slot != s.keys.rod {
-        if !key_tap(ctx, Key::Char(s.keys.reset_slot)) || !ctx.sleep_ms(60) {
-            return false;
+    let s=ctx.settings();
+    let attempt = {
+        let mut trackers=rod_trackers().lock();
+        let tracker=trackers.entry(rod_context_key(ctx)).or_default();
+        let attempt=!tracker.recovery_attempted && s.keys.reset_slot!=s.keys.rod;
+        tracker.recovery_attempted=true;
+        attempt
+    };
+    // One bounded attempt per unknown episode. Neither key dispatch nor a
+    // missing highlight is a confirmation; never enter the bite wait on it.
+    if attempt {
+        ctx.log_info("Rod selection unknown; trying reset slot then rod once and verifying locally");
+        if !rod_action_allowed(ctx) || !key_tap(ctx,Key::Char(s.keys.reset_slot)) || !ctx.sleep_ms(80) { return false; }
+        if !rod_action_allowed(ctx) || !key_tap(ctx,Key::Char(s.keys.rod)) { return false; }
+        for _ in 0..3 {
+            if !ctx.sleep_ms(180) || !rod_action_allowed(ctx) { return false; }
+            if is_rod_equipped(ctx)==Some(true) && rod_action_allowed(ctx) { *rod_equipped=true; return true; }
         }
     }
-    ctx.log_info(&format!("Equipping rod ({})", s.keys.rod));
-    if !key_tap(ctx, Key::Char(s.keys.rod)) || !ctx.sleep_ms(120) {
-        return false;
+    ctx.release_mouse();
+    if rod_action_allowed(ctx) {
+        ctx.set_state(BotState::Recovering, Some("Waiting for local rod evidence; open Fishing Baits if needed".into()));
     }
-    *rod_equipped = true;
-    true
+    false
 }
 
 pub fn equip_rod(ctx: &Ctx) -> bool {
@@ -243,7 +348,8 @@ fn scan_bait_stock_for(ctx: &Ctx, automatic: bool) -> Result<(crate::core::bait:
     let rect = ctx.roblox_rect().ok_or("Roblox window not found")?;
     let scan_rect = {
         let s = ctx.settings();
-        s.regions.bait_menu.to_px(&rect)
+        if automatic { observed_bait_region(ctx).unwrap_or(s.regions.bait_menu).to_px(&rect) }
+        else { s.regions.bait_menu.to_px(&rect) }
     };
 
     if scan_rect.w < 10 || scan_rect.h < 10 {
@@ -402,7 +508,7 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             return false;
         };
 
-        let menu = s.regions.bait_menu;
+        let menu = observed_bait_region(ctx).unwrap_or(s.regions.bait_menu);
         let (row_rx, row_ry) = stock.click_relative_pos(chosen_tier);
         let target_rel = RelPoint {
             x: menu.x + menu.w * row_rx,
@@ -475,17 +581,19 @@ pub fn initial_setup(ctx: &Ctx, rod_equipped: &mut bool) -> bool {
 }
 
 pub fn cast(ctx: &Ctx) -> bool {
+    if !rod_action_allowed(ctx) { ctx.release_mouse(); return false; }
     ctx.set_state(BotState::Casting, None);
     let Some(p) = fishing_point(ctx) else {
         ctx.log_warn("Roblox window not found; cannot cast");
         return false;
     };
     let hold = ctx.settings.read().fishing.cast_hold_ms;
-    ctx.ensure_roblox_focus();
+    if !rod_action_allowed(ctx) { return false; }
     ctx.platform.input.move_to(p);
     if !ctx.sleep_ms(30) {
         return false;
     }
+    if !rod_action_allowed(ctx) { ctx.release_mouse(); return false; }
     // Prevent right click when fishing to keep screen and camera steady
     ctx.hold_mouse(true);
     let ok = ctx.sleep_ms(hold);
@@ -648,6 +756,7 @@ pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Optio
     if !s.webhook.send_screenshot {
         return None;
     }
+    if !ctx.roblox_in_front() { return None; }
     let r = ctx.roblox_rect()?;
 
     if s.webhook.crop_fruit_screenshot {
@@ -669,13 +778,14 @@ pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Optio
         };
         let px_box = crop_rel.to_px(&r);
         if let Ok(frame) = ctx.platform.capture.grab(px_box) {
+            if !ctx.roblox_in_front() { return None; }
             if let Some(bytes) = fruit_notification_png(&frame) {
                 return Some(bytes);
             }
         }
     }
 
-    ctx.platform.capture.grab(r).ok()
+    ctx.platform.capture.grab(r).ok().filter(|_| ctx.roblox_in_front())
         .and_then(|f| fruit_notification_png(&f))
 }
 
@@ -686,6 +796,7 @@ pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_t
     if s.webhook.legendary_only && !is_high_tier {
         return None;
     }
+    if !ctx.roblox_in_front() { return None; }
     let r = ctx.roblox_rect()?;
 
     if s.webhook.crop_fruit_screenshot {
@@ -706,15 +817,15 @@ pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_t
         };
         let px_box = crop_rel.to_px(&r);
         if let Ok(frame) = ctx.platform.capture.grab(px_box) {
-            if let Ok(bytes) = frame.to_png_bytes() {
+            if !ctx.roblox_in_front() { return None; }
+            if let Some(bytes) = fruit_notification_png(&frame) {
                 return Some(bytes);
             }
         }
     }
 
-    ctx.platform.capture.grab(r).ok()
-        .map(|f| f.downscale(1280))
-        .and_then(|f| f.to_png_bytes().ok())
+    ctx.platform.capture.grab(r).ok().filter(|_| ctx.roblox_in_front())
+        .and_then(|f| fruit_notification_png(&f))
 }
 
 /// Store/drop locally, then publish one terminal outcome before any notification work.
@@ -739,7 +850,10 @@ pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchCont
     } else {
         let mut io = LocalStorageIo { ctx, settings: &s, last_text: String::new(), drop_sent: false };
         let result = run_storage(&mut io, catch);
-        if result == StorageOutcome::Unknown && s.fruit_storage.continue_on_unconfirmed && io.drop_sent {
+        // A delayed drop banner deserves read-only confirmation even when the
+        // user has *not* enabled continuing after an unconfirmed outcome.
+        // Never repeat Backspace or infer success from the key being sent.
+        if result == StorageOutcome::Unknown && io.drop_sent {
             ctx.log_info("Fruit outcome unconfirmed; rechecking without sending another drop");
             match io.observe(5000, true) {
                 Ok(Some(crate::core::fruit::StorageBannerResult::Dropped { .. }
@@ -1153,7 +1267,9 @@ mod storage_replay_tests {
         texts.extend(std::iter::repeat_n("", 18));
         texts.push("Dropped Bomb will despawn in 10 minutes");
         let h = harness(&texts);
-        h.ctx.settings.write().fruit_storage.continue_on_unconfirmed = true;
+        // Default is to pause on *still*-unconfirmed outcomes, but the late
+        // banner must be checked before that decision is made.
+        assert!(!h.ctx.settings().fruit_storage.continue_on_unconfirmed);
         assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "late-recheck"), StorageOutcome::Dropped);
         assert_eq!(drops(&h), 1);
         terminal(&h, "dropped_confirmed");
@@ -1246,6 +1362,7 @@ mod rod_state_tests {
             Arc::new(RwLock::new(settings)), Arc::new(RwLock::new(Some(info))), events,
             Arc::new(WebhookQueue::disabled()), Arc::new(Store::new(dir.clone())));
         ctx.running.store(true, Ordering::SeqCst);
+        rod_trackers().lock().retain(|(thread,_),_|*thread!=std::thread::current().id());
         (ctx,input,dir)
     }
 
@@ -1254,8 +1371,9 @@ mod rod_state_tests {
         let (ctx,input,dir) = fixture(false);
         assert_eq!(is_rod_equipped(&ctx), None);
         let mut equipped = false;
-        assert!(ensure_rod_equipped(&ctx, &mut equipped));
-        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(!ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(!equipped);
+        assert!(!ensure_rod_equipped(&ctx, &mut equipped));
         let events=input.events.lock();
         assert_eq!(events.iter().filter(|e| matches!(e,InputEvent::Key(Key::Char('4'),true))).count(),1);
         assert!(!events.iter().any(|e| matches!(e,InputEvent::Key(Key::Char('1'),true))));
@@ -1267,7 +1385,8 @@ mod rod_state_tests {
     fn unknown_rod_selection_switches_away_before_equipping_once() {
         let (ctx,input,dir) = fixture(false);
         let mut equipped = false;
-        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(!ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(!equipped, "a dispatched key is not confirmation");
         let events = input.events.lock();
         let keys: Vec<char> = events.iter().filter_map(|event| match event {
             InputEvent::Key(Key::Char(key), true) => Some(*key),
@@ -1297,12 +1416,94 @@ mod rod_state_tests {
     }
 
     #[test]
-    fn weak_negative_indicator_never_unequips_remembered_rod() {
-        let (ctx,input,dir) = fixture(true);
+    fn notifications_discard_frames_if_focus_changes_during_capture() {
+        struct SwitchingCapture { window: Arc<MockWindow> }
+        impl crate::core::platform::Capture for SwitchingCapture {
+            fn grab(&self,_rect:PxRect)->crate::core::platform::Result<crate::core::types::Frame> {
+                *self.window.info.lock()=None;
+                Ok(crate::core::types::Frame::new(5,5,vec![255;100]))
+            }
+        }
+        for drop_photo in [false,true] {
+            let (mut ctx,_input,dir)=fixture(false);
+            let window=Arc::new(MockWindow {info: parking_lot::Mutex::new(*ctx.roblox.read())});
+            ctx.platform.window=window.clone();
+            ctx.platform.capture=Arc::new(SwitchingCapture {window});
+            ctx.settings.write().webhook.send_screenshot=true;
+            ctx.settings.write().webhook.send_drop_screenshot=true;
+            let settings=ctx.settings();
+            let photo=if drop_photo {capture_drop_screenshot(&ctx,&settings,true)} else {capture_fruit_screenshot(&ctx,&settings)};
+            assert!(photo.is_none(),"an Alt-Tab frame must never be sent");
+            let _=std::fs::remove_dir_all(dir);
+        }
+    }
+
+    #[test]
+    fn weak_negative_indicator_does_not_claim_remembered_rod_is_equipped() {
+        let (ctx,_input,dir) = fixture(true);
         let mut equipped = true;
-        assert!(ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(!ensure_rod_equipped(&ctx, &mut equipped));
+        assert!(!equipped);
+        let _=std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn positive_bait_menu_already_held_sends_no_rod_key() {
+        let (mut ctx,input,dir)=fixture(false);
+        let ocr=Arc::new(crate::core::platform::mock::ScriptedOcr::default());
+        ocr.texts.lock().push_back("Fishing Baits".into());
+        ctx.platform.ocr=ocr;
+        let mut equipped=false;
+        assert!(ensure_rod_equipped(&ctx,&mut equipped));
         assert!(equipped);
         assert!(input.events.lock().is_empty());
+        let _=std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn unknown_initial_selection_is_verified_after_single_recovery() {
+        let (mut ctx,input,dir)=fixture(false);
+        let ocr=Arc::new(crate::core::platform::mock::ScriptedOcr::default());
+        ocr.texts.lock().extend(["".into(),"".into(),"Fishing Baits".into()]);
+        ctx.platform.ocr=ocr;
+        let mut equipped=false;
+        assert!(ensure_rod_equipped(&ctx,&mut equipped));
+        assert!(equipped);
+        let keys:Vec<char>=input.events.lock().iter().filter_map(|e|match e {InputEvent::Key(Key::Char(k),true)=>Some(*k),_=>None}).collect();
+        assert_eq!(keys,vec![ctx.settings().keys.reset_slot,'4']);
+        let _=std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pause_during_ocr_discards_late_positive_and_sends_no_key() {
+        struct PausingOcr { ctx:parking_lot::Mutex<Option<std::sync::Weak<Ctx>>> }
+        impl crate::core::platform::Ocr for PausingOcr {
+            fn available(&self)->bool { true }
+            fn read(&self,_:&crate::core::types::Frame)->crate::core::platform::Result<String> {
+                if let Some(ctx)=self.ctx.lock().as_ref().and_then(|w|w.upgrade()) {
+                    ctx.set_state(BotState::Paused,Some("test late OCR".into()));
+                }
+                Ok("Fishing Baits".into())
+            }
+        }
+        let (mut ctx,input,dir)=fixture(false);
+        let ocr=Arc::new(PausingOcr{ctx:parking_lot::Mutex::new(None)});
+        ctx.platform.ocr=ocr.clone();
+        let ctx=Arc::new(ctx);
+        *ocr.ctx.lock()=Some(Arc::downgrade(&ctx));
+        assert!(!ensure_rod_equipped(&ctx,&mut false));
+        assert!(!cast(&ctx));
+        assert!(!input.events.lock().iter().any(|e|matches!(e,InputEvent::Key(_,true)|InputEvent::Button(_,true))));
+        let _=std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pause_prevents_late_equipping_and_cast() {
+        let (ctx,input,dir)=fixture(false);
+        ctx.set_state(BotState::Paused,Some("test".into()));
+        assert!(!ensure_rod_equipped(&ctx,&mut false));
+        assert!(!cast(&ctx));
+        assert!(!input.events.lock().iter().any(|e|matches!(e,InputEvent::Key(_,true)|InputEvent::Button(_,true))));
         let _=std::fs::remove_dir_all(dir);
     }
 }
