@@ -158,3 +158,52 @@ fn explicit_stop_is_supported_and_routes_through_reserved_control_lane() {
     assert!(!input.events.lock().iter().any(|e|matches!(e,InputEvent::Button(_,true)|InputEvent::Key(_,true))));
     let _=std::fs::remove_dir_all(dir);
 }
+
+
+#[test]
+fn stop_releases_input_with_all_stream_and_action_workers_occupied() {
+    use crate::core::platform::{guarded_input::GuardedInput,mock::ScriptedCapture,Input};
+    use crate::core::types::{Frame,MouseButton};
+    let (mut bot,input,dir)=input_test_bot();
+    {
+        let ctx=Arc::get_mut(&mut Arc::get_mut(&mut bot).unwrap().ctx).unwrap();
+        let capture=Arc::new(ScriptedCapture::default());
+        capture.push(Frame::new(2,2,vec![0;16]));
+        ctx.platform.capture=capture;
+        ctx.platform.input=Arc::new(GuardedInput::new(ctx.platform.window.clone(),input.clone()));
+    }
+    let settings=bot.ctx().settings.clone();
+    let token=settings.read().web.token.clone();
+    let lanes=RequestLanes::new(&bot,&settings);
+    thread::sleep(Duration::from_millis(50));
+    fn submit(lanes:&RequestLanes,token:&str,path:&str,body:&str)->TcpStream {
+        let listener=TcpListener::bind("127.0.0.1:0").unwrap();
+        let client=TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (server,_)=listener.accept().unwrap();
+        let method=if body.is_empty() {"GET"} else {"POST"};
+        let request=format!("{method} {path} HTTP/1.1\r\nAuthorization: Bearer {token}\r\nContent-Length: {}\r\n\r\n{body}",body.len());
+        lanes.dispatch(server,request);
+        client
+    }
+    let mut occupied=Vec::new();
+    for _ in 0..4 {
+        occupied.push(submit(&lanes,&token,"/api/drag",r#"{"x1":0.1,"y1":0.1,"x2":0.9,"y2":0.9,"ms":5000}"#));
+        occupied.push(submit(&lanes,&token,"/api/stream?fps=10&scale=240",""));
+    }
+    let start=std::time::Instant::now();
+    while !input.events.lock().iter().any(|e|matches!(e,InputEvent::Button(_,true))) {
+        assert!(start.elapsed()<Duration::from_secs(2),"synthetic drag must begin");
+        thread::sleep(Duration::from_millis(5));
+    }
+    let at=std::time::Instant::now();
+    let mut stop=submit(&lanes,&token,"/api/action",r#"{"action":"stop"}"#);
+    stop.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let mut response=String::new();stop.read_to_string(&mut response).unwrap();
+    assert!(response.starts_with("HTTP/1.1 200"),"{response}");
+    assert!(at.elapsed()<Duration::from_secs(2),"reserved control lane must not wait for 5s drags");
+    assert!(input.events.lock().contains(&InputEvent::Button(MouseButton::Left,false)));
+    assert!(!bot.ctx().mouse_held.load(Ordering::SeqCst));
+    bot.ctx().platform.input.release_all();
+    drop(occupied);drop(lanes);
+    let _=std::fs::remove_dir_all(dir);
+}
