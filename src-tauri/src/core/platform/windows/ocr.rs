@@ -1,6 +1,6 @@
 use parking_lot::Mutex;
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use windows::core::HSTRING;
 use windows::Globalization::Language;
@@ -80,6 +80,14 @@ impl Ocr for WindowsOcr {
     }
 
     fn read(&self, frame: &Frame) -> Result<String> {
+        self.read_with_timeout(frame, Duration::from_secs(2))
+    }
+
+    fn read_with_timeout(&self, frame: &Frame, timeout: Duration) -> Result<String> {
+        let started = Instant::now();
+        if timeout.is_zero() {
+            return Err(PlatformError::Ocr("OCR read budget expired".into()));
+        }
         ensure_apartment();
         let mut requests = self
             .requests
@@ -117,6 +125,9 @@ impl Ocr for WindowsOcr {
             BitmapAlphaMode::Ignore,
         )
         .map_err(err)?;
+        let remaining = timeout.checked_sub(started.elapsed())
+            .filter(|remaining| !remaining.is_zero())
+            .ok_or_else(|| PlatformError::Ocr("OCR read budget expired during frame preparation".into()))?;
         requests
             .run(
                 || {
@@ -151,7 +162,7 @@ impl Ocr for WindowsOcr {
                         }),
                     }))
                 },
-                Duration::from_secs(2),
+                remaining,
             )
             .map_err(PlatformError::Ocr)
     }

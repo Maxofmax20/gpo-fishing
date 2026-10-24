@@ -189,4 +189,14 @@ mod tests {
             "recovered"
         );
     }
+    #[test]
+    fn short_caller_budget_cancels_without_waiting_for_default_timeout() {
+        let mut gate = OcrRequestGate::default();
+        let (request, _, cancelled, _) = fake(vec![]);
+        let started = Instant::now();
+        assert!(gate.run(|| Ok(request), Duration::from_millis(20)).unwrap_err().contains("timed out"));
+        assert!(started.elapsed() < Duration::from_millis(500), "short read must not wait the legacy two-second budget");
+        assert_eq!(cancelled.load(Ordering::SeqCst), 1);
+    }
+
 }
