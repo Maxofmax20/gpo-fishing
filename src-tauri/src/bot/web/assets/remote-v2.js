@@ -38,17 +38,47 @@ function bindHold(button,key){
  button.onpointerup=up;button.onpointercancel=up;button.onlostpointercapture=()=>{if(held.has(key))up();};
 }
 document.querySelectorAll('[data-hold]').forEach(button=>bindHold(button,button.dataset.hold));
+// Restore the previous camera pad's right-button look drag; never use left-drag for camera.
+document.querySelectorAll('[data-camera]').forEach(button=>{
+ let timer=null,busy=false,active=false;
+ const step=()=>{if(!active||busy)return;busy=true;input('/api/camera',{direction:button.dataset.camera,focus:focus()}).catch(error=>{active=false;clearInterval(timer);message(error.message);}).finally(()=>{busy=false;});};
+ const stop=()=>{active=false;clearInterval(timer);};
+ button.onpointerdown=event=>{event.preventDefault();button.setPointerCapture(event.pointerId);active=true;step();timer=setInterval(step,450);};
+ button.onpointerup=stop;button.onpointercancel=stop;button.onlostpointercapture=stop;
+ window.addEventListener('blur',stop);
+});
+
 for(let slot=1;slot<=9;slot++){const button=document.createElement('button');button.textContent=String(slot);button.setAttribute('aria-label','Equip hotbar slot '+slot);button.onclick=()=>run(()=>input('/api/tap',{key:String(slot),focus:focus()}));el('slots').append(button);}
 el('record').onclick=()=>run(async()=>{await api('/api/recorder',{command:'record'});message('Recording web controls');});
 el('save').onclick=()=>run(async()=>{await api('/api/recorder',{command:'save',name:''});await recordings();});
 el('discard').onclick=()=>run(()=>api('/api/recorder',{command:'discard'}));
 el('stop-playback').onclick=()=>run(()=>api('/api/recorder',{command:'stop'}));
-el('test-notification').onclick=()=>run(async()=>{await api('/api/notifications/test',{});message('Test delivery succeeded');});
+el('test-notification').onclick=()=>run(async()=>{const button=el('test-notification');button.disabled=true;try{await api('/api/notifications/test',{});message('Test delivery succeeded');}finally{button.disabled=false;notificationHealth().catch(()=>{});}});
 async function recordings(){
  const result=await api('/api/macros');el('recordings').replaceChildren();
  for(const item of result.macros){const row=document.createElement('div');row.className='recording';const title=document.createElement('span');title.textContent=item.name;
  const button=document.createElement('button');button.textContent='Play';button.onclick=()=>run(()=>api('/api/recorder',{command:'play',id:item.id,speed:Number(el('speed').value),loop:Number(el('loops').value)!==1,loops:Number(el('loops').value)}));row.append(title,button);el('recordings').append(row);}
 }
+let notificationSettings=null,notificationSaving=false;
+async function notificationHealth(){
+ const data=await api('/api/notifications/status');
+ el('notification-health').textContent='Delivered: '+data.delivered+' · Pending: '+data.pending+' · Failed: '+data.failed+(data.error?' · '+data.error:'');
+}
+async function loadNotificationSettings(){
+ if(notificationSaving)return;
+ const data=await api('/api/notifications/settings');notificationSettings=data.settings;
+ document.querySelectorAll('[data-notification]').forEach(control=>{const value=notificationSettings[control.dataset.notification];if(control.type==='checkbox')control.checked=value;else control.value=String(value);});
+ el('notification-fields').disabled=false;
+ el('notification-config').textContent=(data.telegram_configured?'Telegram credentials configured.':'Configure Telegram bot and chat in desktop settings.')+' Preferences saved on this computer.';
+}
+document.querySelectorAll('[data-notification]').forEach(control=>control.onchange=()=>run(async()=>{
+ if(!notificationSettings||notificationSaving)return;
+ const key=control.dataset.notification,value=control.type==='checkbox'?control.checked:control.type==='number'?control.valueAsNumber:control.value;
+ notificationSaving=true;el('notification-fields').disabled=true;
+ try{await api('/api/notifications/settings',{changes:{[key]:value},expected:{[key]:notificationSettings[key]}});el('notification-config').textContent='Saved';}
+ finally{notificationSaving=false;await loadNotificationSettings();}
+}));
+window.addEventListener('focus',()=>{loadNotificationSettings().catch(error=>message(error.message));});
 async function status(){
  if(polling||document.hidden)return;polling=true;
  try{const data=await api('/api/status');epoch=data.control_epoch;el('connection').textContent=data.window?.is_foreground?'Roblox focused':'Roblox needs focus';el('state').textContent=typeof data.state==='string'?data.state:JSON.stringify(data.state);el('recorder-state').textContent=data.recorder.message||'Ready';el('actual').textContent=data.stream_fps==null?'Waiting for frames':data.stream_fps.toFixed(0)+' FPS delivered';}
@@ -79,5 +109,5 @@ screen.onpointerup=mouseUp;screen.onpointercancel=mouseUp;screen.onlostpointerca
 window.addEventListener('blur',mouseUp);
 window.addEventListener('blur',()=>{for(const key of held.keys()){clearInterval(held.get(key));run(()=>input('/api/input',{input:{action:'key_up',key},focus:false}));}held.clear();});
 document.addEventListener('visibilitychange',()=>{if(document.hidden){el('screen').src='';clearTimeout(streamTimer);window.dispatchEvent(new Event('blur'));}else{stream();status();}});
-stream();status();recordings().catch(error=>message(error.message));setInterval(status,1000);
+stream();status();recordings().catch(error=>message(error.message));loadNotificationSettings().catch(error=>message(error.message));notificationHealth().catch(()=>{});setInterval(status,1000);setInterval(()=>{if(!document.hidden)notificationHealth().catch(()=>{});},5000);
 })();
