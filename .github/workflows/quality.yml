@@ -33,7 +33,7 @@ jobs:
       - name: Browser dashboard checks
         run: npm run test:browser
       - name: Dashboard gesture tests
-        run: node --test src-tauri/src/bot/web/assets/*.test.mjs
+        run: cargo test --manifest-path crates/control-runtime/Cargo.toml --locked
       - run: npm audit --audit-level=high
       - name: Secret scan (gitleaks-style grep)
         shell: pwsh

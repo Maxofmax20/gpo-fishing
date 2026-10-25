@@ -1,15 +1,16 @@
 pub mod actions;
+pub mod control;
 pub mod crafting;
 pub mod ctx;
 pub mod machine;
 pub mod ml_collect;
+pub mod recorder;
 pub mod session;
+pub mod shadow;
+pub mod telegram_remote;
 pub mod trace;
 pub mod watchdog;
-pub mod telegram_remote;
 pub mod web_server;
-pub mod recorder;
-pub mod shadow;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
@@ -84,6 +85,10 @@ impl Bot {
     }
 
     pub fn start_checked(self: &Arc<Self>) -> Result<(), String> {
+        let _mode = control::MODE_LOCK.lock();
+        if recorder::is_playing() || recorder::is_recording() {
+            return Err("Stop playback or save the recording before starting fishing".into());
+        }
         self.start_at_generation(None)
     }
 
@@ -98,7 +103,16 @@ impl Bot {
         if self.ctx.settings.read().fishing.trace {
             let preflight = crate::commands::collection_preflight(&self.ctx);
             if !preflight.ok {
-                return Err(format!("Collection preflight failed: {}", preflight.checks.iter().filter(|c| !c.ok).map(|c| c.detail.as_str()).collect::<Vec<_>>().join("; ")));
+                return Err(format!(
+                    "Collection preflight failed: {}",
+                    preflight
+                        .checks
+                        .iter()
+                        .filter(|c| !c.ok)
+                        .map(|c| c.detail.as_str())
+                        .collect::<Vec<_>>()
+                        .join("; ")
+                ));
             }
         }
         self.generation.fetch_add(1, Ordering::SeqCst);
@@ -115,13 +129,18 @@ impl Bot {
         // Ensure the dataset layout exists now so a broken path is loud in
         // the logs instead of silently yielding zero frames.
         if let Err(e) = self.ctx.ml.ensure_layout() {
-            self.ctx.log_warn(&format!("ML DATA layout unavailable ({e}) — fishing without recording"));
+            self.ctx.log_warn(&format!(
+                "ML DATA layout unavailable ({e}) — fishing without recording"
+            ));
         }
         let session_id = self.ctx.ml.begin_session(env!("CARGO_PKG_VERSION"));
         // Warm up shadow inference off the hot loop (observation-only
         // models load once into a process-global engine; first use after
         // this thread finishes pays nothing).
-        if { let settings = self.ctx.settings.read(); settings.features.ml_shadow || settings.features.ml_fish_recognition } {
+        if {
+            let settings = self.ctx.settings.read();
+            settings.features.ml_shadow || settings.features.ml_fish_recognition
+        } {
             let models_dir = self.ctx.store.dir().join("models");
             std::thread::spawn(move || {
                 if crate::core::shadow_infer::engine(&models_dir).is_some() {
@@ -138,12 +157,20 @@ impl Bot {
         self.ctx.log_info(&if resume {
             format!(
                 "Resumed (ML session {session_id} {})",
-                if trace_on { "RECORDING" } else { "collection OFF — trace recording disabled" }
+                if trace_on {
+                    "RECORDING"
+                } else {
+                    "collection OFF — trace recording disabled"
+                }
             )
         } else {
             format!(
                 "Started (ML session {session_id} {})",
-                if trace_on { "RECORDING" } else { "collection OFF — trace recording disabled" }
+                if trace_on {
+                    "RECORDING"
+                } else {
+                    "collection OFF — trace recording disabled"
+                }
             )
         });
         Ok(())
@@ -167,6 +194,7 @@ impl Bot {
     }
 
     pub fn stop(&self) {
+        recorder::stop_playback();
         self.generation.fetch_add(1, Ordering::SeqCst);
         self.ctx.running.store(false, Ordering::SeqCst);
         self.ctx.release_mouse();
@@ -194,8 +222,18 @@ impl Bot {
         let _lifecycle = self.lifecycle.lock();
         if enabled && self.is_running() {
             let preflight = crate::commands::collection_preflight(&self.ctx);
-            let failures = preflight.checks.iter().filter(|c| c.name != "consent" && !c.ok).map(|c| c.detail.as_str()).collect::<Vec<_>>();
-            if !failures.is_empty() { return Err(format!("Collection could not start: {}", failures.join("; "))); }
+            let failures = preflight
+                .checks
+                .iter()
+                .filter(|c| c.name != "consent" && !c.ok)
+                .map(|c| c.detail.as_str())
+                .collect::<Vec<_>>();
+            if !failures.is_empty() {
+                return Err(format!(
+                    "Collection could not start: {}",
+                    failures.join("; ")
+                ));
+            }
         }
         {
             let mut settings = self.ctx.settings.write();
@@ -213,7 +251,11 @@ impl Bot {
             self.finalize_ml_session("collection disabled");
             self.emit_ml_session(None);
         }
-        self.ctx.log_info(if enabled { "Sample collection enabled; existing samples preserved" } else { "Sample collection stopped; fishing and name recognition continue" });
+        self.ctx.log_info(if enabled {
+            "Sample collection enabled; existing samples preserved"
+        } else {
+            "Sample collection stopped; fishing and name recognition continue"
+        });
         Ok(())
     }
 
@@ -249,15 +291,15 @@ impl Bot {
             // carries the id (without this the UI could never match the
             // session-complete event to its session).
             collecting: summary.is_none() && snap.collecting && trace_on,
-            session_id: summary
-                .map(|s| s.session_id.clone())
-                .or(snap.session_id),
+            session_id: summary.map(|s| s.session_id.clone()).or(snap.session_id),
             samples: snap.written,
             reels: snap.reels,
             hard_examples: snap.hard_examples,
             dropped: snap.dropped,
             quality_ok: summary.map(|s| s.quality_ok),
-            quality_warnings: summary.map(|s| s.quality_warnings.clone()).unwrap_or_default(),
+            quality_warnings: summary
+                .map(|s| s.quality_warnings.clone())
+                .unwrap_or_default(),
             pending_annotation: summary.map(|s| s.pending_annotation).unwrap_or(0),
             total_samples: summary.map(|s| s.total_samples).unwrap_or(0),
         };
@@ -265,6 +307,10 @@ impl Bot {
     }
 
     pub fn toggle(self: &Arc<Self>) {
+        if recorder::is_playing() {
+            recorder::stop_playback();
+            return;
+        }
         if self.is_running() {
             self.pause();
         } else {
@@ -276,7 +322,9 @@ impl Bot {
         self.stop();
         let generation = self.generation.load(Ordering::SeqCst);
         std::thread::sleep(std::time::Duration::from_millis(400));
-        if let Err(error) = self.start_at_generation(Some(generation)) { self.ctx.log_error(&error); }
+        if let Err(error) = self.start_at_generation(Some(generation)) {
+            self.ctx.log_error(&error);
+        }
         self.ctx.log_info("Remotely recasting rod");
     }
 
@@ -310,7 +358,9 @@ impl Bot {
                     if let Some(bot) = weak.upgrade() {
                         let paused = ctx.state() == BotState::Paused;
                         bot.paused.store(paused, Ordering::SeqCst);
-                        if !paused { ctx.set_state(BotState::Stopped, None); }
+                        if !paused {
+                            ctx.set_state(BotState::Stopped, None);
+                        }
                         ctx.session.lock().pause();
                         bot.finalize_ml_session("loop exited");
                         ctx.emit_stats();
@@ -347,8 +397,12 @@ impl Bot {
 
     pub fn restart_loop(self: &Arc<Self>, reason: &str) {
         // A stop may be joining this watchdog. Never wait on its lifecycle lock.
-        let Some(lifecycle) = self.lifecycle.try_lock() else { return };
-        if !self.is_running() { return; }
+        let Some(lifecycle) = self.lifecycle.try_lock() else {
+            return;
+        };
+        if !self.is_running() {
+            return;
+        }
         let generation = self.generation.load(Ordering::SeqCst);
         let attempt = {
             let mut s = self.ctx.session.lock();
@@ -359,16 +413,22 @@ impl Bot {
             let s = self.ctx.settings.read();
             (s.watchdog.max_restarts, s.watchdog.restart_backoff_s)
         };
-        self.ctx.emit(BotEvent::Recovery { attempt, reason: reason.to_string() });
+        self.ctx.emit(BotEvent::Recovery {
+            attempt,
+            reason: reason.to_string(),
+        });
         self.ctx.webhook.recovery(attempt, reason);
         if attempt > max {
-            self.ctx.log_error(&format!("Restart limit reached ({max}); stopping"));
+            self.ctx
+                .log_error(&format!("Restart limit reached ({max}); stopping"));
             drop(lifecycle);
             self.stop();
             return;
         }
-        self.ctx.log_warn(&format!("Restarting loop #{attempt}: {reason}"));
-        self.ctx.set_state(BotState::Recovering, Some(reason.to_string()));
+        self.ctx
+            .log_warn(&format!("Restarting loop #{attempt}: {reason}"));
+        self.ctx
+            .set_state(BotState::Recovering, Some(reason.to_string()));
         self.ctx.running.store(false, Ordering::SeqCst);
         if let Some(h) = self.watchdog.lock().take() {
             join_unless_self(h);
@@ -380,41 +440,62 @@ impl Bot {
         drop(lifecycle);
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs_f32(backoff);
         while std::time::Instant::now() < deadline {
-            if self.generation.load(Ordering::SeqCst) != generation { return; }
+            if self.generation.load(Ordering::SeqCst) != generation {
+                return;
+            }
             std::thread::sleep(std::time::Duration::from_millis(25));
         }
         let _lifecycle = self.lifecycle.lock();
-        if self.generation.load(Ordering::SeqCst) != generation { return; }
+        if self.generation.load(Ordering::SeqCst) != generation {
+            return;
+        }
         self.spawn_loop(true);
         self.spawn_watchdog();
     }
 }
 
-
 #[cfg(test)]
 mod lifecycle_tests {
     use super::*;
     fn bot(tag: &str) -> Arc<Bot> {
-        let dir = std::env::temp_dir().join(format!("gpo-lifecycle-{}-{}-{tag}", std::process::id(), crate::events::now_ms()));
+        let dir = std::env::temp_dir().join(format!(
+            "gpo-lifecycle-{}-{}-{tag}",
+            std::process::id(),
+            crate::events::now_ms()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let mut settings = Settings::default();
         settings.watchdog.enabled = false;
         settings.watchdog.restart_backoff_s = 0.3;
         settings.features.ml_shadow = false;
         let (tx, _) = crossbeam_channel::unbounded();
-        Bot::new(crate::core::platform::mock::platform(), Arc::new(RwLock::new(settings)),
-            Arc::new(RwLock::new(None)), tx, Arc::new(WebhookQueue::disabled()), Arc::new(Store::new(dir)))
+        Bot::new(
+            crate::core::platform::mock::platform(),
+            Arc::new(RwLock::new(settings)),
+            Arc::new(RwLock::new(None)),
+            tx,
+            Arc::new(WebhookQueue::disabled()),
+            Arc::new(Store::new(dir)),
+        )
     }
     #[test]
     fn simultaneous_starts_create_one_session() {
         let bot = bot("start");
         let barrier = Arc::new(std::sync::Barrier::new(3));
-        let threads: Vec<_> = (0..2).map(|_| {
-            let bot = bot.clone(); let barrier = barrier.clone();
-            std::thread::spawn(move || { barrier.wait(); bot.start_checked().unwrap(); })
-        }).collect();
+        let threads: Vec<_> = (0..2)
+            .map(|_| {
+                let bot = bot.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    bot.start_checked().unwrap();
+                })
+            })
+            .collect();
         barrier.wait();
-        for thread in threads { thread.join().unwrap(); }
+        for thread in threads {
+            thread.join().unwrap();
+        }
         assert!(bot.is_running());
         assert_eq!(bot.ctx.session.lock().lifetime().sessions, 1);
         bot.stop();
@@ -456,7 +537,10 @@ mod lifecycle_tests {
     fn stop_during_backoff_cannot_restart() {
         let bot = bot("backoff");
         bot.start_checked().unwrap();
-        let recovery = { let bot = bot.clone(); std::thread::spawn(move || bot.restart_loop("test")) };
+        let recovery = {
+            let bot = bot.clone();
+            std::thread::spawn(move || bot.restart_loop("test"))
+        };
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
         while bot.state() != BotState::Recovering && std::time::Instant::now() < deadline {
             std::thread::sleep(std::time::Duration::from_millis(5));

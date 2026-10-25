@@ -36,7 +36,9 @@ pub struct AppState {
 }
 
 pub fn data_dir() -> PathBuf {
-    dirs::config_dir().unwrap_or_else(std::env::temp_dir).join("gpo-autofish")
+    dirs::config_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("gpo-autofish")
 }
 
 pub fn build_state() -> AppState {
@@ -46,16 +48,24 @@ pub fn build_state() -> AppState {
 
     let store = Arc::new(Store::new(dir.clone()));
     let settings = Arc::new(RwLock::new(store.load()));
-    let platform = platform::build();
+    let platform = crate::bot::control::attach(platform::build());
     let roblox = Arc::new(RwLock::new(platform.window.find()));
     let (tx, rx) = bounded::<BotEvent>(1024);
     let webhook = WebhookQueue::start(Arc::clone(&settings), tx.clone());
+    webhook.attach_platform(platform.clone());
     let vpn = crate::vpn::VpnManager::new();
     let multi_roblox = Arc::new(crate::multi_roblox::MultiRobloxManager::new(dir.clone()));
     if settings.read().features.multi_roblox {
         let _ = multi_roblox.set_enabled(true);
     }
-    let bot = Bot::new(platform.clone(), Arc::clone(&settings), Arc::clone(&roblox), tx.clone(), Arc::clone(&webhook), Arc::clone(&store));
+    let bot = Bot::new(
+        platform.clone(),
+        Arc::clone(&settings),
+        Arc::clone(&roblox),
+        tx.clone(),
+        Arc::clone(&webhook),
+        Arc::clone(&store),
+    );
     crate::bot::recorder::init_roblox_ref(Arc::clone(&roblox), Arc::clone(&store));
     crate::bot::recorder::set_vpn_provider(Arc::clone(&vpn) as Arc<dyn crate::vpn::VpnControl>);
 
@@ -100,25 +110,34 @@ pub fn setup(app: &AppHandle, st: &AppState) -> Result<(), Box<dyn std::error::E
             candidates.push(res.join("models"));
         }
         candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models"));
-        let seeded = crate::core::shadow_infer::seed_shadow_models(&candidates, &st.store.dir().join("models"));
+        let seeded = crate::core::shadow_infer::seed_shadow_models(
+            &candidates,
+            &st.store.dir().join("models"),
+        );
         tracing::info!("shadow models seeded: {seeded:?}");
     }
     // Pure Rust ONNX inference loads inside the app, never a terminal/Python
     // service. Warm it before the user starts fishing; keep UI startup free.
     if st.settings.read().features.ml_shadow || st.settings.read().features.ml_fish_recognition {
         let models = st.store.dir().join("models");
-        std::thread::Builder::new().name("local-model-startup".into()).spawn(move || {
-            if crate::core::shadow_infer::engine(&models).is_some() {
-                tracing::info!("Local sample-trained models ready inside the macro");
-            } else {
-                tracing::warn!("Local models unavailable; OCR remains active");
-            }
-        })?;
+        std::thread::Builder::new()
+            .name("local-model-startup".into())
+            .spawn(move || {
+                if crate::core::shadow_infer::engine(&models).is_some() {
+                    tracing::info!("Local sample-trained models ready inside the macro");
+                } else {
+                    tracing::warn!("Local models unavailable; OCR remains active");
+                }
+            })?;
     }
     if let Some(rx) = st.events_rx.lock().take() {
         spawn_event_forwarder(app.clone(), rx);
     }
-    spawn_roblox_watcher(st.platform.clone(), Arc::clone(&st.roblox), st.events_tx.clone());
+    spawn_roblox_watcher(
+        st.platform.clone(),
+        Arc::clone(&st.roblox),
+        st.events_tx.clone(),
+    );
     spawn_panel_fallback(app.clone());
     crate::bot::telegram_remote::spawn(Arc::clone(&st.bot), Arc::clone(&st.settings));
     crate::bot::web_server::spawn(Arc::clone(&st.bot), Arc::clone(&st.settings));
@@ -214,10 +233,14 @@ fn spawn_event_forwarder(app: AppHandle, rx: Receiver<BotEvent>) {
             let mut last_reading = std::time::Instant::now() - Duration::from_secs(1);
             for ev in rx.iter() {
                 if let BotEvent::Reading(reading) = &ev {
-                    if reading.is_some() && last_reading.elapsed() < Duration::from_millis(66) { continue; }
+                    if reading.is_some() && last_reading.elapsed() < Duration::from_millis(66) {
+                        continue;
+                    }
                     last_reading = std::time::Instant::now();
                     for window in app.webview_windows().values() {
-                        if window.is_visible().unwrap_or(false) && !window.is_minimized().unwrap_or(false) {
+                        if window.is_visible().unwrap_or(false)
+                            && !window.is_minimized().unwrap_or(false)
+                        {
                             let _ = app.emit_to(window.label(), ev.channel(), reading);
                         }
                     }
@@ -252,7 +275,11 @@ fn spawn_panel_fallback(app: AppHandle) {
         .expect("spawn panel fallback");
 }
 
-fn spawn_roblox_watcher(platform: Platform, roblox: Arc<RwLock<Option<WindowInfo>>>, tx: Sender<BotEvent>) {
+fn spawn_roblox_watcher(
+    platform: Platform,
+    roblox: Arc<RwLock<Option<WindowInfo>>>,
+    tx: Sender<BotEvent>,
+) {
     std::thread::Builder::new()
         .name("roblox-watcher".into())
         .spawn(move || {

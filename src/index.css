@@ -150,3 +150,6 @@ textarea:focus-visible { outline: 2px solid var(--color-accent); outline-offset:
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
+
+.panel-shell{border-radius:22px;overflow:hidden;border:1px solid var(--color-line-strong)}
+html[data-view="panel"] #root{border-radius:22px;overflow:hidden}

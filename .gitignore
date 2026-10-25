@@ -86,3 +86,7 @@ reports/ui-preview.tsx
 
 /test-results/
 /playwright-report/
+
+**/target/
+
+/node_modules
