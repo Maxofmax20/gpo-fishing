@@ -501,3 +501,40 @@ fn stream_frames(mut stream: TcpStream, request: Request, server: Arc<Server>) {
         std::thread::sleep(period.saturating_sub(started.elapsed()));
     }
 }
+
+
+#[cfg(test)]
+mod remote_http_tests {
+ use super::*;
+ use crate::{config::Store, core::{platform::{mock::{MockWindow,RecordingInput,ScriptedCapture,NoOcr,InputEvent},Platform},types::{WindowInfo,PxRect,Key}},webhook::WebhookQueue};
+ fn exchange(server:Arc<Server>,request:String)->String{
+  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();
+  let worker=std::thread::spawn(move||{let(mut socket,_)=listener.accept().unwrap();let r=read_request(&mut socket).unwrap();handle(socket,r,server);});
+  let mut client=TcpStream::connect(address).unwrap();client.set_read_timeout(Some(Duration::from_secs(3))).unwrap();client.write_all(request.as_bytes()).unwrap();
+  let mut response=String::new();client.read_to_string(&mut response).unwrap();worker.join().unwrap();response
+ }
+ fn post(token:&str,path:&str,body:Value)->String{let text=body.to_string();format!("POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\nContent-Length: {}\r\n\r\n{text}",text.len())}
+ #[test]
+ fn authenticated_jump_and_cancel_use_real_http_with_mock_game(){
+  let input=Arc::new(RecordingInput::default());
+  let window=Arc::new(MockWindow::default());let info=WindowInfo{client:PxRect{x:10,y:20,w:960,h:540},visible:true,is_foreground:true,dpi:96};*window.info.lock()=Some(info);
+  let platform=super::super::control::attach(Platform{window,capture:Arc::new(ScriptedCapture::default()),input:input.clone(),ocr:Arc::new(NoOcr)});
+  let mut settings=Settings::default();settings.web.token="synthetic-test-token".into();
+  let settings=Arc::new(RwLock::new(settings));let(tx,_)=crossbeam_channel::unbounded();
+  let dir=std::env::temp_dir().join(format!("gpo-remote-http-{}-{}",std::process::id(),crate::events::now_ms()));
+  let bot=Bot::new(platform,settings.clone(),Arc::new(RwLock::new(Some(info))),tx,Arc::new(WebhookQueue::disabled()),Arc::new(Store::new(dir)));
+  let server=Arc::new(Server{bot,settings,streams:AtomicUsize::new(0),held:Mutex::new(vec![]),rates:Mutex::new(vec![])});
+  let epoch=super::super::control::service().unwrap().runtime.epoch();
+  let denied=exchange(server.clone(),post("wrong","/api/tap",json!({"key":"space","epoch":epoch})));
+  assert!(denied.starts_with("HTTP/1.1 401"));assert!(input.events.lock().is_empty());
+  let invalid=exchange(server.clone(),post("synthetic-test-token","/api/input",json!({"input":{"action":"move","x":2,"y":0},"epoch":epoch})));
+  assert!(invalid.starts_with("HTTP/1.1 400"));assert!(input.events.lock().is_empty());
+  let jump=exchange(server.clone(),post("synthetic-test-token","/api/tap",json!({"key":"space","epoch":epoch})));
+  assert!(jump.starts_with("HTTP/1.1 200"),"{jump}");
+  assert_eq!(*input.events.lock(),vec![InputEvent::Key(Key::Char(' '),true),InputEvent::Key(Key::Char(' '),false)]);
+  let stopped=exchange(server.clone(),post("synthetic-test-token","/api/control",json!({"command":"stop"})));assert!(stopped.starts_with("HTTP/1.1 200"));
+  input.events.lock().clear();
+  let stale=exchange(server,post("synthetic-test-token","/api/tap",json!({"key":"space","epoch":epoch})));
+  assert!(stale.starts_with("HTTP/1.1 400"));assert!(input.events.lock().is_empty());
+ }
+}

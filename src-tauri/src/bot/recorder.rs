@@ -779,3 +779,19 @@ fn start_pc_capture() -> Result<(), String> {
     });
     Ok(())
 }
+
+#[cfg(test)]
+mod rebuild_tests{
+ use super::*;
+ #[test]fn legacy_jump_keeps_timing(){
+  let e=legacy_events(&[MacroStep::KeyTap{key:"jump".into(),delay_ms:100}]).unwrap();
+  assert_eq!(e[0].at_ms,100);assert_eq!(e[1].at_ms,150);
+  assert_eq!(e[0].input,InputAction::KeyDown{key:"space".into()});
+ }
+ #[test]fn invalid_legacy_drag_does_not_overflow(){
+  assert!(legacy_events(&[MacroStep::Drag{start_rx:0.1,start_ry:0.1,end_rx:0.2,end_ry:0.2,duration_ms:u64::MAX,delay_ms:u64::MAX}]).is_err());
+ }
+ #[test]fn unsupported_vpn_steps_fail_explicitly(){
+  assert!(legacy_events(&[MacroStep::VpnDisconnect{timeout_s:5}]).unwrap_err().contains("VPN"));
+ }
+}

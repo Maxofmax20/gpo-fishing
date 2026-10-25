@@ -86,8 +86,8 @@ impl Bot {
 
     pub fn start_checked(self: &Arc<Self>) -> Result<(), String> {
         let _mode = control::MODE_LOCK.lock();
-        if recorder::is_playing() {
-            return Err("Stop recorded playback before starting fishing".into());
+        if recorder::is_playing() || recorder::is_recording() {
+            return Err("Stop playback or save the recording before starting fishing".into());
         }
         self.start_at_generation(None)
     }

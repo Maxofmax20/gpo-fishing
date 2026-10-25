@@ -1615,6 +1615,7 @@ pub fn macro_record(
 ) -> Result<serde_json::Value, String> {
     match action.as_str() {
         "start" => {
+            if st.bot.is_running(){return Err("Pause fishing before recording".into());}
             // Shared contract with the frontend `RecordMode` ("pc" | "web");
             // backend enum spellings accepted case-insensitively for safety.
             let m = match mode.as_deref().map(|s| s.to_ascii_lowercase()) {
@@ -1636,6 +1637,7 @@ pub fn macro_record(
             Ok(serde_json::json!({ "ok": true, "message": "Recording cancelled" }))
         }
         "toggle" => {
+            if st.bot.is_running() && !crate::bot::recorder::is_recording(){return Err("Pause fishing before recording".into());}
             let is_now_rec = crate::bot::recorder::toggle_recording()?;
             Ok(serde_json::json!({
                 "ok": true,

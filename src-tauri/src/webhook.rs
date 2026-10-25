@@ -22,6 +22,8 @@ struct Message {
     body: String,
     photo: Option<Vec<u8>>,
     created: Instant,
+    zero_outcome: bool,
+    general: bool,
 }
 #[derive(Clone, Default)]
 pub struct DeliveryHealth {
@@ -75,7 +77,7 @@ impl WebhookQueue {
         std::thread::spawn(move || {
             while let Ok(mut message) = receiver.recv() {
                 let s = settings.read().clone();
-                if !s.webhook.enabled {
+                if !s.webhook.enabled || (s.webhook.pity_zero_only && !message.zero_outcome) || (!message.general && !s.webhook.fruit_drop) {
                     pending.fetch_sub(1, Ordering::SeqCst);
                     continue;
                 }
@@ -98,8 +100,9 @@ impl WebhookQueue {
                     }
                 }
                 let mut result = Err("No notification provider is configured".into());
+                let mut ack=ProviderAcks::default();
                 for attempt in 0..3 {
-                    result = deliver(&s, &message);
+                    result = deliver_pending(&s, &message, &mut ack);
                     if result.is_ok() {
                         break;
                     }
@@ -155,6 +158,8 @@ impl WebhookQueue {
                 body,
                 photo,
                 created: Instant::now(),
+                zero_outcome: is_outcome && title.starts_with("Pity 0"),
+                general: !is_outcome,
             })
             .is_err()
         {
@@ -194,6 +199,8 @@ impl WebhookQueue {
                 body: "This is an explicitly requested delivery test.".into(),
                 photo: None,
                 created: Instant::now(),
+                zero_outcome: false,
+                general: true,
             },
         )
     }
@@ -298,19 +305,11 @@ fn parse_pity(text: &str, cap: u32) -> Option<String> {
         if *word != "pity" && *word != "legendarypity" {
             continue;
         }
-        let current = words
-            .get(index + 1)?
-            .replace('o', "0")
-            .parse::<u32>()
-            .ok()?;
+        let Some(current)=words.get(index+1).and_then(|w|w.replace('o',"0").parse::<u32>().ok())else{continue;};
         if words.get(index + 2) != Some(&"/") {
             continue;
         }
-        let total = words
-            .get(index + 3)?
-            .replace('o', "0")
-            .parse::<u32>()
-            .ok()?;
+        let Some(total)=words.get(index+3).and_then(|w|w.replace('o',"0").parse::<u32>().ok())else{continue;};
         if total == cap && current <= total {
             return Some(format!("{current}/{total}"));
         }
@@ -419,10 +418,14 @@ pub fn post_telegram_photo(
         .map_err(|_| "Telegram photo request failed")?;
     telegram_result(response)
 }
-fn deliver(s: &Settings, m: &Message) -> Result<(), String> {
+#[derive(Default)]
+struct ProviderAcks{telegram:bool,discord:bool}
+fn deliver(s:&Settings,m:&Message)->Result<(),String>{deliver_pending(s,m,&mut ProviderAcks::default())}
+fn deliver_pending(s: &Settings, m: &Message, ack:&mut ProviderAcks) -> Result<(), String> {
+    if !s.webhook.enabled{return Err("Enable notifications before testing delivery".into());}
     let text = format!("{}\n\n{}", m.title, m.body);
     let mut sent = false;
-    if matches!(s.webhook.provider.as_str(), "telegram" | "both") {
+    if matches!(s.webhook.provider.as_str(), "telegram" | "both") && !ack.telegram {
         if s.webhook.telegram_bot_token.trim().is_empty()
             || s.webhook.telegram_chat_id.trim().is_empty()
         {
@@ -450,9 +453,10 @@ fn deliver(s: &Settings, m: &Message) -> Result<(), String> {
                 &text,
             )?;
         }
+        ack.telegram=true;
         sent = true;
     }
-    if matches!(s.webhook.provider.as_str(), "discord" | "both") {
+    if matches!(s.webhook.provider.as_str(), "discord" | "both") && !ack.discord {
         if s.webhook.url.trim().is_empty() {
             return Err("Discord webhook URL is missing".into());
         }
@@ -467,9 +471,10 @@ fn deliver(s: &Settings, m: &Message) -> Result<(), String> {
                 response.status().as_u16()
             ));
         }
+        ack.discord=true;
         sent = true;
     }
-    if sent {
+    if sent || ack.telegram || ack.discord {
         Ok(())
     } else {
         Err("Choose Telegram, Discord or both in notification settings".into())
