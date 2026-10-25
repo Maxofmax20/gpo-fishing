@@ -35,19 +35,26 @@ pub struct Service {
 
 pub static MODE_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 static SERVICE: OnceLock<RwLock<Option<Arc<Service>>>> = OnceLock::new();
-pub fn attach(mut platform: Platform) -> Platform {
-    let preview = Arc::new(FrameBroker {
-        source: platform.capture.clone(),
-        gate: parking_lot::Mutex::new(()),
-        waiting: AtomicUsize::new(0),
-    });
-    platform.capture = preview.clone();
-    let runtime = Arc::new(Runtime::new(Arc::new(Port(platform.clone()))));
-    *SERVICE.get_or_init(|| RwLock::new(None)).write() = Some(Arc::new(Service {
-        runtime,
-        platform: platform.clone(),
-        preview,
-    }));
+impl Service {
+    pub fn new(mut platform: Platform) -> Arc<Self> {
+        let preview = Arc::new(FrameBroker {
+            source: platform.capture.clone(),
+            gate: parking_lot::Mutex::new(()),
+            waiting: AtomicUsize::new(0),
+        });
+        platform.capture = preview.clone();
+        let runtime = Arc::new(Runtime::new(Arc::new(Port(platform.clone()))));
+        Arc::new(Self {
+            runtime,
+            platform,
+            preview,
+        })
+    }
+}
+pub fn attach(platform: Platform) -> Platform {
+    let service = Service::new(platform);
+    let platform = service.platform.clone();
+    *SERVICE.get_or_init(|| RwLock::new(None)).write() = Some(service);
     platform
 }
 pub fn service() -> Result<Arc<Service>, String> {

@@ -1560,7 +1560,7 @@ dependencies = [
 
 [[package]]
 name = "gpo-autofish"
-version = "5.9.0"
+version = "6.1.0-beta.1"
 dependencies = [
  "gpo-control-runtime",
  "base64 0.22.1",

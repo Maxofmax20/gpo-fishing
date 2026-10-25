@@ -67,8 +67,20 @@ pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
             let identity = format!("{token}:{configured}");
             if identity != previous {
                 previous = identity;
-                offset = call(&client,token,"getUpdates",json!({"offset":-1,"timeout":0,"allowed_updates":["message","callback_query"]}))
-                    .ok().and_then(|r|r.as_array().and_then(|a|a.last()).and_then(|u|u["update_id"].as_i64())).map(|n|n.saturating_add(1)).unwrap_or(0);
+                offset = call(
+                    &client,
+                    token,
+                    "getUpdates",
+                    json!({"offset":-1,"timeout":0,"allowed_updates":["message","callback_query"]}),
+                )
+                .ok()
+                .and_then(|r| {
+                    r.as_array()
+                        .and_then(|a| a.last())
+                        .and_then(|u| u["update_id"].as_i64())
+                })
+                .map(|n| n.saturating_add(1))
+                .unwrap_or(0);
                 owner = configured.parse::<i64>().ok().or_else(|| {
                     call(&client, token, "getChat", json!({"chat_id":configured}))
                         .ok()

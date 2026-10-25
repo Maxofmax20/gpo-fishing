@@ -43,7 +43,7 @@ el('record').onclick=()=>run(async()=>{await api('/api/recorder',{command:'recor
 el('save').onclick=()=>run(async()=>{await api('/api/recorder',{command:'save',name:''});await recordings();});
 el('discard').onclick=()=>run(()=>api('/api/recorder',{command:'discard'}));
 el('stop-playback').onclick=()=>run(()=>api('/api/recorder',{command:'stop'}));
-el('test-notification').onclick=()=>run(async()=>{await api('/api/notifications/test',{});message('Test queued; check delivery status');});
+el('test-notification').onclick=()=>run(async()=>{await api('/api/notifications/test',{});message('Test delivery succeeded');});
 async function recordings(){
  const result=await api('/api/macros');el('recordings').replaceChildren();
  for(const item of result.macros){const row=document.createElement('div');row.className='recording';const title=document.createElement('span');title.textContent=item.name;

@@ -97,7 +97,7 @@ export default function Panel() {
       <div className="h-full w-full flex overflow-hidden">
         <nav aria-label="Main navigation" className="w-14 shrink-0 flex flex-col items-center py-3 overflow-y-auto border-r border-line bg-black/20">
           <img src={logo} alt="" draggable={false} className="w-9 h-9 rounded-xl mb-4 drag shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />
-          {TABS.filter((t) => advanced || !["macros", "vpn", "multi", "training"].includes(t.id)).map((t) => (
+          {TABS.filter((t) => advanced || !["vpn", "multi", "training"].includes(t.id)).map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
@@ -111,7 +111,7 @@ export default function Panel() {
             </button>
           ))}
           <button aria-label="Advanced tools" aria-expanded={advanced} title="Advanced tools: recorder, VPN, Multi Roblox and training"
-            onClick={() => { if (advanced && ["macros", "vpn", "multi", "training"].includes(tab)) setTab("dashboard"); setAdvanced(!advanced); }}
+            onClick={() => { if (advanced && ["vpn", "multi", "training"].includes(tab)) setTab("dashboard"); setAdvanced(!advanced); }}
             className={cx("w-10 h-10 rounded-xl grid place-items-center mt-2 shrink-0", advanced ? "bg-accent-soft text-accent" : "text-fg-mute hover:bg-white/[0.05]")}>
             <Wrench size={17} />
           </button>
@@ -179,7 +179,7 @@ export default function Panel() {
             {ready && !gated && (
               <PageBoundary key={tab}>
               <Suspense fallback={<div role="status" className="p-4 text-fg-mute">Loading page…</div>}>
-                {tab === "dashboard" && <Dashboard onNavigate={(next) => { if (["macros", "vpn", "multi", "training"].includes(next)) setAdvanced(true); setTab(next); }} />}
+                {tab === "dashboard" && <Dashboard onNavigate={(next) => { if (["vpn", "multi", "training"].includes(next)) setAdvanced(true); setTab(next); }} />}
                 {tab === "journal" && <Journal />}
                 {tab === "setup" && <Setup />}
                 {tab === "features" && <Features />}

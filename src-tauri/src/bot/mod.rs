@@ -177,6 +177,7 @@ impl Bot {
     }
 
     pub fn pause(&self) {
+        recorder::stop_playback();
         self.generation.fetch_add(1, Ordering::SeqCst);
         let _lifecycle = self.lifecycle.lock();
         if !self.is_running() && self.state() != BotState::Recovering {

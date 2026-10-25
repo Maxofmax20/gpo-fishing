@@ -34,7 +34,9 @@ fn get_roblox_window_info() -> Option<WindowInfo> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RecordMode {
+    #[serde(rename = "web", alias = "WebScreen")]
     WebScreen,
+    #[serde(rename = "pc", alias = "PcWindow")]
     PcWindow,
 }
 
@@ -180,7 +182,7 @@ pub fn append_vpn_step(
     timeout_s: Option<u64>,
     required: Option<bool>,
 ) -> Result<CustomMacro, String> {
-    let mut list = load_macros(store);
+    let mut list = checked_macros(store)?;
     let timeout_s = timeout_s.unwrap_or(20).clamp(5, 120);
     let required = required.unwrap_or(true);
     let engine = engine
@@ -192,7 +194,9 @@ pub fn append_vpn_step(
             .iter_mut()
             .find(|m| m.id == name_or_id || m.name.eq_ignore_ascii_case(name_or_id))
             .ok_or_else(|| format!("Macro '{name_or_id}' not found"))?;
-        if m.id.starts_with("r2_"){return Err("Precise game recordings cannot contain VPN actions. Use the VPN controls separately.".into());}
+        if m.id.starts_with("r2_") {
+            return Err("Precise game recordings cannot contain VPN actions. Use the VPN controls separately.".into());
+        }
         m.steps.push(match action {
             VpnMacroAction::Connect => MacroStep::VpnConnect {
                 engine,
@@ -263,15 +267,29 @@ fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     drop(file);
     fs::rename(tmp, path).map_err(|e| e.to_string())
 }
-pub fn load_macros(store: &Store) -> Vec<CustomMacro> {
-    let p = macros_file_path(store);
-    if fs::metadata(&p).is_ok_and(|m| m.len() > 16 * 1024 * 1024) {
-        return vec![];
+fn checked_macros(store: &Store) -> Result<Vec<CustomMacro>, String> {
+    let path = macros_file_path(store);
+    match fs::metadata(&path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(_) => {
+            return Err(
+                "Saved recordings could not be accessed; the file was left unchanged".into(),
+            )
+        }
+        Ok(m) if m.len() > 16 * 1024 * 1024 => {
+            return Err(
+                "Saved recordings exceed the size limit; the file was left unchanged".into(),
+            )
+        }
+        _ => {}
     }
-    fs::read(p)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+    let bytes = fs::read(path).map_err(|_| "Saved recordings could not be read")?;
+    serde_json::from_slice(&bytes).map_err(|_| {
+        "Saved recordings contain invalid data; restore the backup before editing".into()
+    })
+}
+pub fn load_macros(store: &Store) -> Vec<CustomMacro> {
+    checked_macros(store).unwrap_or_default()
 }
 pub fn save_macros(store: &Store, list: &[CustomMacro]) -> Result<(), String> {
     let path = macros_file_path(store);
@@ -472,7 +490,7 @@ pub fn stop_recording(name: &str, store: &Store) -> Result<CustomMacro, String> 
     let r = active.as_mut().ok_or("No recording to save")?;
     r.events.sort_by_key(|event| event.at_ms);
     validate_recording(&r.events)?;
-    let mut list = load_macros(store);
+    let mut list = checked_macros(store)?;
     let id = format!("r2_{}", crate::core::secrets::generate_token_hex(12));
     let title = if name.trim().is_empty() {
         format!("Macro #{}", list.len() + 1)
@@ -501,7 +519,7 @@ pub fn cancel_recording() {
     *MESSAGE.write() = "Recording discarded".into();
 }
 pub fn delete_macro(store: &Store, id: &str) -> Result<(), String> {
-    let mut list = load_macros(store);
+    let mut list = checked_macros(store)?;
     let before = list.len();
     list.retain(|m| m.id != id && !m.name.eq_ignore_ascii_case(id));
     if before == list.len() {
@@ -513,7 +531,7 @@ pub fn rename_macro(store: &Store, id: &str, name: &str) -> Result<(), String> {
     if name.trim().is_empty() || name.chars().count() > 120 {
         return Err("Name must contain 1 to 120 characters".into());
     }
-    let mut list = load_macros(store);
+    let mut list = checked_macros(store)?;
     let item = list
         .iter_mut()
         .find(|m| m.id == id || m.name.eq_ignore_ascii_case(id))
@@ -597,7 +615,7 @@ pub fn play_macro(
             serde_json::from_slice::<Vec<TimedInput>>(&fs::read(path).map_err(|e| e.to_string())?)
                 .map_err(|e| format!("Recording data is invalid: {e}"))?
         } else {
-            legacy_events(&target.steps)?
+            return Err("This recording's precise input file is missing. Restore recordings-v2 from your backup.".into());
         }
     } else {
         legacy_events(&target.steps)?
@@ -781,17 +799,53 @@ fn start_pc_capture() -> Result<(), String> {
 }
 
 #[cfg(test)]
-mod rebuild_tests{
- use super::*;
- #[test]fn legacy_jump_keeps_timing(){
-  let e=legacy_events(&[MacroStep::KeyTap{key:"jump".into(),delay_ms:100}]).unwrap();
-  assert_eq!(e[0].at_ms,100);assert_eq!(e[1].at_ms,150);
-  assert_eq!(e[0].input,InputAction::KeyDown{key:"space".into()});
- }
- #[test]fn invalid_legacy_drag_does_not_overflow(){
-  assert!(legacy_events(&[MacroStep::Drag{start_rx:0.1,start_ry:0.1,end_rx:0.2,end_ry:0.2,duration_ms:u64::MAX,delay_ms:u64::MAX}]).is_err());
- }
- #[test]fn unsupported_vpn_steps_fail_explicitly(){
-  assert!(legacy_events(&[MacroStep::VpnDisconnect{timeout_s:5}]).unwrap_err().contains("VPN"));
- }
+mod rebuild_tests {
+    use super::*;
+    #[test]
+    fn corrupt_recordings_are_never_overwritten() {
+        let dir = std::env::temp_dir().join(format!(
+            "gpo-recording-corrupt-{}-{}",
+            std::process::id(),
+            crate::events::now_ms()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        let store = Store::new(dir);
+        fs::write(macros_file_path(&store), b"broken-json").unwrap();
+        assert!(delete_macro(&store, "missing").is_err());
+        assert_eq!(fs::read(macros_file_path(&store)).unwrap(), b"broken-json");
+    }
+    #[test]
+    fn legacy_jump_keeps_timing() {
+        let e = legacy_events(&[MacroStep::KeyTap {
+            key: "jump".into(),
+            delay_ms: 100,
+        }])
+        .unwrap();
+        assert_eq!(e[0].at_ms, 100);
+        assert_eq!(e[1].at_ms, 150);
+        assert_eq!(
+            e[0].input,
+            InputAction::KeyDown {
+                key: "space".into()
+            }
+        );
+    }
+    #[test]
+    fn invalid_legacy_drag_does_not_overflow() {
+        assert!(legacy_events(&[MacroStep::Drag {
+            start_rx: 0.1,
+            start_ry: 0.1,
+            end_rx: 0.2,
+            end_ry: 0.2,
+            duration_ms: u64::MAX,
+            delay_ms: u64::MAX
+        }])
+        .is_err());
+    }
+    #[test]
+    fn unsupported_vpn_steps_fail_explicitly() {
+        assert!(legacy_events(&[MacroStep::VpnDisconnect { timeout_s: 5 }])
+            .unwrap_err()
+            .contains("VPN"));
+    }
 }

@@ -679,10 +679,12 @@ pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_t
     if !s.webhook.send_screenshot || !s.webhook.send_drop_screenshot {
         return None;
     }
-    if s.webhook.legendary_only && !is_high_tier {
+    if s.webhook.legendary_only && !is_high_tier && !s.webhook.pity_zero_only {
         return None;
     }
-    let r = ctx.roblox_rect()?;
+    let window=ctx.platform.window.find().filter(|w|w.visible&&w.is_foreground)?;
+    let r=window.client;
+    let still_safe=||ctx.platform.window.find().is_some_and(|w|w.visible&&w.is_foreground&&w.client==r);
 
     if s.webhook.crop_fruit_screenshot {
         // Crop wide banner region across top-middle of the screen where GPO displays:
@@ -702,13 +704,11 @@ pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_t
         };
         let px_box = crop_rel.to_px(&r);
         if let Ok(frame) = ctx.platform.capture.grab(px_box) {
-            if let Ok(bytes) = frame.to_png_bytes() {
-                return Some(bytes);
-            }
+            if still_safe(){if let Ok(bytes) = frame.to_png_bytes() {return Some(bytes);}}
         }
     }
 
-    ctx.platform.capture.grab(r).ok()
+    ctx.platform.capture.grab(r).ok().filter(|_|still_safe())
         .map(|f| f.downscale(1280))
         .and_then(|f| f.to_png_bytes().ok())
 }

@@ -2,7 +2,6 @@
 use crate::{bot::Bot, config::Settings};
 use gpo_control_runtime::InputAction;
 use parking_lot::{Mutex, RwLock};
-use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{
     io::{Read, Write},
@@ -20,6 +19,7 @@ pub fn get_local_ip() -> Option<String> {
     Some(socket.local_addr().ok()?.ip().to_string())
 }
 struct Server {
+    control: Arc<super::control::Service>,
     bot: Arc<Bot>,
     settings: Arc<RwLock<Settings>>,
     streams: AtomicUsize,
@@ -147,7 +147,11 @@ fn result(stream: &mut TcpStream, value: Result<Value, String>) {
     }
 }
 pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
+    let Ok(control) = super::control::service() else {
+        return;
+    };
     let server = Arc::new(Server {
+        control,
         bot,
         settings,
         streams: AtomicUsize::new(0),
@@ -157,7 +161,8 @@ pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
     let expires = server.clone();
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(50));
-        if let Ok(control) = super::control::service() {
+        {
+            let control = &expires.control;
             expires.held.lock().retain(|(release, epoch, at)| {
                 if at.elapsed() < Duration::from_millis(750)
                     && control
@@ -270,7 +275,16 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
                     Ok(
                         json!({"ok":true,"api_version":2,"state":server.bot.state(),"running":server.bot.is_running(),
                     "window":window,"stats":server.bot.ctx().session.lock().stats(),"recorder":super::recorder::get_status(),
-                    "control_epoch":super::control::service().map(|c|c.runtime.epoch()).unwrap_or(0),"stream_fps":fps,"fps_options":gpo_control_runtime::STREAM_RATES}),
+                    "control_epoch":server.control.runtime.epoch(),"stream_fps":fps,"fps_options":gpo_control_runtime::STREAM_RATES}),
+                    ),
+                );
+            }
+            "/api/notifications/status" => {
+                let (delivered, failed, error, pending) = server.bot.ctx().webhook.health();
+                result(
+                    &mut stream,
+                    Ok(
+                        json!({"ok":true,"delivered":delivered,"failed":failed,"error":error,"pending":pending}),
                     ),
                 );
             }
@@ -280,8 +294,9 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
                     json!({"ok":true,"macros":super::recorder::load_macros(&server.bot.ctx().store)}),
                 ),
             ),
-            "/api/screenshot" => match super::control::service()
-                .and_then(|c| c.preview())
+            "/api/screenshot" => match server
+                .control
+                .preview()
                 .and_then(|f| f.downscale(1080).to_jpeg_bytes(85))
             {
                 Ok(bytes) => respond(&mut stream, "200 OK", "image/jpeg", &bytes),
@@ -323,22 +338,29 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
         match request.path.as_str() {
             "/api/control" => match body["command"].as_str().ok_or("Command is required")? {
                 "start" => server.bot.start_checked()?,
-                "pause" => {server.bot.pause(); super::recorder::stop_playback();},
+                "pause" => {
+                    server.control.runtime.stop();
+                    server.bot.pause();
+                    super::recorder::stop_playback();
+                }
                 "stop" => {
+                    server.control.runtime.stop();
                     server.bot.stop();
                     super::recorder::stop_playback();
                 }
-                "focus" => super::control::service()?.focus()?,
+                "focus" => server.control.focus()?,
                 _ => return Err("Unknown control command".into()),
             },
             "/api/tap" => {
                 let key = body["key"].as_str().ok_or("Key is required")?;
-                InputAction::KeyDown{key:key.into()}.validate()?;
+                InputAction::KeyDown { key: key.into() }.validate()?;
                 if super::recorder::is_playing() {
                     return Err("Stop playback before manual controls".into());
                 }
-                let control = super::control::service()?;
-                if body["epoch"].as_u64()!=Some(control.runtime.epoch()){return Err("Input session changed; refresh the remote".into());}
+                let control = server.control.clone();
+                if body["epoch"].as_u64() != Some(control.runtime.epoch()) {
+                    return Err("Input session changed; refresh the remote".into());
+                }
                 if body["focus"].as_bool().unwrap_or(false) {
                     control.focus()?;
                 }
@@ -361,14 +383,39 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
                 if super::recorder::is_playing() {
                     return Err("Stop playback before manual controls".into());
                 }
-                let control = super::control::service()?;
-                if body["epoch"].as_u64()!=Some(control.runtime.epoch()){return Err("Input session changed; refresh the remote".into());}
+                let control = server.control.clone();
+                if body["epoch"].as_u64() != Some(control.runtime.epoch()) {
+                    return Err("Input session changed; refresh the remote".into());
+                }
                 if body["focus"].as_bool().unwrap_or(false) {
                     control.focus()?;
                 }
                 let epoch = body["epoch"]
                     .as_u64()
                     .ok_or("Refresh the remote page before sending inputs")?;
+                let duplicate_release = match &action {
+                    InputAction::KeyDown { key } => Some(InputAction::KeyUp { key: key.clone() }),
+                    InputAction::MouseDown { button } => Some(InputAction::MouseUp {
+                        button: button.clone(),
+                    }),
+                    _ => None,
+                };
+                if let Some(release) = duplicate_release {
+                    if control
+                        .platform
+                        .window
+                        .find()
+                        .is_some_and(|w| w.visible && w.is_foreground)
+                    {
+                        let mut held = server.held.lock();
+                        if let Some(entry) =
+                            held.iter_mut().find(|h| h.0 == release && h.1 == epoch)
+                        {
+                            entry.2 = Instant::now();
+                            return Ok(json!({"ok":true,"renewed":true}));
+                        }
+                    }
+                }
                 control.runtime.apply(epoch, &action)?;
                 let release = match &action {
                     InputAction::KeyDown { key } => Some(InputAction::KeyUp { key: key.clone() }),
@@ -402,7 +449,9 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
                     .ok_or("Recorder command is required")?
                 {
                     "record" => {
-                        if server.bot.is_running(){return Err("Pause fishing before recording".into());}
+                        if server.bot.is_running() {
+                            return Err("Pause fishing before recording".into());
+                        }
                         super::recorder::start_recording(super::recorder::RecordMode::WebScreen)?
                     }
                     "save" => {
@@ -453,13 +502,14 @@ fn stream_frames(mut stream: TcpStream, request: Request, server: Arc<Server>) {
     let period = Duration::from_secs_f64(1.0 / f64::from(fps));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
     if stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: multipart/x-mixed-replace; boundary=frame\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n").is_err(){return;}
-    let Ok(control) = super::control::service() else {
-        return;
-    };
+    let control = server.control.clone();
     let mut count = 0u32;
     let mut measured = Instant::now();
     let mut last_frame = Instant::now();
     loop {
+        if !authorized(&request, &server.settings.read()) {
+            break;
+        }
         let started = Instant::now();
         match control
             .preview()
@@ -502,39 +552,142 @@ fn stream_frames(mut stream: TcpStream, request: Request, server: Arc<Server>) {
     }
 }
 
-
 #[cfg(test)]
 mod remote_http_tests {
- use super::*;
- use crate::{config::Store, core::{platform::{mock::{MockWindow,RecordingInput,ScriptedCapture,NoOcr,InputEvent},Platform},types::{WindowInfo,PxRect,Key}},webhook::WebhookQueue};
- fn exchange(server:Arc<Server>,request:String)->String{
-  let listener=TcpListener::bind("127.0.0.1:0").unwrap();let address=listener.local_addr().unwrap();
-  let worker=std::thread::spawn(move||{let(mut socket,_)=listener.accept().unwrap();let r=read_request(&mut socket).unwrap();handle(socket,r,server);});
-  let mut client=TcpStream::connect(address).unwrap();client.set_read_timeout(Some(Duration::from_secs(3))).unwrap();client.write_all(request.as_bytes()).unwrap();
-  let mut response=String::new();client.read_to_string(&mut response).unwrap();worker.join().unwrap();response
- }
- fn post(token:&str,path:&str,body:Value)->String{let text=body.to_string();format!("POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\nContent-Length: {}\r\n\r\n{text}",text.len())}
- #[test]
- fn authenticated_jump_and_cancel_use_real_http_with_mock_game(){
-  let input=Arc::new(RecordingInput::default());
-  let window=Arc::new(MockWindow::default());let info=WindowInfo{client:PxRect{x:10,y:20,w:960,h:540},visible:true,is_foreground:true,dpi:96};*window.info.lock()=Some(info);
-  let platform=super::super::control::attach(Platform{window,capture:Arc::new(ScriptedCapture::default()),input:input.clone(),ocr:Arc::new(NoOcr)});
-  let mut settings=Settings::default();settings.web.token="synthetic-test-token".into();
-  let settings=Arc::new(RwLock::new(settings));let(tx,_)=crossbeam_channel::unbounded();
-  let dir=std::env::temp_dir().join(format!("gpo-remote-http-{}-{}",std::process::id(),crate::events::now_ms()));
-  let bot=Bot::new(platform,settings.clone(),Arc::new(RwLock::new(Some(info))),tx,Arc::new(WebhookQueue::disabled()),Arc::new(Store::new(dir)));
-  let server=Arc::new(Server{bot,settings,streams:AtomicUsize::new(0),held:Mutex::new(vec![]),rates:Mutex::new(vec![])});
-  let epoch=super::super::control::service().unwrap().runtime.epoch();
-  let denied=exchange(server.clone(),post("wrong","/api/tap",json!({"key":"space","epoch":epoch})));
-  assert!(denied.starts_with("HTTP/1.1 401"));assert!(input.events.lock().is_empty());
-  let invalid=exchange(server.clone(),post("synthetic-test-token","/api/input",json!({"input":{"action":"move","x":2,"y":0},"epoch":epoch})));
-  assert!(invalid.starts_with("HTTP/1.1 400"));assert!(input.events.lock().is_empty());
-  let jump=exchange(server.clone(),post("synthetic-test-token","/api/tap",json!({"key":"space","epoch":epoch})));
-  assert!(jump.starts_with("HTTP/1.1 200"),"{jump}");
-  assert_eq!(*input.events.lock(),vec![InputEvent::Key(Key::Char(' '),true),InputEvent::Key(Key::Char(' '),false)]);
-  let stopped=exchange(server.clone(),post("synthetic-test-token","/api/control",json!({"command":"stop"})));assert!(stopped.starts_with("HTTP/1.1 200"));
-  input.events.lock().clear();
-  let stale=exchange(server,post("synthetic-test-token","/api/tap",json!({"key":"space","epoch":epoch})));
-  assert!(stale.starts_with("HTTP/1.1 400"));assert!(input.events.lock().is_empty());
- }
+    use super::*;
+    use crate::{
+        config::Store,
+        core::{
+            platform::{
+                mock::{InputEvent, MockWindow, NoOcr, RecordingInput, ScriptedCapture},
+                Platform,
+            },
+            types::{Key, PxRect, WindowInfo},
+        },
+        webhook::WebhookQueue,
+    };
+    fn exchange(server: Arc<Server>, request: String) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let worker = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let r = read_request(&mut socket).unwrap();
+            handle(socket, r, server);
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        client.write_all(request.as_bytes()).unwrap();
+        let mut response = String::new();
+        client.read_to_string(&mut response).unwrap();
+        worker.join().unwrap();
+        response
+    }
+    fn post(token: &str, path: &str, body: Value) -> String {
+        let text = body.to_string();
+        format!("POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\nContent-Length: {}\r\n\r\n{text}",text.len())
+    }
+    #[test]
+    fn authenticated_jump_and_cancel_use_real_http_with_mock_game() {
+        let input = Arc::new(RecordingInput::default());
+        let window = Arc::new(MockWindow::default());
+        let info = WindowInfo {
+            client: PxRect {
+                x: 10,
+                y: 20,
+                w: 960,
+                h: 540,
+            },
+            visible: true,
+            is_foreground: true,
+            dpi: 96,
+        };
+        *window.info.lock() = Some(info);
+        let control = super::super::control::Service::new(Platform {
+            window,
+            capture: Arc::new(ScriptedCapture::default()),
+            input: input.clone(),
+            ocr: Arc::new(NoOcr),
+        });
+        let platform = control.platform.clone();
+        let mut settings = Settings::default();
+        settings.web.token = "synthetic-test-token".into();
+        let settings = Arc::new(RwLock::new(settings));
+        let (tx, _) = crossbeam_channel::unbounded();
+        let dir = std::env::temp_dir().join(format!(
+            "gpo-remote-http-{}-{}",
+            std::process::id(),
+            crate::events::now_ms()
+        ));
+        let bot = Bot::new(
+            platform,
+            settings.clone(),
+            Arc::new(RwLock::new(Some(info))),
+            tx,
+            Arc::new(WebhookQueue::disabled()),
+            Arc::new(Store::new(dir)),
+        );
+        let server = Arc::new(Server {
+            control: control.clone(),
+            bot,
+            settings,
+            streams: AtomicUsize::new(0),
+            held: Mutex::new(vec![]),
+            rates: Mutex::new(vec![]),
+        });
+        let epoch = control.runtime.epoch();
+        let denied = exchange(
+            server.clone(),
+            post("wrong", "/api/tap", json!({"key":"space","epoch":epoch})),
+        );
+        assert!(denied.starts_with("HTTP/1.1 401"));
+        assert!(input.events.lock().is_empty());
+        let invalid = exchange(
+            server.clone(),
+            post(
+                "synthetic-test-token",
+                "/api/input",
+                json!({"input":{"action":"move","x":2,"y":0},"epoch":epoch}),
+            ),
+        );
+        assert!(invalid.starts_with("HTTP/1.1 400"));
+        assert!(input.events.lock().is_empty());
+        let jump = exchange(
+            server.clone(),
+            post(
+                "synthetic-test-token",
+                "/api/tap",
+                json!({"key":"space","epoch":epoch}),
+            ),
+        );
+        assert!(jump.starts_with("HTTP/1.1 200"), "{jump}");
+        assert_eq!(
+            *input.events.lock(),
+            vec![
+                InputEvent::Key(Key::Char(' '), true),
+                InputEvent::Key(Key::Char(' '), false)
+            ]
+        );
+        let stopped = exchange(
+            server.clone(),
+            post(
+                "synthetic-test-token",
+                "/api/control",
+                json!({"command":"stop"}),
+            ),
+        );
+        assert!(stopped.starts_with("HTTP/1.1 200"));
+        input.events.lock().clear();
+        let stale = exchange(
+            server,
+            post(
+                "synthetic-test-token",
+                "/api/tap",
+                json!({"key":"space","epoch":epoch}),
+            ),
+        );
+        assert!(stale.starts_with("HTTP/1.1 400"));
+        assert!(input.events.lock().is_empty());
+    }
 }

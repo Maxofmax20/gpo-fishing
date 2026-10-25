@@ -77,7 +77,10 @@ impl WebhookQueue {
         std::thread::spawn(move || {
             while let Ok(mut message) = receiver.recv() {
                 let s = settings.read().clone();
-                if !s.webhook.enabled || (s.webhook.pity_zero_only && !message.zero_outcome) || (!message.general && !s.webhook.fruit_drop) {
+                if !s.webhook.enabled
+                    || (s.webhook.pity_zero_only && !message.zero_outcome)
+                    || (!message.general && !s.webhook.fruit_drop)
+                {
                     pending.fetch_sub(1, Ordering::SeqCst);
                     continue;
                 }
@@ -100,7 +103,7 @@ impl WebhookQueue {
                     }
                 }
                 let mut result = Err("No notification provider is configured".into());
-                let mut ack=ProviderAcks::default();
+                let mut ack = ProviderAcks::default();
                 for attempt in 0..3 {
                     result = deliver_pending(&s, &message, &mut ack);
                     if result.is_ok() {
@@ -205,6 +208,13 @@ impl WebhookQueue {
         )
     }
     pub fn progress(&self, s: Stats) {
+        if !self
+            .settings
+            .as_ref()
+            .is_some_and(|s| s.read().webhook.progress)
+        {
+            return;
+        }
         self.send(
             "Fishing progress",
             format!("Confirmed catches: {}", s.fish),
@@ -254,6 +264,13 @@ impl WebhookQueue {
         );
     }
     pub fn disconnect(&self, reason: &str, photo: Option<Vec<u8>>) {
+        if !self
+            .settings
+            .as_ref()
+            .is_some_and(|s| s.read().webhook.disconnect_alert)
+        {
+            return;
+        }
         self.send("Connection interrupted", reason.into(), photo, false);
     }
     pub fn reconnected(&self, photo: Option<Vec<u8>>) {
@@ -265,6 +282,13 @@ impl WebhookQueue {
         );
     }
     pub fn bait_depleted(&self) {
+        if !self
+            .settings
+            .as_ref()
+            .is_some_and(|s| s.read().webhook.bait_alert)
+        {
+            return;
+        }
         self.send(
             "Bait unavailable",
             "Check your bait stock.".into(),
@@ -273,9 +297,23 @@ impl WebhookQueue {
         );
     }
     pub fn spawn(&self, info: &SpawnInfo, photo: Option<Vec<u8>>) {
+        if !self
+            .settings
+            .as_ref()
+            .is_some_and(|s| s.read().webhook.spawn)
+        {
+            return;
+        }
         self.send("World fruit spawn", info.text.clone(), photo, false);
     }
     pub fn purchase(&self, amount: u32) {
+        if !self
+            .settings
+            .as_ref()
+            .is_some_and(|s| s.read().webhook.purchase)
+        {
+            return;
+        }
         self.send(
             "Bait purchase",
             format!("Requested amount: {amount}"),
@@ -284,6 +322,13 @@ impl WebhookQueue {
         );
     }
     pub fn recovery(&self, attempt: u32, reason: &str) {
+        if !self
+            .settings
+            .as_ref()
+            .is_some_and(|s| s.read().webhook.recovery)
+        {
+            return;
+        }
         self.send(
             "Fishing recovery",
             format!("Attempt {attempt}: {reason}"),
@@ -305,11 +350,21 @@ fn parse_pity(text: &str, cap: u32) -> Option<String> {
         if *word != "pity" && *word != "legendarypity" {
             continue;
         }
-        let Some(current)=words.get(index+1).and_then(|w|w.replace('o',"0").parse::<u32>().ok())else{continue;};
+        let Some(current) = words
+            .get(index + 1)
+            .and_then(|w| w.replace('o', "0").parse::<u32>().ok())
+        else {
+            continue;
+        };
         if words.get(index + 2) != Some(&"/") {
             continue;
         }
-        let Some(total)=words.get(index+3).and_then(|w|w.replace('o',"0").parse::<u32>().ok())else{continue;};
+        let Some(total) = words
+            .get(index + 3)
+            .and_then(|w| w.replace('o', "0").parse::<u32>().ok())
+        else {
+            continue;
+        };
         if total == cap && current <= total {
             return Some(format!("{current}/{total}"));
         }
@@ -419,10 +474,17 @@ pub fn post_telegram_photo(
     telegram_result(response)
 }
 #[derive(Default)]
-struct ProviderAcks{telegram:bool,discord:bool}
-fn deliver(s:&Settings,m:&Message)->Result<(),String>{deliver_pending(s,m,&mut ProviderAcks::default())}
-fn deliver_pending(s: &Settings, m: &Message, ack:&mut ProviderAcks) -> Result<(), String> {
-    if !s.webhook.enabled{return Err("Enable notifications before testing delivery".into());}
+struct ProviderAcks {
+    telegram: bool,
+    discord: bool,
+}
+fn deliver(s: &Settings, m: &Message) -> Result<(), String> {
+    deliver_pending(s, m, &mut ProviderAcks::default())
+}
+fn deliver_pending(s: &Settings, m: &Message, ack: &mut ProviderAcks) -> Result<(), String> {
+    if !s.webhook.enabled {
+        return Err("Enable notifications before testing delivery".into());
+    }
     let text = format!("{}\n\n{}", m.title, m.body);
     let mut sent = false;
     if matches!(s.webhook.provider.as_str(), "telegram" | "both") && !ack.telegram {
@@ -453,7 +515,7 @@ fn deliver_pending(s: &Settings, m: &Message, ack:&mut ProviderAcks) -> Result<(
                 &text,
             )?;
         }
-        ack.telegram=true;
+        ack.telegram = true;
         sent = true;
     }
     if matches!(s.webhook.provider.as_str(), "discord" | "both") && !ack.discord {
@@ -471,7 +533,7 @@ fn deliver_pending(s: &Settings, m: &Message, ack:&mut ProviderAcks) -> Result<(
                 response.status().as_u16()
             ));
         }
-        ack.discord=true;
+        ack.discord = true;
         sent = true;
     }
     if sent || ack.telegram || ack.discord {
