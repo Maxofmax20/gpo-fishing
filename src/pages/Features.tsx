@@ -542,7 +542,7 @@ export default function Features() {
               <div className="mt-2 pt-2 border-t border-line flex items-center justify-between">
                 <div>
                   <div className="text-[12px] font-medium text-fg">Two-way remote control</div>
-                  <div className="text-[11px] text-fg-mute">Control via Telegram (/status, /screenshot, /pity, /recast, /update, /stop, /start).</div>
+                  <div className="text-[11px] text-fg-mute">Control via Telegram (/status, /fish, /pause, /stop, /jump, /web, /record, /save, /play).</div>
                 </div>
                 <Toggle
                   value={s.features.telegram_remote ?? true}
@@ -615,24 +615,11 @@ export default function Features() {
             <div className="mt-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="text-fg-dim">Pity 0 only · after store / drop</div>
-                <Toggle value={s.webhook.pity_zero_only ?? false} onChange={(v) => update((x) => {
-                  x.webhook.pity_zero_only = v;
-                  if (v) {
-                    x.webhook.send_screenshot = true;
-                    x.webhook.send_drop_screenshot = true;
-                    x.webhook.send_catch_screenshot = false;
-                    x.webhook.progress = false;
-                    x.webhook.spawn = false;
-                    x.webhook.purchase = false;
-                    x.webhook.recovery = false;
-                    x.webhook.disconnect_alert = false;
-                    x.webhook.bait_alert = false;
-                  }
-                })} />
+                <Toggle value={s.webhook.pity_zero_only ?? false} onChange={(v) => update((x) => void (x.webhook.pity_zero_only = v))} />
               </div>
               <p className="text-[11px] text-fg-mute mt-1">
                 Sends one result with its screenshot after the fruit workflow, only when pity 0 was read.
-                Other fruit and early catch alerts are suppressed. Fruit protections still apply.
+                Other alerts are suppressed while this mode is enabled. Your individual alert and screenshot choices are preserved when you switch it off. Fruit protections still apply.
               </p>
               {!s.features.fruit_storage && s.webhook.pity_zero_only && (
                 <p className="text-[11px] text-warn mt-1">Enable automatic fruit storage to receive after-action results.</p>

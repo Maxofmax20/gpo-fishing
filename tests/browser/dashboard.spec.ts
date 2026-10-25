@@ -7,7 +7,7 @@ for(const width of [320,360,768,1280]){
  test("rebuilt remote controls at "+width,async({page})=>{
   await page.setViewportSize({width,height:900});
   const errors:string[]=[],calls:{path:string,body:any}[]=[];let offline=false,failSave=false;
-  const notifications:Record<string,any>={provider:"telegram",progress_every_n:10};
+  const notifications:Record<string,any>={provider:"telegram",progress_every_n:10,remote_enabled:true};
   for(const key of ["enabled","progress","fruit_drop","spawn","purchase","recovery","legendary_only","pity_zero_only","send_screenshot","send_catch_screenshot","send_drop_screenshot","crop_fruit_screenshot","disconnect_alert","bait_alert"])notifications[key]=false;
   page.on("pageerror",e=>errors.push(e.message));
   await page.route("http://gpo.test/**",async route=>{

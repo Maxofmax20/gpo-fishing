@@ -43,6 +43,11 @@ fn call(
     }
     Ok(value["result"].clone())
 }
+fn remote_allowed(settings: &Settings, token: &str, chat: &str) -> bool {
+    settings.features.telegram_remote
+        && settings.webhook.telegram_bot_token.trim() == token
+        && settings.webhook.telegram_chat_id.trim() == chat
+}
 pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
     std::thread::spawn(move || {
         let Ok(client) = reqwest::blocking::Client::builder()
@@ -58,6 +63,11 @@ pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
         let mut failures = 0u32;
         loop {
             let s = settings.read().clone();
+            if !s.features.telegram_remote {
+                previous.clear();
+                std::thread::sleep(Duration::from_millis(500));
+                continue;
+            }
             let token = s.webhook.telegram_bot_token.trim();
             let configured = s.webhook.telegram_chat_id.trim();
             if token.is_empty() || configured.is_empty() {
@@ -119,6 +129,9 @@ pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
                 }
             };
             for update in updates {
+                if !remote_allowed(&settings.read(), token, configured) {
+                    break;
+                }
                 if let Some(id) = update["update_id"].as_i64() {
                     offset = offset.max(id.saturating_add(1));
                 }
@@ -190,4 +203,30 @@ pub fn check_and_apply_update(
         post_telegram(token, chat, message)?;
     }
     Ok(message.into())
+}
+
+#[cfg(test)]
+mod preference_tests {
+    use super::*;
+    #[test]
+    fn disabled_or_reconfigured_remote_cannot_execute_polled_commands() {
+        let mut settings = Settings::default();
+        settings.features.telegram_remote = true;
+        settings.webhook.telegram_bot_token = "synthetic-token".into();
+        settings.webhook.telegram_chat_id = "synthetic-chat".into();
+        assert!(remote_allowed(
+            &settings,
+            "synthetic-token",
+            "synthetic-chat"
+        ));
+        settings.features.telegram_remote = false;
+        assert!(!remote_allowed(
+            &settings,
+            "synthetic-token",
+            "synthetic-chat"
+        ));
+        settings.features.telegram_remote = true;
+        assert!(!remote_allowed(&settings, "old-token", "synthetic-chat"));
+        assert!(!remote_allowed(&settings, "synthetic-token", "old-chat"));
+    }
 }

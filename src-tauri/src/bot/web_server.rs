@@ -526,6 +526,10 @@ fn notification_view(settings: &Settings) -> Value {
     {
         public.insert(key.into(), all[key].clone());
     }
+    public.insert(
+        "remote_enabled".into(),
+        json!(settings.features.telegram_remote),
+    );
     json!({"ok":true,"settings":public,
         "telegram_configured":!settings.webhook.telegram_bot_token.trim().is_empty()&&!settings.webhook.telegram_chat_id.trim().is_empty(),
         "discord_configured":!settings.webhook.url.trim().is_empty()})
@@ -537,7 +541,7 @@ fn update_notifications(server: &Server, body: &Value) -> Result<Value, String> 
         .ok_or("Notification changes are required")?;
     // Validate the complete patch before touching memory or disk.
     for (key, value) in changes {
-        if NOTIFICATION_FLAGS.contains(&key.as_str()) {
+        if NOTIFICATION_FLAGS.contains(&key.as_str()) || key == "remote_enabled" {
             if !value.is_boolean() {
                 return Err(format!("{key} must be true or false"));
             }
@@ -557,12 +561,19 @@ fn update_notifications(server: &Server, body: &Value) -> Result<Value, String> 
     let mut webhook =
         serde_json::to_value(&current.webhook).map_err(|_| "Settings could not be read")?;
     for key in changes.keys() {
-        if body["expected"].get(key) != webhook.get(key) {
+        let actual = if key == "remote_enabled" {
+            Some(json!(current.features.telegram_remote))
+        } else {
+            webhook.get(key).cloned()
+        };
+        if body["expected"].get(key) != actual.as_ref() {
             return Err("Notification settings changed elsewhere. Reload and retry.".into());
         }
     }
     for (key, value) in changes {
-        webhook[key] = value.clone();
+        if key != "remote_enabled" {
+            webhook[key] = value.clone();
+        }
     }
     let mut candidate = current.clone();
     candidate.webhook =
