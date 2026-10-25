@@ -18,6 +18,16 @@ pub struct ReelMetrics {
     pub max_abs_error: f32,
     pub flips_per_s: f32,
     pub blind_frames: u32,
+    // Computed once per completed trace from existing frame timings, not on
+    // the controller's timing-sensitive path. Defaults keep old traces readable.
+    #[serde(default)]
+    pub capture_avg_ms: f32,
+    #[serde(default)]
+    pub capture_p95_ms: f32,
+    #[serde(default)]
+    pub vision_avg_ms: f32,
+    #[serde(default)]
+    pub vision_p95_ms: f32,
     pub outcome: String,
 }
 
@@ -99,6 +109,8 @@ impl Trace {
 
     pub fn finish(self, outcome: &str) -> (String, ReelMetrics) {
         let tracked = self.frames.iter().filter(|f| f.get("blind").is_none()).count() as u32;
+        let (capture_avg_ms, capture_p95_ms) = latency_stats(&self.frames, "grab_ms");
+        let (vision_avg_ms, vision_p95_ms) = latency_stats(&self.frames, "read_ms");
         let secs = self.started.elapsed().as_secs_f32().max(0.001);
         let metrics = ReelMetrics {
             frames: tracked,
@@ -109,6 +121,10 @@ impl Trace {
             max_abs_error: self.abs_err_max,
             flips_per_s: self.flips as f32 / secs,
             blind_frames: self.blind,
+            capture_avg_ms,
+            capture_p95_ms,
+            vision_avg_ms,
+            vision_p95_ms,
             outcome: outcome.to_string(),
         };
         let doc = json!({
@@ -120,7 +136,48 @@ impl Trace {
         });
         let _ = fs::write(self.dir.join(format!("{}.json", self.stem)), serde_json::to_vec_pretty(&doc).unwrap_or_default());
         append_index(&self.dir, &self.stem, &metrics, &self.gains);
-        (format!("{} ({} frames, on-target {:.0}%)", self.stem, tracked, metrics.on_target * 100.0), metrics)
+        (format!("{} ({} frames, on-target {:.0}%, capture p95 {:.1} ms, vision p95 {:.1} ms)",
+            self.stem, tracked, metrics.on_target * 100.0, metrics.capture_p95_ms, metrics.vision_p95_ms), metrics)
+    }
+}
+
+// Diagnostic-only aggregation; no timers or allocations are added to the
+// critical fishing loop. Invalid historical frame entries are ignored.
+fn latency_stats(frames: &[Value], field: &str) -> (f32, f32) {
+    let mut values: Vec<f32> = frames.iter()
+        .filter_map(|frame| frame.get(field).and_then(Value::as_f64))
+        .filter(|value| value.is_finite() && *value >= 0.0 && *value <= 60_000.0)
+        .map(|value| value as f32)
+        .collect();
+    if values.is_empty() { return (0.0, 0.0); }
+    let average = values.iter().copied().sum::<f32>() / values.len() as f32;
+    values.sort_by(f32::total_cmp);
+    let p95 = ((values.len() as f32 * 0.95).ceil() as usize).saturating_sub(1);
+    (average, values[p95])
+}
+
+#[cfg(test)]
+mod perf_tests {
+    use super::*;
+    #[test]
+    fn latency_stats_are_order_invariant_and_ignore_missing_invalid_entries() {
+        let frames = vec![json!({"grab_ms": 4.0}), json!({"grab_ms": 1.0}),
+            json!({"grab_ms": 5.0}), json!({"grab_ms": 2.0}),
+            json!({"blind": true}), json!({"grab_ms": -100.0})];
+        let (avg, p95) = latency_stats(&frames, "grab_ms");
+        assert!((avg - 3.0).abs() < 0.001);
+        assert!((p95 - 5.0).abs() < 0.001);
+        assert_eq!(latency_stats(&frames, "read_ms"), (0.0, 0.0));
+    }
+
+    #[test]
+    fn metrics_from_old_traces_deserialize_with_safe_defaults() {
+        let old = json!({"frames": 10,"duration_ms": 100,"fps": 100.0,
+            "on_target": 0.6,"mean_abs_error": 0.2,"max_abs_error": 0.4,
+            "flips_per_s": 1.0,"blind_frames": 0,"outcome": "ended"});
+        let m: ReelMetrics = serde_json::from_value(old).unwrap();
+        assert_eq!(m.capture_avg_ms, 0.0);
+        assert_eq!(m.vision_p95_ms, 0.0);
     }
 }
 

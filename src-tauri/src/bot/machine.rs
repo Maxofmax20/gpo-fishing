@@ -1350,6 +1350,25 @@ mod tests {
     }
 
     #[test]
+    fn twenty_successive_v590_reels_finish_without_recovery_loop() {
+        // Exercise exactly the original controller against a multi-reel
+        // scripted capture sequence, without depending on live Roblox.
+        let frames: Vec<Frame> = (0..20).flat_map(|_| reel_frames()).collect();
+        let (ctx, dir) = make_collect_ctx(frames, vec![]);
+        ctx.settings.write().fishing.trace = false;
+        let mut tracker = Tracker::default();
+        for reel in 1..=20 {
+            tracker.reset();
+            assert!(matches!(fish_cycle(&ctx, &mut tracker), Outcome::Ended),
+                "v5.9.0 reel {reel} did not finish normally");
+            assert_ne!(ctx.state(), BotState::Recovering,
+                "v5.9.0 reel {reel} entered an unexpected recovery state");
+        }
+        ctx.running.store(false, std::sync::atomic::Ordering::SeqCst);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn reel_end_collects_real_pipeline_sample() {
         // Full production path with scripted frames (plumbing test, not
         // accuracy): fish_cycle WAITING/BITE hooks + verify + RESULT hook →
