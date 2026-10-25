@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,11 +55,11 @@ impl BossId {
 
     pub fn cycle_seconds(&self) -> i64 {
         match self {
-            BossId::HawkEye => 2 * 3600,           // 2 hours = 7200s
-            BossId::Roger => 90 * 60,              // 1.5 hours = 5400s
-            BossId::SoulKing => 3600,              // 1 hour = 3600s
-            BossId::RadiantAdmiral => 30 * 60,     // 30 minutes = 1800s
-            BossId::TravellingMerchant => 40 * 60, // 40 minutes = 2400s (Server Age cycle)
+            BossId::HawkEye => 2 * 3600,         // 2 hours = 7200s
+            BossId::Roger => 90 * 60,            // 1.5 hours = 5400s
+            BossId::SoulKing => 3600,            // 1 hour = 3600s
+            BossId::RadiantAdmiral => 30 * 60,   // 30 minutes = 1800s
+            BossId::TravellingMerchant => 40 * 60,// 40 minutes = 2400s (Server Age cycle)
         }
     }
 
@@ -163,10 +163,7 @@ pub fn parse_duration_str(raw: &str) -> Option<i64> {
             if !w.contains(':') {
                 if w.contains("day") || w.contains("dap") || w == "d" {
                     if i > 0 {
-                        let digits: String = words[i - 1]
-                            .chars()
-                            .filter(|c| c.is_ascii_digit())
-                            .collect();
+                        let digits: String = words[i - 1].chars().filter(|c| c.is_ascii_digit()).collect();
                         if let Ok(d) = digits.parse::<i64>() {
                             days_sec += d * 86400;
                         }
@@ -184,18 +181,11 @@ pub fn parse_duration_str(raw: &str) -> Option<i64> {
             } else {
                 let parts: Vec<&str> = w.split(':').collect();
                 if parts.len() == 3 {
-                    if let (Ok(h), Ok(m), Ok(s)) = (
-                        parts[0].trim().parse::<i64>(),
-                        parts[1].trim().parse::<i64>(),
-                        parts[2].trim().parse::<i64>(),
-                    ) {
+                    if let (Ok(h), Ok(m), Ok(s)) = (parts[0].trim().parse::<i64>(), parts[1].trim().parse::<i64>(), parts[2].trim().parse::<i64>()) {
                         return Some(days_sec + h * 3600 + m * 60 + s);
                     }
                 } else if parts.len() == 2 {
-                    if let (Ok(m), Ok(s)) = (
-                        parts[0].trim().parse::<i64>(),
-                        parts[1].trim().parse::<i64>(),
-                    ) {
+                    if let (Ok(m), Ok(s)) = (parts[0].trim().parse::<i64>(), parts[1].trim().parse::<i64>()) {
                         return Some(days_sec + m * 60 + s);
                     }
                 }
@@ -349,11 +339,7 @@ impl BossTracker {
             let countdown = format_duration(rem);
             let is_imminent = rem <= 300;
             let enabled = is_enabled(boss);
-            let badge = if enabled {
-                "🔔"
-            } else {
-                "🔕 <i>(muted)</i>"
-            };
+            let badge = if enabled { "🔔" } else { "🔕 <i>(muted)</i>" };
 
             let icon = if is_imminent { "🚨" } else { "⏱" };
             msg.push_str(&format!(
@@ -380,21 +366,13 @@ impl BossTracker {
         // 1. Reset command
         if lower.contains("reset") {
             self.reset_offsets();
-            return Ok(
-                "🔄 <b>Boss timers reset</b> to official GPO Wiki real-world schedule!".into(),
-            );
+            return Ok("🔄 <b>Boss timers reset</b> to official GPO Wiki real-world schedule!".into());
         }
 
         let mut synced_bosses = Vec::new();
 
         // 2. Check if user pasted Discord message: "Event Bosses Live Spawn Times"
-        if lower.contains("hawk eye")
-            || lower.contains("roger")
-            || lower.contains("soul king")
-            || lower.contains("radiant admiral")
-            || lower.contains("travelling merchant")
-            || lower.contains("traveling merchant")
-        {
+        if lower.contains("hawk eye") || lower.contains("roger") || lower.contains("soul king") || lower.contains("radiant admiral") || lower.contains("travelling merchant") || lower.contains("traveling merchant") {
             let lines: Vec<&str> = text.lines().map(|l| l.trim()).collect();
             let mut current_boss: Option<BossId> = None;
 
@@ -413,10 +391,7 @@ impl BossTracker {
                 }
 
                 if let Some(b) = current_boss {
-                    if !l_low.contains("ago")
-                        && !l_low.contains("last spawn")
-                        && !l_low.contains("last refresh")
-                    {
+                    if !l_low.contains("ago") && !l_low.contains("last spawn") && !l_low.contains("last refresh") {
                         if let Some(dur) = parse_duration_str(&l_low) {
                             self.set_offset(b, now + dur);
                             synced_bosses.push((b, dur));
@@ -427,17 +402,9 @@ impl BossTracker {
             }
 
             if !synced_bosses.is_empty() {
-                let mut res = format!(
-                    "✅ <b>Synced {} timers from Discord!</b>\n\n",
-                    synced_bosses.len()
-                );
+                let mut res = format!("✅ <b>Synced {} timers from Discord!</b>\n\n", synced_bosses.len());
                 for (b, dur) in synced_bosses {
-                    res.push_str(&format!(
-                        "• {} {}: <b>{}</b> remaining\n",
-                        b.emoji(),
-                        b.name(),
-                        format_duration(dur)
-                    ));
+                    res.push_str(&format!("• {} {}: <b>{}</b> remaining\n", b.emoji(), b.name(), format_duration(dur)));
                 }
                 return Ok(res);
             }
@@ -480,29 +447,22 @@ impl BossTracker {
                 Some(BossId::HawkEye)
             } else if target.contains("roger") {
                 Some(BossId::Roger)
-            } else if target.contains("soul") || target.contains("king") || target.contains("brook")
-            {
+            } else if target.contains("soul") || target.contains("king") || target.contains("brook") {
                 Some(BossId::SoulKing)
-            } else if target.contains("admiral")
-                || target.contains("kizaru")
-                || target.contains("radiant")
-            {
+            } else if target.contains("admiral") || target.contains("kizaru") || target.contains("radiant") {
                 Some(BossId::RadiantAdmiral)
             } else if target.contains("merchant") {
                 Some(BossId::TravellingMerchant)
             } else if target.contains("all") {
                 // Quick-sync all: /sync all 1h13m23s 13m13s
                 let remaining_parts: Vec<&str> = parts[2..].iter().copied().collect();
-                if let Some(first_dur) = remaining_parts.first().and_then(|s| parse_duration_str(s))
-                {
+                if let Some(first_dur) = remaining_parts.first().and_then(|s| parse_duration_str(s)) {
                     // Hawk Eye (120m), Roger (90m), Soul King (60m)
                     self.set_offset(BossId::HawkEye, now + first_dur);
                     self.set_offset(BossId::Roger, now + first_dur);
                     self.set_offset(BossId::SoulKing, now + (first_dur % 3600));
 
-                    if let Some(second_dur) =
-                        remaining_parts.get(1).and_then(|s| parse_duration_str(s))
-                    {
+                    if let Some(second_dur) = remaining_parts.get(1).and_then(|s| parse_duration_str(s)) {
                         self.set_offset(BossId::RadiantAdmiral, now + second_dur);
                         self.set_offset(BossId::TravellingMerchant, now + second_dur);
                     } else {
@@ -542,12 +502,7 @@ impl BossTracker {
                     }
 
                     self.set_offset(b, now + dur);
-                    return Ok(format!(
-                        "✅ Synced {} <b>{}</b> to <b>{}</b> remaining!",
-                        b.emoji(),
-                        b.name(),
-                        format_duration(dur)
-                    ));
+                    return Ok(format!("✅ Synced {} <b>{}</b> to <b>{}</b> remaining!", b.emoji(), b.name(), format_duration(dur)));
                 } else {
                     return Err(format!("⚠️ Could not parse duration <code>{}</code>.\nExample: <code>/sync hawkeye 1h 13m 23s</code> or <code>/sync server 01:43:48</code>", dur_str));
                 }
@@ -574,20 +529,14 @@ mod tests {
 
     #[test]
     fn test_parse_duration_strings() {
-        assert_eq!(
-            parse_duration_str("1h 13m and 23s"),
-            Some(3600 + 13 * 60 + 23)
-        );
+        assert_eq!(parse_duration_str("1h 13m and 23s"), Some(3600 + 13 * 60 + 23));
         assert_eq!(parse_duration_str("1h 13m 23s"), Some(3600 + 13 * 60 + 23));
         assert_eq!(parse_duration_str("13m and 13s"), Some(13 * 60 + 13));
         assert_eq!(parse_duration_str("13m13s"), Some(13 * 60 + 13));
         assert_eq!(parse_duration_str("45m"), Some(45 * 60));
         assert_eq!(parse_duration_str("1:13:23"), Some(3600 + 13 * 60 + 23));
         assert_eq!(parse_duration_str("13:23"), Some(13 * 60 + 23));
-        assert_eq!(
-            parse_duration_str("1 days 14:00:44"),
-            Some(86400 + 14 * 3600 + 44)
-        );
+        assert_eq!(parse_duration_str("1 days 14:00:44"), Some(86400 + 14 * 3600 + 44));
         assert_eq!(parse_duration_str("2d 01:00:00"), Some(2 * 86400 + 3600));
     }
 
@@ -618,26 +567,11 @@ mod tests {
         let res = tracker.parse_sync_text(discord_msg, now);
         assert!(res.is_ok());
 
-        assert_eq!(
-            tracker.remaining_seconds(BossId::HawkEye, now),
-            3600 + 13 * 60 + 23
-        );
-        assert_eq!(
-            tracker.remaining_seconds(BossId::Roger, now),
-            3600 + 13 * 60 + 23
-        );
-        assert_eq!(
-            tracker.remaining_seconds(BossId::SoulKing, now),
-            13 * 60 + 23
-        );
-        assert_eq!(
-            tracker.remaining_seconds(BossId::RadiantAdmiral, now),
-            13 * 60 + 13
-        );
-        assert_eq!(
-            tracker.remaining_seconds(BossId::TravellingMerchant, now),
-            13 * 60 + 13
-        );
+        assert_eq!(tracker.remaining_seconds(BossId::HawkEye, now), 3600 + 13 * 60 + 23);
+        assert_eq!(tracker.remaining_seconds(BossId::Roger, now), 3600 + 13 * 60 + 23);
+        assert_eq!(tracker.remaining_seconds(BossId::SoulKing, now), 13 * 60 + 23);
+        assert_eq!(tracker.remaining_seconds(BossId::RadiantAdmiral, now), 13 * 60 + 13);
+        assert_eq!(tracker.remaining_seconds(BossId::TravellingMerchant, now), 13 * 60 + 13);
     }
 
     #[test]
@@ -658,10 +592,7 @@ mod tests {
         let hawkeye_alert = alerts.iter().find(|a| a.boss == BossId::HawkEye).unwrap();
         assert_eq!(hawkeye_alert.alert_type, AlertType::Warning5m);
 
-        let admiral_alert = alerts
-            .iter()
-            .find(|a| a.boss == BossId::RadiantAdmiral)
-            .unwrap();
+        let admiral_alert = alerts.iter().find(|a| a.boss == BossId::RadiantAdmiral).unwrap();
         assert_eq!(admiral_alert.alert_type, AlertType::Spawned);
 
         // Subsequent tick within same window should not re-alert
@@ -691,9 +622,6 @@ mod tests {
         let now = 100000;
         let res = tracker.parse_sync_text("/sync server 01:43:48", now);
         assert!(res.is_ok());
-        assert_eq!(
-            tracker.remaining_seconds(BossId::TravellingMerchant, now),
-            1572
-        );
+        assert_eq!(tracker.remaining_seconds(BossId::TravellingMerchant, now), 1572);
     }
 }

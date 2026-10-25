@@ -1,6 +1,9 @@
 (() => {
 'use strict';
-const token=new URLSearchParams(location.search).get('token')||'';
+const params=new URLSearchParams(location.search);
+const token=params.get('token')||sessionStorage.getItem('gpo-dashboard-token')||'';
+if(token)sessionStorage.setItem('gpo-dashboard-token',token);
+if(params.has('token')){params.delete('token');history.replaceState(null,'',location.pathname+(params.size?'?'+params:''));}
 const session=(globalThis.crypto?.randomUUID?.()||Date.now().toString(36)+Math.random().toString(36).slice(2));
 const el=id=>document.getElementById(id);
 let epoch=null,inputOrder=Promise.resolve(),localEpoch=0;
@@ -40,7 +43,7 @@ el('record').onclick=()=>run(async()=>{await api('/api/recorder',{command:'recor
 el('save').onclick=()=>run(async()=>{await api('/api/recorder',{command:'save',name:''});await recordings();});
 el('discard').onclick=()=>run(()=>api('/api/recorder',{command:'discard'}));
 el('stop-playback').onclick=()=>run(()=>api('/api/recorder',{command:'stop'}));
-el('test-notification').onclick=()=>run(async()=>{await api('/api/notifications/test',{});message('Test delivery completed');});
+el('test-notification').onclick=()=>run(async()=>{await api('/api/notifications/test',{});message('Test queued; check delivery status');});
 async function recordings(){
  const result=await api('/api/macros');el('recordings').replaceChildren();
  for(const item of result.macros){const row=document.createElement('div');row.className='recording';const title=document.createElement('span');title.textContent=item.name;
@@ -48,7 +51,7 @@ async function recordings(){
 }
 async function status(){
  if(polling||document.hidden)return;polling=true;
- try{const data=await api('/api/status');epoch=data.control_epoch;el('connection').textContent=data.window?.is_foreground?'Roblox focused':'Roblox needs focus';el('state').textContent=data.state;el('recorder-state').textContent=data.recorder.message||'Ready';el('actual').textContent=data.stream_fps==null?'Waiting for frames':data.stream_fps.toFixed(0)+' FPS delivered';}
+ try{const data=await api('/api/status');epoch=data.control_epoch;el('connection').textContent=data.window?.is_foreground?'Roblox focused':'Roblox needs focus';el('state').textContent=typeof data.state==='string'?data.state:JSON.stringify(data.state);el('recorder-state').textContent=data.recorder.message||'Ready';el('actual').textContent=data.stream_fps==null?'Waiting for frames':data.stream_fps.toFixed(0)+' FPS delivered';}
  catch(error){el('connection').textContent='Disconnected';}finally{polling=false;}
 }
 const screen=el('screen');

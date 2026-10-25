@@ -475,12 +475,12 @@ impl MlDatasetStore {
     }
 
     /// Find a row whose stored image bytes are IDENTICAL to `png_bytes`.
-    ///
-    /// Only candidates sharing the average hash are considered (an index-free
-    /// linear scan over rows is fine at dataset scale), and then the bytes on disk
-    /// must match exactly. A shared average hash is therefore a *hint*, never a
-    /// decision.
-    /// True when `import_png` stored a NEW image for this id.
+///
+/// Only candidates sharing the average hash are considered (an index-free
+/// linear scan over rows is fine at dataset scale), and then the bytes on disk
+/// must match exactly. A shared average hash is therefore a *hint*, never a
+/// decision.
+/// True when `import_png` stored a NEW image for this id.
     ///
     /// `import_png` returns the EXISTING id when the bytes were already
     /// present (an exact-duplicate fold). The collector needs to tell "a new
@@ -499,17 +499,17 @@ impl MlDatasetStore {
     }
 
     fn find_identical_bytes(&self, hash: u64, png_bytes: &[u8]) -> Result<Option<String>, String> {
-        for ann in self.annotations() {
-            if image_id_hash(&ann.image_id) != Some(hash) {
-                continue;
-            }
-            let path = self.images_dir().join(format!("{}.png", ann.image_id));
-            if let Ok(bytes) = std::fs::read(&path) {
-                if bytes == png_bytes {
-                    return Ok(Some(ann.image_id));
-                }
+    for ann in self.annotations() {
+        if image_id_hash(&ann.image_id) != Some(hash) {
+            continue;
+        }
+        let path = self.images_dir().join(format!("{}.png", ann.image_id));
+        if let Ok(bytes) = std::fs::read(&path) {
+            if bytes == png_bytes {
+                return Ok(Some(ann.image_id));
             }
         }
+    }
         Ok(None)
     }
 
@@ -555,12 +555,7 @@ impl MlDatasetStore {
     /// Attach temporal provenance to an imported row. First capture wins:
     /// never overwrites an existing `event_id` (exact-dedupe folds reuse the
     /// first moment's pixels, so the first moment's id stays honest).
-    pub fn set_event(
-        &self,
-        image_id: &str,
-        event_id: &str,
-        frame_index: u64,
-    ) -> Result<bool, String> {
+    pub fn set_event(&self, image_id: &str, event_id: &str, frame_index: u64) -> Result<bool, String> {
         // Read → mutate → write → rename as one critical section.
         let _guard = LABELS_WRITE_LOCK.lock();
         let mut rows = self.annotations();
@@ -589,12 +584,7 @@ impl MlDatasetStore {
     /// carrying over the reading is honest). Never overwrites non-empty
     /// fields and never touches moment-specific labels (`game_state`,
     /// `ui_label`). Returns true when anything was filled.
-    pub fn fill_metadata(
-        &self,
-        image_id: &str,
-        ocr_text: &str,
-        entity_id: Option<&str>,
-    ) -> Result<bool, String> {
+    pub fn fill_metadata(&self, image_id: &str, ocr_text: &str, entity_id: Option<&str>) -> Result<bool, String> {
         // Read → mutate → write → rename as one critical section.
         let _guard = LABELS_WRITE_LOCK.lock();
         let mut rows = self.annotations();
@@ -626,38 +616,38 @@ impl MlDatasetStore {
         Ok(true)
     }
 
-    /// Stream every non-empty line of `labels.jsonl` into `f`.
-    ///
-    /// ONE read path for every reader, so none of them can quietly disagree about
-    /// what the file contains. Returns how many lines could not be read at all.
-    ///
-    /// An I/O error ends the iteration and is COUNTED: a truncated read must never
-    /// be mistaken for a shorter dataset, because every downstream number - row
-    /// counts, session counts, splits, the snapshot - is computed from this stream.
-    fn for_each_line<F: FnMut(&str)>(&self, mut f: F) -> usize {
-        let Some(reader) = self.lines() else { return 0 };
-        let mut it = std::io::BufRead::lines(reader);
-        let mut io_errors = 0usize;
-        loop {
-            match it.next() {
-                Some(Ok(l)) => {
-                    if !l.trim().is_empty() {
-                        f(&l);
-                    }
+/// Stream every non-empty line of `labels.jsonl` into `f`.
+///
+/// ONE read path for every reader, so none of them can quietly disagree about
+/// what the file contains. Returns how many lines could not be read at all.
+///
+/// An I/O error ends the iteration and is COUNTED: a truncated read must never
+/// be mistaken for a shorter dataset, because every downstream number - row
+/// counts, session counts, splits, the snapshot - is computed from this stream.
+fn for_each_line<F: FnMut(&str)>(&self, mut f: F) -> usize {
+    let Some(reader) = self.lines() else { return 0 };
+    let mut it = std::io::BufRead::lines(reader);
+    let mut io_errors = 0usize;
+    loop {
+        match it.next() {
+            Some(Ok(l)) => {
+                if !l.trim().is_empty() {
+                    f(&l);
                 }
-                Some(Err(e)) => {
-                    io_errors += 1;
-                    tracing::warn!(
-                        "labels.jsonl read error after {} line(s): {e}; dataset is TRUNCATED",
-                        io_errors
-                    );
-                    break;
-                }
-                None => break,
             }
+            Some(Err(e)) => {
+                io_errors += 1;
+                tracing::warn!(
+                    "labels.jsonl read error after {} line(s): {e}; dataset is TRUNCATED",
+                    io_errors
+                );
+                break;
+            }
+            None => break,
         }
-        io_errors
     }
+    io_errors
+}
 
     /// Rows whose line failed to parse. Counted, never silently dropped.
     pub fn unreadable_lines(&self) -> usize {
@@ -832,9 +822,7 @@ impl MlDatasetStore {
         // never blocks a writer.
         if let Some(b) = &bbox {
             if !b.valid() {
-                return Err(
-                    "invalid bounding box (must be 0..1 relative, x+w<=1, y+h<=1)".to_string(),
-                );
+                return Err("invalid bounding box (must be 0..1 relative, x+w<=1, y+h<=1)".to_string());
             }
         }
         // Read → mutate → write → rename as one critical section. This is the
@@ -913,10 +901,7 @@ impl MlDatasetStore {
             .map(|m| m.split_overrides)
             .unwrap_or_default();
         let split_for = |sess: &str| {
-            overrides
-                .get(sess)
-                .copied()
-                .unwrap_or_else(|| Self::split_of(sess))
+            overrides.get(sess).copied().unwrap_or_else(|| Self::split_of(sess))
         };
 
         for r in &rows {
@@ -961,19 +946,13 @@ impl MlDatasetStore {
         // (re-imported frames): union them all, never overwrite.
         let mut img_sessions: HashMap<&str, HashSet<&str>> = HashMap::new();
         for r in &rows {
-            img_sessions
-                .entry(r.image_id.as_str())
-                .or_default()
-                .insert(r.session_id.as_str());
+            img_sessions.entry(r.image_id.as_str()).or_default().insert(r.session_id.as_str());
         }
         let mut hash_sessions: HashMap<u64, HashSet<String>> = HashMap::new();
         for (h, ids) in &hashes {
             for id in ids {
                 if let Some(sess) = img_sessions.get(id.as_str()) {
-                    hash_sessions
-                        .entry(*h)
-                        .or_default()
-                        .extend(sess.iter().map(|s| s.to_string()));
+                    hash_sessions.entry(*h).or_default().extend(sess.iter().map(|s| s.to_string()));
                 }
             }
         }
@@ -987,11 +966,7 @@ impl MlDatasetStore {
         let mut same_file_cross_split: Vec<String> = img_sessions
             .iter()
             .filter(|(_, sess)| {
-                sess.iter()
-                    .map(|s| split_for(s))
-                    .collect::<HashSet<Split>>()
-                    .len()
-                    > 1
+                sess.iter().map(|s| split_for(s)).collect::<HashSet<Split>>().len() > 1
             })
             .map(|(id, _)| id.to_string())
             .collect();
@@ -1016,11 +991,7 @@ impl MlDatasetStore {
         } else {
             let min = *classes.values().min().unwrap_or(&1) as f32;
             let max = *classes.values().max().unwrap_or(&1) as f32;
-            if max == 0.0 {
-                1.0
-            } else {
-                min / max
-            }
+            if max == 0.0 { 1.0 } else { min / max }
         };
 
         let ok = leakage_sessions.is_empty()
@@ -1106,8 +1077,7 @@ impl MlDatasetStore {
                 let mut boundary = false;
                 if pos > 0 {
                     let j = idxs[pos - 1];
-                    if rows[j].game_state.is_some()
-                        && rows[j].game_state != st
+                    if rows[j].game_state.is_some() && rows[j].game_state != st
                         && t.saturating_sub(rows[j].timestamp_ms) <= TRANSITION_WINDOW_MS
                     {
                         boundary = true;
@@ -1115,8 +1085,7 @@ impl MlDatasetStore {
                 }
                 if !boundary && pos + 1 < idxs.len() {
                     let j = idxs[pos + 1];
-                    if rows[j].game_state.is_some()
-                        && rows[j].game_state != st
+                    if rows[j].game_state.is_some() && rows[j].game_state != st
                         && rows[j].timestamp_ms.saturating_sub(t) <= TRANSITION_WINDOW_MS
                     {
                         boundary = true;
@@ -1229,10 +1198,7 @@ fn png_ahash(png_bytes: &[u8]) -> Result<u64, String> {
 /// True when the file at `path` decodes as an image. Used by session
 /// finalization (subset check) and the full validator alike.
 pub fn png_file_valid(path: &std::path::Path) -> bool {
-    std::fs::read(path)
-        .ok()
-        .and_then(|b| png_ahash(&b).ok())
-        .is_some()
+    std::fs::read(path).ok().and_then(|b| png_ahash(&b).ok()).is_some()
 }
 
 /// Image id embeds the hash (`<hex>` or `<hex>-<n>`); recover it for dedup.
@@ -1350,28 +1316,8 @@ mod tests {
     fn import_dedups_identical_bytes() {
         let (ds, _d) = store("dedup");
         let bytes = png_of([10, 20, 30], 32, 32);
-        let a = ds
-            .import_png(
-                &bytes,
-                "sess-2026-01-01",
-                MlTask::UiDetection,
-                None,
-                "",
-                "drop",
-                "test",
-            )
-            .unwrap();
-        let b = ds
-            .import_png(
-                &bytes,
-                "sess-2026-01-02",
-                MlTask::UiDetection,
-                None,
-                "",
-                "drop",
-                "test",
-            )
-            .unwrap();
+        let a = ds.import_png(&bytes, "sess-2026-01-01", MlTask::UiDetection, None, "", "drop", "test").unwrap();
+        let b = ds.import_png(&bytes, "sess-2026-01-02", MlTask::UiDetection, None, "", "drop", "test").unwrap();
         assert_eq!(a, b);
         assert_eq!(ds.annotations().len(), 1);
     }
@@ -1380,44 +1326,15 @@ mod tests {
     fn annotate_validates_bbox_and_tracks_corrections() {
         let (ds, _d) = store("ann");
         let bytes = png_of([10, 20, 30], 32, 32);
-        let id = ds
-            .import_png(
-                &bytes,
-                "sess-2026-01-01",
-                MlTask::UiDetection,
-                None,
-                "",
-                "drop",
-                "test",
-            )
-            .unwrap();
+        let id = ds.import_png(&bytes, "sess-2026-01-01", MlTask::UiDetection, None, "", "drop", "test").unwrap();
         assert!(ds
-            .annotate(
-                &id,
-                Some(UiLabel::FishingBar),
-                Some(RelBBox {
-                    x: 0.9,
-                    y: 0.9,
-                    w: 0.5,
-                    h: 0.5
-                }),
-                None,
-                None,
-                "t",
-                false,
-                None
-            )
+            .annotate(&id, Some(UiLabel::FishingBar), Some(RelBBox { x: 0.9, y: 0.9, w: 0.5, h: 0.5 }), None, None, "t", false, None)
             .is_err());
         let a = ds
             .annotate(
                 &id,
                 Some(UiLabel::FishingBar),
-                Some(RelBBox {
-                    x: 0.1,
-                    y: 0.1,
-                    w: 0.5,
-                    h: 0.5,
-                }),
+                Some(RelBBox { x: 0.1, y: 0.1, w: 0.5, h: 0.5 }),
                 None,
                 Some("fruit:suna".into()),
                 "tester",
@@ -1430,16 +1347,7 @@ mod tests {
         // First labeling already records history (None → FishingBar).
         assert_eq!(a.corrections.len(), 1);
         let a2 = ds
-            .annotate(
-                &id,
-                Some(UiLabel::BaitMenu),
-                None,
-                None,
-                None,
-                "tester2",
-                false,
-                None,
-            )
+            .annotate(&id, Some(UiLabel::BaitMenu), None, None, None, "tester2", false, None)
             .unwrap();
         assert_eq!(a2.corrections.len(), 2);
     }
@@ -1451,38 +1359,10 @@ mod tests {
         // Two sessions forced into different splits via same-session trick:
         // craft rows manually — one session id appears with an override.
         let b1 = png_of([10, 20, 30], 32, 32);
-        let id1 = ds
-            .import_png(
-                &b1,
-                "sess-A",
-                MlTask::UiDetection,
-                Some(GameStateLabel::Fishing),
-                "",
-                "drop",
-                "t",
-            )
-            .unwrap();
-        ds.annotate(
-            &id1,
-            Some(UiLabel::FishingBar),
-            None,
-            None,
-            None,
-            "t",
-            false,
-            None,
-        )
-        .unwrap();
+        let id1 = ds.import_png(&b1, "sess-A", MlTask::UiDetection, Some(GameStateLabel::Fishing), "", "drop", "t").unwrap();
+        ds.annotate(&id1, Some(UiLabel::FishingBar), None, None, None, "t", false, None).unwrap();
         // Corrupt file with no annotation row (orphan image, undecodable).
-        std::fs::write(
-            dir.join("datasets")
-                .join("gpo-vision")
-                .join("v1")
-                .join("images")
-                .join("deadbeef.png"),
-            b"not a png",
-        )
-        .unwrap();
+        std::fs::write(dir.join("datasets").join("gpo-vision").join("v1").join("images").join("deadbeef.png"), b"not a png").unwrap();
         // Orphan annotation row (no file).
         {
             use std::io::Write;
@@ -1494,12 +1374,7 @@ mod tests {
                 ocr_text: String::new(),
                 region_name: "bait_menu".into(),
                 ui_label: Some(UiLabel::BaitMenu),
-                bbox: Some(RelBBox {
-                    x: 0.0,
-                    y: 0.0,
-                    w: 2.0,
-                    h: 0.5,
-                }),
+                bbox: Some(RelBBox { x: 0.0, y: 0.0, w: 2.0, h: 0.5 }),
                 game_state: None,
                 entity_id: Some("nope:missing".into()),
                 annotator: "t".into(),
@@ -1514,12 +1389,7 @@ mod tests {
             };
             let mut f = std::fs::OpenOptions::new()
                 .append(true)
-                .open(
-                    dir.join("datasets")
-                        .join("gpo-vision")
-                        .join("v1")
-                        .join("labels.jsonl"),
-                )
+                .open(dir.join("datasets").join("gpo-vision").join("v1").join("labels.jsonl"))
                 .unwrap();
             writeln!(f, "{}", serde_json::to_string(&row).unwrap()).unwrap();
         }
@@ -1543,36 +1413,18 @@ mod tests {
             dup.session_id = sess_b.clone();
             let mut f = std::fs::OpenOptions::new()
                 .append(true)
-                .open(
-                    dir.join("datasets")
-                        .join("gpo-vision")
-                        .join("v1")
-                        .join("labels.jsonl"),
-                )
+                .open(dir.join("datasets").join("gpo-vision").join("v1").join("labels.jsonl"))
                 .unwrap();
             writeln!(f, "{}", serde_json::to_string(&dup).unwrap()).unwrap();
         }
         let rep = ds.validate(KnowledgeBase::bundled());
-        assert_eq!(
-            rep.leakage_sessions.len(),
-            1,
-            "got: {:?}",
-            rep.leakage_sessions
-        );
-        assert!(
-            rep.leakage_sessions[0].contains("sess-A") && rep.leakage_sessions[0].contains(&sess_b)
-        );
+        assert_eq!(rep.leakage_sessions.len(), 1, "got: {:?}", rep.leakage_sessions);
+        assert!(rep.leakage_sessions[0].contains("sess-A") && rep.leakage_sessions[0].contains(&sess_b));
         assert!(rep.images >= 2);
-        assert!(
-            !rep.orphan_images.is_empty(),
-            "undecodable file must be corrupt or orphan"
-        );
+        assert!(!rep.orphan_images.is_empty(), "undecodable file must be corrupt or orphan");
         assert!(rep.orphan_annotations.contains(&"ghost".to_string()));
         assert!(rep.invalid_bboxes.contains(&"ghost".to_string()));
-        assert!(rep
-            .invalid_entity_ids
-            .iter()
-            .any(|s| s.contains("nope:missing")));
+        assert!(rep.invalid_entity_ids.iter().any(|s| s.contains("nope:missing")));
         assert!(!rep.ok);
     }
 
@@ -1581,17 +1433,11 @@ mod tests {
         // Pure unit coverage of the pairing rule (same helper validate uses).
         let split_for = |s: &str| MlDatasetStore::split_of(s);
         let mut m: HashMap<u64, HashSet<String>> = HashMap::new();
-        m.insert(
-            0xAAAA,
-            ["sess-P".into(), "sess-P".into()].into_iter().collect(),
-        );
+        m.insert(0xAAAA, ["sess-P".into(), "sess-P".into()].into_iter().collect());
         assert!(find_cross_split_leakage(&m, NEAR_DUP_HAMMING, split_for).is_empty());
         // Two sessions sharing one hash: flagged iff their splits differ.
         let mut m2: HashMap<u64, HashSet<String>> = HashMap::new();
-        m2.insert(
-            0xBBBB,
-            ["sess-P".into(), "sess-Q".into()].into_iter().collect(),
-        );
+        m2.insert(0xBBBB, ["sess-P".into(), "sess-Q".into()].into_iter().collect());
         let sp = split_for("sess-P");
         let sq = split_for("sess-Q");
         let found = find_cross_split_leakage(&m2, NEAR_DUP_HAMMING, split_for);
@@ -1652,43 +1498,23 @@ mod tests {
         let s2 = MlDatasetStore::split_of("sess-X");
         assert_eq!(s1, s2);
         let rep = ds.validate(KnowledgeBase::bundled());
-        assert!(
-            rep.leakage_sessions.is_empty(),
-            "same-session rows share one split"
-        );
+        assert!(rep.leakage_sessions.is_empty(), "same-session rows share one split");
     }
 
     #[test]
     fn fill_metadata_merges_without_overwriting() {
         let (ds, _d) = store("fill");
         let bytes = png_of([10, 20, 30], 32, 32);
-        let id = ds
-            .import_png(&bytes, "sess-1", MlTask::UiDetection, None, "", "bar", "t")
-            .unwrap();
+        let id = ds.import_png(&bytes, "sess-1", MlTask::UiDetection, None, "", "bar", "t").unwrap();
         // Fill empties.
-        assert!(ds
-            .fill_metadata(&id, "Suna fruit", Some("fruit:suna"))
-            .unwrap());
-        let row = ds
-            .annotations()
-            .into_iter()
-            .find(|r| r.image_id == id)
-            .unwrap();
+        assert!(ds.fill_metadata(&id, "Suna fruit", Some("fruit:suna")).unwrap());
+        let row = ds.annotations().into_iter().find(|r| r.image_id == id).unwrap();
         assert_eq!(row.ocr_text, "Suna fruit");
         assert_eq!(row.entity_id.as_deref(), Some("fruit:suna"));
-        assert_eq!(
-            row.region_name, "bar",
-            "moment-specific fields never touched"
-        );
+        assert_eq!(row.region_name, "bar", "moment-specific fields never touched");
         // Second fill is a no-op (never overwrites, never churns).
-        assert!(!ds
-            .fill_metadata(&id, "Other text", Some("fruit:mera"))
-            .unwrap());
-        let row2 = ds
-            .annotations()
-            .into_iter()
-            .find(|r| r.image_id == id)
-            .unwrap();
+        assert!(!ds.fill_metadata(&id, "Other text", Some("fruit:mera")).unwrap());
+        let row2 = ds.annotations().into_iter().find(|r| r.image_id == id).unwrap();
         assert_eq!(row2.ocr_text, "Suna fruit");
         assert!(ds.fill_metadata("missing-id", "x", None).is_err());
     }
@@ -1717,12 +1543,8 @@ mod tests {
         }
         let fb = Frame::new(32, 32, rgba_b);
         let b = fb.to_png_bytes().unwrap();
-        let ida = ds
-            .import_png(&a, "sess-1", MlTask::UiDetection, None, "", "drop", "t")
-            .unwrap();
-        let idb = ds
-            .import_png(&b, "sess-2", MlTask::UiDetection, None, "", "drop", "t")
-            .unwrap();
+        let ida = ds.import_png(&a, "sess-1", MlTask::UiDetection, None, "", "drop", "t").unwrap();
+        let idb = ds.import_png(&b, "sess-2", MlTask::UiDetection, None, "", "drop", "t").unwrap();
         assert_ne!(ida, idb);
     }
 
@@ -1788,60 +1610,12 @@ mod tests {
             })
             .collect();
         let rows = [
-            elig_row(
-                &ids[0],
-                "sess-elig-A",
-                100_000,
-                Some(GameStateLabel::WaitingForBite),
-                None,
-                false,
-                None,
-            ),
-            elig_row(
-                &ids[1],
-                "sess-elig-A",
-                200_000,
-                Some(GameStateLabel::Bite),
-                None,
-                false,
-                None,
-            ),
-            elig_row(
-                &ids[2],
-                "sess-elig-A",
-                200_500,
-                Some(GameStateLabel::WaitingForBite),
-                None,
-                false,
-                None,
-            ),
-            elig_row(
-                &ids[3],
-                "sess-elig-B",
-                300_000,
-                Some(GameStateLabel::CatchResult),
-                Some("fruit:suna"),
-                false,
-                None,
-            ),
-            elig_row(
-                &ids[4],
-                "sess-elig-B",
-                300_000,
-                Some(GameStateLabel::CatchResult),
-                None,
-                true,
-                Some("unverdictable catch"),
-            ),
-            elig_row(
-                "ghost000000000000",
-                "sess-elig-B",
-                300_000,
-                Some(GameStateLabel::WaitingForBite),
-                None,
-                false,
-                None,
-            ),
+            elig_row(&ids[0], "sess-elig-A", 100_000, Some(GameStateLabel::WaitingForBite), None, false, None),
+            elig_row(&ids[1], "sess-elig-A", 200_000, Some(GameStateLabel::Bite), None, false, None),
+            elig_row(&ids[2], "sess-elig-A", 200_500, Some(GameStateLabel::WaitingForBite), None, false, None),
+            elig_row(&ids[3], "sess-elig-B", 300_000, Some(GameStateLabel::CatchResult), Some("fruit:suna"), false, None),
+            elig_row(&ids[4], "sess-elig-B", 300_000, Some(GameStateLabel::CatchResult), None, true, Some("unverdictable catch")),
+            elig_row("ghost000000000000", "sess-elig-B", 300_000, Some(GameStateLabel::WaitingForBite), None, false, None),
         ];
         let body = rows
             .iter()
@@ -1852,31 +1626,20 @@ mod tests {
 
         let cov = ds.state_eligibility();
         let w = &cov["waiting_for_bite"];
-        assert_eq!(
-            (w.total, w.eligible, w.transition, w.excluded, w.sessions),
-            (3, 1, 1, 1, 2)
-        );
+        assert_eq!((w.total, w.eligible, w.transition, w.excluded, w.sessions), (3, 1, 1, 1, 2));
         let b = &cov["bite"];
-        assert_eq!(
-            (b.total, b.eligible, b.transition, b.excluded, b.sessions),
-            (1, 0, 1, 0, 1)
-        );
+        assert_eq!((b.total, b.eligible, b.transition, b.excluded, b.sessions), (1, 0, 1, 0, 1));
         let r = &cov["catch_result"];
-        assert_eq!(
-            (r.total, r.eligible, r.transition, r.excluded, r.sessions),
-            (2, 1, 0, 1, 1)
-        );
+        assert_eq!((r.total, r.eligible, r.transition, r.excluded, r.sessions), (2, 1, 0, 1, 1));
         // Buckets are disjoint and exhaustive.
         for e in [&w, &b, &r] {
             assert_eq!(e.total, e.eligible + e.transition + e.excluded);
         }
         // WAITING/BITE rows never carry entities here: the entity gate
         // cannot be satisfied by episode frames, by construction.
-        assert!(ds
-            .annotations()
-            .iter()
-            .filter(|a| a.entity_id.is_some())
-            .all(|a| { a.game_state == Some(GameStateLabel::CatchResult) }));
+        assert!(ds.annotations().iter().filter(|a| a.entity_id.is_some()).all(|a| {
+            a.game_state == Some(GameStateLabel::CatchResult)
+        }));
     }
 
     #[test]
@@ -1890,36 +1653,11 @@ mod tests {
         let sess_a = sess_with_split(Split::Train);
         let sess_b = sess_with_split(Split::Test);
         let id = ds
-            .import_png(
-                &png_of([10, 20, 30], 32, 32),
-                &sess_a,
-                MlTask::UiDetection,
-                None,
-                "",
-                "drop",
-                "t",
-            )
+            .import_png(&png_of([10, 20, 30], 32, 32), &sess_a, MlTask::UiDetection, None, "", "drop", "t")
             .unwrap();
-        ds.annotate(
-            &id,
-            Some(UiLabel::FishingBar),
-            None,
-            Some(GameStateLabel::WaitingForBite),
-            None,
-            "t",
-            false,
-            None,
-        )
-        .unwrap();
-        let row_b = elig_row(
-            &id,
-            &sess_b,
-            999_000,
-            Some(GameStateLabel::WaitingForBite),
-            None,
-            false,
-            None,
-        );
+        ds.annotate(&id, Some(UiLabel::FishingBar), None, Some(GameStateLabel::WaitingForBite), None, "t", false, None)
+            .unwrap();
+        let row_b = elig_row(&id, &sess_b, 999_000, Some(GameStateLabel::WaitingForBite), None, false, None);
         {
             use std::io::Write;
             let mut f = std::fs::OpenOptions::new()
@@ -2008,16 +1746,8 @@ mod tests {
     fn seed_rows(ds: &MlDatasetStore, n: usize) -> Vec<String> {
         (0..n)
             .map(|i| {
-                ds.import_png(
-                    &cell_png(&[i]),
-                    "sess-conc",
-                    MlTask::UiDetection,
-                    None,
-                    "",
-                    "bar",
-                    "t",
-                )
-                .expect("import")
+                ds.import_png(&cell_png(&[i]), "sess-conc", MlTask::UiDetection, None, "", "bar", "t")
+                    .expect("import")
             })
             .collect()
     }
@@ -2030,11 +1760,7 @@ mod tests {
         const N: usize = 9;
         let (ds, _d) = store("conc3");
         let ids = seed_rows(&ds, N);
-        assert_eq!(
-            ids.iter().collect::<HashSet<_>>().len(),
-            N,
-            "ids must be distinct"
-        );
+        assert_eq!(ids.iter().collect::<HashSet<_>>().len(), N, "ids must be distinct");
 
         const ROUNDS: usize = 12;
         std::thread::scope(|s| {
@@ -2066,8 +1792,7 @@ mod tests {
                             }
                             _ => {
                                 for id in &ids[6..9] {
-                                    ds.fill_metadata(id, "Suna fruit", Some("fruit:suna"))
-                                        .unwrap();
+                                    ds.fill_metadata(id, "Suna fruit", Some("fruit:suna")).unwrap();
                                 }
                             }
                         }
@@ -2084,22 +1809,11 @@ mod tests {
         let rows = ds.annotations();
         assert_eq!(rows.len(), N);
         for (i, id) in ids.iter().enumerate() {
-            let r = rows
-                .iter()
-                .find(|r| &r.image_id == id)
-                .expect("row survives");
+            let r = rows.iter().find(|r| &r.image_id == id).expect("row survives");
             match i {
                 0..=2 => {
-                    assert_eq!(
-                        r.ui_label,
-                        Some(UiLabel::FishingBar),
-                        "annotate lost on {id}"
-                    );
-                    assert_eq!(
-                        r.game_state,
-                        Some(GameStateLabel::Bite),
-                        "annotate lost on {id}"
-                    );
+                    assert_eq!(r.ui_label, Some(UiLabel::FishingBar), "annotate lost on {id}");
+                    assert_eq!(r.game_state, Some(GameStateLabel::Bite), "annotate lost on {id}");
                     assert_eq!(r.entity_id.as_deref(), Some("fruit:suna"));
                 }
                 3..=5 => {
@@ -2168,21 +1882,11 @@ mod tests {
         labels_lines(&ds); // no torn file
         let rows = ds.annotations();
         // 3 seeded + 6 appended, all present.
-        assert_eq!(
-            rows.len(),
-            3 + IMPORTS,
-            "appended rows were lost to a concurrent rewrite"
-        );
+        assert_eq!(rows.len(), 3 + IMPORTS, "appended rows were lost to a concurrent rewrite");
         for id in &base {
-            assert!(
-                rows.iter().any(|r| &r.image_id == id),
-                "seeded row {id} lost"
-            );
+            assert!(rows.iter().any(|r| &r.image_id == id), "seeded row {id} lost");
         }
-        let r = rows
-            .iter()
-            .find(|r| r.image_id == *reviewed)
-            .expect("reviewed row");
+        let r = rows.iter().find(|r| r.image_id == *reviewed).expect("reviewed row");
         assert_eq!(r.ui_label, Some(UiLabel::BaitMenu));
         assert_eq!(r.entity_id.as_deref(), Some("fruit:mera"));
     }
@@ -2204,17 +1908,7 @@ mod tests {
         std::fs::write(root.join("labels.jsonl.tmp"), b"TOTALLY NOT JSONL").unwrap();
 
         // Mutate twice: both must succeed against the real file.
-        ds.annotate(
-            &ids[0],
-            Some(UiLabel::ServerTime),
-            None,
-            None,
-            None,
-            "t",
-            false,
-            None,
-        )
-        .unwrap();
+        ds.annotate(&ids[0], Some(UiLabel::ServerTime), None, None, None, "t", false, None).unwrap();
         ds.set_hard_example(&ids[1], "hard: stale").unwrap();
 
         labels_lines(&ds);
@@ -2225,22 +1919,11 @@ mod tests {
             rows.iter().find(|r| r.image_id == ids[0]).unwrap().ui_label,
             Some(UiLabel::ServerTime)
         );
-        assert!(
-            rows.iter()
-                .find(|r| r.image_id == ids[1])
-                .unwrap()
-                .hard_example
-        );
+        assert!(rows.iter().find(|r| r.image_id == ids[1]).unwrap().hard_example);
 
         // Stale files are left alone (never consumed, never renamed onto us).
-        assert_eq!(
-            std::fs::read(root.join(&stale_seq)).unwrap(),
-            stale_bytes.to_vec()
-        );
-        assert_eq!(
-            std::fs::read(root.join("labels.jsonl.tmp")).unwrap(),
-            b"TOTALLY NOT JSONL"
-        );
+        assert_eq!(std::fs::read(root.join(&stale_seq)).unwrap(), stale_bytes.to_vec());
+        assert_eq!(std::fs::read(root.join("labels.jsonl.tmp")).unwrap(), b"TOTALLY NOT JSONL");
     }
 
     #[test]
@@ -2257,15 +1940,7 @@ mod tests {
                 let out = &out;
                 s.spawn(move || {
                     let id = store
-                        .import_png(
-                            bytes,
-                            "sess-conc",
-                            MlTask::UiDetection,
-                            None,
-                            "",
-                            "bar",
-                            "t",
-                        )
+                        .import_png(bytes, "sess-conc", MlTask::UiDetection, None, "", "bar", "t")
                         .expect("import");
                     out.lock().unwrap().push(id);
                 });
@@ -2273,16 +1948,9 @@ mod tests {
         });
         let out = out.into_inner().unwrap();
         assert_eq!(out.len(), THREADS);
-        assert!(
-            out.iter().all(|id| *id == out[0]),
-            "all racing imports must fold onto one id"
-        );
+        assert!(out.iter().all(|id| *id == out[0]), "all racing imports must fold onto one id");
         labels_lines(&ds);
-        assert_eq!(
-            ds.annotations().len(),
-            1,
-            "identical bytes must not duplicate rows"
-        );
+        assert_eq!(ds.annotations().len(), 1, "identical bytes must not duplicate rows");
     }
 
     /// Two visually DIFFERENT images that share an 8x8 average hash are the
@@ -2329,26 +1997,10 @@ mod tests {
         // The images differ...
         assert_ne!(a, b, "the fixture images must actually differ");
         let id_a = store
-            .import_png(
-                &a,
-                "s1",
-                MlTask::EntityRecognition,
-                None,
-                "FIRST",
-                "drop",
-                "gameplay",
-            )
+            .import_png(&a, "s1", MlTask::EntityRecognition, None, "FIRST", "drop", "gameplay")
             .unwrap();
         let id_b = store
-            .import_png(
-                &b,
-                "s1",
-                MlTask::EntityRecognition,
-                None,
-                "SECOND",
-                "drop",
-                "gameplay",
-            )
+            .import_png(&b, "s1", MlTask::EntityRecognition, None, "SECOND", "drop", "gameplay")
             .unwrap();
         // Unconditionally: distinct bytes must always get distinct rows,
         // whether or not this particular fixture happens to collide.
@@ -2359,29 +2011,14 @@ mod tests {
         let oa = rows.iter().find(|r| r.image_id == id_a).unwrap();
         let ob = rows.iter().find(|r| r.image_id == id_b).unwrap();
         assert_eq!(oa.ocr_text, "FIRST");
-        assert_eq!(
-            ob.ocr_text, "SECOND",
-            "labels must not bleed between images"
-        );
+        assert_eq!(ob.ocr_text, "SECOND", "labels must not bleed between images");
 
         // Exact bytes still dedup.
         let again = store
-            .import_png(
-                &a,
-                "s1",
-                MlTask::EntityRecognition,
-                None,
-                "FIRST",
-                "drop",
-                "gameplay",
-            )
+            .import_png(&a, "s1", MlTask::EntityRecognition, None, "FIRST", "drop", "gameplay")
             .unwrap();
         assert_eq!(again, id_a, "identical bytes must fold onto the same row");
-        assert_eq!(
-            store.annotations().len(),
-            2,
-            "an exact duplicate adds no row"
-        );
+        assert_eq!(store.annotations().len(), 2, "an exact duplicate adds no row");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2407,11 +2044,7 @@ mod tests {
         // A malformed line must make the checked read fail, not silently
         // shrink the dataset: a skipped row is a row no filter can see, so it
         // could be frozen into (or out of) a snapshot with no trace.
-        let p = dir
-            .join("datasets")
-            .join("gpo-vision")
-            .join("v1")
-            .join("labels.jsonl");
+        let p = dir.join("datasets").join("gpo-vision").join("v1").join("labels.jsonl");
         let mut body = std::fs::read_to_string(&p).unwrap();
         body.push_str("{ not a row\n");
         std::fs::write(&p, body).unwrap();

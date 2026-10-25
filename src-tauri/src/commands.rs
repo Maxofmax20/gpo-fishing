@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::app::AppState;
@@ -37,9 +37,7 @@ pub fn snapshot(app: AppHandle, st: State<'_, AppState>) -> Snapshot {
 #[tauri::command]
 pub async fn bot_start(st: State<'_, AppState>) -> Result<(), String> {
     let bot = Arc::clone(&st.bot);
-    tauri::async_runtime::spawn_blocking(move || bot.start_checked())
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || bot.start_checked()).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -58,15 +56,8 @@ pub fn bot_stop(st: State<'_, AppState>) {
 pub async fn bot_toggle(st: State<'_, AppState>) -> Result<(), String> {
     let bot = Arc::clone(&st.bot);
     tauri::async_runtime::spawn_blocking(move || {
-        if bot.is_running() {
-            bot.pause();
-            Ok(())
-        } else {
-            bot.start_checked()
-        }
-    })
-    .await
-    .map_err(|e| e.to_string())?
+        if bot.is_running() { bot.pause(); Ok(()) } else { bot.start_checked() }
+    }).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -75,12 +66,7 @@ pub fn settings_get(st: State<'_, AppState>) -> Settings {
 }
 
 #[tauri::command]
-pub fn settings_set(
-    app: AppHandle,
-    st: State<'_, AppState>,
-    mut settings: Settings,
-    expected_settings: Option<Settings>,
-) -> Result<Settings, String> {
+pub fn settings_set(app: AppHandle, st: State<'_, AppState>, mut settings: Settings, expected_settings: Option<Settings>) -> Result<Settings, String> {
     let _transaction = st.settings_transaction.lock();
     let mut current = st.settings.write();
     let previous = current.clone();
@@ -95,11 +81,7 @@ pub fn settings_set(
         let cur = &current;
         settings.ui.panel_offset = cur.ui.panel_offset;
         settings.ui.panel_size = cur.ui.panel_size;
-        (
-            cur.hotkeys != settings.hotkeys,
-            cur.ui.hud_visible != settings.ui.hud_visible
-                || cur.ui.hud_offset != settings.ui.hud_offset,
-        )
+        (cur.hotkeys != settings.hotkeys, cur.ui.hud_visible != settings.ui.hud_visible || cur.ui.hud_offset != settings.ui.hud_offset)
     };
     // SAFETY CLAMP, BEFORE THE VALUE REACHES MEMORY.
     //
@@ -164,17 +146,11 @@ pub fn preset_list(st: State<'_, AppState>) -> Vec<String> {
 
 #[tauri::command]
 pub fn preset_save(st: State<'_, AppState>, name: String) -> Result<(), String> {
-    st.store
-        .save_preset(&name, &st.settings.read())
-        .map_err(|e| e.to_string())
+    st.store.save_preset(&name, &st.settings.read()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn preset_load(
-    app: AppHandle,
-    st: State<'_, AppState>,
-    name: String,
-) -> Result<Settings, String> {
+pub fn preset_load(app: AppHandle, st: State<'_, AppState>, name: String) -> Result<Settings, String> {
     let s = st.store.load_preset(&name).map_err(|e| e.to_string())?;
     settings_set(app, st, s.clone(), None)?;
     Ok(s)
@@ -186,16 +162,8 @@ pub fn preset_delete(st: State<'_, AppState>, name: String) -> Result<(), String
 }
 
 #[tauri::command]
-pub fn legacy_import(
-    app: AppHandle,
-    st: State<'_, AppState>,
-    json: String,
-) -> Result<Settings, String> {
-    let rect = st
-        .roblox
-        .read()
-        .map(|w| w.client)
-        .ok_or("Open Roblox first so coordinates can be converted")?;
+pub fn legacy_import(app: AppHandle, st: State<'_, AppState>, json: String) -> Result<Settings, String> {
+    let rect = st.roblox.read().map(|w| w.client).ok_or("Open Roblox first so coordinates can be converted")?;
     let s = import_legacy(&json, rect).map_err(|e| e.to_string())?;
     settings_set(app, st, s.clone(), None)?;
     Ok(s)
@@ -242,16 +210,8 @@ pub struct OverlaySession {
 }
 
 #[tauri::command]
-pub fn overlay_open(
-    app: AppHandle,
-    st: State<'_, AppState>,
-    target: OverlayTarget,
-) -> Result<OverlaySession, String> {
-    let roblox = st
-        .roblox
-        .read()
-        .map(|w| w.client)
-        .ok_or("Roblox window not found")?;
+pub fn overlay_open(app: AppHandle, st: State<'_, AppState>, target: OverlayTarget) -> Result<OverlaySession, String> {
+    let roblox = st.roblox.read().map(|w| w.client).ok_or("Roblox window not found")?;
     let origin = windows::show_overlay(&app, roblox, true)?;
     let s = st.settings.read();
     let (region, point) = match target {
@@ -270,13 +230,7 @@ pub fn overlay_open(
         OverlayTarget::Bait2 => (None, s.points.bait[1]),
         OverlayTarget::RodSlot => (None, s.points.rod_slot),
     };
-    let session = OverlaySession {
-        target,
-        roblox,
-        overlay_origin: origin,
-        region,
-        point,
-    };
+    let session = OverlaySession { target, roblox, overlay_origin: origin, region, point };
     *st.overlay_session.lock() = Some(serde_json::json!({ "kind": "single", "session": session }));
     if let Some(o) = app.get_webview_window("overlay") {
         let _ = o.emit("overlay:session", &session);
@@ -292,21 +246,13 @@ pub struct OverlayCommit {
 }
 
 #[tauri::command]
-pub fn overlay_commit(
-    app: AppHandle,
-    st: State<'_, AppState>,
-    commit: OverlayCommit,
-) -> Result<Settings, String> {
+pub fn overlay_commit(app: AppHandle, st: State<'_, AppState>, commit: OverlayCommit) -> Result<Settings, String> {
     let mut s = st.settings.read().clone();
     match commit.target {
         OverlayTarget::BarRegion => s.regions.bar = commit.region.ok_or("region required")?,
         OverlayTarget::DropRegion => s.regions.drop = commit.region.ok_or("region required")?,
-        OverlayTarget::ServerTimeRegion => {
-            s.regions.server_time = commit.region.ok_or("region required")?
-        }
-        OverlayTarget::BaitMenuRegion => {
-            s.regions.bait_menu = commit.region.ok_or("region required")?
-        }
+        OverlayTarget::ServerTimeRegion => s.regions.server_time = commit.region.ok_or("region required")?,
+        OverlayTarget::BaitMenuRegion => s.regions.bait_menu = commit.region.ok_or("region required")?,
         OverlayTarget::FishingPoint => s.points.fishing = commit.point.ok_or("point required")?,
         OverlayTarget::Purchase1 => s.points.purchase[0] = commit.point,
         OverlayTarget::Purchase2 => s.points.purchase[1] = commit.point,
@@ -339,11 +285,7 @@ pub struct RegionsSession {
 
 pub fn open_regions_editor(app: &AppHandle) -> Result<RegionsSession, String> {
     let st = app.state::<AppState>();
-    let roblox = st
-        .roblox
-        .read()
-        .map(|w| w.client)
-        .ok_or("Roblox window not found")?;
+    let roblox = st.roblox.read().map(|w| w.client).ok_or("Roblox window not found")?;
     windows::show_overlay(app, roblox, true)?;
     let s = st.settings.read();
     let session = RegionsSession {
@@ -380,11 +322,7 @@ pub struct RegionsCommit {
 }
 
 #[tauri::command]
-pub fn overlay_commit_regions(
-    app: AppHandle,
-    st: State<'_, AppState>,
-    commit: RegionsCommit,
-) -> Result<Settings, String> {
+pub fn overlay_commit_regions(app: AppHandle, st: State<'_, AppState>, commit: RegionsCommit) -> Result<Settings, String> {
     let mut s = st.settings.read().clone();
     s.regions.bar = commit.bar;
     s.regions.drop = commit.drop;
@@ -410,34 +348,18 @@ pub struct RegionPreview {
 }
 
 #[tauri::command]
-pub async fn region_preview(
-    st: State<'_, AppState>,
-    region: RelRect,
-    max_dim: Option<u32>,
-) -> Result<RegionPreview, String> {
-    let roblox = st
-        .roblox
-        .read()
-        .map(|w| w.client)
-        .ok_or("Roblox window not found")?;
+pub async fn region_preview(st: State<'_, AppState>, region: RelRect, max_dim: Option<u32>) -> Result<RegionPreview, String> {
+    let roblox = st.roblox.read().map(|w| w.client).ok_or("Roblox window not found")?;
     let capture = st.platform.capture.clone();
     let palette = st.settings.read().fishing.palette;
     let max_dim = max_dim.unwrap_or(320) as usize;
     blocking(move || {
-        let frame = capture
-            .grab(region.to_px(&roblox))
-            .map_err(|e| e.to_string())?;
+        let frame = capture.grab(region.to_px(&roblox)).map_err(|e| e.to_string())?;
         let confidence = vision::confidence(&frame, &palette);
         let reading = vision::read(&frame, &palette);
         let small = frame.downscale(max_dim);
         let png = encode_png(&small)?;
-        Ok(RegionPreview {
-            width: frame.w,
-            height: frame.h,
-            png_base64: png,
-            confidence,
-            reading,
-        })
+        Ok(RegionPreview { width: frame.w, height: frame.h, png_base64: png, confidence, reading })
     })
     .await
 }
@@ -453,11 +375,7 @@ pub struct OcrTest {
 
 #[tauri::command]
 pub async fn ocr_test(st: State<'_, AppState>) -> Result<OcrTest, String> {
-    let roblox = st
-        .roblox
-        .read()
-        .map(|w| w.client)
-        .ok_or("Roblox window not found")?;
+    let roblox = st.roblox.read().map(|w| w.client).ok_or("Roblox window not found")?;
     let region = st.settings.read().regions.drop;
     let lex = st.settings.read().lexicon.clone();
     let kb = st.store.effective_knowledge();
@@ -466,10 +384,7 @@ pub async fn ocr_test(st: State<'_, AppState>) -> Result<OcrTest, String> {
         if !platform.ocr.available() {
             return Err("Windows OCR is not available on this system".into());
         }
-        let frame = platform
-            .capture
-            .grab(region.to_px(&roblox))
-            .map_err(|e| e.to_string())?;
+        let frame = platform.capture.grab(region.to_px(&roblox)).map_err(|e| e.to_string())?;
         // Bounded event-driven read: raw first, one 2x retry when empty.
         let (text, variant) = crate::core::perception::ocr_with_fallback(
             |f| platform.ocr.read(f).map_err(|e| e.to_string()),
@@ -503,11 +418,7 @@ pub async fn webhook_test(st: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn detect_bar_region(st: State<'_, AppState>) -> Result<RelRect, String> {
-    let roblox = st
-        .roblox
-        .read()
-        .map(|w| w.client)
-        .ok_or("Roblox window not found")?;
+    let roblox = st.roblox.read().map(|w| w.client).ok_or("Roblox window not found")?;
     let capture = st.platform.capture.clone();
     let palette = st.settings.read().fishing.palette;
     blocking(move || {
@@ -798,11 +709,7 @@ pub async fn health_check(st: State<'_, AppState>) -> Result<HealthCheck, String
 }
 
 #[tauri::command]
-pub fn hud_set_offset(
-    app: AppHandle,
-    st: State<'_, AppState>,
-    offset: RelPoint,
-) -> Result<(), String> {
+pub fn hud_set_offset(app: AppHandle, st: State<'_, AppState>, offset: RelPoint) -> Result<(), String> {
     let mut s = st.settings.read().clone();
     s.ui.hud_offset = offset;
     settings_set(app, st, s, None).map(|_| ())
@@ -820,8 +727,7 @@ pub fn hud_toggle(app: AppHandle, st: State<'_, AppState>) -> Result<bool, Strin
 
 #[tauri::command]
 pub fn panel_show(app: AppHandle, st: State<'_, AppState>) {
-    st.panel_requested
-        .store(true, std::sync::atomic::Ordering::SeqCst);
+    st.panel_requested.store(true, std::sync::atomic::Ordering::SeqCst);
     windows::show_panel(&app);
 }
 
@@ -859,9 +765,7 @@ pub fn app_quit(app: AppHandle, st: State<'_, AppState>) {
 #[tauri::command]
 pub fn open_url(app: AppHandle, url: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
-    app.opener()
-        .open_url(url, None::<&str>)
-        .map_err(|e| e.to_string())
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -880,11 +784,7 @@ pub fn web_dashboard_url(st: State<'_, AppState>) -> String {
 /// Toggle LAN exposure of the web dashboard. Takes effect on next app start
 /// (the listener binds at spawn); the UI must tell the user to restart.
 #[tauri::command]
-pub fn web_set_allow_lan(
-    app: AppHandle,
-    st: State<'_, AppState>,
-    allow: bool,
-) -> Result<Settings, String> {
+pub fn web_set_allow_lan(app: AppHandle, st: State<'_, AppState>, allow: bool) -> Result<Settings, String> {
     let mut s = st.settings.read().clone();
     s.web.allow_lan = allow;
     settings_set(app, st, s.clone(), None)?;
@@ -930,8 +830,7 @@ pub fn dataset_label(
     label: String,
     correct: bool,
 ) -> Result<crate::core::dataset::DatasetSample, String> {
-    crate::core::dataset::DatasetStore::new(st.store.dir().to_path_buf())
-        .label(&id, &label, correct)
+    crate::core::dataset::DatasetStore::new(st.store.dir().to_path_buf()).label(&id, &label, correct)
 }
 
 #[tauri::command]
@@ -1003,9 +902,7 @@ pub fn ml_annotate(
             let kb = st.store.effective_knowledge();
             let ok = kb.find_by_name(e).is_some() || kb.entities().iter().any(|k| k.id == *e);
             if !ok {
-                return Err(format!(
-                    "unknown knowledge entity '{e}' — pick one from the knowledge base"
-                ));
+                return Err(format!("unknown knowledge entity '{e}' — pick one from the knowledge base"));
             }
         }
     }
@@ -1067,8 +964,7 @@ pub struct TrainingReadiness {
     pub required_entity_linked: usize,
     /// Per game-state class: total / eligible / excluded / transition /
     /// sessions. Computed, reporting-only (see state_eligibility()).
-    pub state_coverage:
-        std::collections::HashMap<String, crate::core::ml_dataset::StateEligibility>,
+    pub state_coverage: std::collections::HashMap<String, crate::core::ml_dataset::StateEligibility>,
     /// Minimum eligible rows across the three model classes
     /// (waiting_for_bite, bite, catch_result). Informational: the hard
     /// gates below are unchanged; low per-class eligibility is surfaced,
@@ -1105,7 +1001,8 @@ pub fn assess_readiness(
         .iter()
         .filter(|a| {
             a.entity_id.is_some()
-                && a.game_state == Some(crate::core::ml_dataset::GameStateLabel::CatchResult)
+                && a.game_state
+                    == Some(crate::core::ml_dataset::GameStateLabel::CatchResult)
         })
         .count();
     let mut sessions: std::collections::HashSet<&str> = std::collections::HashSet::new();
@@ -1128,10 +1025,7 @@ pub fn assess_readiness(
     }
     // Session-split attribution for coverage (same rule the checker uses).
     let split_of = |sess: &str| crate::core::ml_dataset::MlDatasetStore::split_of(sess);
-    let test_sessions = sessions
-        .iter()
-        .filter(|s| split_of(s) == crate::core::ml_dataset::Split::Test)
-        .count();
+    let test_sessions = sessions.iter().filter(|s| split_of(s) == crate::core::ml_dataset::Split::Test).count();
     let class_coverage_ok = ui_classes.len() >= 4 || entities.len() >= 5;
     let leakage_ok = report.leakage_sessions.is_empty() && report.same_file_cross_split.is_empty();
     let validation_ok = report.ok;
@@ -1146,16 +1040,10 @@ pub fn assess_readiness(
         reasons.push(format!("Insufficient entity-linked RESULT data: {entity_linked_result} linked, {READINESS_MIN_VERIFIED} required."));
     }
     if sessions.len() < READINESS_MIN_SESSIONS {
-        reasons.push(format!(
-            "Session coverage too thin: {} verified sessions, {READINESS_MIN_SESSIONS} required.",
-            sessions.len()
-        ));
+        reasons.push(format!("Session coverage too thin: {} verified sessions, {READINESS_MIN_SESSIONS} required.", sessions.len()));
     }
     if test_sessions == 0 {
-        reasons.push(
-            "No held-out test sessions: the test split must stay untouched by training."
-                .to_string(),
-        );
+        reasons.push("No held-out test sessions: the test split must stay untouched by training.".to_string());
     }
     if !class_coverage_ok {
         reasons.push(format!(
@@ -1198,12 +1086,7 @@ pub fn assess_readiness(
             READINESS_MIN_VERIFIED
         )
     } else if sessions.len() < READINESS_MIN_SESSIONS {
-        format!(
-            "{} more verified sessions ({}/{})",
-            READINESS_MIN_SESSIONS - sessions.len(),
-            sessions.len(),
-            READINESS_MIN_SESSIONS
-        )
+        format!("{} more verified sessions ({}/{})", READINESS_MIN_SESSIONS - sessions.len(), sessions.len(), READINESS_MIN_SESSIONS)
     } else if test_sessions == 0 {
         "held-out test sessions with verified rows".to_string()
     } else if !class_coverage_ok {
@@ -1330,10 +1213,7 @@ pub(crate) fn collection_preflight(ctx: &crate::bot::ctx::Ctx) -> MlPreflight {
     }
 
     // Write-permission probe (temp file, removed immediately — never a sample).
-    let probe = store.root().join("images").join(format!(
-        ".write_probe-{}",
-        crate::core::secrets::generate_token_hex(16)
-    ));
+    let probe = store.root().join("images").join(format!(".write_probe-{}", crate::core::secrets::generate_token_hex(16)));
     let write_ok = std::fs::write(&probe, b"probe")
         .and_then(|_| std::fs::remove_file(&probe))
         .is_ok();
@@ -1396,11 +1276,7 @@ pub(crate) fn collection_preflight(ctx: &crate::bot::ctx::Ctx) -> MlPreflight {
     });
 
     let ok = trace_on && checks.iter().all(|c| c.ok);
-    MlPreflight {
-        trace_on,
-        ok,
-        checks,
-    }
+    MlPreflight { trace_on, ok, checks }
 }
 
 /// Live collection health for the main-UI indicator and health panel.
@@ -1442,11 +1318,7 @@ pub fn ml_collection_status(st: State<'_, AppState>) -> MlCollectionStatus {
         dropped: snap.dropped,
         write_errors: snap.write_errors,
         queue_depth: snap.queue_depth,
-        last_capture_ms: if snap.last_write_ms == 0 {
-            None
-        } else {
-            Some(snap.last_write_ms)
-        },
+        last_capture_ms: if snap.last_write_ms == 0 { None } else { Some(snap.last_write_ms) },
         dataset: format!(
             "{}/v{}",
             crate::core::ml_dataset::DATASET_NAME,
@@ -1458,15 +1330,9 @@ pub fn ml_collection_status(st: State<'_, AppState>) -> MlCollectionStatus {
 }
 
 #[tauri::command]
-pub async fn ml_collection_set(
-    app: AppHandle,
-    st: State<'_, AppState>,
-    enabled: bool,
-) -> Result<Settings, String> {
+pub async fn ml_collection_set(app: AppHandle, st: State<'_, AppState>, enabled: bool) -> Result<Settings, String> {
     let bot = st.bot.clone();
-    tauri::async_runtime::spawn_blocking(move || bot.set_collection(enabled))
-        .await
-        .map_err(|e| e.to_string())??;
+    tauri::async_runtime::spawn_blocking(move || bot.set_collection(enabled)).await.map_err(|e| e.to_string())??;
     let settings = st.settings.read().clone();
     let _ = app.emit("settings:changed", &settings);
     Ok(settings)
@@ -1480,16 +1346,9 @@ pub fn ml_model_status(st: State<'_, AppState>) -> MlModelStatus {
         available: p.available(),
         name: p.model_info().as_ref().map(|m| m.name.clone()),
         version: p.model_info().as_ref().map(|m| m.version.clone()),
-        dataset: p
-            .model_info()
-            .as_ref()
-            .map(|m| format!("{}/v{}", m.dataset, m.dataset_version)),
+        dataset: p.model_info().as_ref().map(|m| format!("{}/v{}", m.dataset, m.dataset_version)),
         runtime: p.model_info().as_ref().map(|m| m.runtime.clone()),
-        classes: p
-            .model_info()
-            .as_ref()
-            .map(|m| m.classes.clone())
-            .unwrap_or_default(),
+        classes: p.model_info().as_ref().map(|m| m.classes.clone()).unwrap_or_default(),
         reason: p.unavailable_reason().map(|s| s.to_string()),
     }
 }
@@ -1577,10 +1436,7 @@ pub async fn knowledge_sync_wiki(st: State<'_, AppState>) -> Result<WikiSyncResu
         };
         let titles = wiki::fetch_category_titles(wiki::DEVIL_FRUIT_CATEGORY, 100)?;
         out.category_titles = titles.len();
-        let mut fruits: Vec<_> = titles
-            .into_iter()
-            .filter(|t| t.contains(" no Mi"))
-            .collect();
+        let mut fruits: Vec<_> = titles.into_iter().filter(|t| t.contains(" no Mi")).collect();
         fruits.sort();
         fruits.dedup();
         if fruits.len() > wiki::MAX_PAGES_PER_SYNC {
@@ -1626,20 +1482,14 @@ pub async fn knowledge_sync_wiki(st: State<'_, AppState>) -> Result<WikiSyncResu
         let mut overlay = store.load_knowledge_overlay();
         overlay.retain(|e| !items.iter().any(|n| n.id == e.id));
         overlay.extend(items);
-        store
-            .save_knowledge_overlay(&overlay)
-            .map_err(|e| e.to_string())?;
+        store.save_knowledge_overlay(&overlay).map_err(|e| e.to_string())?;
         Ok(out)
     })
     .await
 }
 
-async fn blocking<T: Send + 'static>(
-    f: impl FnOnce() -> Result<T, String> + Send + 'static,
-) -> Result<T, String> {
-    tauri::async_runtime::spawn_blocking(f)
-        .await
-        .map_err(|e| e.to_string())?
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| e.to_string())?
 }
 
 fn encode_png(frame: &crate::core::types::Frame) -> Result<String, String> {
@@ -1651,12 +1501,7 @@ fn encode_png(frame: &crate::core::types::Frame) -> Result<String, String> {
         image::codecs::png::CompressionType::Fast,
         image::codecs::png::FilterType::NoFilter,
     )
-    .write_image(
-        &frame.rgba,
-        frame.w as u32,
-        frame.h as u32,
-        image::ExtendedColorType::Rgba8,
-    )
+    .write_image(&frame.rgba, frame.w as u32, frame.h as u32, image::ExtendedColorType::Rgba8)
     .map_err(|e| e.to_string())?;
     Ok(base64::engine::general_purpose::STANDARD.encode(out))
 }
@@ -1672,9 +1517,7 @@ pub struct ServerAgeScanResult {
 }
 
 #[tauri::command]
-pub async fn boss_tracker_scan_server_age(
-    st: State<'_, AppState>,
-) -> Result<ServerAgeScanResult, String> {
+pub async fn boss_tracker_scan_server_age(st: State<'_, AppState>) -> Result<ServerAgeScanResult, String> {
     let ctx = st.bot.ctx();
     let res = crate::bot::actions::scan_server_age(&ctx);
     match res {
@@ -1691,15 +1534,9 @@ pub async fn boss_tracker_scan_server_age(
             *st.settings.write() = s;
 
             let msg = if is_spawned {
-                format!(
-                    "Travelling Merchant is SPAWNED right now! (Despawns in {})",
-                    crate::core::boss_tracker::format_duration(remaining_sec)
-                )
+                format!("Travelling Merchant is SPAWNED right now! (Despawns in {})", crate::core::boss_tracker::format_duration(remaining_sec))
             } else {
-                format!(
-                    "Travelling Merchant next spawn in {}",
-                    crate::core::boss_tracker::format_duration(remaining_sec)
-                )
+                format!("Travelling Merchant next spawn in {}", crate::core::boss_tracker::format_duration(remaining_sec))
             };
 
             Ok(ServerAgeScanResult {
@@ -1716,15 +1553,11 @@ pub async fn boss_tracker_scan_server_age(
 }
 
 #[tauri::command]
-pub fn boss_tracker_sync_server_age(
-    st: State<'_, AppState>,
-    time_str: String,
-) -> Result<ServerAgeScanResult, String> {
+pub fn boss_tracker_sync_server_age(st: State<'_, AppState>, time_str: String) -> Result<ServerAgeScanResult, String> {
     let uptime_sec = crate::core::boss_tracker::parse_duration_str(&time_str)
         .ok_or_else(|| format!("Could not parse Server Age: '{}'", time_str))?;
 
-    let (remaining_sec, is_spawned) =
-        crate::core::boss_tracker::merchant_spawn_from_server_age(uptime_sec);
+    let (remaining_sec, is_spawned) = crate::core::boss_tracker::merchant_spawn_from_server_age(uptime_sec);
     let now = crate::core::boss_tracker::now_sec();
     let mut s = st.settings.read().clone();
     let offset = if is_spawned {
@@ -1737,15 +1570,9 @@ pub fn boss_tracker_sync_server_age(
     *st.settings.write() = s;
 
     let msg = if is_spawned {
-        format!(
-            "Travelling Merchant is SPAWNED right now! (Despawns in {})",
-            crate::core::boss_tracker::format_duration(remaining_sec)
-        )
+        format!("Travelling Merchant is SPAWNED right now! (Despawns in {})", crate::core::boss_tracker::format_duration(remaining_sec))
     } else {
-        format!(
-            "Travelling Merchant next spawn in {}",
-            crate::core::boss_tracker::format_duration(remaining_sec)
-        )
+        format!("Travelling Merchant next spawn in {}", crate::core::boss_tracker::format_duration(remaining_sec))
     };
 
     Ok(ServerAgeScanResult {
@@ -1802,9 +1629,7 @@ pub fn macro_record(
         "stop" => {
             let m_name = name.unwrap_or_else(|| "My Macro".into());
             let m = crate::bot::recorder::stop_recording(&m_name, &st.store)?;
-            Ok(
-                serde_json::json!({ "ok": true, "message": format!("Saved macro '{}' ({} steps)", m.name, m.steps.len()), "macro": m }),
-            )
+            Ok(serde_json::json!({ "ok": true, "message": format!("Saved macro '{}' ({} steps)", m.name, m.steps.len()), "macro": m }))
         }
         "cancel" => {
             crate::bot::recorder::cancel_recording();
@@ -1837,14 +1662,7 @@ pub fn macro_play(
     } else {
         let n = name.ok_or_else(|| "Macro name required".to_string())?;
         let is_loop = loop_mode.unwrap_or(false) || action == "loop";
-        crate::bot::recorder::play_macro(
-            st.bot.ctx().clone(),
-            st.store.clone(),
-            &n,
-            is_loop,
-            speed,
-            max_loops,
-        )?;
+        crate::bot::recorder::play_macro(st.bot.ctx().clone(), st.store.clone(), &n, is_loop, speed, max_loops)?;
         Ok(serde_json::json!({ "ok": true, "message": format!("Started playing '{n}'") }))
     }
 }
@@ -1858,14 +1676,7 @@ pub fn macro_append_vpn_step(
     timeout_s: Option<u64>,
     required: Option<bool>,
 ) -> Result<crate::bot::recorder::CustomMacro, String> {
-    let m = crate::bot::recorder::append_vpn_step(
-        &st.store,
-        &name_or_id,
-        action,
-        engine,
-        timeout_s,
-        required,
-    )?;
+    let m = crate::bot::recorder::append_vpn_step(&st.store, &name_or_id, action, engine, timeout_s, required)?;
     Ok(m)
 }
 
@@ -1899,10 +1710,7 @@ pub async fn vpn_setup_helper() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn vpn_connect(
-    st: State<'_, AppState>,
-    engine: String,
-) -> Result<crate::vpn::VpnStatus, String> {
+pub async fn vpn_connect(st: State<'_, AppState>, engine: String) -> Result<crate::vpn::VpnStatus, String> {
     let vpn = Arc::clone(&st.vpn);
     blocking(move || vpn.connect(&engine)).await
 }
@@ -1926,10 +1734,7 @@ pub async fn vpn_reset_network(st: State<'_, AppState>) -> Result<String, String
 }
 
 #[tauri::command]
-pub async fn vpn_get_logs(
-    st: State<'_, AppState>,
-    max_lines: Option<usize>,
-) -> Result<Vec<String>, String> {
+pub async fn vpn_get_logs(st: State<'_, AppState>, max_lines: Option<usize>) -> Result<Vec<String>, String> {
     let vpn = Arc::clone(&st.vpn);
     blocking(move || Ok(vpn.get_logs(max_lines.unwrap_or(50)))).await
 }
@@ -1940,26 +1745,19 @@ pub fn vpn_set_auto_reconnect(st: State<'_, AppState>, enabled: bool) {
 }
 
 #[tauri::command]
-pub async fn multi_roblox_get_status(
-    st: State<'_, AppState>,
-) -> Result<crate::multi_roblox::MultiRobloxStatus, String> {
+pub async fn multi_roblox_get_status(st: State<'_, AppState>) -> Result<crate::multi_roblox::MultiRobloxStatus, String> {
     let mr = Arc::clone(&st.multi_roblox);
     blocking(move || Ok(mr.get_status())).await
 }
 
 #[tauri::command]
-pub async fn multi_roblox_set_enabled(
-    st: State<'_, AppState>,
-    enabled: bool,
-) -> Result<crate::multi_roblox::MultiRobloxStatus, String> {
+pub async fn multi_roblox_set_enabled(st: State<'_, AppState>, enabled: bool) -> Result<crate::multi_roblox::MultiRobloxStatus, String> {
     let mr = Arc::clone(&st.multi_roblox);
     blocking(move || mr.set_enabled(enabled)).await
 }
 
 #[tauri::command]
-pub fn multi_roblox_list_instances(
-    st: State<'_, AppState>,
-) -> Vec<crate::multi_roblox::RobloxInstanceInfo> {
+pub fn multi_roblox_list_instances(st: State<'_, AppState>) -> Vec<crate::multi_roblox::RobloxInstanceInfo> {
     st.multi_roblox.list_instances()
 }
 
@@ -1992,15 +1790,11 @@ pub fn multi_roblox_launch(app: AppHandle, place_id: Option<u64>) -> Result<(), 
     } else {
         "roblox://".to_string()
     };
-    app.opener()
-        .open_url(url, None::<&str>)
-        .map_err(|e| e.to_string())
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn multi_roblox_list_accounts(
-    st: State<'_, AppState>,
-) -> Result<Vec<crate::multi_roblox::SavedRobloxAccount>, String> {
+pub async fn multi_roblox_list_accounts(st: State<'_, AppState>) -> Result<Vec<crate::multi_roblox::SavedRobloxAccount>, String> {
     let mr = Arc::clone(&st.multi_roblox);
     blocking(move || Ok(mr.list_accounts())).await
 }
@@ -2043,9 +1837,7 @@ pub fn laptop_keyboard_light_get() -> crate::laptop_light::KeyboardLightStatus {
 }
 
 #[tauri::command]
-pub async fn laptop_keyboard_light_set(
-    action: String,
-) -> Result<crate::laptop_light::KeyboardLightStatus, String> {
+pub async fn laptop_keyboard_light_set(action: String) -> Result<crate::laptop_light::KeyboardLightStatus, String> {
     blocking(move || Ok(crate::laptop_light::set_keyboard_light(&action))).await
 }
 
@@ -2065,9 +1857,7 @@ pub async fn laptop_fan_set(mode: String) -> Result<crate::laptop_fan::FanStatus
 }
 
 #[tauri::command]
-pub async fn laptop_fan_set_auto_turbo(
-    enabled: bool,
-) -> Result<crate::laptop_fan::FanStatus, String> {
+pub async fn laptop_fan_set_auto_turbo(enabled: bool) -> Result<crate::laptop_fan::FanStatus, String> {
     blocking(move || Ok(crate::laptop_fan::set_auto_turbo(enabled))).await
 }
 
@@ -2142,20 +1932,8 @@ mod tests {
         write_rows(
             &ds,
             &[
-                row(
-                    "aabbccddeeff0011",
-                    "s1",
-                    1000,
-                    Some(GameStateLabel::WaitingForBite),
-                    None,
-                ),
-                row(
-                    "aabbccddeeff0022",
-                    "s1",
-                    2000,
-                    Some(GameStateLabel::Bite),
-                    None,
-                ),
+                row("aabbccddeeff0011", "s1", 1000, Some(GameStateLabel::WaitingForBite), None),
+                row("aabbccddeeff0022", "s1", 2000, Some(GameStateLabel::Bite), None),
                 row(
                     "aabbccddeeff0033",
                     "s2",
@@ -2175,12 +1953,7 @@ mod tests {
         assert!(r.blocking_requirement.contains("entity-linked RESULT"));
         // Honest terminology is part of the wire contract.
         let v = serde_json::to_value(&r).unwrap();
-        for key in [
-            "entity_linked_result",
-            "state_coverage",
-            "blocking_requirement",
-            "leakage_detail",
-        ] {
+        for key in ["entity_linked_result", "state_coverage", "blocking_requirement", "leakage_detail"] {
             assert!(v.get(key).is_some(), "readiness must expose {key}");
         }
     }
@@ -2194,11 +1967,7 @@ mod tests {
         for i in 0..60 {
             let c = format!("sess-bulk-{i:03}");
             match MlDatasetStore::split_of(&c) {
-                Split::Test
-                    if !sess
-                        .iter()
-                        .any(|s| MlDatasetStore::split_of(s) == Split::Test) =>
-                {
+                Split::Test if !sess.iter().any(|s| MlDatasetStore::split_of(s) == Split::Test) => {
                     sess.push(c)
                 }
                 Split::Train if sess.len() < 11 => sess.push(c),
@@ -2209,14 +1978,7 @@ mod tests {
             }
         }
         assert!(sess.len() >= 10, "need session spread, got {}", sess.len());
-        let ents = [
-            "fruit:suna",
-            "fish:shark",
-            "fish:squid",
-            "fish:gold",
-            "fruit:yami",
-            "fish:snap",
-        ];
+        let ents = ["fruit:suna", "fish:shark", "fish:squid", "fish:gold", "fruit:yami", "fish:snap"];
         let rows: Vec<MlAnnotation> = (0..1000)
             .map(|i| {
                 let mut r = row(
@@ -2235,9 +1997,7 @@ mod tests {
         assert_eq!(r.entity_linked_result, 1000);
         assert!(!r.ready, "orphan rows must block despite the count");
         assert!(
-            r.reasons
-                .iter()
-                .any(|s| s.contains("FAIL") || s.contains("orphan") || s.contains("validation")),
+            r.reasons.iter().any(|s| s.contains("FAIL") || s.contains("orphan") || s.contains("validation")),
             "validation must be the blocker, got: {:?}",
             r.reasons
         );
@@ -2258,12 +2018,7 @@ mod tests {
                 Split::Train => train.push(c),
                 _ => rest.push(c),
             }
-            if train.len() >= 8
-                && rest
-                    .iter()
-                    .any(|s| MlDatasetStore::split_of(s) == Split::Test)
-                && rest.len() >= 2
-            {
+            if train.len() >= 8 && rest.iter().any(|s| MlDatasetStore::split_of(s) == Split::Test) && rest.len() >= 2 {
                 break;
             }
         }
@@ -2289,15 +2044,7 @@ mod tests {
             let f = crate::core::types::Frame::new(16, 16, rgba);
             let png = f.to_png_bytes().unwrap();
             let id = ds
-                .import_png(
-                    &png,
-                    &sess[i % sess.len()],
-                    MlTask::UiDetection,
-                    None,
-                    "",
-                    "bar",
-                    "t",
-                )
+                .import_png(&png, &sess[i % sess.len()], MlTask::UiDetection, None, "", "bar", "t")
                 .unwrap();
             ds.annotate(
                 &id,

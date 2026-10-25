@@ -192,6 +192,7 @@ pub fn append_vpn_step(
             .iter_mut()
             .find(|m| m.id == name_or_id || m.name.eq_ignore_ascii_case(name_or_id))
             .ok_or_else(|| format!("Macro '{name_or_id}' not found"))?;
+        if m.id.starts_with("r2_"){return Err("Precise game recordings cannot contain VPN actions. Use the VPN controls separately.".into());}
         m.steps.push(match action {
             VpnMacroAction::Connect => MacroStep::VpnConnect {
                 engine,
@@ -543,7 +544,7 @@ fn legacy_events(steps: &[MacroStep]) -> Result<Vec<TimedInput>, String> {
                 at=at.saturating_add(*delay_ms);
                 events.push(TimedInput{at_ms:at,input:InputAction::Move{x:*start_rx,y:*start_ry}});
                 events.push(TimedInput{at_ms:at,input:InputAction::MouseDown{button:"left".into()}});
-                for index in 1..=20{let f=index as f32/20.0;events.push(TimedInput{at_ms:at+duration_ms*index/20,input:InputAction::Move{x:start_rx+(end_rx-start_rx)*f,y:start_ry+(end_ry-start_ry)*f}});}
+                for index in 1..=20{let f=index as f32/20.0;events.push(TimedInput{at_ms:at.saturating_add(duration_ms.saturating_mul(index)/20),input:InputAction::Move{x:start_rx+(end_rx-start_rx)*f,y:start_ry+(end_ry-start_ry)*f}});}
                 at=at.saturating_add(*duration_ms);events.push(TimedInput{at_ms:at,input:InputAction::MouseUp{button:"left".into()}});
             },
             _=>return Err("This legacy recording contains VPN steps. Use the VPN controls separately while the new recorder is in game-input mode.".into()),

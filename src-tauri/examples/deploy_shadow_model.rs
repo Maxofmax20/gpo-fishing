@@ -45,9 +45,9 @@ fn fail(msg: &str) -> ! {
 /// into a copy.
 fn write_atomic(dst: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write as _;
-    let dir = dst
-        .parent()
-        .ok_or_else(|| std::io::Error::other("destination has no parent directory"))?;
+    let dir = dst.parent().ok_or_else(|| {
+        std::io::Error::other("destination has no parent directory")
+    })?;
     std::fs::create_dir_all(dir)?;
     let tmp = dir.join(format!(
         ".{}.tmp",
@@ -78,8 +78,8 @@ fn main() {
         .unwrap_or_else(|e| fail(&format!("{}: {e}", manifest_path.display())));
     let onnx_bytes = std::fs::read(&onnx_path)
         .unwrap_or_else(|e| fail(&format!("{}: {e}", onnx_path.display())));
-    let m: serde_json::Value = serde_json::from_slice(&manifest_raw)
-        .unwrap_or_else(|e| fail(&format!("manifest JSON: {e}")));
+    let m: serde_json::Value =
+        serde_json::from_slice(&manifest_raw).unwrap_or_else(|e| fail(&format!("manifest JSON: {e}")));
 
     // ---- refuse anything inconsistent BEFORE touching app state ----------
     let classes: Vec<String> = m["classes"]
@@ -159,10 +159,7 @@ fn main() {
                 .collect()
         })
         .unwrap_or_default();
-    assert!(
-        leftovers.is_empty(),
-        "temp files left behind: {leftovers:?}"
-    );
+    assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
     println!("  no temp files left behind");
 
     println!("\nDeployed. The shadow soak for this revision starts from ZERO events.");

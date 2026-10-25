@@ -58,11 +58,7 @@ pub fn fetch_category_titles(category: &str, limit: u32) -> Result<Vec<String>, 
         ])
         .send()
         .map_err(|e| format!("wiki category request failed: {e}"))?;
-    parse_category_titles(
-        &resp
-            .text()
-            .map_err(|e| format!("wiki category body: {e}"))?,
-    )
+    parse_category_titles(&resp.text().map_err(|e| format!("wiki category body: {e}"))?)
 }
 
 /// Raw wikitext (section 0) of one page. `Ok(None)` = missing page.
@@ -107,9 +103,7 @@ pub fn parse_page_wikitext(body: &str) -> Result<Option<String>, String> {
         .pointer("/query/pages")
         .and_then(|p| p.as_array())
         .ok_or_else(|| "wiki page response has no query.pages".to_string())?;
-    let page = pages
-        .first()
-        .ok_or_else(|| "wiki page response has no pages".to_string())?;
+    let page = pages.first().ok_or_else(|| "wiki page response has no pages".to_string())?;
     if page.get("missing").is_some() {
         return Ok(None);
     }
@@ -240,10 +234,7 @@ pub fn clean_description(wikitext: &str) -> Option<String> {
 /// Short in-game style name from a wiki title: "Bari Bari no Mi" → "Bari".
 pub fn short_name_from_title(title: &str) -> Option<String> {
     let t = title.trim().strip_suffix(" no Mi").unwrap_or(title.trim());
-    let first = t
-        .split_whitespace()
-        .next()?
-        .trim_matches(|c: char| !c.is_alphanumeric());
+    let first = t.split_whitespace().next()?.trim_matches(|c: char| !c.is_alphanumeric());
     if first.len() < 2 {
         return None;
     }
@@ -311,30 +302,19 @@ mod tests {
 
     #[test]
     fn short_names_and_garbage() {
-        assert_eq!(
-            short_name_from_title("Bomu Bomu no Mi").as_deref(),
-            Some("Bomu")
-        );
-        assert_eq!(
-            short_name_from_title("Yomi Yomi no Mi").as_deref(),
-            Some("Yomi")
-        );
+        assert_eq!(short_name_from_title("Bomu Bomu no Mi").as_deref(), Some("Bomu"));
+        assert_eq!(short_name_from_title("Yomi Yomi no Mi").as_deref(), Some("Yomi"));
         assert!(short_name_from_title("X").is_none());
         assert!(short_name_from_title("").is_none());
-        assert!(
-            parse_fruit_page("X", "no infobox here {{ nope").is_none()
-                || parse_fruit_page("X", "no infobox here").is_none()
-        );
+        assert!(parse_fruit_page("X", "no infobox here {{ nope").is_none()
+            || parse_fruit_page("X", "no infobox here").is_none());
     }
 
     #[test]
     fn category_and_missing_pages() {
         let body = r#"{"query":{"categorymembers":[{"pageid":1,"ns":0,"title":"Bari Bari no Mi"},{"pageid":2,"ns":10,"title":"Template:X"},{"pageid":3,"ns":0,"title":"Devil Fruits"}]}}"#;
         let titles = parse_category_titles(body).unwrap();
-        assert_eq!(
-            titles,
-            vec!["Bari Bari no Mi".to_string(), "Devil Fruits".to_string()]
-        );
+        assert_eq!(titles, vec!["Bari Bari no Mi".to_string(), "Devil Fruits".to_string()]);
         assert!(parse_category_titles(r#"{"query":{}}"#).is_err());
         let missing = r#"{"query":{"pages":[{"ns":0,"title":"Nope","missing":true}]}}"#;
         assert_eq!(parse_page_wikitext(missing).unwrap(), None);
@@ -362,10 +342,7 @@ mod tests {
 
     #[test]
     fn image_extraction_skips_galleries() {
-        assert_eq!(
-            extract_image(BARI).as_deref(),
-            Some("D792-C975-4047-4107-A1-AE-05-D7-FC78012-C.png")
-        );
+        assert_eq!(extract_image(BARI).as_deref(), Some("D792-C975-4047-4107-A1-AE-05-D7-FC78012-C.png"));
         let gal = "|image=<gallery widths=\"185\">\nFoo.png|Game\n</gallery>";
         assert_eq!(extract_image(gal), None);
     }

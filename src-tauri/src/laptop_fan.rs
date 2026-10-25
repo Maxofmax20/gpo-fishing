@@ -21,15 +21,15 @@ static AUTO_TURBO_ENABLED: AtomicBool = AtomicBool::new(true);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FanStatus {
     pub success: bool,
-    pub current_mode: String,   // "quiet", "balance", "performance", "turbo"
-    pub mode_label: String, // "Quiet (Silent)", "Balance (Auto)", "Performance (High)", "Turbo (100% Max)"
-    pub fan_level_pct: u32, // 25, 50, 75, 100
-    pub cpu_temp: Option<f32>, // in Celsius
-    pub gpu_temp: Option<u32>, // in Celsius
-    pub gpu_power: Option<f32>, // in Watts
-    pub gpu_util: Option<u32>, // in %
-    pub est_fan_rpm: String, // e.g. "~1,800 RPM", "~2,800 RPM", "~4,200 RPM", "~5,200 RPM (Max)"
-    pub auto_turbo: bool,   // auto turbo during macro active
+    pub current_mode: String,        // "quiet", "balance", "performance", "turbo"
+    pub mode_label: String,          // "Quiet (Silent)", "Balance (Auto)", "Performance (High)", "Turbo (100% Max)"
+    pub fan_level_pct: u32,          // 25, 50, 75, 100
+    pub cpu_temp: Option<f32>,       // in Celsius
+    pub gpu_temp: Option<u32>,       // in Celsius
+    pub gpu_power: Option<f32>,      // in Watts
+    pub gpu_util: Option<u32>,       // in %
+    pub est_fan_rpm: String,         // e.g. "~1,800 RPM", "~2,800 RPM", "~4,200 RPM", "~5,200 RPM (Max)"
+    pub auto_turbo: bool,            // auto turbo during macro active
     pub is_turbo_active: bool,
     pub error: Option<String>,
     pub updated_at: String,
@@ -107,10 +107,7 @@ fn query_gpu_stats() -> (Option<u32>, Option<f32>, Option<u32>) {
     #[cfg(windows)]
     {
         let out = Command::new("nvidia-smi")
-            .args([
-                "--query-gpu=temperature.gpu,power.draw,utilization.gpu",
-                "--format=csv,noheader,nounits",
-            ])
+            .args(["--query-gpu=temperature.gpu,power.draw,utilization.gpu", "--format=csv,noheader,nounits"])
             .creation_flags(CREATE_NO_WINDOW)
             .output();
 
@@ -291,21 +288,13 @@ pub fn set_fan_mode(target: &str) -> FanStatus {
     let mut status = cache.as_ref().map(|c| c.status.clone()).unwrap_or_default();
     status.current_mode = mode.into();
     status.mode_label = format!("{mode} (requested)");
-    status.fan_level_pct = match mode {
-        "quiet" => 25,
-        "performance" => 75,
-        "turbo" => 100,
-        _ => 50,
-    };
+    status.fan_level_pct = match mode { "quiet" => 25, "performance" => 75, "turbo" => 100, _ => 50 };
     status.auto_turbo = persist.auto_turbo;
     status.is_turbo_active = is_turbo;
     status.success = command_error.is_none();
     status.error = command_error;
     // Leave the observation expired so the background poll refreshes it.
-    *cache = Some(CachedTelemetry {
-        status: status.clone(),
-        last_fetched: Instant::now() - Duration::from_secs(3),
-    });
+    *cache = Some(CachedTelemetry { status: status.clone(), last_fetched: Instant::now() - Duration::from_secs(3) });
     status
 }
 
@@ -331,10 +320,7 @@ pub fn set_auto_turbo(enabled: bool) -> FanStatus {
     let mut cache = TELEMETRY_CACHE.write();
     let mut status = cache.as_ref().map(|c| c.status.clone()).unwrap_or_default();
     status.auto_turbo = enabled;
-    *cache = Some(CachedTelemetry {
-        status: status.clone(),
-        last_fetched: Instant::now() - Duration::from_secs(3),
-    });
+    *cache = Some(CachedTelemetry { status: status.clone(), last_fetched: Instant::now() - Duration::from_secs(3) });
     status
 }
 

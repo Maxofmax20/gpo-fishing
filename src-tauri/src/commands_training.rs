@@ -109,13 +109,8 @@ fn deployed_models(store: &Store) -> Vec<DeployedModelInfo> {
             .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
             .map(|v| {
                 (
-                    v.get("version")
-                        .and_then(|x| x.as_str())
-                        .unwrap_or("?")
-                        .to_string(),
-                    v.get("test_accuracy")
-                        .and_then(|x| x.as_f64())
-                        .map(|x| x as f32),
+                    v.get("version").and_then(|x| x.as_str()).unwrap_or("?").to_string(),
+                    v.get("test_accuracy").and_then(|x| x.as_f64()).map(|x| x as f32),
                     v.get("macro_f1").and_then(|x| x.as_f64()).map(|x| x as f32),
                 )
             })
@@ -158,10 +153,7 @@ pub fn fish_train_support_failure(
     if short.is_empty() {
         return None;
     }
-    let named: Vec<String> = short
-        .iter()
-        .map(|(c, n)| format!("{c} {n}/{min}"))
-        .collect();
+    let named: Vec<String> = short.iter().map(|(c, n)| format!("{c} {n}/{min}")).collect();
     Some(format!(
         "{} of {} canonical classes are short of {min} projected TRAIN rows ({}); \
          the trainer's scope assert would abort the run",
@@ -186,18 +178,12 @@ fn family_eligibility(
     macro_rules! fail {
         ($text:expr) => {{
             ok = false;
-            checks.push(GateCheck {
-                ok: false,
-                text: $text.to_string(),
-            });
+            checks.push(GateCheck { ok: false, text: $text.to_string() });
         }};
     }
     macro_rules! pass {
         ($text:expr) => {{
-            checks.push(GateCheck {
-                ok: true,
-                text: $text.to_string(),
-            });
+            checks.push(GateCheck { ok: true, text: $text.to_string() });
         }};
     }
     // The gate must describe the SAME rows the snapshot will write. When the
@@ -207,15 +193,8 @@ fn family_eligibility(
     // `fish:crimson` while the projected snapshot wrote 13, and the trainer
     // aborted).
     if let Some(err) = &projected.read_error {
-        checks.push(GateCheck {
-            ok: false,
-            text: format!("human review state unreadable: {err}"),
-        });
-        return FamilyEligibility {
-            family: family.to_string(),
-            eligible: false,
-            checks,
-        };
+        checks.push(GateCheck { ok: false, text: format!("human review state unreadable: {err}") });
+        return FamilyEligibility { family: family.to_string(), eligible: false, checks };
     }
     let rows = projected.rows.as_slice();
     if !backend_ok {
@@ -247,10 +226,8 @@ fn family_eligibility(
             // "scope: 8-class model" - while the readiness subsystem demanded
             // 10 for the same quantity. Two numbers, one quantity, one
             // subsystem. Both now derive from FISH_VOCAB.txt.
-            let q: Vec<_> = qualify_entities(rows, "fish:")
-                .into_iter()
-                .filter(|e| e.qualified)
-                .collect();
+            let q: Vec<_> =
+                qualify_entities(rows, "fish:").into_iter().filter(|e| e.qualified).collect();
             let required = crate::core::class_vocab::fish_vocab();
             let present: Vec<&str> = q.iter().map(|e| e.entity.as_str()).collect();
             let missing = crate::core::class_vocab::missing_from(present.iter().copied());
@@ -305,10 +282,8 @@ fn family_eligibility(
             }
         }
         "fruit" => {
-            let q: Vec<_> = qualify_entities(rows, "fruit:")
-                .into_iter()
-                .filter(|e| e.qualified)
-                .collect();
+            let q: Vec<_> =
+                qualify_entities(rows, "fruit:").into_iter().filter(|e| e.qualified).collect();
             if q.len() >= 10 {
                 pass! {format!("{} qualified fruits", q.len())};
             } else {
@@ -334,30 +309,12 @@ fn family_eligibility(
     // human having checked the data is how a wrong label becomes a permanently
     // learned "fact". This gate makes the review requirement enforceable.
     let scoped: Vec<&crate::core::ml_dataset::MlAnnotation> = match family {
-        "fish" => rows
-            .iter()
-            .filter(|r| {
-                r.entity_id
-                    .as_deref()
-                    .is_some_and(|e| e.starts_with("fish:"))
-            })
-            .collect(),
-        "fruit" => rows
-            .iter()
-            .filter(|r| {
-                r.entity_id
-                    .as_deref()
-                    .is_some_and(|e| e.starts_with("fruit:"))
-            })
-            .collect(),
+        "fish" => rows.iter().filter(|r| r.entity_id.as_deref().is_some_and(|e| e.starts_with("fish:"))).collect(),
+        "fruit" => rows.iter().filter(|r| r.entity_id.as_deref().is_some_and(|e| e.starts_with("fruit:"))).collect(),
         _ => rows
             .iter()
-            .filter(|r| {
-                matches!(
-                    r.game_state.as_ref().map(|g| g.as_str()),
-                    Some("waiting_for_bite") | Some("bite") | Some("catch_result")
-                )
-            })
+            .filter(|r| matches!(r.game_state.as_ref().map(|g| g.as_str()),
+                Some("waiting_for_bite") | Some("bite") | Some("catch_result")))
             .collect(),
     };
     if scoped.is_empty() {
@@ -370,11 +327,7 @@ fn family_eligibility(
         // demonstrably being applied.
         let reviewed = scoped
             .iter()
-            .filter(|r| {
-                projected
-                    .reviewed_eligible_ids
-                    .contains(r.image_id.as_str())
-            })
+            .filter(|r| projected.reviewed_eligible_ids.contains(r.image_id.as_str()))
             .count();
         let share = reviewed as f64 / scoped.len() as f64;
         if share >= review_floor {
@@ -395,17 +348,11 @@ fn family_eligibility(
         }
     }
 
-    FamilyEligibility {
-        family: family.to_string(),
-        eligible: ok,
-        checks,
-    }
+    FamilyEligibility { family: family.to_string(), eligible: ok, checks }
 }
 
 /// Run a blocking aggregate off the UI thread.
-async fn blocking<T: Send + 'static>(
-    f: impl FnOnce() -> Result<T, String> + Send + 'static,
-) -> Result<T, String> {
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(f)
         .await
         .map_err(|e| e.to_string())?
@@ -437,23 +384,12 @@ pub async fn training_overview(st: State<'_, AppState>) -> Result<TrainingOvervi
         let jobs = training::list_jobs(store.dir());
         let running = jobs
             .iter()
-            .filter(|j| {
-                matches!(
-                    j.status,
-                    training::JobStatus::Running | training::JobStatus::Evaluating
-                )
-            })
+            .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
             .count();
         let last_ms = last_training_ms(&store);
         let last_rows = jobs
             .iter()
-            .filter_map(|j| {
-                if j.finished_at == last_ms {
-                    Some(j.frozen_rows)
-                } else {
-                    None
-                }
-            })
+            .filter_map(|j| if j.finished_at == last_ms { Some(j.frozen_rows) } else { None })
             .max()
             .unwrap_or(0);
         let shadow_models = crate::core::shadow_infer::engine(&store.dir().join("models"))
@@ -466,22 +402,15 @@ pub async fn training_overview(st: State<'_, AppState>) -> Result<TrainingOvervi
         // observations, contradicting the correctly-scoped readiness check
         // shown beside it.
         let deployed_revision = |stem: &str| -> Option<String> {
-            let raw =
-                std::fs::read_to_string(store.dir().join("models").join(format!("{stem}.json")))
-                    .ok()?;
+            let raw = std::fs::read_to_string(store.dir().join("models").join(format!("{stem}.json"))).ok()?;
             let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
             Some(crate::core::shadow_infer::revision_from_manifest(&v))
         };
         let shadow_events = ["fish_v1", "state_v1"]
             .iter()
             .map(|stem| {
-                registry::soak_stats_for(
-                    store.dir(),
-                    stem,
-                    deployed_revision(stem).as_deref(),
-                    usize::MAX,
-                )
-                .events
+                registry::soak_stats_for(store.dir(), stem, deployed_revision(stem).as_deref(), usize::MAX)
+                    .events
             })
             .sum();
         // ONE projection, shared by every family gate: the rows a snapshot would
@@ -499,17 +428,7 @@ pub async fn training_overview(st: State<'_, AppState>) -> Result<TrainingOvervi
             shadow_events,
             eligibility: ["fish", "fruit", "state"]
                 .iter()
-                .map(|f| {
-                    family_eligibility(
-                        f,
-                        &projected,
-                        &tsettings,
-                        backend.available,
-                        &backend.detail,
-                        running,
-                        tsettings.readiness_min_review_coverage as f64,
-                    )
-                })
+                .map(|f| family_eligibility(f, &projected, &tsettings, backend.available, &backend.detail, running, tsettings.readiness_min_review_coverage as f64))
                 .collect(),
             auto_enabled: tsettings.auto_enabled,
             backend_available: backend.available,
@@ -593,17 +512,10 @@ pub async fn training_start(
     }).await
 }
 #[tauri::command]
-pub fn training_cancel(
-    st: State<'_, AppState>,
-    job_id: String,
-) -> Result<training::TrainingJob, String> {
+pub fn training_cancel(st: State<'_, AppState>, job_id: String) -> Result<training::TrainingJob, String> {
     let mut job = training::load_job(st.store.dir(), &job_id)?;
     st.training.lock().cancel(st.store.dir(), &mut job)?;
-    training::append_history(
-        st.store.dir(),
-        "job_cancelled",
-        serde_json::json!({"job_id": job_id}),
-    );
+    training::append_history(st.store.dir(), "job_cancelled", serde_json::json!({"job_id": job_id}));
     Ok(job)
 }
 
@@ -615,35 +527,21 @@ pub fn training_jobs(st: State<'_, AppState>) -> Vec<training::TrainingJob> {
         let before = j.status;
         sup.poll(st.store.dir(), j, &st.settings.read().training.trainer_dir);
         if j.status != before && j.status == training::JobStatus::Passed {
-            training::append_history(
-                st.store.dir(),
-                "job_passed",
-                serde_json::json!({"job_id": j.job_id}),
-            );
+            training::append_history(st.store.dir(), "job_passed", serde_json::json!({"job_id": j.job_id}));
         }
     }
     jobs
 }
 
 #[tauri::command]
-pub fn training_job(
-    st: State<'_, AppState>,
-    job_id: String,
-) -> Result<training::TrainingJob, String> {
+pub fn training_job(st: State<'_, AppState>, job_id: String) -> Result<training::TrainingJob, String> {
     let mut job = training::load_job(st.store.dir(), &job_id)?;
-    st.training.lock().poll(
-        st.store.dir(),
-        &mut job,
-        &st.settings.read().training.trainer_dir,
-    );
+    st.training.lock().poll(st.store.dir(), &mut job, &st.settings.read().training.trainer_dir);
     Ok(job)
 }
 
 #[tauri::command]
-pub fn training_restart(
-    st: State<'_, AppState>,
-    job_id: String,
-) -> Result<training::TrainingJob, String> {
+pub fn training_restart(st: State<'_, AppState>, job_id: String) -> Result<training::TrainingJob, String> {
     // Honest restart: a NEW job with a FRESH snapshot (data may have grown).
     // Resume is not offered: torch training is not reproducibly resumable.
     let old = training::load_job(st.store.dir(), &job_id)?;
@@ -660,12 +558,7 @@ pub fn training_restart(
     // eligible now - possibly one row.
     let running = training::list_jobs(st.store.dir())
         .iter()
-        .filter(|j| {
-            matches!(
-                j.status,
-                training::JobStatus::Running | training::JobStatus::Evaluating
-            )
-        })
+        .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
         .count();
     let elig = family_eligibility(
         &old.model_family,
@@ -684,14 +577,12 @@ pub fn training_restart(
             .map(|c| c.text.clone())
             .collect::<Vec<_>>()
             .join("; ");
-        return Err(format!("{} restart refused: {why}", old.model_family));
+        return Err(format!(
+            "{} restart refused: {why}",
+            old.model_family
+        ));
     }
-    let snap_dir = st
-        .store
-        .dir()
-        .join("training")
-        .join("snapshots")
-        .join(format!("snap-{}", crate::events::now_ms()));
+    let snap_dir = st.store.dir().join("training").join("snapshots").join(format!("snap-{}", crate::events::now_ms()));
     let snap = training::snapshot_dataset(st.store.dir(), &snap_dir, &rows, DATASET_VERSION)?;
     let mut job = training::create_job(
         st.store.dir(),
@@ -707,31 +598,15 @@ pub fn training_restart(
     )?;
     job.trainer_dir = settings.trainer_dir.clone();
     training::save_job(st.store.dir(), &job)?;
-    st.training.lock().launch(
-        st.store.dir(),
-        &mut job,
-        &settings.python_path,
-        &settings.trainer_dir,
-        settings.max_concurrent_jobs,
-    )?;
-    training::append_history(
-        st.store.dir(),
-        "job_restarted",
-        serde_json::json!({"from": job_id, "to": job.job_id}),
-    );
+    st.training.lock().launch(st.store.dir(), &mut job, &settings.python_path, &settings.trainer_dir, settings.max_concurrent_jobs)?;
+    training::append_history(st.store.dir(), "job_restarted", serde_json::json!({"from": job_id, "to": job.job_id}));
     Ok(job)
 }
 
 #[tauri::command]
-pub fn training_discard(
-    st: State<'_, AppState>,
-    job_id: String,
-) -> Result<training::TrainingJob, String> {
+pub fn training_discard(st: State<'_, AppState>, job_id: String) -> Result<training::TrainingJob, String> {
     let mut job = training::load_job(st.store.dir(), &job_id)?;
-    if !matches!(
-        job.status,
-        training::JobStatus::Interrupted | training::JobStatus::Queued
-    ) {
+    if !matches!(job.status, training::JobStatus::Interrupted | training::JobStatus::Queued) {
         return Err("only INTERRUPTED or QUEUED jobs can be discarded".to_string());
     }
     job.status = training::JobStatus::Cancelled;
@@ -743,13 +618,12 @@ pub fn training_discard(
 // ---- candidates / promotion ----
 
 fn trainer_out_for(job: &training::TrainingJob) -> std::path::PathBuf {
-    std::path::Path::new(&job.trainer_dir)
-        .join("ml")
-        .join("output")
-        .join(&job.run_id)
+    std::path::Path::new(&job.trainer_dir).join("ml").join("output").join(&job.run_id)
 }
 
-fn candidate_inputs_for(job: &training::TrainingJob) -> Result<registry::CandidateInputs, String> {
+fn candidate_inputs_for(
+    job: &training::TrainingJob,
+) -> Result<registry::CandidateInputs, String> {
     let out = trainer_out_for(job);
     let read = |n: &str| {
         std::fs::read_to_string(out.join(n))
@@ -767,13 +641,8 @@ fn candidate_inputs_for(job: &training::TrainingJob) -> Result<registry::Candida
         .and_then(|s| s.get("test_sessions"))
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as usize;
-    let metrics = registry::ModelMetrics::from_trainer_files(
-        &eval,
-        cal.as_ref(),
-        rej.as_ref(),
-        test_sessions,
-    )
-    .ok_or_else(|| "evaluation files lack core accuracy/macro-F1: refusing".to_string())?;
+    let metrics = registry::ModelMetrics::from_trainer_files(&eval, cal.as_ref(), rej.as_ref(), test_sessions)
+        .ok_or_else(|| "evaluation files lack core accuracy/macro-F1: refusing".to_string())?;
     // CLASS MAP (v5.7.0). The trainer's OWN vocabulary is the authority for
     // output-index -> label. v5.6.x derived this from the evaluation file's
     // keys and then SORTED them, which only coincided with the trainer's order
@@ -840,17 +709,10 @@ fn candidate_inputs_for(job: &training::TrainingJob) -> Result<registry::Candida
             })
             .ok_or_else(|| format!("normalization.{k} malformed: refusing"))
     };
-    let temperature = read("calibration.json")
-        .ok()
-        .and_then(|c| c.get("temperature").and_then(|t| t.as_f64()))
-        .unwrap_or(1.0) as f32;
+    let temperature = read("calibration.json").ok().and_then(|c| c.get("temperature").and_then(|t| t.as_f64())).unwrap_or(1.0) as f32;
     Ok(registry::CandidateInputs {
         vocab_sha,
-        onnx_path: out.join(if job.model_family == "fish" {
-            "fish_vision_v1.onnx"
-        } else {
-            "gpo_vision_v1.onnx"
-        }),
+        onnx_path: out.join(if job.model_family == "fish" { "fish_vision_v1.onnx" } else { "gpo_vision_v1.onnx" }),
         classes,
         temperature,
         mean: arr("mean")?,
@@ -876,10 +738,7 @@ fn deployed_test_support(v: &serde_json::Value) -> std::collections::HashMap<Str
         .unwrap_or_default()
 }
 
-fn current_metrics_for(
-    store: &Store,
-    family: &str,
-) -> Result<(registry::ModelMetrics, Vec<String>), String> {
+fn current_metrics_for(store: &Store, family: &str) -> Result<(registry::ModelMetrics, Vec<String>), String> {
     let stem = registry::shadow_stem(family).ok_or("unknown family")?;
     let raw = std::fs::read_to_string(store.dir().join("models").join(format!("{stem}.json")))
         .map_err(|_| format!("no deployed {family} manifest"))?;
@@ -892,21 +751,11 @@ fn current_metrics_for(
     let classes: Vec<String> = v
         .get("classes")
         .and_then(|m| m.as_array())
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.as_str().map(|s| s.to_string()))
-                .collect()
-        })
+        .map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.to_string())).collect())
         .unwrap_or_default();
     let m = registry::ModelMetrics {
-        holdout_fingerprint: v
-            .get("holdout_fingerprint")
-            .and_then(|v| v.as_str())
-            .map(str::to_string),
-        accuracy: v
-            .get("test_accuracy")
-            .and_then(|x| x.as_f64())
-            .unwrap_or(0.0) as f32,
+        holdout_fingerprint: v.get("holdout_fingerprint").and_then(|v| v.as_str()).map(str::to_string),
+        accuracy: v.get("test_accuracy").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32,
         macro_f1: v.get("macro_f1").and_then(|x| x.as_f64()).unwrap_or(0.0) as f32,
         ece: v.get("ece").and_then(|x| x.as_f64()).map(|x| x as f32),
         test_sessions: v.get("test_sessions").and_then(|x| x.as_u64()).unwrap_or(0) as usize,
@@ -914,45 +763,28 @@ fn current_metrics_for(
         per_class_f1: per
             .iter()
             .filter_map(|c| {
-                v.get("per_class_f1")?
-                    .get(c)?
-                    .as_f64()
-                    .map(|f| (c.clone(), f as f32))
+                v.get("per_class_f1")?.get(c)?.as_f64().map(|f| (c.clone(), f as f32))
             })
             .collect(),
         per_class_test_support: deployed_test_support(&v),
-        kept_accuracy: v
-            .get("kept_accuracy")
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32),
+        kept_accuracy: v.get("kept_accuracy").and_then(|v| v.as_f64()).map(|v| v as f32),
     };
     Ok((m, if per.is_empty() { classes } else { per }))
 }
 
 fn qualified_now(store: &Store, family: &str) -> Vec<String> {
     if family == "state" {
-        return ["waiting_for_bite", "bite", "catch_result"]
-            .iter()
-            .map(|v| v.to_string())
-            .collect();
+        return ["waiting_for_bite", "bite", "catch_result"].iter().map(|v| v.to_string()).collect();
     }
     let prefix = match family {
         "fish" => "fish:",
         "fruit" => "fruit:",
         _ => return vec![],
     };
-    let Ok(rows) = rows_of_checked(store) else {
-        return vec![];
-    };
+    let Ok(rows) = rows_of_checked(store) else { return vec![] };
     let projected = projected_labels(store, &rows);
-    if projected.read_error.is_some() {
-        return vec![];
-    }
-    qualify_entities(&projected.rows, prefix)
-        .into_iter()
-        .filter(|q| q.qualified)
-        .map(|q| q.entity)
-        .collect()
+    if projected.read_error.is_some() { return vec![]; }
+    qualify_entities(&projected.rows, prefix).into_iter().filter(|q| q.qualified).map(|q| q.entity).collect()
 }
 
 fn decide_for_job(
@@ -1002,42 +834,22 @@ fn decide_for_job(
         Ok(v) => v,
         Err(e) => {
             let _ = training::save_job(store.dir(), job);
-            return format!(
-                "candidate {} registered; current metrics unavailable: {e}",
-                rec.candidate_id
-            );
+            return format!("candidate {} registered; current metrics unavailable: {e}", rec.candidate_id);
         }
     };
-    let cmp = registry::compare(
-        &job.model_family,
-        &cur_metrics,
-        &rec.metrics,
-        &cur_classes,
-        &rec.classes,
-        &qualified_now(store, &job.model_family),
-    );
+    let cmp = registry::compare(&job.model_family, &cur_metrics, &rec.metrics, &cur_classes, &rec.classes, &qualified_now(store, &job.model_family));
     if cmp.verdict == registry::ComparisonVerdict::Inconclusive {
         job.error = Some(cmp.reasons.join("; "));
         let _ = training::save_job(store.dir(), job);
-        training::append_history(
-            store.dir(),
-            "comparison_inconclusive",
-            serde_json::json!({"candidate": rec.candidate_id, "reasons": cmp.reasons}),
-        );
+        training::append_history(store.dir(), "comparison_inconclusive",
+            serde_json::json!({"candidate": rec.candidate_id, "reasons": cmp.reasons}));
         return format!("INCONCLUSIVE: {}", cmp.reasons.join("; "));
     }
     if cmp.verdict != registry::ComparisonVerdict::Pass {
         job.status = training::JobStatus::Rejected;
-        job.error = Some(format!(
-            "candidate {} rejected: {}",
-            rec.candidate_id,
-            cmp.reasons.join("; ")
-        ));
+        job.error = Some(format!("candidate {} rejected: {}", rec.candidate_id, cmp.reasons.join("; ")));
         let mut records = registry::load_registry(store.dir());
-        if let Some(r) = records
-            .iter_mut()
-            .find(|r| r.candidate_id == rec.candidate_id)
-        {
+        if let Some(r) = records.iter_mut().find(|r| r.candidate_id == rec.candidate_id) {
             r.status = registry::Lifecycle::Rejected;
             r.decision_reason = Some(cmp.reasons.join("; "));
         }
@@ -1058,23 +870,14 @@ fn decide_for_job(
             cmp.reasons.join("; ")
         );
     }
-    match registry::promote_to_shadow(
-        store.dir(),
-        &store.dir().join("models"),
-        &rec.candidate_id,
-        &cmp,
-    ) {
+    match registry::promote_to_shadow(store.dir(), &store.dir().join("models"), &rec.candidate_id, &cmp) {
         Ok(manifest) => {
             training::append_history(
                 store.dir(),
                 "candidate_promoted",
                 serde_json::json!({"candidate": rec.candidate_id, "manifest": manifest.to_string_lossy(), "auto": auto}),
             );
-            format!(
-                "PROMOTED {} to shadow ({})",
-                rec.candidate_id,
-                manifest.to_string_lossy()
-            )
+            format!("PROMOTED {} to shadow ({})", rec.candidate_id, manifest.to_string_lossy())
         }
         Err(e) => {
             job.status = training::JobStatus::Failed;
@@ -1098,42 +901,27 @@ pub struct CompareView {
 }
 
 #[tauri::command]
-pub async fn training_compare(
-    st: State<'_, AppState>,
-    candidate_id: String,
-) -> Result<CompareView, String> {
+pub async fn training_compare(st: State<'_, AppState>, candidate_id: String) -> Result<CompareView, String> {
     let store = st.store.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let records = registry::load_registry(store.dir());
-        let rec = records
-            .iter()
-            .find(|r| r.candidate_id == candidate_id)
-            .ok_or("candidate not found")?
-            .clone();
-        let (cur_metrics, cur_classes) = current_metrics_for(&store, &rec.model_family)?;
-        let cmp = registry::compare(
-            &rec.model_family,
-            &cur_metrics,
-            &rec.metrics,
-            &cur_classes,
-            &rec.classes,
-            &qualified_now(&store, &rec.model_family),
-        );
-        Ok(CompareView {
-            candidate: rec,
-            current_metrics: cur_metrics,
-            comparison: cmp,
-        })
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let records = registry::load_registry(store.dir());
+    let rec = records.iter().find(|r| r.candidate_id == candidate_id).ok_or("candidate not found")?.clone();
+    let (cur_metrics, cur_classes) = current_metrics_for(&store, &rec.model_family)?;
+    let cmp = registry::compare(
+        &rec.model_family,
+        &cur_metrics,
+        &rec.metrics,
+        &cur_classes,
+        &rec.classes,
+        &qualified_now(&store, &rec.model_family),
+    );
+    Ok(CompareView { candidate: rec, current_metrics: cur_metrics, comparison: cmp })
+    }).await.map_err(|e| e.to_string())?
+
 }
 
 #[tauri::command]
-pub async fn training_promote(
-    st: State<'_, AppState>,
-    candidate_id: String,
-) -> Result<String, String> {
+pub async fn training_promote(st: State<'_, AppState>, candidate_id: String) -> Result<String, String> {
     let store = st.store.clone();
     tauri::async_runtime::spawn_blocking(move || {
     let records = registry::load_registry(store.dir());
@@ -1172,26 +960,22 @@ pub async fn training_promote(
     );
     Ok(format!("promoted to shadow: {}", manifest.to_string_lossy()))
     }).await.map_err(|e| e.to_string())?
+
 }
 
 #[tauri::command]
 pub async fn training_rollback(st: State<'_, AppState>, family: String) -> Result<String, String> {
     let store = st.store.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let manifest =
-            registry::rollback_family(store.dir(), &store.dir().join("models"), &family)?;
-        training::append_history(
-            store.dir(),
-            "rollback",
-            serde_json::json!({"family": family, "manifest": manifest.to_string_lossy()}),
-        );
-        Ok(format!(
-            "rolled back to archive: {}",
-            manifest.to_string_lossy()
-        ))
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let manifest = registry::rollback_family(store.dir(), &store.dir().join("models"), &family)?;
+    training::append_history(
+        store.dir(),
+        "rollback",
+        serde_json::json!({"family": family, "manifest": manifest.to_string_lossy()}),
+    );
+    Ok(format!("rolled back to archive: {}", manifest.to_string_lossy()))
+    }).await.map_err(|e| e.to_string())?
+
 }
 
 #[tauri::command]
@@ -1233,10 +1017,7 @@ fn qual_reason(prefix: &str, q: &crate::core::ml_capability::EntityQual) -> Stri
     let _ = prefix;
     let mut r = Vec::new();
     if q.examples < 20 {
-        r.push(format!(
-            "need {} more real examples (>=20)",
-            20 - q.examples
-        ));
+        r.push(format!("need {} more real examples (>=20)", 20 - q.examples));
     }
     if q.sessions < 3 {
         r.push(format!("need session diversity (>=3, have {})", q.sessions));
@@ -1244,11 +1025,7 @@ fn qual_reason(prefix: &str, q: &crate::core::ml_capability::EntityQual) -> Stri
     if !q.test_covered {
         r.push("need TEST coverage".to_string());
     }
-    if r.is_empty() {
-        "qualified".to_string()
-    } else {
-        r.join("; ")
-    }
+    if r.is_empty() { "qualified".to_string() } else { r.join("; ") }
 }
 
 #[tauri::command]
@@ -1261,14 +1038,7 @@ pub fn dataset_explorer(st: State<'_, AppState>) -> DatasetExplorer {
     let mut null_result = 0;
     let mut entities = HashSet::new();
     for r in &rows {
-        *states
-            .entry(
-                r.game_state
-                    .map(|g| g.as_str())
-                    .unwrap_or("none")
-                    .to_string(),
-            )
-            .or_insert(0) += 1;
+        *states.entry(r.game_state.map(|g| g.as_str()).unwrap_or("none").to_string()).or_insert(0) += 1;
         if r.hard_example {
             hard += 1;
         }
@@ -1294,16 +1064,10 @@ pub fn dataset_explorer(st: State<'_, AppState>) -> DatasetExplorer {
         .map(|q| {
             let reason = qual_reason("", &q);
             ExplorerEntity {
-                entity: q.entity,
-                examples: q.examples,
-                sessions: q.sessions,
-                train: q.train,
-                validation: q.validation,
-                test: q.test,
-                ocr_agree: q.ocr_agree,
-                ocr_disagree: q.ocr_disagree,
-                qualified: q.qualified,
-                reason,
+                entity: q.entity, examples: q.examples, sessions: q.sessions,
+                train: q.train, validation: q.validation, test: q.test,
+                ocr_agree: q.ocr_agree, ocr_disagree: q.ocr_disagree,
+                qualified: q.qualified, reason,
             }
         })
         .collect();
@@ -1312,25 +1076,15 @@ pub fn dataset_explorer(st: State<'_, AppState>) -> DatasetExplorer {
         .map(|q| {
             let reason = qual_reason("", &q);
             ExplorerEntity {
-                entity: q.entity,
-                examples: q.examples,
-                sessions: q.sessions,
-                train: q.train,
-                validation: q.validation,
-                test: q.test,
-                ocr_agree: q.ocr_agree,
-                ocr_disagree: q.ocr_disagree,
-                qualified: q.qualified,
-                reason,
+                entity: q.entity, examples: q.examples, sessions: q.sessions,
+                train: q.train, validation: q.validation, test: q.test,
+                ocr_agree: q.ocr_agree, ocr_disagree: q.ocr_disagree,
+                qualified: q.qualified, reason,
             }
         })
         .collect();
     DatasetExplorer {
-        sessions: rows
-            .iter()
-            .map(|r| r.session_id.as_str())
-            .collect::<HashSet<_>>()
-            .len(),
+        sessions: rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len(),
         rows: rows.len(),
         states,
         entities: entities.len(),
@@ -1367,10 +1121,7 @@ pub fn review_queue(st: State<'_, AppState>) -> Vec<ReviewItem> {
         }
         let mut reasons = Vec::new();
         if r.hard_example {
-            reasons.push(format!(
-                "hard: {}",
-                r.hard_reason.as_deref().unwrap_or("flagged")
-            ));
+            reasons.push(format!("hard: {}", r.hard_reason.as_deref().unwrap_or("flagged")));
         }
         if let Some(g) = r.game_state {
             if g.as_str() == "catch_result" {
@@ -1455,9 +1206,7 @@ pub fn training_settings_set(
     // No shell metacharacters: these values become subprocess argv[0]/cwd,
     // never shell strings, but reject outright anyway (defense in depth).
     for v in [&settings.python_path, &settings.trainer_dir] {
-        if v.chars()
-            .any(|c| matches!(c, ';' | '&' | '|' | '`' | '$' | '\n' | '\r'))
-        {
+        if v.chars().any(|c| matches!(c, ';' | '&' | '|' | '`' | '$' | '\n' | '\r')) {
             return Err("paths must not contain shell metacharacters".to_string());
         }
     }
@@ -1487,24 +1236,17 @@ pub(crate) fn training_auto_tick(
 ) {
     let s = settings.read().training.clone();
     static AUTO_TICK: Mutex<()> = Mutex::new(());
-    let Some(_tick) = AUTO_TICK.try_lock() else {
-        return;
-    };
+    let Some(_tick) = AUTO_TICK.try_lock() else { return };
     if s.auto_enabled {
-        // Passed auto jobs are decided (promote-or-reject) on subsequent ticks
-        // once finalize() marks them PASSED.
-        for mut j in training::list_jobs(store.dir()).into_iter().filter(|j| {
-            j.status == training::JobStatus::Passed
-                && j.candidate_id.is_none()
-                && j.requested_by.starts_with("auto:")
-        }) {
-            let outcome = decide_for_job(store, &mut j, true, s.auto_promote_to_shadow);
-            training::append_history(
-                store.dir(),
-                "auto_decision",
-                serde_json::json!({"job_id": j.job_id, "outcome": outcome}),
-            );
-        }
+    // Passed auto jobs are decided (promote-or-reject) on subsequent ticks
+    // once finalize() marks them PASSED.
+    for mut j in training::list_jobs(store.dir())
+        .into_iter()
+        .filter(|j| j.status == training::JobStatus::Passed && j.candidate_id.is_none() && j.requested_by.starts_with("auto:"))
+    {
+        let outcome = decide_for_job(store, &mut j, true, s.auto_promote_to_shadow);
+        training::append_history(store.dir(), "auto_decision", serde_json::json!({"job_id": j.job_id, "outcome": outcome}));
+    }
     }
     // UNATTENDED PATH, SO IT MUST FAIL CLOSED. `rows_of` silently drops any
     // labels.jsonl line that will not parse; a row the parser skipped is a row
@@ -1525,13 +1267,7 @@ pub(crate) fn training_auto_tick(
         }
     };
     let gates = assess_capabilities(&rows);
-    let gate_ready = |id: &str| {
-        gates
-            .iter()
-            .find(|g| g.id == id)
-            .map(|g| g.ready)
-            .unwrap_or(false)
-    };
+    let gate_ready = |id: &str| gates.iter().find(|g| g.id == id).map(|g| g.ready).unwrap_or(false);
     let prev = training::load_trigger_state(store.dir());
     let now = crate::events::now_ms();
     let triggers = training::evaluate_triggers(
@@ -1567,25 +1303,12 @@ pub(crate) fn training_auto_tick(
     let family = "fish";
     let running = training::list_jobs(store.dir())
         .iter()
-        .filter(|j| {
-            matches!(
-                j.status,
-                training::JobStatus::Running | training::JobStatus::Evaluating
-            )
-        })
+        .filter(|j| matches!(j.status, training::JobStatus::Running | training::JobStatus::Evaluating))
         .count();
     if running >= s.max_concurrent_jobs.max(1) {
         return;
     }
-    let elig = family_eligibility(
-        family,
-        &projected_labels(store, &rows),
-        &s,
-        true,
-        "",
-        running,
-        s.readiness_min_review_coverage as f64,
-    );
+    let elig = family_eligibility(family, &projected_labels(store, &rows), &s, true, "", running, s.readiness_min_review_coverage as f64);
     if !elig.eligible {
         training::append_history(
             store.dir(),
@@ -1598,13 +1321,9 @@ pub(crate) fn training_auto_tick(
     if !backend.available {
         return;
     }
-    let snap_dir = store
-        .dir()
-        .join("training")
-        .join("snapshots")
-        .join(format!("snap-{now}"));
-    let Ok(snap) = training::snapshot_dataset(store.dir(), &snap_dir, &rows, DATASET_VERSION)
-    else {
+    let snap_dir =
+        store.dir().join("training").join("snapshots").join(format!("snap-{now}"));
+    let Ok(snap) = training::snapshot_dataset(store.dir(), &snap_dir, &rows, DATASET_VERSION) else {
         return;
     };
     let module = match trainer_module_for(family) {
@@ -1612,52 +1331,30 @@ pub(crate) fn training_auto_tick(
         None => return,
     };
     let Ok(mut job) = training::create_job(
-        store.dir(),
-        family,
-        "auto:new_data",
-        &snap,
-        DATASET_VERSION,
-        module,
-        40,
-        7,
-        env!("CARGO_PKG_VERSION"),
-        true,
+        store.dir(), family, "auto:new_data", &snap, DATASET_VERSION, module, 40, 7,
+        env!("CARGO_PKG_VERSION"), true,
     ) else {
         return;
     };
     job.trainer_dir = s.trainer_dir.clone();
     let _ = training::save_job(store.dir(), &job);
-    if training
-        .lock()
-        .launch(
-            store.dir(),
-            &mut job,
-            &s.python_path,
-            &s.trainer_dir,
-            s.max_concurrent_jobs,
-        )
-        .is_ok()
-    {
-        training::save_trigger_state(
-            store.dir(),
-            &training::TriggerState {
-                last_fingerprint: Some(training::dataset_fingerprint(&rows, DATASET_VERSION)),
-                last_rows: rows.len(),
-                last_sessions: rows
-                    .iter()
-                    .map(|r| r.session_id.as_str())
-                    .collect::<HashSet<_>>()
-                    .len(),
-                last_hard: rows.iter().filter(|r| r.hard_example).count(),
-                last_trigger_ms: if triggers.is_empty() {
-                    prev.last_trigger_ms
-                } else {
-                    Some(now)
-                },
-                last_fish_ready: gate_ready("fish_entity"),
-                last_fruit_ready: gate_ready("fruit_entity"),
+    if training.lock().launch(store.dir(), &mut job, &s.python_path, &s.trainer_dir, s.max_concurrent_jobs).is_ok() {
+    training::save_trigger_state(
+        store.dir(),
+        &training::TriggerState {
+            last_fingerprint: Some(training::dataset_fingerprint(&rows, DATASET_VERSION)),
+            last_rows: rows.len(),
+            last_sessions: rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len(),
+            last_hard: rows.iter().filter(|r| r.hard_example).count(),
+            last_trigger_ms: if triggers.is_empty() {
+                prev.last_trigger_ms
+            } else {
+                Some(now)
             },
-        );
+            last_fish_ready: gate_ready("fish_entity"),
+            last_fruit_ready: gate_ready("fruit_entity"),
+        },
+    );
 
         training::append_history(
             store.dir(),
@@ -1665,6 +1362,7 @@ pub(crate) fn training_auto_tick(
             serde_json::json!({"job_id": job.job_id, "requested_by": "auto:new_data"}),
         );
     }
+
 }
 
 /// Manual review step for a PASSED job: register the candidate, compare
@@ -1674,20 +1372,16 @@ pub(crate) fn training_auto_tick(
 pub async fn training_decide(st: State<'_, AppState>, job_id: String) -> Result<String, String> {
     let store = st.store.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mut job = training::load_job(store.dir(), &job_id)?;
-        if job.status != training::JobStatus::Passed {
-            return Err(format!(
-                "job is {:?}, only PASSED jobs are decided",
-                job.status
-            ));
-        }
-        if job.candidate_id.is_some() {
-            return Err("job already decided (candidate exists)".to_string());
-        }
-        Ok(decide_for_job(&store, &mut job, false, true))
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let mut job = training::load_job(store.dir(), &job_id)?;
+    if job.status != training::JobStatus::Passed {
+        return Err(format!("job is {:?}, only PASSED jobs are decided", job.status));
+    }
+    if job.candidate_id.is_some() {
+        return Err("job already decided (candidate exists)".to_string());
+    }
+    Ok(decide_for_job(&store, &mut job, false, true))
+    }).await.map_err(|e| e.to_string())?
+
 }
 
 // ---------------------------------------------------------------------------
@@ -1741,12 +1435,7 @@ mod tests {
     /// `ReviewStore` parser and the projection's tolerant parser see the same
     /// verdict - a fixture that only satisfies one of them would test a
     /// disagreement between parsers instead of the gate.
-    fn review_line(
-        image_id: &str,
-        eligible: bool,
-        human: Option<&str>,
-        reason: Option<&str>,
-    ) -> String {
+    fn review_line(image_id: &str, eligible: bool, human: Option<&str>, reason: Option<&str>) -> String {
         serde_json::json!({
             "review_id": format!("rv-{image_id}"),
             "image_id": image_id,
@@ -1856,11 +1545,7 @@ mod tests {
             0,
             0.5,
         );
-        assert!(
-            !elig.eligible,
-            "a class the trainer cannot fill must not be armed: {:?}",
-            elig.checks
-        );
+        assert!(!elig.eligible, "a class the trainer cannot fill must not be armed: {:?}", elig.checks);
         let failures: Vec<&str> = elig
             .checks
             .iter()
@@ -1906,22 +1591,14 @@ mod tests {
             0,
             0.5,
         );
-        let failures: Vec<&str> = elig
-            .checks
-            .iter()
-            .filter(|c| !c.ok)
-            .map(|c| c.text.as_str())
-            .collect();
+        let failures: Vec<&str> = elig.checks.iter().filter(|c| !c.ok).map(|c| c.text.as_str()).collect();
         let sufficiency = failures
             .iter()
             .find(|t| t.contains("projected TRAIN rows"))
             .unwrap_or_else(|| panic!("no train-support check reported: {failures:?}"));
         let short = crate::core::class_vocab::fish_vocab().len() - 1;
         assert!(
-            sufficiency.contains(&format!(
-                "{short} of {}",
-                crate::core::class_vocab::fish_vocab_len()
-            )),
+            sufficiency.contains(&format!("{short} of {}", crate::core::class_vocab::fish_vocab_len())),
             "the check must report the shortfall against the REAL vocabulary size: {sufficiency}"
         );
         for c in crate::core::class_vocab::fish_vocab()
@@ -2009,9 +1686,7 @@ mod tests {
         );
         assert!(!elig.eligible);
         assert!(
-            elig.checks[0]
-                .text
-                .contains("human review state unreadable"),
+            elig.checks[0].text.contains("human review state unreadable"),
             "{:?}",
             elig.checks
         );

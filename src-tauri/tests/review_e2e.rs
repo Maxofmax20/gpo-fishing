@@ -23,22 +23,14 @@ use gpo_autofish_lib::core::training;
 fn fresh_dir(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("gpo-review-e2e-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
-    std::fs::create_dir_all(
-        d.join("datasets")
-            .join("gpo-vision")
-            .join("v1")
-            .join("images"),
-    )
-    .unwrap();
+    std::fs::create_dir_all(d.join("datasets").join("gpo-vision").join("v1").join("images")).unwrap();
     d
 }
 
 fn seed_rows(dir: &PathBuf) {
     let v1 = dir.join("datasets").join("gpo-vision").join("v1");
     let row = |img: &str, sess: &str, ts: u64, ent: Option<&str>| {
-        let ent_json = ent
-            .map(|e| format!("\"{e}\""))
-            .unwrap_or_else(|| "null".to_string());
+        let ent_json = ent.map(|e| format!("\"{e}\"")).unwrap_or_else(|| "null".to_string());
         format!(
             "{{\"image_id\":\"{img}\",\"dataset_version\":1,\"session_id\":\"{sess}\",\"task\":\"entity_recognition\",\"ocr_text\":\"Golden Fish\",\"region_name\":\"drop\",\"ui_label\":null,\"bbox\":null,\"game_state\":\"catch_result\",\"entity_id\":{ent_json},\"annotator\":\"collector\",\"timestamp_ms\":{ts},\"source\":\"gameplay\",\"confidence\":null,\"hard_example\":false,\"hard_reason\":null,\"corrections\":[]}}"
         )
@@ -51,11 +43,7 @@ fn seed_rows(dir: &PathBuf) {
     .join("\n")
         + "\n";
     std::fs::write(v1.join("labels.jsonl"), body).unwrap();
-    std::fs::write(
-        v1.join("manifest.json"),
-        r#"{"version":1,"split_overrides":{}}"#,
-    )
-    .unwrap();
+    std::fs::write(v1.join("manifest.json"), r#"{"version":1,"split_overrides":{}}"#).unwrap();
     // Real (tiny) decodable PNGs so the bad-image gate passes honestly.
     let mut png = Vec::new();
     {
@@ -127,10 +115,7 @@ fn e2e_review_correct_updates_dataset_and_snapshot_freezes_reviews() {
     )
     .unwrap();
     assert_eq!(rec2.review_status, ReviewStatus::Conflict);
-    assert!(
-        !rec2.training_eligible,
-        "a conflict must never be training-eligible"
-    );
+    assert!(!rec2.training_eligible, "a conflict must never be training-eligible");
     assert_eq!(rec2.excluded_reason.as_deref(), Some("conflict"));
 
     // 3. Resolution settles it with an audit trail AND keeps it eligible
@@ -146,10 +131,7 @@ fn e2e_review_correct_updates_dataset_and_snapshot_freezes_reviews() {
     )
     .unwrap();
     assert_eq!(rec3.review_status, ReviewStatus::ReviewedCorrected);
-    assert!(
-        rec3.training_eligible,
-        "a resolved conflict must re-enter training"
-    );
+    assert!(rec3.training_eligible, "a resolved conflict must re-enter training");
     let audit = store.audit_tail(50);
     let kinds: Vec<&str> = audit.iter().map(|e| e.event.as_str()).collect();
     assert!(kinds.contains(&"REVIEW_CREATED"), "{kinds:?}");
@@ -157,32 +139,16 @@ fn e2e_review_correct_updates_dataset_and_snapshot_freezes_reviews() {
     assert!(kinds.contains(&"RESOLVED"), "{kinds:?}");
 
     // 4. Dataset linkage: resolving writes the HUMAN label via annotate().
-    ds.annotate(
-        "rv-aa",
-        None,
-        None,
-        None,
-        Some("fish:golden".to_string()),
-        "human",
-        false,
-        None,
-    )
-    .unwrap();
-    let back = ds
-        .annotations()
-        .into_iter()
-        .find(|r| r.image_id == "rv-aa")
+    ds.annotate("rv-aa", None, None, None, Some("fish:golden".to_string()), "human", false, None)
         .unwrap();
+    let back = ds.annotations().into_iter().find(|r| r.image_id == "rv-aa").unwrap();
     assert_eq!(back.entity_id.as_deref(), Some("fish:golden"));
     assert_eq!(back.annotator, "human");
 
     // 5. Snapshot freezes the surviving rows AND the review state.
     let rows = ds.annotations();
     let snap = training::snapshot_dataset(&dir, &dir.join("snap"), &rows, 1).unwrap();
-    assert_ne!(
-        snap.review_fingerprint, "none",
-        "reviews exist so fingerprint must be set"
-    );
+    assert_ne!(snap.review_fingerprint, "none", "reviews exist so fingerprint must be set");
     assert!(dir.join("snap").join("reviews.jsonl").exists());
     assert_eq!(snap.entity_registry_version, 1);
     // Only rv-aa is reviewed+eligible; rv-bb/rv-cc are unreviewed and kept.
@@ -216,14 +182,7 @@ fn e2e_excluded_rows_are_physically_absent_from_the_training_snapshot() {
     )
     .unwrap();
     // rv-cc: skipped -> must NOT train, even though labels.jsonl still has it.
-    review::skip_review(
-        &store,
-        "rv-cc",
-        "sess-r2",
-        Some("too blurry".to_string()),
-        1,
-    )
-    .unwrap();
+    review::skip_review(&store, "rv-cc", "sess-r2", Some("too blurry".to_string()), 1).unwrap();
     // rv-bb: reviewed as unknown -> must NOT train.
     review::apply_human_review(
         &store,
@@ -236,10 +195,7 @@ fn e2e_excluded_rows_are_physically_absent_from_the_training_snapshot() {
             model_prediction: Some("fish:mystery"),
             model_confidence: Some(0.2),
             dataset_version: 1,
-            eligibility: EligibilityInput {
-                has_entity: false,
-                ..elig(false)
-            },
+            eligibility: EligibilityInput { has_entity: false, ..elig(false) },
         },
     )
     .unwrap();
@@ -261,11 +217,7 @@ fn e2e_excluded_rows_are_physically_absent_from_the_training_snapshot() {
             v.get("image_id").unwrap().as_str().unwrap().to_string()
         })
         .collect();
-    assert_eq!(
-        ids,
-        vec!["rv-aa".to_string()],
-        "frozen labels must contain only eligible rows"
-    );
+    assert_eq!(ids, vec!["rv-aa".to_string()], "frozen labels must contain only eligible rows");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -274,11 +226,7 @@ fn e2e_all_excluded_fails_closed_rather_than_training_on_nothing() {
     let dir = fresh_dir("failclosed");
     seed_rows(&dir);
     let store = ReviewStore::new(dir.clone());
-    for (id, sess) in [
-        ("rv-aa", "sess-r1"),
-        ("rv-bb", "sess-r1"),
-        ("rv-cc", "sess-r2"),
-    ] {
+    for (id, sess) in [("rv-aa", "sess-r1"), ("rv-bb", "sess-r1"), ("rv-cc", "sess-r2")] {
         review::skip_review(&store, id, sess, None, 1).unwrap();
     }
     let rows = MlDatasetStore::new(dir.clone()).annotations();
@@ -326,10 +274,7 @@ fn e2e_state_is_rebuildable_from_the_append_only_audit() {
         .into_iter()
         .map(|r| (r.image_id, r.review_status.as_str().to_string()))
         .collect();
-    assert_eq!(
-        after, before,
-        "rebuild must reproduce the exact effective state"
-    );
+    assert_eq!(after, before, "rebuild must reproduce the exact effective state");
     assert_eq!(store.fingerprint(), fp_before);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -363,14 +308,9 @@ fn e2e_undo_restores_unreviewed_without_erasing_history() {
 
     // History is preserved (append-only), not rewritten.
     let events_after = store.audit();
+    assert!(events_after.len() > events_before, "undo must append, never rewrite");
     assert!(
-        events_after.len() > events_before,
-        "undo must append, never rewrite"
-    );
-    assert!(
-        events_after
-            .iter()
-            .any(|e| e.event == review::AUDIT_RESTORED),
+        events_after.iter().any(|e| e.event == review::AUDIT_RESTORED),
         "undo must be auditable"
     );
     // The earlier REVIEW_CREATED is still in the log.
@@ -400,10 +340,7 @@ fn e2e_unknown_review_is_excluded_never_trained() {
             model_prediction: None,
             model_confidence: None,
             dataset_version: 1,
-            eligibility: EligibilityInput {
-                has_entity: false,
-                ..elig(false)
-            },
+            eligibility: EligibilityInput { has_entity: false, ..elig(false) },
         },
     )
     .unwrap();
@@ -474,8 +411,5 @@ fn e2e_status_names_round_trip_through_parse() {
         assert_eq!(ReviewStatus::parse(name).unwrap().as_str(), name);
     }
     assert!(ReviewStatus::parse("nonsense").is_none());
-    assert!(
-        ReviewStatus::parse("conflict").is_some(),
-        "case-insensitive"
-    );
+    assert!(ReviewStatus::parse("conflict").is_some(), "case-insensitive");
 }

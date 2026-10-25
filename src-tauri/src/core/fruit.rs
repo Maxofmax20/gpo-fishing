@@ -2,83 +2,14 @@ use serde::{Deserialize, Serialize};
 use strsim::jaro_winkler;
 
 pub const DEFAULT_FRUITS: &[&str] = &[
-    "Tori",
-    "Mochi",
-    "Ope",
-    "Venom",
-    "Buddha",
-    "Pteranodon",
-    "Smoke",
-    "Goru",
-    "Yuki",
-    "Yami",
-    "Pika",
-    "Magu",
-    "Kage",
-    "Mera",
-    "Paw",
-    "Goro",
-    "Ito",
-    "Hie",
-    "Suna",
-    "Gura",
-    "Zushi",
-    "Kira",
-    "Spring",
-    "Yomi",
-    "Bomb",
-    "Gomu",
-    "Horo",
-    "Mero",
-    "Bari",
-    "Heal",
-    "Spin",
-    "Suke",
-    "Kilo",
-    "Dragon",
-    "Uo",
-    "Phoenix",
-    "Light",
-    "Dark",
-    "Magma",
-    "Flame",
-    "Ice",
-    "Shadow",
-    "String",
-    "Sand",
-    "Gravity",
-    "Tremor",
-    "Rumble",
-    "Clear",
-    "Barrier",
-    "Love",
-    "Rubber",
-    "Bomu",
-    "Revive",
-    "Chiyu",
-    "Guru",
-    "Glint",
-    "Soru",
-    "Soul",
-    "Leopard",
-    "Neko",
-    "Lucci",
-    "Bisu",
-    "Biscuit",
-    "Moku",
-    "Plume",
-    "Bane",
-    "Doku",
-    "Daibutsu",
-    "Hito",
-    "Seiryu",
-    "Nikyu",
-    "Kaido",
-    "Gas",
-    "Gasu",
-    "Mammoth",
-    "T-Rex",
-    "Trex",
+    "Tori", "Mochi", "Ope", "Venom", "Buddha", "Pteranodon", "Smoke", "Goru", "Yuki", "Yami",
+    "Pika", "Magu", "Kage", "Mera", "Paw", "Goro", "Ito", "Hie", "Suna", "Gura", "Zushi", "Kira",
+    "Spring", "Yomi", "Bomb", "Gomu", "Horo", "Mero", "Bari", "Heal", "Spin", "Suke", "Kilo",
+    "Dragon", "Uo", "Phoenix", "Light", "Dark", "Magma", "Flame", "Ice", "Shadow", "String",
+    "Sand", "Gravity", "Tremor", "Rumble", "Clear", "Barrier", "Love", "Rubber", "Bomu",
+    "Revive", "Chiyu", "Guru", "Glint", "Soru", "Soul", "Leopard", "Neko", "Lucci", "Bisu",
+    "Biscuit", "Moku", "Plume", "Bane", "Doku", "Daibutsu", "Hito", "Seiryu", "Nikyu", "Kaido",
+    "Gas", "Gasu", "Mammoth", "T-Rex", "Trex",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -113,23 +44,19 @@ pub fn fruit_rarity(name: &str) -> FruitRarity {
     let lower = name.trim().to_lowercase();
     match lower.as_str() {
         // Mythical (12)
-        "tori" | "phoenix" | "mochi" | "ope" | "venom" | "doku" | "buddha" | "daibutsu"
-        | "hito" | "pteranodon" | "ryu" | "ptera" | "dragon" | "seiryu" | "uo" | "kaido"
-        | "soru" | "soul" | "leopard" | "neko" | "lucci" | "mammoth" | "t-rex" | "trex" => {
-            FruitRarity::Mythical
-        }
+        "tori" | "phoenix" | "mochi" | "ope" | "venom" | "doku" | "buddha" | "daibutsu" | "hito"
+        | "pteranodon" | "ryu" | "ptera" | "dragon" | "seiryu" | "uo" | "kaido" | "soru" | "soul"
+        | "leopard" | "neko" | "lucci" | "mammoth" | "t-rex" | "trex" => FruitRarity::Mythical,
 
         // Legendary (18)
         "pika" | "glint" | "magu" | "magma" | "hie" | "ice" | "goro" | "rumble" | "lightning"
         | "mera" | "flame" | "fire" | "suna" | "sand" | "yami" | "dark" | "darkness" | "yuki"
-        | "snow" | "moku" | "smoke" | "plume" | "gura" | "tremor" | "quake" | "zushi"
-        | "gravity" | "paw" | "nikyu" | "ito" | "string" | "kage" | "shadow" | "goru" | "gold"
-        | "bisu" | "biscuit" | "gas" | "gasu" => FruitRarity::Legendary,
+        | "snow" | "moku" | "smoke" | "plume" | "gura" | "tremor" | "quake" | "zushi" | "gravity"
+        | "paw" | "nikyu" | "ito" | "string" | "kage" | "shadow" | "goru" | "gold" | "bisu"
+        | "biscuit" | "gas" | "gasu" => FruitRarity::Legendary,
 
         // Epic (3)
-        "yomi" | "revive" | "skeleton" | "spring" | "bane" | "kira" | "diamond" => {
-            FruitRarity::Epic
-        }
+        "yomi" | "revive" | "skeleton" | "spring" | "bane" | "kira" | "diamond" => FruitRarity::Epic,
 
         // Rare (5)
         "gomu" | "rubber" | "bomb" | "bomu" | "bari" | "barrier" | "mero" | "love" | "horo"
@@ -141,60 +68,28 @@ pub fn fruit_rarity(name: &str) -> FruitRarity {
         }
 
         _ => {
-            if lower.contains("phoenix")
-                || lower.contains("tori")
-                || lower.contains("mochi")
-                || lower.contains("ope")
-                || lower.contains("venom")
-                || lower.contains("doku")
-                || lower.contains("buddha")
-                || lower.contains("daibutsu")
-                || lower.contains("pteranodon")
-                || lower.contains("dragon")
-                || lower.contains("seiryu")
-                || lower.contains("soru")
-                || lower.contains("leopard")
-                || lower.contains("mammoth")
-                || lower.contains("trex")
-                || lower.contains("t-rex")
-            {
+            if lower.contains("phoenix") || lower.contains("tori") || lower.contains("mochi")
+                || lower.contains("ope") || lower.contains("venom") || lower.contains("doku")
+                || lower.contains("buddha") || lower.contains("daibutsu") || lower.contains("pteranodon")
+                || lower.contains("dragon") || lower.contains("seiryu") || lower.contains("soru")
+                || lower.contains("leopard") || lower.contains("mammoth") || lower.contains("trex")
+                || lower.contains("t-rex") {
                 FruitRarity::Mythical
-            } else if lower.contains("pika")
-                || lower.contains("magu")
-                || lower.contains("hie")
-                || lower.contains("goro")
-                || lower.contains("mera")
-                || lower.contains("suna")
-                || lower.contains("yami")
-                || lower.contains("yuki")
-                || lower.contains("smoke")
-                || lower.contains("moku")
-                || lower.contains("gura")
-                || lower.contains("zushi")
-                || lower.contains("nikyu")
-                || lower.contains("paw")
-                || lower.contains("ito")
-                || lower.contains("kage")
-                || lower.contains("goru")
-                || lower.contains("bisu")
-                || lower.contains("gas")
-            {
+            } else if lower.contains("pika") || lower.contains("magu") || lower.contains("hie")
+                || lower.contains("goro") || lower.contains("mera") || lower.contains("suna")
+                || lower.contains("yami") || lower.contains("yuki") || lower.contains("smoke")
+                || lower.contains("moku") || lower.contains("gura") || lower.contains("zushi")
+                || lower.contains("nikyu") || lower.contains("paw") || lower.contains("ito")
+                || lower.contains("kage") || lower.contains("goru") || lower.contains("bisu")
+                || lower.contains("gas") {
                 FruitRarity::Legendary
             } else if lower.contains("yomi") || lower.contains("bane") || lower.contains("kira") {
                 FruitRarity::Epic
-            } else if lower.contains("gomu")
-                || lower.contains("bomu")
-                || lower.contains("bomb")
-                || lower.contains("bari")
-                || lower.contains("mero")
-                || lower.contains("horo")
-            {
+            } else if lower.contains("gomu") || lower.contains("bomu") || lower.contains("bomb")
+                || lower.contains("bari") || lower.contains("mero") || lower.contains("horo") {
                 FruitRarity::Rare
-            } else if lower.contains("kilo")
-                || lower.contains("suke")
-                || lower.contains("spin")
-                || lower.contains("chiyu")
-            {
+            } else if lower.contains("kilo") || lower.contains("suke") || lower.contains("spin")
+                || lower.contains("chiyu") {
                 FruitRarity::Common
             } else {
                 FruitRarity::Unknown
@@ -215,32 +110,15 @@ pub const DEFAULT_DROP_PHRASES: &[&str] = &[
     "check your backpack",
 ];
 
-pub const DEFAULT_DROP_KEYWORDS: &[&str] =
-    &["devil", "fruit", "backpack", "drop", "got", "fished up"];
+pub const DEFAULT_DROP_KEYWORDS: &[&str] = &["devil", "fruit", "backpack", "drop", "got", "fished up"];
 
-pub const DEFAULT_CATCH_PHRASES: &[&str] = &[
-    "you caught",
-    "caught a",
-    "you fished",
-    "fished up",
-    "you got",
-    "you found",
-    "new item",
-];
+pub const DEFAULT_CATCH_PHRASES: &[&str] = &["you caught", "caught a", "you fished", "fished up", "you got", "you found", "new item"];
 
-pub const DEFAULT_FAIL_PHRASES: &[&str] = &[
-    "got away",
-    "escaped",
-    "line broke",
-    "line snapped",
-    "lost the",
-    "too slow",
-];
+pub const DEFAULT_FAIL_PHRASES: &[&str] = &["got away", "escaped", "line broke", "line snapped", "lost the", "too slow"];
 
 const STOPWORDS: &[&str] = &[
-    "a", "an", "the", "has", "have", "spawn", "spawned", "at", "in", "on", "new", "item", "fruit",
-    "devil", "you", "your", "got", "town", "island", "studs", "none", "world", "fished", "up",
-    "caught", "check", "backpack",
+    "a", "an", "the", "has", "have", "spawn", "spawned", "at", "in", "on", "new", "item", "fruit", "devil", "you", "your",
+    "got", "town", "island", "studs", "none", "world", "fished", "up", "caught", "check", "backpack",
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -260,15 +138,9 @@ impl Default for Lexicon {
         Self {
             fruits: DEFAULT_FRUITS.iter().map(|s| s.to_string()).collect(),
             drop_phrases: DEFAULT_DROP_PHRASES.iter().map(|s| s.to_string()).collect(),
-            drop_keywords: DEFAULT_DROP_KEYWORDS
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            drop_keywords: DEFAULT_DROP_KEYWORDS.iter().map(|s| s.to_string()).collect(),
             spawn_keywords: vec!["spawned".into(), "spawn".into()],
-            catch_phrases: DEFAULT_CATCH_PHRASES
-                .iter()
-                .map(|s| s.to_string())
-                .collect(),
+            catch_phrases: DEFAULT_CATCH_PHRASES.iter().map(|s| s.to_string()).collect(),
             fail_phrases: DEFAULT_FAIL_PHRASES.iter().map(|s| s.to_string()).collect(),
             fuzzy_threshold: 0.85,
         }
@@ -312,11 +184,7 @@ pub fn normalize(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut last_space = true;
     for ch in text.chars() {
-        let c = if ch.is_alphanumeric() || ch == '/' {
-            ch.to_ascii_lowercase()
-        } else {
-            ' '
-        };
+        let c = if ch.is_alphanumeric() || ch == '/' { ch.to_ascii_lowercase() } else { ' ' };
         if c == ' ' {
             if !last_space {
                 out.push(' ');
@@ -339,47 +207,11 @@ fn word_at(words: &[&str], target: &str, thr: f64) -> Option<usize> {
 }
 
 pub const KNOWN_FISH: &[&str] = &[
-    "snapper",
-    "crimson",
-    "tuna",
-    "bluefin",
-    "shark",
-    "tiger",
-    "colossal",
-    "megalodon",
-    "golden",
-    "boot",
-    "trash",
-    "seaweed",
-    "salmon",
-    "bass",
-    "catfish",
-    "carp",
-    "trout",
-    "swordfish",
-    "marlin",
-    "squid",
-    "octopus",
-    "crab",
-    "lobster",
-    "shrimp",
-    "ray",
-    "manta",
-    "barracuda",
-    "angelfish",
-    "clownfish",
-    "kraken",
-    "beast",
-    "eel",
-    "piranha",
-    "pufferfish",
-    "halibut",
-    "cod",
-    "sailfish",
-    "turtle",
-    "jellyfish",
-    "sunfish",
-    "flying",
+    "snapper", "crimson", "tuna", "bluefin", "shark", "tiger", "colossal", "megalodon",
+    "golden", "boot", "trash", "seaweed", "salmon", "bass", "catfish", "carp", "trout",
+    "swordfish", "marlin", "squid", "octopus", "crab", "lobster", "shrimp", "ray", "manta",
+    "barracuda", "angelfish", "clownfish", "kraken", "beast", "eel", "piranha", "pufferfish",
+    "halibut", "cod", "sailfish", "turtle", "jellyfish", "sunfish", "flying",
 ];
 
 pub fn is_known_fish_or_item(raw: &str) -> bool {
@@ -399,10 +231,7 @@ pub fn is_known_fish_or_item(raw: &str) -> bool {
     // Also check merged adjacent words (like "sna pper" -> "snapper")
     for i in 0..words.len().saturating_sub(1) {
         let merged = format!("{}{}", words[i], words[i + 1]);
-        if KNOWN_FISH
-            .iter()
-            .any(|&f| merged.contains(f) || (merged.len() >= 5 && jaro_winkler(&merged, f) >= 0.85))
-        {
+        if KNOWN_FISH.iter().any(|&f| merged.contains(f) || (merged.len() >= 5 && jaro_winkler(&merged, f) >= 0.85)) {
             return true;
         }
     }
@@ -463,10 +292,7 @@ pub fn extract_pity_text(raw: &str) -> Option<String> {
     let lower = normalize(raw);
     let lower = lower.replace(" /", "/").replace("/ ", "/");
     // A named pity counter takes precedence over unrelated fractions.
-    let lower = lower
-        .find("pity")
-        .map(|i| &lower[i + 4..])
-        .unwrap_or(&lower);
+    let lower = lower.find("pity").map(|i| &lower[i + 4..]).unwrap_or(&lower);
     for word in lower.split_whitespace() {
         if word.contains('/') {
             let clean: String = word
@@ -512,9 +338,7 @@ fn title_case(words: &[&str]) -> String {
 
 pub fn is_pity_zero(pity_opt: Option<&str>, raw_text: &str) -> bool {
     // 1. Structured pity check if provided or extracted
-    let p_str = pity_opt
-        .map(|s| s.to_string())
-        .or_else(|| extract_pity_text(raw_text));
+    let p_str = pity_opt.map(|s| s.to_string()).or_else(|| extract_pity_text(raw_text));
     if let Some(p) = p_str {
         let clean = p.trim().to_lowercase();
         if let Some((curr, total)) = clean.split_once('/') {
@@ -589,26 +413,18 @@ pub fn catch_name_text(lex: &Lexicon, raw: &str) -> String {
         let words: Vec<_> = normalized.split_whitespace().collect();
         if let Some(i) = word_at(&words, "item", threshold) {
             let tail = &words[i + 1..];
-            let end = spawn_clause(lex, tail)
-                .map(|(subject, _)| subject)
-                .unwrap_or(tail.len());
+            let end = spawn_clause(lex, tail).map(|(subject, _)| subject).unwrap_or(tail.len());
             if end > 0 || !mentions_spawn(lex, tail, threshold) {
                 return format!("new item {}", tail[..end].join(" "));
             }
         }
         if !mentions_spawn(lex, &words, threshold) {
             retained.push(line.to_string());
-        } else if let Some(start) = lex
-            .catch_phrases
-            .iter()
+        } else if let Some(start) = lex.catch_phrases.iter()
             .filter(|p| p.as_str() != "new item")
-            .filter_map(|p| normalized.find(p.as_str()))
-            .min()
-        {
+            .filter_map(|p| normalized.find(p.as_str())).min() {
             let catch_words: Vec<_> = normalized[start..].split_whitespace().collect();
-            let end = spawn_clause(lex, &catch_words)
-                .map(|(subject, _)| subject)
-                .unwrap_or(catch_words.len());
+            let end = spawn_clause(lex, &catch_words).map(|(subject, _)| subject).unwrap_or(catch_words.len());
             retained.push(catch_words[..end].join(" "));
         }
     }
@@ -619,50 +435,22 @@ pub fn catch_name_text(lex: &Lexicon, raw: &str) -> String {
 // name leaks into a preceding catch ("... Tigerfin A Mochi has spawned").
 fn spawn_clause(lex: &Lexicon, words: &[&str]) -> Option<(usize, usize)> {
     let threshold = lex.fuzzy_threshold.min(0.8);
-    let spawn = words
-        .iter()
-        .position(|w| lex.spawn_keywords.iter().any(|k| similar(w, k, threshold)))?;
-    let verb = if spawn > 0 && matches!(words[spawn - 1], "has" | "have") {
-        spawn - 1
-    } else {
-        spawn
-    };
+    let spawn = words.iter().position(|w| lex.spawn_keywords.iter().any(|k| similar(w, k, threshold)))?;
+    let verb = if spawn > 0 && matches!(words[spawn - 1], "has" | "have") { spawn - 1 } else { spawn };
     let name = verb.saturating_sub(1);
     let mut subject = name;
     let mut prefix = name;
-    while prefix > 0
-        && matches!(
-            words[prefix - 1],
-            "a" | "an"
-                | "the"
-                | "devil"
-                | "fruit"
-                | "mythical"
-                | "legendary"
-                | "epic"
-                | "rare"
-                | "common"
-                | "ase"
-                | "all"
-                | "seeing"
-                | "eye"
-        )
-    {
+    while prefix > 0 && matches!(words[prefix - 1], "a" | "an" | "the" | "devil" | "fruit" | "mythical" | "legendary" | "epic" | "rare" | "common" | "ase" | "all" | "seeing" | "eye") {
         prefix -= 1;
         if matches!(words[prefix], "a" | "an" | "the" | "ase" | "all") {
             subject = prefix;
             break;
         }
     }
-    if subject == name
-        && words.get(name) == Some(&"fruit")
-        && name > 0
-        && (words[name - 1] == "devil" || match_fruit(lex, words[name - 1]).is_some())
-    {
+    if subject == name && words.get(name) == Some(&"fruit") && name > 0
+        && (words[name - 1] == "devil" || match_fruit(lex, words[name - 1]).is_some()) {
         subject = name - 1;
-        if subject > 0 && matches!(words[subject - 1], "a" | "an" | "the") {
-            subject -= 1;
-        }
+        if subject > 0 && matches!(words[subject - 1], "a" | "an" | "the") { subject -= 1; }
     }
     Some((subject, spawn))
 }
@@ -686,19 +474,11 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
         return None;
     }
     if let Some(i) = word_at(&words, "item", thr) {
-        let fruit_name = first_fruit(lex, words[i + 1..].iter().copied())
-            .or_else(|| first_fruit(lex, words.iter().copied()));
-        if fruit_name.is_none() && !text.contains("devil fruit") {
-            return None;
-        }
-        let rarity = fruit_name
-            .as_deref()
-            .map(fruit_rarity)
-            .unwrap_or(FruitRarity::Unknown);
+        let fruit_name = first_fruit(lex, words[i + 1..].iter().copied()).or_else(|| first_fruit(lex, words.iter().copied()));
+        if fruit_name.is_none() && !text.contains("devil fruit") { return None; }
+        let rarity = fruit_name.as_deref().map(fruit_rarity).unwrap_or(FruitRarity::Unknown);
         return Some(DropInfo {
-            is_legendary: rarity == FruitRarity::Legendary
-                || rarity == FruitRarity::Mythical
-                || zero_pity,
+            is_legendary: rarity == FruitRarity::Legendary || rarity == FruitRarity::Mythical || zero_pity,
             text,
             name: fruit_name,
             pity,
@@ -707,24 +487,15 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
     }
 
     let by_phrase = lex.drop_phrases.iter().any(|p| text.contains(p.as_str()));
-    let by_keywords = lex
-        .drop_keywords
-        .iter()
-        .filter(|k| text.contains(k.as_str()))
-        .count()
-        >= 2;
+    let by_keywords = lex.drop_keywords.iter().filter(|k| text.contains(k.as_str())).count() >= 2;
     if !(by_phrase || by_keywords) {
         return None;
     }
     let fruit_name = first_fruit(lex, words.iter().copied());
-    let is_leg = fruit_name
-        .as_deref()
-        .map(|f| {
-            let r = fruit_rarity(f);
-            r == FruitRarity::Legendary || r == FruitRarity::Mythical
-        })
-        .unwrap_or(false)
-        || zero_pity;
+    let is_leg = fruit_name.as_deref().map(|f| {
+        let r = fruit_rarity(f);
+        r == FruitRarity::Legendary || r == FruitRarity::Mythical
+    }).unwrap_or(false) || zero_pity;
 
     Some(DropInfo {
         is_legendary: is_leg,
@@ -736,9 +507,7 @@ pub fn detect_drop(lex: &Lexicon, raw: &str) -> Option<DropInfo> {
 }
 
 fn mentions_spawn(lex: &Lexicon, words: &[&str], thr: f64) -> bool {
-    lex.spawn_keywords
-        .iter()
-        .any(|k| words.iter().any(|w| similar(w, k, thr)))
+    lex.spawn_keywords.iter().any(|k| words.iter().any(|w| similar(w, k, thr)))
 }
 
 fn mentions_pity(words: &[&str]) -> bool {
@@ -773,14 +542,7 @@ pub fn detect_catch(lex: &Lexicon, raw: &str) -> CatchVerdict {
     if lex.fail_phrases.iter().any(|p| text.contains(p.as_str())) {
         return CatchVerdict::Failed;
     }
-    if new_item_marker(raw)
-        || lex
-            .catch_phrases
-            .iter()
-            .filter(|p| p.as_str() != "new item")
-            .any(|p| text.contains(p.as_str()))
-        || detect_drop(lex, raw).is_some()
-    {
+    if new_item_marker(raw) || lex.catch_phrases.iter().filter(|p| p.as_str() != "new item").any(|p| text.contains(p.as_str())) || detect_drop(lex, raw).is_some() {
         return CatchVerdict::Caught;
     }
     CatchVerdict::Unknown
@@ -811,16 +573,8 @@ pub fn parse_catch_item(lex: &Lexicon, raw: &str) -> (String, String) {
     let is_fish = is_known_fish_or_item(raw);
 
     // 2. Extract item between < > or ( ) or [ ]
-    if let Some(start) = clean
-        .find('<')
-        .or_else(|| clean.find('('))
-        .or_else(|| clean.find('['))
-    {
-        if let Some(end) = clean[start + 1..]
-            .find('>')
-            .or_else(|| clean[start + 1..].find(')'))
-            .or_else(|| clean[start + 1..].find(']'))
-        {
+    if let Some(start) = clean.find('<').or_else(|| clean.find('(')).or_else(|| clean.find('[')) {
+        if let Some(end) = clean[start + 1..].find('>').or_else(|| clean[start + 1..].find(')')).or_else(|| clean[start + 1..].find(']')) {
             let inside = clean[start + 1..start + 1 + end].trim();
             if !inside.is_empty() {
                 let in_norm = normalize(inside);
@@ -830,10 +584,7 @@ pub fn parse_catch_item(lex: &Lexicon, raw: &str) -> (String, String) {
                         return ("fruit".into(), fn_name);
                     }
                 }
-                return (
-                    "fish".into(),
-                    title_case(&inside.split_whitespace().collect::<Vec<_>>()),
-                );
+                return ("fish".into(), title_case(&inside.split_whitespace().collect::<Vec<_>>()));
             }
         }
     }
@@ -850,22 +601,13 @@ pub fn parse_catch_item(lex: &Lexicon, raw: &str) -> (String, String) {
     // 4. Extract after "caught a", "caught an", "fished up a", "got a", "found a", etc.
     let lower = clean.to_lowercase();
     for prefix in &[
-        "caught a ",
-        "caught an ",
-        "caught ",
-        "fished up a ",
-        "fished up an ",
-        "fished up ",
-        "got a ",
-        "got an ",
-        "found a ",
-        "found an ",
+        "caught a ", "caught an ", "caught ",
+        "fished up a ", "fished up an ", "fished up ",
+        "got a ", "got an ", "found a ", "found an "
     ] {
         if let Some(idx) = lower.find(prefix) {
             let after = &clean[idx + prefix.len()..];
-            let end_idx = after
-                .find(|c| c == '.' || c == '!' || c == '?' || c == '\n')
-                .unwrap_or(after.len());
+            let end_idx = after.find(|c| c == '.' || c == '!' || c == '?' || c == '\n').unwrap_or(after.len());
             let name = after[..end_idx].trim();
             if !name.is_empty() {
                 let w: Vec<&str> = name.split_whitespace().collect();
@@ -900,21 +642,13 @@ pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
     let all_words: Vec<_> = normalized.split_whitespace().collect();
     let text = if let Some((subject, spawn)) = spawn_clause(lex, &all_words) {
         let tail = &all_words[spawn + 1..];
-        let catch = tail
-            .windows(2)
-            .position(|pair| {
-                (matches!(pair[0], "new" | "nev" | "uev" | "ncv")
-                    && matches!(pair[1], "item" | "itemv" | "ltem" | "itern"))
-                    || (pair[0] == "you"
-                        && matches!(pair[1], "caught" | "got" | "fished" | "found"))
-                    || (pair[0] == "fished" && pair[1] == "up")
-            })
-            .map(|i| spawn + 1 + i)
-            .unwrap_or(all_words.len());
+        let catch = tail.windows(2).position(|pair| {
+            (matches!(pair[0], "new" | "nev" | "uev" | "ncv") && matches!(pair[1], "item" | "itemv" | "ltem" | "itern"))
+                || (pair[0] == "you" && matches!(pair[1], "caught" | "got" | "fished" | "found"))
+                || (pair[0] == "fished" && pair[1] == "up")
+        }).map(|i| spawn + 1 + i).unwrap_or(all_words.len());
         all_words[subject..catch].join(" ")
-    } else {
-        normalized
-    };
+    } else { normalized };
     if text.is_empty() {
         return None;
     }
@@ -933,28 +667,16 @@ pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
         || lower_raw.contains("[ase]")
         || lower_raw.contains("ase:");
 
-    let has_keyword = lex.spawn_keywords.iter().any(|k| {
-        words.iter().any(|w| similar(w, k, thr)) || text.replace(' ', "").contains(k.as_str())
-    });
+    let has_keyword = lex.spawn_keywords.iter().any(|k| words.iter().any(|w| similar(w, k, thr)) || text.replace(' ', "").contains(k.as_str()));
     let has_i = word_at(&words, "has", 0.9);
-    let at_i = has_i.and_then(|h| {
-        words[h + 1..]
-            .iter()
-            .position(|w| *w == "at")
-            .map(|p| h + 1 + p)
-    });
+    let at_i = has_i.and_then(|h| words[h + 1..].iter().position(|w| *w == "at").map(|p| h + 1 + p));
 
     // Extract only from the scoped announcement, never a bracketed catch
     // in the original crop. Normalization retains bracket contents.
     let name_before_has = has_i.and_then(|h| {
         let candidate_words: Vec<&str> = words[..h]
             .iter()
-            .filter(|w| {
-                !matches!(
-                    **w,
-                    "all" | "seeing" | "eye" | "a" | "an" | "the" | "fruit" | "devil" | "ase"
-                )
-            })
+            .filter(|w| !matches!(**w, "all" | "seeing" | "eye" | "a" | "an" | "the" | "fruit" | "devil" | "ase"))
             .copied()
             .collect();
         first_fruit(lex, candidate_words.iter().rev().copied())
@@ -971,23 +693,7 @@ pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
     if extracted_name.is_none() {
         let filtered: Vec<&str> = words
             .iter()
-            .filter(|w| {
-                !matches!(
-                    **w,
-                    "all"
-                        | "seeing"
-                        | "eye"
-                        | "a"
-                        | "an"
-                        | "the"
-                        | "fruit"
-                        | "devil"
-                        | "has"
-                        | "spawned"
-                        | "at"
-                        | "ase"
-                )
-            })
+            .filter(|w| !matches!(**w, "all" | "seeing" | "eye" | "a" | "an" | "the" | "fruit" | "devil" | "has" | "spawned" | "at" | "ase"))
             .copied()
             .collect();
         extracted_name = first_fruit(lex, filtered.iter().copied());
@@ -998,10 +704,8 @@ pub fn detect_spawn(lex: &Lexicon, raw: &str) -> Option<SpawnInfo> {
             .iter()
             .take_while(|w| {
                 let lower = w.to_lowercase();
-                !matches!(
-                    lower.as_str(),
-                    "studs" | "none" | "has" | "spawned" | "all" | "seeing" | "eye" | "ase"
-                ) && !w.chars().all(|c| c.is_ascii_digit())
+                !matches!(lower.as_str(), "studs" | "none" | "has" | "spawned" | "all" | "seeing" | "eye" | "ase")
+                    && !w.chars().all(|c| c.is_ascii_digit())
             })
             .copied()
             .take(3)
@@ -1061,21 +765,13 @@ pub fn parse_disconnect_text(raw: &str) -> Option<String> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StorageBannerResult {
     Stored,
-    Duplicate {
-        fruit_name: String,
-    },
+    Duplicate { fruit_name: String },
     /// Fruit cannot be stored because player already has one (e.g. "You can only store one of each fruit! Dropped Heal will despawn in 10 minutes.")
-    DuplicateDropped {
-        fruit_name: String,
-    },
+    DuplicateDropped { fruit_name: String },
     /// Fruit was dropped on the ground (e.g. "Dropped Heal will despawn in 10 minutes.")
-    Dropped {
-        fruit_name: String,
-    },
+    Dropped { fruit_name: String },
     /// Generic storage failure
-    Failed {
-        reason: String,
-    },
+    Failed { reason: String },
 }
 
 pub fn parse_storage_banner(lex: &Lexicon, raw: &str) -> Option<StorageBannerResult> {
@@ -1092,21 +788,12 @@ pub fn parse_storage_banner(lex: &Lexicon, raw: &str) -> Option<StorageBannerRes
     // Coloured outlined game text often produces one-character OCR errors.
     // Two independent anchors are still required; "fruit drop" catch messages,
     // duplicate-only banners and world-spawn announcements never confirm a drop.
-    let near = |target: &str| {
-        words.iter().any(|word| {
-            word.len().abs_diff(target.len()) <= 1 && strsim::levenshtein(word, target) <= 1
-        })
-    };
-    let negative = lower.contains("not dropped")
-        || lower.contains("not drop")
-        || lower.contains("cannot drop")
-        || lower.contains("can't drop")
-        || lower.contains("failed to drop");
+    let near = |target: &str| words.iter().any(|word|
+        word.len().abs_diff(target.len()) <= 1 && strsim::levenshtein(word, target) <= 1);
+    let negative = lower.contains("not dropped") || lower.contains("not drop")
+        || lower.contains("cannot drop") || lower.contains("can't drop") || lower.contains("failed to drop");
     let drop_verb = lower.contains("dropped") || near("dropped");
-    let expiry = lower.contains("despawn")
-        || near("despawn")
-        || near("minute")
-        || near("minutes")
+    let expiry = lower.contains("despawn") || near("despawn") || near("minute") || near("minutes")
         || lower.contains("ground");
     let is_dropped = !negative && drop_verb && expiry;
 
@@ -1114,18 +801,11 @@ pub fn parse_storage_banner(lex: &Lexicon, raw: &str) -> Option<StorageBannerRes
         return Some(StorageBannerResult::Stored);
     }
     if !is_duplicate && !is_dropped {
-        if lower.contains("storage full")
-            || lower.contains("bag is full")
-            || lower.contains("inventory full")
-        {
-            return Some(StorageBannerResult::Duplicate {
-                fruit_name: "Devil Fruit".into(),
-            });
+        if lower.contains("storage full") || lower.contains("bag is full") || lower.contains("inventory full") {
+            return Some(StorageBannerResult::Duplicate { fruit_name: "Devil Fruit".into() });
         }
         if lower.contains("cannot store") || lower.contains("failed to store") {
-            return Some(StorageBannerResult::Failed {
-                reason: raw.trim().into(),
-            });
+            return Some(StorageBannerResult::Failed { reason: raw.trim().into() });
         }
         return None;
     }
@@ -1134,29 +814,26 @@ pub fn parse_storage_banner(lex: &Lexicon, raw: &str) -> Option<StorageBannerRes
     let mut detected_fruit: Option<String> = None;
     if let Some(idx) = lower.find("dropped ") {
         let after = &lower[idx + "dropped ".len()..];
-        let end_idx = after
-            .find(" will")
+        let end_idx = after.find(" will")
             .or_else(|| after.find(" despawn"))
             .or_else(|| after.find(" in "))
             .unwrap_or(after.len().min(20));
         let candidate = after[..end_idx].trim();
         if !candidate.is_empty() {
-            let clean_cand: String = candidate
-                .chars()
-                .filter(|c| c.is_alphabetic() || *c == ' ')
-                .collect();
+            let clean_cand: String = candidate.chars().filter(|c| c.is_alphabetic() || *c == ' ').collect();
             let cand_words: Vec<&str> = clean_cand.split_whitespace().collect();
-            detected_fruit = first_fruit(lex, cand_words.iter().copied()).or_else(|| {
-                if let Some(&first) = cand_words.first() {
-                    if let Some(f) = lex.fruits.iter().find(|f| f.eq_ignore_ascii_case(first)) {
-                        return Some(f.clone());
+            detected_fruit = first_fruit(lex, cand_words.iter().copied())
+                .or_else(|| {
+                    if let Some(&first) = cand_words.first() {
+                        if let Some(f) = lex.fruits.iter().find(|f| f.eq_ignore_ascii_case(first)) {
+                            return Some(f.clone());
+                        }
+                        if first.len() >= 3 && !STOPWORDS.contains(&first) {
+                            return Some(title_case(&[first]));
+                        }
                     }
-                    if first.len() >= 3 && !STOPWORDS.contains(&first) {
-                        return Some(title_case(&[first]));
-                    }
-                }
-                None
-            });
+                    None
+                });
         }
     }
 
@@ -1186,35 +863,16 @@ mod tests {
 
     #[test]
     fn real_windows_ocr_catch_titles_are_verified() {
-        for raw in [
-            "Nev Item Shark*",
-            "Nev Item <Exotic Tiserfin»",
-            "Nev Item czebra Ribbon Angelfish*",
-            "—uev 'Item-cGndy.Com Squid*",
-            "nev itemv ctimson sna pper",
-            "Nev Item",
-        ] {
+        for raw in ["Nev Item Shark*", "Nev Item <Exotic Tiserfin»", "Nev Item czebra Ribbon Angelfish*", "—uev 'Item-cGndy.Com Squid*", "nev itemv ctimson sna pper", "Nev Item"] {
             assert_eq!(detect_catch(&lex(), raw), CatchVerdict::Caught, "{raw}");
-            assert!(
-                detect_drop(&lex(), raw).is_none(),
-                "fish catch is not a fruit: {raw}"
-            );
+            assert!(detect_drop(&lex(), raw).is_none(), "fish catch is not a fruit: {raw}");
         }
         assert_eq!(detect_catch(&lex(), "Nev i"), CatchVerdict::Unknown);
-        assert_eq!(
-            detect_catch(&lex(), "random item Shark"),
-            CatchVerdict::Unknown
-        );
-        for raw in [
-            "A MOCHI has spawned at SANDORA",
-            "A new item has spawned at Orange Town",
-        ] {
+        assert_eq!(detect_catch(&lex(), "random item Shark"), CatchVerdict::Unknown);
+        for raw in ["A MOCHI has spawned at SANDORA", "A new item has spawned at Orange Town"] {
             assert_eq!(detect_catch(&lex(), raw), CatchVerdict::Unknown, "{raw}");
         }
-        assert_eq!(
-            detect_catch(&lex(), "The fish got away. Nev Item Shark"),
-            CatchVerdict::Failed
-        );
+        assert_eq!(detect_catch(&lex(), "The fish got away. Nev Item Shark"), CatchVerdict::Failed);
     }
 
     #[test]
@@ -1228,11 +886,7 @@ mod tests {
             assert_eq!(detect_catch(&lex(), raw), CatchVerdict::Caught, "{raw}");
             assert_eq!(parse_catch_item(&lex(), raw).0, "fish", "{raw}");
             assert!(detect_drop(&lex(), raw).is_none(), "{raw}");
-            assert_eq!(
-                detect_spawn(&lex(), raw).unwrap().name.as_deref(),
-                Some("Mochi"),
-                "{raw}"
-            );
+            assert_eq!(detect_spawn(&lex(), raw).unwrap().name.as_deref(), Some("Mochi"), "{raw}");
         }
         for raw in [
             "New Item <Pika> A SUKE has spawned at Trading Hub",
@@ -1240,41 +894,25 @@ mod tests {
             "You got a Pika devil fruit! A SUKE has spawned at Trading Hub",
             "A SUKE has spawned at Trading Hub You got a Pika devil fruit!",
         ] {
-            assert_eq!(
-                parse_catch_item(&lex(), raw),
-                ("fruit".into(), "Pika".into()),
-                "{raw}"
-            );
+            assert_eq!(parse_catch_item(&lex(), raw), ("fruit".into(), "Pika".into()), "{raw}");
             let spawn = detect_spawn(&lex(), raw).unwrap();
             assert_eq!(spawn.name.as_deref(), Some("Suke"), "{raw}");
             assert_eq!(spawn.location.as_deref(), Some("Trading Hub"), "{raw}");
         }
-        for raw in [
-            "New Item Devil Fruit 0/40 A KILO has spawned at Orange Town",
-            "New Item Devil Fruit KILO has spawned at Orange Town 0/40",
-        ] {
+        for raw in ["New Item Devil Fruit 0/40 A KILO has spawned at Orange Town", "New Item Devil Fruit KILO has spawned at Orange Town 0/40"] {
             let caught = detect_drop(&lex(), raw).unwrap();
             assert!(is_pity_zero(caught.pity.as_deref(), raw));
-            assert_eq!(
-                caught.name, None,
-                "spawn name cannot become the unknown caught fruit: {raw}"
-            );
+            assert_eq!(caught.name, None, "spawn name cannot become the unknown caught fruit: {raw}");
         }
     }
 
     #[test]
     fn pity_is_not_lost_before_item_or_in_spaced_ratios() {
-        for raw in [
-            "Legendary pity: 0 / 40\nNew Item <Devil Fruit>",
-            "Legendary pity 0  /   100\nNew Item <Pika>\nA SUKE has spawned at Trading Hub",
-        ] {
+        for raw in ["Legendary pity: 0 / 40\nNew Item <Devil Fruit>", "Legendary pity 0  /   100\nNew Item <Pika>\nA SUKE has spawned at Trading Hub"] {
             let d = detect_drop(&lex(), raw).unwrap();
             assert!(is_pity_zero(d.pity.as_deref(), &d.text));
         }
-        assert_eq!(
-            extract_pity_text("Level 3/20 Pity 0 / 40 New Item Pika"),
-            Some("0/40".into())
-        );
+        assert_eq!(extract_pity_text("Level 3/20 Pity 0 / 40 New Item Pika"), Some("0/40".into()));
     }
     #[test]
     fn drop_confirmation_tolerates_small_ocr_errors_but_not_catch_or_spawn_text() {
@@ -1284,13 +922,7 @@ mod tests {
             "Dr0pped Bomb will despavvn in 10 minutes",
             "Dropped Kilo will despaun in 10 minvtes",
         ] {
-            assert!(
-                matches!(
-                    parse_storage_banner(&lex(), raw),
-                    Some(StorageBannerResult::Dropped { .. })
-                ),
-                "{raw}"
-            );
+            assert!(matches!(parse_storage_banner(&lex(), raw), Some(StorageBannerResult::Dropped { .. })), "{raw}");
         }
         for raw in [
             "You can only store one of each fruit!",
@@ -1300,86 +932,39 @@ mod tests {
             "Cannot drop Bomb on the ground",
             "Bomb was not dropped and will despawn in 10 minutes",
         ] {
-            assert!(
-                !matches!(
-                    parse_storage_banner(&lex(), raw),
-                    Some(
-                        StorageBannerResult::Dropped { .. }
-                            | StorageBannerResult::DuplicateDropped { .. }
-                    )
-                ),
-                "{raw}"
-            );
+            assert!(!matches!(parse_storage_banner(&lex(), raw), Some(StorageBannerResult::Dropped { .. } | StorageBannerResult::DuplicateDropped { .. })), "{raw}");
         }
     }
 
     #[test]
     fn duplicate_is_not_a_drop_confirmation() {
-        assert!(matches!(
-            parse_storage_banner(&lex(), "You can only store one of each fruit!"),
-            Some(StorageBannerResult::Duplicate { .. })
-        ));
-        assert_eq!(
-            parse_storage_banner(&lex(), "Successfully stored Pika"),
-            Some(StorageBannerResult::Stored)
-        );
-        assert!(matches!(
-            parse_storage_banner(&lex(), "Bag is full"),
-            Some(StorageBannerResult::Duplicate { .. })
-        ));
+        assert!(matches!(parse_storage_banner(&lex(), "You can only store one of each fruit!"), Some(StorageBannerResult::Duplicate { .. })));
+        assert_eq!(parse_storage_banner(&lex(), "Successfully stored Pika"), Some(StorageBannerResult::Stored));
+        assert!(matches!(parse_storage_banner(&lex(), "Bag is full"), Some(StorageBannerResult::Duplicate { .. })));
     }
 
     #[test]
     fn overlapping_catch_and_spawn_names_are_independent() {
         let raw = "New Item <Pika>\nA SUKE has spawned at TRADING HUB";
-        assert_eq!(
-            parse_catch_item(&lex(), raw),
-            ("fruit".into(), "Pika".into())
-        );
+        assert_eq!(parse_catch_item(&lex(), raw), ("fruit".into(), "Pika".into()));
         let spawn = detect_spawn(&lex(), raw).unwrap();
         assert_eq!(spawn.name.as_deref(), Some("Suke"));
         assert_eq!(spawn.location.as_deref(), Some("Trading Hub"));
         let raw = "A HORO has spawned at TRADING HUB\nNew Item <Dark Skeletal Shark>";
-        assert_eq!(
-            parse_catch_item(&lex(), raw),
-            ("fish".into(), "Dark Skeletal Shark".into())
-        );
+        assert_eq!(parse_catch_item(&lex(), raw), ("fish".into(), "Dark Skeletal Shark".into()));
         assert!(detect_drop(&lex(), raw).is_none());
-        assert_eq!(
-            detect_spawn(&lex(), raw).unwrap().name.as_deref(),
-            Some("Horo")
-        );
+        assert_eq!(detect_spawn(&lex(), raw).unwrap().name.as_deref(), Some("Horo"));
         assert!(catch_name_text(&lex(), "A SUKE has spawned at TRADING HUB").is_empty());
-        assert!(
-            detect_spawn(
-                &lex(),
-                "[All-Seeing Eye]\nA MOCHI has spawned at TRADING HUB"
-            )
-            .unwrap()
-            .is_ase
-        );
+        assert!(detect_spawn(&lex(), "[All-Seeing Eye]\nA MOCHI has spawned at TRADING HUB").unwrap().is_ase);
     }
 
     #[test]
     fn wiki_fish_names_do_not_become_fruit_names() {
-        for name in [
-            "Anglerfish",
-            "Dark Skeletal Shark",
-            "Jack-O'-Bite",
-            "Swordfish",
-            "Golden Polka Puffer",
-            "Golden Ribbon Angelfish",
-            "Golden Tigerfin",
-            "Skeletal Shark",
-            "Candy Corn Squid",
-            "Crimson Polka Puffer",
-            "Crimson Snapper",
-            "Exotic Tigerfin",
-            "Fangfish",
-            "Zebra Ribbon Angelfish",
-            "Blue-Lip Grouper",
-            "Tigerfin",
-        ] {
+        for name in ["Anglerfish", "Dark Skeletal Shark", "Jack-O'-Bite", "Swordfish",
+                     "Golden Polka Puffer", "Golden Ribbon Angelfish", "Golden Tigerfin",
+                     "Skeletal Shark", "Candy Corn Squid", "Crimson Polka Puffer",
+                     "Crimson Snapper", "Exotic Tigerfin", "Fangfish", "Zebra Ribbon Angelfish",
+                     "Blue-Lip Grouper", "Tigerfin"] {
             let text = format!("A HORO has spawned at TRADING HUB\nNew Item <{name}>");
             assert_eq!(parse_catch_item(&lex(), &text).0, "fish", "{name}");
             assert!(detect_drop(&lex(), &text).is_none(), "{name}");
@@ -1389,28 +974,16 @@ mod tests {
     #[test]
     fn parse_disconnect_dialog() {
         let raw = "Disconnected\n\nPlease check your internet connection and try again.\n(Error Code: 277)\n\nLeave Reconnect";
-        assert_eq!(
-            parse_disconnect_text(raw),
-            Some("Disconnected (Error Code: 277)".into())
-        );
+        assert_eq!(parse_disconnect_text(raw), Some("Disconnected (Error Code: 277)".into()));
 
         let raw2 = "Please check your internet connection and try again.";
-        assert_eq!(
-            parse_disconnect_text(raw2),
-            Some("Disconnected (Please check your internet connection)".into())
-        );
+        assert_eq!(parse_disconnect_text(raw2), Some("Disconnected (Please check your internet connection)".into()));
 
         let raw3 = "You have been kicked from this experience (Error Code: 267)";
-        assert_eq!(
-            parse_disconnect_text(raw3),
-            Some("Disconnected (Error Code: 267)".into())
-        );
+        assert_eq!(parse_disconnect_text(raw3), Some("Disconnected (Error Code: 267)".into()));
 
         let raw4 = "This game session has ended (Error Code: 279)";
-        assert_eq!(
-            parse_disconnect_text(raw4),
-            Some("Disconnected (Error Code: 279)".into())
-        );
+        assert_eq!(parse_disconnect_text(raw4), Some("Disconnected (Error Code: 279)".into()));
 
         let raw5 = "Leave Reconnect";
         assert!(parse_disconnect_text(raw5).is_none());
@@ -1427,13 +1000,7 @@ mod tests {
 
     #[test]
     fn drop_new_item() {
-        for raw in [
-            "New Item <Buddha>",
-            "New Item <Suna>",
-            "New ltem (Buddha>",
-            "NEW ITEM <Pteranodn>",
-            "New Item < Sprng >",
-        ] {
+        for raw in ["New Item <Buddha>", "New Item <Suna>", "New ltem (Buddha>", "NEW ITEM <Pteranodn>", "New Item < Sprng >"] {
             assert!(detect_drop(&lex(), raw).is_some(), "{raw}");
         }
     }
@@ -1441,17 +1008,9 @@ mod tests {
     #[test]
     fn drop_pity_decides_legendary() {
         let l = lex();
-        let d = detect_drop(
-            &l,
-            "g eye you got a devil fruwdrop check your legendary pity 17",
-        )
-        .unwrap();
+        let d = detect_drop(&l, "g eye you got a devil fruwdrop check your legendary pity 17").unwrap();
         assert!(!d.is_legendary);
-        let d = detect_drop(
-            &l,
-            "you got a devil fruit drop check your backpack legendary pity 0",
-        )
-        .unwrap();
+        let d = detect_drop(&l, "you got a devil fruit drop check your backpack legendary pity 0").unwrap();
         assert!(d.is_legendary);
         let d = detect_drop(&l, "you got a devil fruit drop legendary pity o").unwrap();
         assert!(d.is_legendary);
@@ -1466,11 +1025,7 @@ mod tests {
         let l = lex();
         assert!(detect_drop(&l, "A Devil Fruit has spawned at MARINE FORD").is_none());
         assert!(detect_drop(&l, "A VENOM has spawned at ORANGE TOWN").is_none());
-        assert!(detect_spawn(
-            &l,
-            "you got a devil fruit drop check your backpack legendary pity 0"
-        )
-        .is_none());
+        assert!(detect_spawn(&l, "you got a devil fruit drop check your backpack legendary pity 0").is_none());
         assert!(detect_spawn(&l, "You got a Devil Fruit drop! Legendary Pity 17").is_none());
     }
 
@@ -1489,28 +1044,12 @@ mod tests {
         assert!(d.is_legendary);
         let d = detect_drop(&lex(), "devil fruit 3/37").unwrap();
         assert!(!d.is_legendary);
-        let d_ase = detect_drop(
-            &lex(),
-            "You got a devil fruit drop check your backpack legendary pity 0/40",
-        )
-        .unwrap();
+        let d_ase = detect_drop(&lex(), "You got a devil fruit drop check your backpack legendary pity 0/40").unwrap();
         assert!(d_ase.is_legendary);
-        assert_eq!(
-            extract_pity_text("legendary pity: 0/40"),
-            Some("0/40".into())
-        );
-        assert_eq!(
-            extract_pity_text("legendary pity: 15/40"),
-            Some("15/40".into())
-        );
-        assert_eq!(
-            extract_pity_text("legendary pity: 0/4o"),
-            Some("0/40".into())
-        );
-        assert_eq!(
-            extract_pity_text("legendary pity: 25/100"),
-            Some("25/100".into())
-        );
+        assert_eq!(extract_pity_text("legendary pity: 0/40"), Some("0/40".into()));
+        assert_eq!(extract_pity_text("legendary pity: 15/40"), Some("15/40".into()));
+        assert_eq!(extract_pity_text("legendary pity: 0/4o"), Some("0/40".into()));
+        assert_eq!(extract_pity_text("legendary pity: 25/100"), Some("25/100".into()));
     }
 
     #[test]
@@ -1518,47 +1057,20 @@ mod tests {
         assert!(is_pity_zero(Some("0/40"), ""));
         assert!(is_pity_zero(Some("0/100"), ""));
         assert!(is_pity_zero(Some("0/4o"), ""));
-        assert!(is_pity_zero(
-            None,
-            "All-Seeing Eye: YOU GOT A DEVIL FRUIT DROP, CHECK YOUR BACKPACK LEGENDARY PITY: 0/40"
-        ));
+        assert!(is_pity_zero(None, "All-Seeing Eye: YOU GOT A DEVIL FRUIT DROP, CHECK YOUR BACKPACK LEGENDARY PITY: 0/40"));
         assert!(is_pity_zero(None, "Legendary Pity 0"));
         assert!(is_pity_zero(None, "Legendary Pity: 0"));
         assert!(is_pity_zero(None, "Legendary Pity: o"));
 
         // All non-zero pity cases MUST return FALSE:
-        assert!(!is_pity_zero(
-            Some("19/40"),
-            ";eeing Eye: YOU GOT A DEVIL FRUIT DROP, CHECK YOUR BACKPA( LEGENDARY PITY: 19/4Ci"
-        ));
-        assert!(!is_pity_zero(
-            Some("17/40"),
-            ";eeing Eye: YOU GOT AOEVIBFRUIT DROP, CHECK YOUR BACKPA( JLECTENDARY PITY: 17/40"
-        ));
-        assert!(!is_pity_zero(
-            Some("10/40"),
-            "You got a Devil Fruit drop! Legendary Pity: 10/40"
-        ));
-        assert!(!is_pity_zero(
-            Some("20/40"),
-            "You got a Devil Fruit drop! Legendary Pity: 20/40"
-        ));
-        assert!(!is_pity_zero(
-            Some("40/40"),
-            "You got a Devil Fruit drop! Legendary Pity: 40/40"
-        ));
-        assert!(!is_pity_zero(
-            Some("10/100"),
-            "You got a Devil Fruit drop! Legendary Pity: 10/100"
-        ));
-        assert!(!is_pity_zero(
-            Some("100/100"),
-            "You got a Devil Fruit drop! Legendary Pity: 100/100"
-        ));
-        assert!(!is_pity_zero(
-            Some("25/100"),
-            "You got a Devil Fruit drop! Legendary Pity: 25/100"
-        ));
+        assert!(!is_pity_zero(Some("19/40"), ";eeing Eye: YOU GOT A DEVIL FRUIT DROP, CHECK YOUR BACKPA( LEGENDARY PITY: 19/4Ci"));
+        assert!(!is_pity_zero(Some("17/40"), ";eeing Eye: YOU GOT AOEVIBFRUIT DROP, CHECK YOUR BACKPA( JLECTENDARY PITY: 17/40"));
+        assert!(!is_pity_zero(Some("10/40"), "You got a Devil Fruit drop! Legendary Pity: 10/40"));
+        assert!(!is_pity_zero(Some("20/40"), "You got a Devil Fruit drop! Legendary Pity: 20/40"));
+        assert!(!is_pity_zero(Some("40/40"), "You got a Devil Fruit drop! Legendary Pity: 40/40"));
+        assert!(!is_pity_zero(Some("10/100"), "You got a Devil Fruit drop! Legendary Pity: 10/100"));
+        assert!(!is_pity_zero(Some("100/100"), "You got a Devil Fruit drop! Legendary Pity: 100/100"));
+        assert!(!is_pity_zero(Some("25/100"), "You got a Devil Fruit drop! Legendary Pity: 25/100"));
         assert!(!is_pity_zero(None, "Legendary Pity 15"));
         assert!(!is_pity_zero(None, "Legendary Pity: 10"));
     }
@@ -1573,10 +1085,7 @@ mod tests {
         let l = lex();
         assert_eq!(detect_catch(&l, "You caught a Tuna!"), CatchVerdict::Caught);
         assert_eq!(detect_catch(&l, "New Item <Tuna>"), CatchVerdict::Caught);
-        assert_eq!(
-            detect_catch(&l, "The fish got away..."),
-            CatchVerdict::Failed
-        );
+        assert_eq!(detect_catch(&l, "The fish got away..."), CatchVerdict::Failed);
         assert_eq!(detect_catch(&l, ""), CatchVerdict::Unknown);
         assert_eq!(detect_catch(&l, "random chat line"), CatchVerdict::Unknown);
     }
@@ -1596,38 +1105,16 @@ mod tests {
         assert_eq!(s.location.as_deref(), Some("Orange Town"));
         let s = detect_spawn(&lex(), "A VENOM has sp@wned at ORANGE TOWN").unwrap();
         assert_eq!(s.name.as_deref(), Some("Venom"));
-        let s = detect_spawn(
-            &lex(),
-            "3473 Studs A VENOM has spa None wned at ORANGE TOWN",
-        )
-        .unwrap();
+        let s = detect_spawn(&lex(), "3473 Studs A VENOM has spa None wned at ORANGE TOWN").unwrap();
         assert_eq!(s.name.as_deref(), Some("Venom"));
         assert_eq!(s.location.as_deref(), Some("Orange Town"));
     }
 
     #[test]
     fn spawn_fuzzy_name() {
-        assert_eq!(
-            detect_spawn(&lex(), "A Pteranodn has spavned")
-                .unwrap()
-                .name
-                .as_deref(),
-            Some("Pteranodon")
-        );
-        assert_eq!(
-            detect_spawn(&lex(), "A Mera fruit has spawned!")
-                .unwrap()
-                .name
-                .as_deref(),
-            Some("Mera")
-        );
-        assert_eq!(
-            detect_spawn(&lex(), "A MOCHl has spawned at SANDORA")
-                .unwrap()
-                .name
-                .as_deref(),
-            Some("Mochi")
-        );
+        assert_eq!(detect_spawn(&lex(), "A Pteranodn has spavned").unwrap().name.as_deref(), Some("Pteranodon"));
+        assert_eq!(detect_spawn(&lex(), "A Mera fruit has spawned!").unwrap().name.as_deref(), Some("Mera"));
+        assert_eq!(detect_spawn(&lex(), "A MOCHl has spawned at SANDORA").unwrap().name.as_deref(), Some("Mochi"));
     }
 
     #[test]
@@ -1653,39 +1140,15 @@ mod tests {
     #[test]
     fn parse_catch_items() {
         let l = lex();
-        assert_eq!(
-            parse_catch_item(&l, "New Item <Tuna>"),
-            ("fish".into(), "Tuna".into())
-        );
-        assert_eq!(
-            parse_catch_item(&l, "New Item <Buddha>"),
-            ("fruit".into(), "Buddha".into())
-        );
-        assert_eq!(
-            parse_catch_item(&l, "You caught a Tuna!"),
-            ("fish".into(), "Tuna".into())
-        );
-        assert_eq!(
-            parse_catch_item(&l, "You caught a Golden Fish!"),
-            ("fish".into(), "Golden Fish".into())
-        );
-        assert_eq!(
-            parse_catch_item(&l, "New Item <Colossal Shark>"),
-            ("fish".into(), "Colossal Shark".into())
-        );
-        assert_eq!(
-            parse_catch_item(&l, "New Item <Crimson Snapper>"),
-            ("fish".into(), "Crimson Snapper".into())
-        );
+        assert_eq!(parse_catch_item(&l, "New Item <Tuna>"), ("fish".into(), "Tuna".into()));
+        assert_eq!(parse_catch_item(&l, "New Item <Buddha>"), ("fruit".into(), "Buddha".into()));
+        assert_eq!(parse_catch_item(&l, "You caught a Tuna!"), ("fish".into(), "Tuna".into()));
+        assert_eq!(parse_catch_item(&l, "You caught a Golden Fish!"), ("fish".into(), "Golden Fish".into()));
+        assert_eq!(parse_catch_item(&l, "New Item <Colossal Shark>"), ("fish".into(), "Colossal Shark".into()));
+        assert_eq!(parse_catch_item(&l, "New Item <Crimson Snapper>"), ("fish".into(), "Crimson Snapper".into()));
         assert_eq!(parse_catch_item(&l, "nev itemv ctimson sna pper").0, "fish");
-        assert_eq!(
-            parse_catch_item(&l, "You fished up a Devil Fruit! Check your backpack"),
-            ("fruit".into(), "Devil Fruit".into())
-        );
-        assert_eq!(
-            parse_catch_item(&l, "New Item <Mochi>"),
-            ("fruit".into(), "Mochi".into())
-        );
+        assert_eq!(parse_catch_item(&l, "You fished up a Devil Fruit! Check your backpack"), ("fruit".into(), "Devil Fruit".into()));
+        assert_eq!(parse_catch_item(&l, "New Item <Mochi>"), ("fruit".into(), "Mochi".into()));
     }
 
     #[test]
@@ -1715,44 +1178,29 @@ mod tests {
         let raw = "You can only store one of each fruit!\nDropped Heal will despawn in 10 minutes.";
         assert_eq!(
             parse_storage_banner(&l, raw),
-            Some(StorageBannerResult::DuplicateDropped {
-                fruit_name: "Heal".into()
-            })
+            Some(StorageBannerResult::DuplicateDropped { fruit_name: "Heal".into() })
         );
 
         let raw2 = "You can only store one of each fruit! Dropped Spin will despawn in 10 minutes.";
         assert_eq!(
             parse_storage_banner(&l, raw2),
-            Some(StorageBannerResult::DuplicateDropped {
-                fruit_name: "Spin".into()
-            })
+            Some(StorageBannerResult::DuplicateDropped { fruit_name: "Spin".into() })
         );
 
         let raw3 = "Dropped Mochi will despawn in 10 minutes.";
         assert_eq!(
             parse_storage_banner(&l, raw3),
-            Some(StorageBannerResult::Dropped {
-                fruit_name: "Mochi".into()
-            })
+            Some(StorageBannerResult::Dropped { fruit_name: "Mochi".into() })
         );
 
-        let raw_kilo =
-            "YOU CAN ONLY STORE ONE OF EACH FRUIT! DROPPED Kilo WILL DESPAWN IN 10 MINUTES.";
+        let raw_kilo = "YOU CAN ONLY STORE ONE OF EACH FRUIT! DROPPED Kilo WILL DESPAWN IN 10 MINUTES.";
         assert_eq!(
             parse_storage_banner(&l, raw_kilo),
-            Some(StorageBannerResult::DuplicateDropped {
-                fruit_name: "Kilo".into()
-            })
+            Some(StorageBannerResult::DuplicateDropped { fruit_name: "Kilo".into() })
         );
 
-        assert_eq!(
-            extract_pity_text("you got a devil fruit drop legendary pity 27/300"),
-            Some("27/100".into())
-        );
-        assert_eq!(
-            extract_pity_text("legendary pity: 15/100"),
-            Some("15/100".into())
-        );
+        assert_eq!(extract_pity_text("you got a devil fruit drop legendary pity 27/300"), Some("27/100".into()));
+        assert_eq!(extract_pity_text("legendary pity: 15/100"), Some("15/100".into()));
 
         let fish_text = "You caught a Tuna!";
         assert_eq!(parse_storage_banner(&l, fish_text), None);
@@ -1776,11 +1224,7 @@ mod tests {
         assert_eq!(s3.name.as_deref(), Some("Pika"));
         assert_eq!(s3.location.as_deref(), Some("Sphinx Island"));
 
-        let s4 = detect_spawn(
-            &l,
-            "[All-Seeing Eye] A Mythical Fruit [Buddha] has spawned at Marine Ford",
-        )
-        .unwrap();
+        let s4 = detect_spawn(&l, "[All-Seeing Eye] A Mythical Fruit [Buddha] has spawned at Marine Ford").unwrap();
         assert!(s4.is_ase);
         assert_eq!(s4.name.as_deref(), Some("Buddha"));
         assert_eq!(s4.location.as_deref(), Some("Marine Ford"));

@@ -58,11 +58,7 @@ pub fn dataset_fingerprint(rows: &[MlAnnotation], dataset_version: u32) -> Strin
         })
         .collect();
     lines.sort();
-    let body = format!(
-        "gpo-vision-v{dataset_version}:{}\n{}",
-        lines.len(),
-        lines.join("\n")
-    );
+    let body = format!("gpo-vision-v{dataset_version}:{}\n{}", lines.len(), lines.join("\n"));
     format!("fp-{}", &sha256_hex(body.as_bytes())[..16])
 }
 
@@ -275,10 +271,7 @@ impl ProjectedLabels {
 /// Pure: reads the store, writes nothing, mutates nothing. Idempotent —
 /// projecting the already-projected rows again changes nothing, because the
 /// projection only depends on the review records, not on the input labels.
-pub fn project_training_labels(
-    rows: &[MlAnnotation],
-    reviews: &super::review::ReviewStore,
-) -> ProjectedLabels {
+pub fn project_training_labels(rows: &[MlAnnotation], reviews: &super::review::ReviewStore) -> ProjectedLabels {
     // FAIL CLOSED, and read the review file the way the snapshot always has: the
     // MINIMAL projection, so a record predating newer fields still parses, plus an
     // explicit count of the lines that do not. `ReviewStore::list()` silently
@@ -361,13 +354,11 @@ pub fn project_training_labels(
             }
             Some(false) => {
                 out.rows_excluded_by_review += 1;
-                *out.exclusions
-                    .entry(
-                        reasons
-                            .get(r.image_id.as_str())
-                            .cloned()
-                            .unwrap_or_else(|| "human verdict: not training-eligible".to_string()),
-                    )
+                *out
+                    .exclusions
+                    .entry(reasons.get(r.image_id.as_str()).cloned().unwrap_or_else(|| {
+                        "human verdict: not training-eligible".to_string()
+                    }))
                     .or_insert(0) += 1;
             }
         }
@@ -430,10 +421,9 @@ pub fn snapshot_dataset(
     // from `rows` (the caller's parsed view, which is also what the
     // fingerprint covers): a missing/unreadable dataset must fail loudly
     // rather than quietly snapshot a half-loaded store.
-    std::fs::metadata(src.join("labels.jsonl"))
-        .map_err(|e| format!("snapshot read labels.jsonl: {e}"))?;
-    let manifest_bytes = std::fs::read(src.join("manifest.json"))
-        .map_err(|e| format!("snapshot read manifest.json: {e}"))?;
+    std::fs::metadata(src.join("labels.jsonl")).map_err(|e| format!("snapshot read labels.jsonl: {e}"))?;
+    let manifest_bytes =
+        std::fs::read(src.join("manifest.json")).map_err(|e| format!("snapshot read manifest.json: {e}"))?;
 
     // Read the review state ONCE, for the fingerprint of what humans had seen at
     // freeze time. The DECISION about which rows may train (and with which
@@ -474,8 +464,7 @@ pub fn snapshot_dataset(
     // untouched (serde_json round-trip of the annotation itself).
     let mut labels = String::new();
     for r in &kept {
-        let line =
-            serde_json::to_string(r).map_err(|e| format!("snapshot serialise labels: {e}"))?;
+        let line = serde_json::to_string(r).map_err(|e| format!("snapshot serialise labels: {e}"))?;
         labels.push_str(&line);
         labels.push('\n');
     }
@@ -500,20 +489,13 @@ pub fn snapshot_dataset(
         .into_iter()
         .collect();
     test_sessions.sort();
-    let sessions = kept
-        .iter()
-        .map(|r| r.session_id.as_str())
-        .collect::<HashSet<_>>()
-        .len();
+    let sessions = kept.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
     // CHECKSUM OF THE ACTUAL TRAINING INPUT. `fingerprint` describes the rows;
     // this describes the bytes the trainer will read. Two snapshots with the
     // same fingerprint but different bytes (a changed serialiser, a stray
     // whitespace change, a truncated write) are different training sets, and
     // only this catches it.
-    let labels_sha = format!(
-        "ln-{}",
-        &super::ml_model::sha256_hex(labels.as_bytes())[..16]
-    );
+    let labels_sha = format!("ln-{}", &super::ml_model::sha256_hex(labels.as_bytes())[..16]);
     Ok(SnapshotMeta {
         fingerprint: dataset_fingerprint(&kept, dataset_version),
         rows: kept.len(),
@@ -678,9 +660,7 @@ pub fn load_job(data_dir: &Path, job_id: &str) -> Result<TrainingJob, String> {
 
 pub fn list_jobs(data_dir: &Path) -> Vec<TrainingJob> {
     let mut out = Vec::new();
-    let Ok(rd) = std::fs::read_dir(jobs_dir(data_dir)) else {
-        return out;
-    };
+    let Ok(rd) = std::fs::read_dir(jobs_dir(data_dir)) else { return out };
     for e in rd.flatten() {
         let p = e.path();
         if p.extension().is_some_and(|x| x == "json") {
@@ -714,11 +694,7 @@ pub fn mark_interrupted(data_dir: &Path) -> Vec<String> {
 }
 
 pub fn new_job_id(family: &str) -> String {
-    format!(
-        "{family}-{}-{}",
-        now_ms(),
-        &sha256_hex(family.as_bytes())[..6]
-    )
+    format!("{family}-{}-{}", now_ms(), &sha256_hex(family.as_bytes())[..6])
 }
 
 /// Create (do not launch) a job against a frozen snapshot.
@@ -770,10 +746,7 @@ pub fn create_job(
         candidate_id: None,
         evaluation: None,
         error: None,
-        progress: JobProgress {
-            stage: "QUEUED".to_string(),
-            ..Default::default()
-        },
+        progress: JobProgress { stage: "QUEUED".to_string(), ..Default::default() },
         deferred_reason: None,
         macro_running_at_start: macro_running,
     };
@@ -789,9 +762,7 @@ pub struct Supervisor {
 
 impl Supervisor {
     pub fn new() -> Self {
-        Self {
-            children: HashMap::new(),
-        }
+        Self { children: HashMap::new() }
     }
 
     pub fn running_count(&self) -> usize {
@@ -811,11 +782,7 @@ impl Supervisor {
         if python_path.trim().is_empty() || trainer_dir.trim().is_empty() {
             return Err("training backend not configured: set python_path + trainer_dir in Training settings".to_string());
         }
-        let images_live = data_dir
-            .join("datasets")
-            .join("gpo-vision")
-            .join("v1")
-            .join("images");
+        let images_live = data_dir.join("datasets").join("gpo-vision").join("v1").join("images");
         let argv = vec![
             python_path.to_string(),
             "-m".to_string(),
@@ -828,24 +795,11 @@ impl Supervisor {
             job.run_id.clone(),
         ];
         let envs = vec![
-            (
-                "GPO_DATASET_DIR".to_string(),
-                job.snapshot_dir.to_string_lossy().to_string(),
-            ),
-            (
-                "GPO_IMAGES_DIR".to_string(),
-                images_live.to_string_lossy().to_string(),
-            ),
+            ("GPO_DATASET_DIR".to_string(), job.snapshot_dir.to_string_lossy().to_string()),
+            ("GPO_IMAGES_DIR".to_string(), images_live.to_string_lossy().to_string()),
             ("PYTHONUTF8".to_string(), "1".to_string()),
         ];
-        self.launch_argv(
-            data_dir,
-            job,
-            &argv,
-            &envs,
-            Path::new(trainer_dir),
-            max_concurrent,
-        )
+        self.launch_argv(data_dir, job, &argv, &envs, Path::new(trainer_dir), max_concurrent)
     }
 
     /// Launch with an explicit argv/env/cwd. Production passes the real
@@ -862,17 +816,13 @@ impl Supervisor {
         max_concurrent: usize,
     ) -> Result<(), String> {
         if job.status != JobStatus::Queued {
-            return Err(format!(
-                "job {} is {:?}, only QUEUED jobs launch",
-                job.job_id, job.status
-            ));
+            return Err(format!("job {} is {:?}, only QUEUED jobs launch", job.job_id, job.status));
         }
         if argv.is_empty() {
             return Err("empty trainer command".to_string());
         }
         // Reap dead handles so the count reflects reality.
-        self.children
-            .retain(|_, c| c.try_wait().map(|s| s.is_none()).unwrap_or(false));
+        self.children.retain(|_, c| c.try_wait().map(|s| s.is_none()).unwrap_or(false));
         if self.children.len() >= max_concurrent.max(1) {
             return Err("another training job is already running (concurrency limit)".to_string());
         }
@@ -885,10 +835,7 @@ impl Supervisor {
             use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000);
         }
-        cmd.args(&argv[1..])
-            .current_dir(cwd)
-            .stdout(log_file)
-            .stderr(err_file);
+        cmd.args(&argv[1..]).current_dir(cwd).stdout(log_file).stderr(err_file);
         for (k, v) in envs {
             cmd.env(k, v);
         }
@@ -904,9 +851,7 @@ impl Supervisor {
         // the trainer already avoids, but a deterministic env makes a failed
         // run reproducible from the log alone.
         cmd.env("PYTHONHASHSEED", "0");
-        let child = cmd
-            .spawn()
-            .map_err(|e| format!("trainer spawn failed ({}): {e}", argv[0]))?;
+        let child = cmd.spawn().map_err(|e| format!("trainer spawn failed ({}): {e}", argv[0]))?;
         self.children.insert(job.job_id.clone(), child);
         job.status = JobStatus::Running;
         job.started_at = Some(now_ms());
@@ -918,12 +863,7 @@ impl Supervisor {
 
     /// Poll one job: reap exits, refresh progress from the trainer log,
     /// finalize on completion. Returns true when the job just finished.
-    pub fn poll(
-        &mut self,
-        data_dir: &Path,
-        job: &mut TrainingJob,
-        trainer_out_subdir: &str,
-    ) -> bool {
+    pub fn poll(&mut self, data_dir: &Path, job: &mut TrainingJob, trainer_out_subdir: &str) -> bool {
         let done = match self.children.get_mut(&job.job_id) {
             Some(child) => match child.try_wait() {
                 Ok(Some(status)) => Some(status.code().unwrap_or(-1)),
@@ -986,20 +926,14 @@ fn trainer_done_marker(work_dir: &Path, trainer_dir: &str, run_id: &str) -> bool
     // Primary: the pipeline's own verification file (written last, only on
     // successful export+verify). Fallback: none — without it, not done.
     let _ = work_dir;
-    trainer_out_dir(Path::new(trainer_dir), run_id)
-        .join("onnx_check.json")
-        .exists()
+    trainer_out_dir(Path::new(trainer_dir), run_id).join("onnx_check.json").exists()
 }
 
 /// Refresh progress from the trainer's own log (never invented).
 fn refresh_progress(job: &mut TrainingJob, trainer_dir: &str) {
     let log = trainer_out_dir(Path::new(trainer_dir), &job.run_id).join("training_log.jsonl");
     let Ok(raw) = std::fs::read_to_string(&log) else {
-        job.progress.stage = if job.status == JobStatus::Queued {
-            "QUEUED".to_string()
-        } else {
-            "STARTING".to_string()
-        };
+        job.progress.stage = if job.status == JobStatus::Queued { "QUEUED".to_string() } else { "STARTING".to_string() };
         return;
     };
     let mut epochs = 0usize;
@@ -1013,17 +947,12 @@ fn refresh_progress(job: &mut TrainingJob, trainer_dir: &str) {
     }
     tail.reverse();
     for line in raw.lines() {
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
-            continue;
-        };
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else { continue };
         epochs += 1;
         if let Some(s) = v.get("seconds").and_then(|x| x.as_f64()) {
             secs.push(s);
         }
-        last_loss = v
-            .get("train_loss")
-            .and_then(|x| x.as_f64())
-            .map(|x| x as f32);
+        last_loss = v.get("train_loss").and_then(|x| x.as_f64()).map(|x| x as f32);
         last_val = v
             .get("val_macro_f1")
             .or_else(|| v.get("val_state_macro_f1"))
@@ -1048,11 +977,7 @@ fn refresh_progress(job: &mut TrainingJob, trainer_dir: &str) {
         job.progress.sec_per_epoch = None;
         job.progress.eta_s = None;
     }
-    job.progress.stage = if epochs >= job.epochs {
-        "EVALUATING".to_string()
-    } else {
-        "RUNNING".to_string()
-    };
+    job.progress.stage = if epochs >= job.epochs { "EVALUATING".to_string() } else { "RUNNING".to_string() };
     if job.status == JobStatus::Running && epochs >= job.epochs {
         job.status = JobStatus::Evaluating;
     }
@@ -1064,16 +989,10 @@ fn finalize_job(data_dir: &Path, job: &mut TrainingJob, trainer_dir: &str, exit_
     job.finished_at = Some(now_ms());
     if exit_code != 0 {
         job.status = JobStatus::Failed;
-        job.error = Some(format!(
-            "trainer exited with code {exit_code}; see work dir log"
-        ));
+        job.error = Some(format!("trainer exited with code {exit_code}; see work dir log"));
         job.progress.stage = "FAILED".to_string();
         let _ = save_job(data_dir, job);
-        append_history(
-            data_dir,
-            "job_failed",
-            serde_json::json!({"job_id": job.job_id, "reason": job.error}),
-        );
+        append_history(data_dir, "job_failed", serde_json::json!({"job_id": job.job_id, "reason": job.error}));
         return;
     }
     let out = trainer_out_dir(Path::new(trainer_dir), &job.run_id);
@@ -1082,11 +1001,7 @@ fn finalize_job(data_dir: &Path, job: &mut TrainingJob, trainer_dir: &str, exit_
         read("onnx_check.json").and_then(|s| serde_json::from_str(&s).ok());
     let eval: Option<serde_json::Value> =
         read("evaluation_test.json").and_then(|s| serde_json::from_str(&s).ok());
-    let onnx_ok = onnx_check
-        .as_ref()
-        .and_then(|v| v.get("pass"))
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let onnx_ok = onnx_check.as_ref().and_then(|v| v.get("pass")).and_then(|v| v.as_bool()).unwrap_or(false);
     match (onnx_ok, eval) {
         (true, Some(e)) => {
             job.status = JobStatus::Passed;
@@ -1110,15 +1025,12 @@ fn finalize_job(data_dir: &Path, job: &mut TrainingJob, trainer_dir: &str, exit_
         }
         (false, _) => {
             job.status = JobStatus::Failed;
-            job.error = Some(
-                "onnx_check.json missing or pass=false: export/verify did not complete".to_string(),
-            );
+            job.error = Some("onnx_check.json missing or pass=false: export/verify did not complete".to_string());
             job.progress.stage = "FAILED".to_string();
         }
         (true, None) => {
             job.status = JobStatus::Failed;
-            job.error =
-                Some("evaluation_test.json missing: evaluation did not complete".to_string());
+            job.error = Some("evaluation_test.json missing: evaluation did not complete".to_string());
             job.progress.stage = "FAILED".to_string();
         }
     }
@@ -1160,8 +1072,7 @@ pub const DEFAULT_BACKEND_PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 /// the machine is saturated. One probe at a time; overlapping callers get the
 /// completed result (or wait for the in-flight result) instead of spawning a
 /// second process.
-static BACKEND_PROBE: Mutex<Option<(String, String, BackendStatus, std::time::Instant)>> =
-    Mutex::new(None);
+static BACKEND_PROBE: Mutex<Option<(String, String, BackendStatus, std::time::Instant)>> = Mutex::new(None);
 
 /// Run `python -c <code>`, killing it after `timeout`.
 ///
@@ -1182,21 +1093,14 @@ fn probe_program(
     probe_program_in(program, args, timeout, None)
 }
 
-fn probe_program_in(
-    program: &str,
-    args: &[&str],
-    timeout: Duration,
-    cwd: Option<&Path>,
-) -> Result<std::process::Output, String> {
+fn probe_program_in(program: &str, args: &[&str], timeout: Duration, cwd: Option<&Path>) -> Result<std::process::Output, String> {
     let mut command = std::process::Command::new(program);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000);
     }
-    if let Some(cwd) = cwd {
-        command.current_dir(cwd);
-    }
+    if let Some(cwd) = cwd { command.current_dir(cwd); }
     let mut child = command
         .args(args)
         .env_remove("PYTHONOPTIMIZE")
@@ -1230,11 +1134,7 @@ fn probe_program_in(
             Ok(Some(status)) => {
                 let stdout = out_handle.join().unwrap_or_default();
                 let stderr = err_handle.join().unwrap_or_default();
-                return Ok(std::process::Output {
-                    status,
-                    stdout,
-                    stderr,
-                });
+                return Ok(std::process::Output { status, stdout, stderr });
             }
             Ok(None) => {
                 if std::time::Instant::now() >= deadline {
@@ -1261,17 +1161,10 @@ pub fn check_backend_with_timeout(
     // Keep the guard through the probe so overlapping calls cannot spawn peers.
     let mut cached = BACKEND_PROBE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((p, t, status, completed)) = cached.as_ref() {
-        if p == python_path && t == trainer_dir && completed.elapsed() < Duration::from_secs(60) {
-            return status.clone();
-        }
+        if p == python_path && t == trainer_dir && completed.elapsed() < Duration::from_secs(60) { return status.clone(); }
     }
     let status = check_backend_uncached(python_path, trainer_dir, timeout);
-    *cached = Some((
-        python_path.to_string(),
-        trainer_dir.to_string(),
-        status.clone(),
-        std::time::Instant::now(),
-    ));
+    *cached = Some((python_path.to_string(), trainer_dir.to_string(), status.clone(), std::time::Instant::now()));
     status
 }
 
@@ -1332,23 +1225,14 @@ fn check_backend_uncached(
         }
     }
     let trainer_ok = !trainer_dir.trim().is_empty()
-        && Path::new(trainer_dir)
-            .join("ml")
-            .join("gpo_train")
-            .join("fish_train.py")
-            .exists();
+        && Path::new(trainer_dir).join("ml").join("gpo_train").join("fish_train.py").exists();
     st.trainer_dir_ok = trainer_ok;
     if !trainer_ok {
-        st.detail = format!(
-            "trainer checkout not found under '{trainer_dir}' (need ml/gpo_train/fish_train.py)"
-        );
+        st.detail = format!("trainer checkout not found under '{trainer_dir}' (need ml/gpo_train/fish_train.py)");
         return st;
     }
     st.available = true;
-    st.detail = format!(
-        "ready (torch {})",
-        st.torch_version.as_deref().unwrap_or("?")
-    );
+    st.detail = format!("ready (torch {})", st.torch_version.as_deref().unwrap_or("?"));
     st
 }
 
@@ -1408,11 +1292,7 @@ pub fn evaluate_triggers(
     now: u64,
 ) -> Vec<TriggerEvent> {
     let fp = dataset_fingerprint(rows, dataset_version);
-    let sessions = rows
-        .iter()
-        .map(|r| r.session_id.as_str())
-        .collect::<HashSet<_>>()
-        .len();
+    let sessions = rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
     let mut out = Vec::new();
     let cooled = prev
         .last_trigger_ms
@@ -1426,17 +1306,13 @@ pub fn evaluate_triggers(
     if new_rows >= min_new_samples && new_sessions >= min_new_sessions && cooled {
         out.push(TriggerEvent {
             trigger_type: "new_data".to_string(),
-            reason: format!(
-                "+{new_rows} rows / +{new_sessions} sessions since last training check"
-            ),
+            reason: format!("+{new_rows} rows / +{new_sessions} sessions since last training check"),
             evidence: serde_json::json!({"new_rows": new_rows, "new_sessions": new_sessions}),
             dataset_fingerprint: fp.clone(),
             timestamp_ms: now,
         });
     }
-    if (fish_ready_now && !prev.last_fish_ready || fruit_ready_now && !prev.last_fruit_ready)
-        && cooled
-    {
+    if (fish_ready_now && !prev.last_fish_ready || fruit_ready_now && !prev.last_fruit_ready) && cooled {
         out.push(TriggerEvent {
             trigger_type: "coverage".to_string(),
             reason: format!(
@@ -1453,10 +1329,7 @@ pub fn evaluate_triggers(
     if new_hard >= prev.last_hard + (min_new_samples / 2).max(25) && cooled {
         out.push(TriggerEvent {
             trigger_type: "hard_examples".to_string(),
-            reason: format!(
-                "+{} hard/disagreement rows since last check",
-                new_hard.saturating_sub(prev.last_hard)
-            ),
+            reason: format!("+{} hard/disagreement rows since last check", new_hard.saturating_sub(prev.last_hard)),
             evidence: serde_json::json!({"hard_rows": new_hard}),
             dataset_fingerprint: fp.clone(),
             timestamp_ms: now,
@@ -1474,26 +1347,17 @@ pub fn history_path(data_dir: &Path) -> PathBuf {
 pub fn append_history(data_dir: &Path, kind: &str, detail: serde_json::Value) {
     let dir = data_dir.join(TRAINING_SUBDIR);
     let _ = std::fs::create_dir_all(&dir);
-    let line =
-        serde_json::json!({"ts": now_ms(), "kind": kind, "detail": detail}).to_string() + "\n";
+    let line = serde_json::json!({"ts": now_ms(), "kind": kind, "detail": detail}).to_string() + "\n";
     use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(history_path(data_dir))
-    {
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(history_path(data_dir)) {
         let _ = f.write_all(line.as_bytes());
     }
 }
 
 pub fn read_history(data_dir: &Path, tail: usize) -> Vec<serde_json::Value> {
-    let Ok(raw) = std::fs::read_to_string(history_path(data_dir)) else {
-        return Vec::new();
-    };
-    let mut v: Vec<serde_json::Value> = raw
-        .lines()
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .collect();
+    let Ok(raw) = std::fs::read_to_string(history_path(data_dir)) else { return Vec::new() };
+    let mut v: Vec<serde_json::Value> =
+        raw.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
     if v.len() > tail {
         v.drain(..v.len() - tail);
     }
@@ -1507,16 +1371,11 @@ mod tests {
     #[test]
     fn model_backend_probes_do_not_create_console_windows() {
         let script = "Add-Type -Name NativeConsole -Namespace GpoTest -MemberDefinition '[DllImport(\"kernel32.dll\")] public static extern IntPtr GetConsoleWindow();'; [GpoTest.NativeConsole]::GetConsoleWindow().ToInt64()";
-        let output = probe_program(
-            "powershell.exe",
-            &["-NoProfile", "-NonInteractive", "-Command", script],
-            Duration::from_secs(15),
-        )
-        .unwrap();
+        let output = probe_program("powershell.exe", &["-NoProfile", "-NonInteractive", "-Command", script], Duration::from_secs(15)).unwrap();
         assert!(output.status.success());
         assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "0");
     }
-    use super::super::ml_dataset::{GameStateLabel, MlTask, UiLabel, DATASET_VERSION};
+    use super::super::ml_dataset::{DATASET_VERSION, GameStateLabel, MlTask, UiLabel};
 
     fn row(session: &str, ts: u64, state: GameStateLabel, entity: Option<&str>) -> MlAnnotation {
         MlAnnotation {
@@ -1550,12 +1409,7 @@ mod tests {
     }
 
     /// One `reviews.jsonl` line in the `ReviewRecord` shape.
-    fn review_line(
-        image_id: &str,
-        status: &str,
-        eligible: bool,
-        excluded: Option<&str>,
-    ) -> serde_json::Value {
+    fn review_line(image_id: &str, status: &str, eligible: bool, excluded: Option<&str>) -> serde_json::Value {
         serde_json::json!({
             "review_id": format!("rev-{image_id}"),
             "image_id": image_id,
@@ -1626,10 +1480,7 @@ mod tests {
             frow("flt-c", "flt-sess", 3, GameStateLabel::CatchResult),
             frow("flt-d", "flt-sess", 4, GameStateLabel::CatchResult),
         ];
-        let body: String = rows
-            .iter()
-            .map(|r| serde_json::to_string(r).unwrap() + "\n")
-            .collect();
+        let body: String = rows.iter().map(|r| serde_json::to_string(r).unwrap() + "\n").collect();
         std::fs::write(v1.join("labels.jsonl"), body).unwrap();
         std::fs::write(
             v1.join("manifest.json"),
@@ -1658,16 +1509,9 @@ mod tests {
         let mut r = frow("img-1", "sess-a", 1, GameStateLabel::CatchResult);
         r.entity_id = Some("fish:snapper".to_string()); // collector's stem guess
         let rows = vec![r];
-        let body: String = rows
-            .iter()
-            .map(|r| serde_json::to_string(r).unwrap() + "\n")
-            .collect();
+        let body: String = rows.iter().map(|r| serde_json::to_string(r).unwrap() + "\n").collect();
         std::fs::write(v1.join("labels.jsonl"), &body).unwrap();
-        std::fs::write(
-            v1.join("manifest.json"),
-            r#"{"version":1,"split_overrides":{}}"#,
-        )
-        .unwrap();
+        std::fs::write(v1.join("manifest.json"), r#"{"version":1,"split_overrides":{}}"#).unwrap();
         write_reviews(
             &dir.join("reviews.jsonl"),
             &[serde_json::json!({
@@ -1685,10 +1529,7 @@ mod tests {
         assert_eq!(meta.rows_relabelled_by_review, 1);
         assert_eq!(meta.rows_kept_collector_label, 0);
         // The live labels file is the immutable collection record: unchanged.
-        assert_eq!(
-            std::fs::read_to_string(v1.join("labels.jsonl")).unwrap(),
-            body
-        );
+        assert_eq!(std::fs::read_to_string(v1.join("labels.jsonl")).unwrap(), body);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1702,18 +1543,8 @@ mod tests {
         let mut r = frow("img-1", "sess-a", 1, GameStateLabel::CatchResult);
         r.entity_id = Some("fish:swordfish".to_string());
         let rows = vec![r];
-        std::fs::write(
-            v1.join("labels.jsonl"),
-            rows.iter()
-                .map(|r| serde_json::to_string(r).unwrap() + "\n")
-                .collect::<String>(),
-        )
-        .unwrap();
-        std::fs::write(
-            v1.join("manifest.json"),
-            r#"{"version":1,"split_overrides":{}}"#,
-        )
-        .unwrap();
+        std::fs::write(v1.join("labels.jsonl"), rows.iter().map(|r| serde_json::to_string(r).unwrap() + "\n").collect::<String>()).unwrap();
+        std::fs::write(v1.join("manifest.json"), r#"{"version":1,"split_overrides":{}}"#).unwrap();
         write_reviews(
             &dir.join("reviews.jsonl"),
             &[serde_json::json!({
@@ -1741,18 +1572,8 @@ mod tests {
             let mut r = frow("img-1", "sess-a", 1, GameStateLabel::CatchResult);
             r.entity_id = Some("fish:snapper".to_string());
             let rows = vec![r];
-            std::fs::write(
-                v1.join("labels.jsonl"),
-                rows.iter()
-                    .map(|r| serde_json::to_string(r).unwrap() + "\n")
-                    .collect::<String>(),
-            )
-            .unwrap();
-            std::fs::write(
-                v1.join("manifest.json"),
-                r#"{"version":1,"split_overrides":{}}"#,
-            )
-            .unwrap();
+            std::fs::write(v1.join("labels.jsonl"), rows.iter().map(|r| serde_json::to_string(r).unwrap() + "\n").collect::<String>()).unwrap();
+            std::fs::write(v1.join("manifest.json"), r#"{"version":1,"split_overrides":{}}"#).unwrap();
             write_reviews(
                 &dir.join("reviews.jsonl"),
                 &[serde_json::json!({
@@ -1769,14 +1590,8 @@ mod tests {
         let (dir_a, a, bytes_a) = make("a", "fish:crimsonsnapper");
         let (dir_b, b, bytes_b) = make("b", "fish:candycornsquid");
         assert_ne!(bytes_a, bytes_b, "different verdicts write different bytes");
-        assert_ne!(
-            a.labels_sha, b.labels_sha,
-            "labels_sha hashes the written bytes"
-        );
-        assert_ne!(
-            a.fingerprint, b.fingerprint,
-            "fingerprint covers the written entity"
-        );
+        assert_ne!(a.labels_sha, b.labels_sha, "labels_sha hashes the written bytes");
+        assert_ne!(a.fingerprint, b.fingerprint, "fingerprint covers the written entity");
         let _ = std::fs::remove_dir_all(&dir_a);
         let _ = std::fs::remove_dir_all(&dir_b);
     }
@@ -1805,14 +1620,8 @@ mod tests {
         let store = crate::core::review::ReviewStore::new(dir.clone());
         let p = project_training_labels(&rows, &store);
         assert!(p.is_ok(), "{:?}", p.read_error);
-        assert_eq!(
-            p.rows_relabelled_by_review, 2,
-            "flt-a/flt-b gain the human label"
-        );
-        assert_eq!(
-            p.rows_kept_collector_label, 1,
-            "unreviewed flt-d keeps the collector label"
-        );
+        assert_eq!(p.rows_relabelled_by_review, 2, "flt-a/flt-b gain the human label");
+        assert_eq!(p.rows_kept_collector_label, 1, "unreviewed flt-d keeps the collector label");
         assert_eq!(p.rows_unreviewed, 1);
         assert_eq!(p.rows_excluded_by_review, 1);
         assert_eq!(p.rows.len(), 3, "the skipped row is absent");
@@ -1839,16 +1648,10 @@ mod tests {
         let a = project_training_labels(&rows, &store);
         let b = project_training_labels(&a.rows, &store);
         assert_eq!(a.rows.len(), b.rows.len());
-        let ja: Vec<String> = a
-            .rows
-            .iter()
-            .map(|r| serde_json::to_string(r).unwrap())
-            .collect();
-        let jb: Vec<String> = b
-            .rows
-            .iter()
-            .map(|r| serde_json::to_string(r).unwrap())
-            .collect();
+        let ja: Vec<String> =
+            a.rows.iter().map(|r| serde_json::to_string(r).unwrap()).collect();
+        let jb: Vec<String> =
+            b.rows.iter().map(|r| serde_json::to_string(r).unwrap()).collect();
         assert_eq!(ja, jb, "projecting already-projected rows must be a no-op");
 
         // A prior projection call must not change what the snapshot writes.
@@ -1878,29 +1681,18 @@ mod tests {
         let p = project_training_labels(&rows, &store);
         assert!(!p.is_ok());
         assert!(p.read_error.unwrap().contains("unreadable"));
-        assert!(
-            p.rows.is_empty(),
-            "no rows means no silent fallback to collector labels"
-        );
+        assert!(p.rows.is_empty(), "no rows means no silent fallback to collector labels");
         assert!(snapshot_dataset(&dir, &dir.join("snap"), &rows, 1).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn fingerprint_is_stable_and_sensitive() {
-        let a = vec![
-            row("s1", 1, GameStateLabel::Bite, None),
-            row("s1", 2, GameStateLabel::WaitingForBite, None),
-        ];
+        let a = vec![row("s1", 1, GameStateLabel::Bite, None), row("s1", 2, GameStateLabel::WaitingForBite, None)];
         let b = a.clone();
         assert_eq!(dataset_fingerprint(&a, 1), dataset_fingerprint(&b, 1));
         let mut c = a.clone();
-        c.push(row(
-            "s2",
-            3,
-            GameStateLabel::CatchResult,
-            Some("fish:golden"),
-        ));
+        c.push(row("s2", 3, GameStateLabel::CatchResult, Some("fish:golden")));
         assert_ne!(dataset_fingerprint(&a, 1), dataset_fingerprint(&c, 1));
         // Order-independent.
         let mut d = c.clone();
@@ -1926,10 +1718,7 @@ mod tests {
             }
         }
         let ts = test_sess.unwrap();
-        let rows = vec![
-            row("snap-a", 1, GameStateLabel::Bite, None),
-            row(&ts, 2, GameStateLabel::CatchResult, Some("fish:golden")),
-        ];
+        let rows = vec![row("snap-a", 1, GameStateLabel::Bite, None), row(&ts, 2, GameStateLabel::CatchResult, Some("fish:golden"))];
         let meta = snapshot_dataset(&dir, &dir.join("snap1"), &rows, 1).unwrap();
         assert_eq!(meta.rows, 2);
         assert!(meta.test_sessions.contains(&ts));
@@ -1951,20 +1740,11 @@ mod tests {
         // The trainer-facing labels.jsonl holds exactly the survivors, in
         // input order, and the human-skipped row is physically absent.
         let raw = std::fs::read_to_string(snap_dir.join("labels.jsonl")).unwrap();
-        let parsed: Vec<MlAnnotation> = raw
-            .lines()
-            .map(|l| serde_json::from_str(l).expect("snapshot row must parse"))
-            .collect();
+        let parsed: Vec<MlAnnotation> =
+            raw.lines().map(|l| serde_json::from_str(l).expect("snapshot row must parse")).collect();
         let ids: Vec<&str> = parsed.iter().map(|r| r.image_id.as_str()).collect();
-        assert_eq!(
-            ids,
-            vec!["flt-a", "flt-b", "flt-d"],
-            "input order preserved"
-        );
-        assert!(
-            !ids.contains(&"flt-c"),
-            "skipped row must not reach the trainer"
-        );
+        assert_eq!(ids, vec!["flt-a", "flt-b", "flt-d"], "input order preserved");
+        assert!(!ids.contains(&"flt-c"), "skipped row must not reach the trainer");
 
         // Eligible-reviewed rows carry the HUMAN verdict as entity_id
         // (flt-a/flt-b: None -> fish:golden); every other field survives the
@@ -1976,18 +1756,9 @@ mod tests {
             if got.image_id == "flt-a" || got.image_id == "flt-b" {
                 expected["entity_id"] = serde_json::json!("fish:golden");
             }
-            assert_eq!(
-                expected,
-                serde_json::to_value(got).unwrap(),
-                "row {}",
-                got.image_id
-            );
+            assert_eq!(expected, serde_json::to_value(got).unwrap(), "row {}", got.image_id);
         }
-        assert_eq!(
-            parsed[2].entity_id.as_deref(),
-            None,
-            "unreviewed rows keep the collector label"
-        );
+        assert_eq!(parsed[2].entity_id.as_deref(), None, "unreviewed rows keep the collector label");
         assert_eq!(meta.rows_relabelled_by_review, 2);
         assert_eq!(meta.rows_kept_collector_label, 1);
         assert_eq!(parsed[2].game_state, Some(GameStateLabel::CatchResult));
@@ -1995,22 +1766,10 @@ mod tests {
         // Manifest still copied unchanged; the frozen review state remains.
         assert_eq!(
             std::fs::read(snap_dir.join("manifest.json")).unwrap(),
-            std::fs::read(
-                dir.join("datasets")
-                    .join("gpo-vision")
-                    .join("v1")
-                    .join("manifest.json")
-            )
-            .unwrap()
+            std::fs::read(dir.join("datasets").join("gpo-vision").join("v1").join("manifest.json")).unwrap()
         );
-        assert!(
-            snap_dir.join("reviews.jsonl").exists(),
-            "reviews.jsonl copy must survive filtering"
-        );
-        assert_ne!(
-            meta.review_fingerprint, "none",
-            "reviews exist so fingerprint must be set"
-        );
+        assert!(snap_dir.join("reviews.jsonl").exists(), "reviews.jsonl copy must survive filtering");
+        assert_ne!(meta.review_fingerprint, "none", "reviews exist so fingerprint must be set");
 
         // Fingerprint + session counts describe what trains AS WRITTEN - i.e.
         // the relabelled rows, not the collector's original labels.
@@ -2026,11 +1785,7 @@ mod tests {
             })
             .collect();
         assert_eq!(meta.fingerprint, dataset_fingerprint(&kept, 1));
-        assert_ne!(
-            meta.fingerprint,
-            dataset_fingerprint(&rows, 1),
-            "excluded row must not be in the fingerprint"
-        );
+        assert_ne!(meta.fingerprint, dataset_fingerprint(&rows, 1), "excluded row must not be in the fingerprint");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2045,10 +1800,7 @@ mod tests {
         let snap_dir = dir.join("snap-all");
         let err = snapshot_dataset(&dir, &snap_dir, &rows, 1).unwrap_err();
         assert!(err.contains("0 rows after review filtering"), "{err}");
-        assert!(
-            !snap_dir.join("labels.jsonl").exists(),
-            "never leave an empty training snapshot on disk"
-        );
+        assert!(!snap_dir.join("labels.jsonl").exists(), "never leave an empty training snapshot on disk");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -2089,34 +1841,14 @@ mod tests {
         let dir = std::env::temp_dir().join("gpo-train-int");
         let _ = std::fs::remove_dir_all(&dir);
         let snap = SnapshotMeta {
-            fingerprint: "fp-x".into(),
-            rows: 1,
-            sessions: 1,
-            test_sessions: vec![],
-            created_at: 1,
-            snap_dir: dir.clone(),
-            review_fingerprint: "none".into(),
-            entity_registry_version: 1,
-            rows_excluded_by_review: 0,
-            rows_unreviewed: 0,
-            rows_relabelled_by_review: 0,
-            rows_kept_collector_label: 0,
-            exclusions: BTreeMap::new(),
-            labels_sha: "none".into(),
+            fingerprint: "fp-x".into(), rows: 1, sessions: 1, test_sessions: vec![],
+            created_at: 1, snap_dir: dir.clone(),
+            review_fingerprint: "none".into(), entity_registry_version: 1,
+            rows_excluded_by_review: 0, rows_unreviewed: 0,
+            rows_relabelled_by_review: 0, rows_kept_collector_label: 0,
+            exclusions: BTreeMap::new(), labels_sha: "none".into(),
         };
-        let mut j = create_job(
-            &dir,
-            "fish",
-            "manual",
-            &snap,
-            1,
-            "gpo_train.fish_train",
-            40,
-            7,
-            "test",
-            false,
-        )
-        .unwrap();
+        let mut j = create_job(&dir, "fish", "manual", &snap, 1, "gpo_train.fish_train", 40, 7, "test", false).unwrap();
         j.status = JobStatus::Running;
         save_job(&dir, &j).unwrap();
         let flipped = mark_interrupted(&dir);
@@ -2132,20 +1864,12 @@ mod tests {
         let dir = std::env::temp_dir().join("gpo-train-fam");
         let _ = std::fs::remove_dir_all(&dir);
         let snap = SnapshotMeta {
-            fingerprint: "fp-x".into(),
-            rows: 1,
-            sessions: 1,
-            test_sessions: vec![],
-            created_at: 1,
-            snap_dir: dir.clone(),
-            review_fingerprint: "none".into(),
-            entity_registry_version: 1,
-            rows_excluded_by_review: 0,
-            rows_unreviewed: 0,
-            rows_relabelled_by_review: 0,
-            rows_kept_collector_label: 0,
-            exclusions: BTreeMap::new(),
-            labels_sha: "none".into(),
+            fingerprint: "fp-x".into(), rows: 1, sessions: 1, test_sessions: vec![],
+            created_at: 1, snap_dir: dir.clone(),
+            review_fingerprint: "none".into(), entity_registry_version: 1,
+            rows_excluded_by_review: 0, rows_unreviewed: 0,
+            rows_relabelled_by_review: 0, rows_kept_collector_label: 0,
+            exclusions: BTreeMap::new(), labels_sha: "none".into(),
         };
         assert!(create_job(&dir, "dragons", "manual", &snap, 1, "m", 1, 1, "t", false).is_err());
         let _ = std::fs::remove_dir_all(&dir);
@@ -2160,12 +1884,8 @@ mod tests {
         // Same fingerprint twice: no repeat triggers.
         let st = TriggerState {
             last_fingerprint: Some(dataset_fingerprint(&rows, 1)),
-            last_rows: 1,
-            last_sessions: 1,
-            last_hard: 0,
-            last_trigger_ms: None,
-            last_fish_ready: false,
-            last_fruit_ready: false,
+            last_rows: 1, last_sessions: 1, last_hard: 0, last_trigger_ms: None,
+            last_fish_ready: false, last_fruit_ready: false,
         };
         let ev2 = evaluate_triggers(&rows, 1, false, false, &st, 1, 1, 24, 2000);
         assert!(ev2.is_empty(), "unchanged dataset must not re-trigger");
@@ -2197,10 +1917,7 @@ mod tests {
             Ok(o) => panic!("a hanging probe must fail, got success: {o:?}"),
         };
         assert!(err.contains("timed out"), "must say it timed out: {err}");
-        assert!(
-            t0.elapsed() < Duration::from_secs(10),
-            "must not wait for the process"
-        );
+        assert!(t0.elapsed() < Duration::from_secs(10), "must not wait for the process");
     }
 
     #[test]
@@ -2211,10 +1928,7 @@ mod tests {
             Duration::from_secs(5),
         );
         let err = r.unwrap_err();
-        assert!(
-            !err.contains("timed out"),
-            "a missing binary is not a hang: {err}"
-        );
+        assert!(!err.contains("timed out"), "a missing binary is not a hang: {err}");
     }
 
     #[test]
@@ -2242,10 +1956,7 @@ mod tests {
         let (dir, rows) = seeded_review_dir("repro");
         let s1 = snapshot_dataset(&dir, &dir.join("s1"), &rows, 1).unwrap();
         let s2 = snapshot_dataset(&dir, &dir.join("s2"), &rows, 1).unwrap();
-        assert_eq!(
-            s1.fingerprint, s2.fingerprint,
-            "same input must fingerprint identically"
-        );
+        assert_eq!(s1.fingerprint, s2.fingerprint, "same input must fingerprint identically");
         assert_eq!(s1.rows, s2.rows);
         assert_eq!(s1.rows_excluded_by_review, s2.rows_excluded_by_review);
         // The frozen trainer input must be byte-identical too.
@@ -2260,15 +1971,7 @@ mod tests {
         let dir = std::env::temp_dir().join("gpo-jobid-test");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        for bad in [
-            "../escape",
-            "..\\escape",
-            "a/b",
-            "a\\b",
-            "",
-            "NUL",
-            &"x".repeat(80),
-        ] {
+        for bad in ["../escape", "..\\escape", "a/b", "a\\b", "", "NUL", &"x".repeat(80)] {
             assert!(load_job(&dir, bad).is_err(), "must reject {bad:?}");
         }
         let _ = std::fs::remove_dir_all(&dir);
@@ -2281,21 +1984,13 @@ mod tests {
         // Exclusions are counted BY REASON, from the review record itself.
         assert_eq!(meta.rows_excluded_by_review, 1);
         let reasons: Vec<String> = meta.exclusions.keys().cloned().collect();
-        assert_eq!(
-            reasons.len(),
-            1,
-            "one reason per excluded row: {:?}",
-            meta.exclusions
-        );
+        assert_eq!(reasons.len(), 1, "one reason per excluded row: {:?}", meta.exclusions);
         assert!(
             reasons[0].contains("skipped") || reasons[0].contains("SKIP"),
             "the reason must come from the human verdict, not a generic label: {:?}",
             reasons
         );
-        assert_eq!(
-            meta.exclusions.values().sum::<usize>(),
-            meta.rows_excluded_by_review
-        );
+        assert_eq!(meta.exclusions.values().sum::<usize>(), meta.rows_excluded_by_review);
         // The frozen bytes are hashed so two snapshots that agree on every field
         // but differ byte-for-byte are still distinguishable.
         assert!(meta.labels_sha.starts_with("ln-"), "{}", meta.labels_sha);
@@ -2370,8 +2065,14 @@ mod tests {
         let reviews: Vec<serde_json::Value> = cases
             .iter()
             .filter_map(|(id, status, eligible)| {
-                status
-                    .map(|s| review_line(id, s, *eligible, (*eligible).then_some("corrupt image")))
+                status.map(|s| {
+                    review_line(
+                        id,
+                        s,
+                        *eligible,
+                        (*eligible).then_some("corrupt image"),
+                    )
+                })
             })
             .collect();
         write_reviews(&dir.join("reviews.jsonl"), &reviews);
@@ -2394,10 +2095,7 @@ mod tests {
         }
         // UNKNOWN and CONFLICT must never look "reviewed and eligible" in the
         // metadata, even though both are excluded.
-        assert_eq!(
-            meta.rows_unreviewed, 1,
-            "only the untouched row is unreviewed"
-        );
+        assert_eq!(meta.rows_unreviewed, 1, "only the untouched row is unreviewed");
         assert_eq!(meta.rows_excluded_by_review, 4);
         assert_eq!(meta.exclusions.values().sum::<usize>(), 4);
         let _ = std::fs::remove_dir_all(&dir);

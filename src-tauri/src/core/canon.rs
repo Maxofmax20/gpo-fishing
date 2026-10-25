@@ -125,10 +125,8 @@ pub fn is_fishing_drop(category: EntityCategory) -> bool {
 /// Build the canonical view from the passed KB. Never hardcodes entity lists.
 pub fn canonical_view(kb: &KnowledgeBase) -> Vec<CanonicalEntity> {
     let shadow_list = shadowed_entities(kb);
-    let shadowed: std::collections::HashMap<&str, &str> = shadow_list
-        .iter()
-        .map(|s| (s.entity_id.as_str(), s.shadowed_by.as_str()))
-        .collect();
+    let shadowed: std::collections::HashMap<&str, &str> =
+        shadow_list.iter().map(|s| (s.entity_id.as_str(), s.shadowed_by.as_str())).collect();
     kb.entities()
         .iter()
         .map(|e| CanonicalEntity {
@@ -225,8 +223,8 @@ fn unicode_fold(s: &str) -> String {
             '\u{00A0}' | '\u{2007}' | '\u{202F}' | '\u{3000}' => out.push(' '),
             // Curly quotes / primes: treated as plain separators, exactly like
             // every other punctuation char under `fruit::normalize`.
-            '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' | '\u{201C}' | '\u{201D}'
-            | '\u{201E}' | '\u{2032}' | '\u{2033}' => out.push(' '),
+            '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' | '\u{201C}' | '\u{201D}' | '\u{201E}'
+            | '\u{2032}' | '\u{2033}' => out.push(' '),
             _ => out.push(ch),
         }
     }
@@ -293,9 +291,7 @@ fn folded_hits(kb: &KnowledgeBase, folded_query: &str) -> Vec<String> {
 /// Strictness matters: a token equal to `norm` is an exact name, which belongs
 /// to the Exact path (handled by `kb.find_by_name`), never to this fallback.
 fn anchored_token_prefix(cnorm: &str, norm: &str) -> bool {
-    cnorm
-        .split(' ')
-        .any(|tok| tok.len() > norm.len() && tok.starts_with(norm))
+    cnorm.split(' ').any(|tok| tok.len() > norm.len() && tok.starts_with(norm))
 }
 
 /// Resolve user/OCR input against the passed KB.
@@ -428,22 +424,10 @@ mod tests {
         let kb = KnowledgeBase::bundled();
 
         // --- Exact: real KB entities, case/whitespace/confusable variants.
-        assert_eq!(
-            resolve(kb, "shark"),
-            Resolution::Exact("fish:shark".to_string())
-        );
-        assert_eq!(
-            resolve(kb, "snapper"),
-            Resolution::Exact("fish:snapper".to_string())
-        );
-        assert_eq!(
-            resolve(kb, "SWORDFISH"),
-            Resolution::Exact("fish:swordfish".to_string())
-        );
-        assert_eq!(
-            resolve(kb, "  Swordfish  "),
-            Resolution::Exact("fish:swordfish".to_string())
-        );
+        assert_eq!(resolve(kb, "shark"), Resolution::Exact("fish:shark".to_string()));
+        assert_eq!(resolve(kb, "snapper"), Resolution::Exact("fish:snapper".to_string()));
+        assert_eq!(resolve(kb, "SWORDFISH"), Resolution::Exact("fish:swordfish".to_string()));
+        assert_eq!(resolve(kb, "  Swordfish  "), Resolution::Exact("fish:swordfish".to_string()));
         // The one fishing-drop name from the "commonly cited" list that is
         // actually in the KB.
         assert!(kb.find_by_name("Swordfish").is_some());
@@ -460,18 +444,9 @@ mod tests {
         assert_eq!(resolve(kb, "\u{00A0}\u{3000}"), Resolution::Unknown);
 
         // --- Partial OCR confusables: the bounded folded retry helps.
-        assert_eq!(
-            resolve(kb, "5hark"),
-            Resolution::Exact("fish:shark".to_string())
-        );
-        assert_eq!(
-            resolve(kb, "5w0rdf15h"),
-            Resolution::Exact("fish:swordfish".to_string())
-        );
-        assert_eq!(
-            resolve(kb, "swordf1sh"),
-            Resolution::Exact("fish:swordfish".to_string())
-        );
+        assert_eq!(resolve(kb, "5hark"), Resolution::Exact("fish:shark".to_string()));
+        assert_eq!(resolve(kb, "5w0rdf15h"), Resolution::Exact("fish:swordfish".to_string()));
+        assert_eq!(resolve(kb, "swordf1sh"), Resolution::Exact("fish:swordfish".to_string()));
         assert_eq!(
             resolve(kb, "\u{FF33}\u{FF57}\u{FF4F}\u{FF52}\u{FF44}fish"),
             Resolution::Exact("fish:swordfish".to_string()),
@@ -499,14 +474,8 @@ mod tests {
         assert_eq!(resolve(kb, "  Sword   fish  "), Resolution::Unknown);
         // Whitespace collapsing itself DOES work (verified here so the
         // limitation above is clearly about punctuation, not spacing).
-        assert_eq!(
-            resolve(kb, "  Common   Bait  "),
-            Resolution::Exact("bait:common".to_string())
-        );
-        assert_eq!(
-            resolve(kb, "T  Rex"),
-            Resolution::Exact("fruit:t-rex".to_string())
-        );
+        assert_eq!(resolve(kb, "  Common   Bait  "), Resolution::Exact("bait:common".to_string()));
+        assert_eq!(resolve(kb, "T  Rex"), Resolution::Exact("fruit:t-rex".to_string()));
         // Known conservative limitation: the `ﬁ` ligature (U+FB01) is not
         // folded, so it does not reach `fish:swordfish`.
         assert_eq!(resolve(kb, "Sword\u{FB01}sh"), Resolution::Unknown);
@@ -528,13 +497,10 @@ mod tests {
             );
         }
         // 4-char word prefixes still work (boundary of the constant).
-        assert_eq!(
-            resolve(kb, "snap"),
-            Resolution::Ambiguous(vec![
-                "fish:snapper".to_string(),
-                "ui:line-snapped".to_string(),
-            ])
-        );
+        assert_eq!(resolve(kb, "snap"), Resolution::Ambiguous(vec![
+            "fish:snapper".to_string(),
+            "ui:line-snapped".to_string(),
+        ]));
         // Single fallback hit is still refused (never guess).
         assert_eq!(resolve(kb, "shar"), Resolution::Unknown);
     }
@@ -551,20 +517,12 @@ mod tests {
         // `find_by_name`. 26 of those 27 alias/canonical pairs collide in the
         // KB index; the Smoke/Moku pair does NOT (see the test below), which
         // is why the count is 26 and not 27.
-        assert_eq!(
-            shadowed.len(),
-            26,
-            "ids: {:?}",
-            shadowed.iter().map(|s| &s.entity_id).collect::<Vec<_>>()
-        );
+        assert_eq!(shadowed.len(), 26, "ids: {:?}", shadowed.iter().map(|s| &s.entity_id).collect::<Vec<_>>());
 
         // Deterministic order.
         let mut sorted = shadowed.clone();
         sorted.sort_by(|a, b| a.entity_id.cmp(&b.entity_id));
-        assert_eq!(
-            shadowed, sorted,
-            "shadowed_entities must be sorted by entity_id"
-        );
+        assert_eq!(shadowed, sorted, "shadowed_entities must be sorted by entity_id");
 
         // Every entry is a real KB pair, and the winner really wins the index.
         let valid: std::collections::HashSet<&str> =
@@ -572,13 +530,8 @@ mod tests {
         for s in &shadowed {
             assert!(valid.contains(s.entity_id.as_str()), "{}", s.entity_id);
             assert!(valid.contains(s.shadowed_by.as_str()), "{}", s.shadowed_by);
-            assert_ne!(
-                s.entity_id, s.shadowed_by,
-                "a shadow report must name two different ids"
-            );
-            let self_hit = kb
-                .find_by_name(&s.canonical_name)
-                .expect("canonical name is indexed");
+            assert_ne!(s.entity_id, s.shadowed_by, "a shadow report must name two different ids");
+            let self_hit = kb.find_by_name(&s.canonical_name).expect("canonical name is indexed");
             assert_eq!(self_hit.id, s.shadowed_by, "{} claim is wrong", s.entity_id);
             assert_eq!(self_hit.canonical_name, s.shadowed_by_name);
         }
@@ -614,9 +567,7 @@ mod tests {
         ];
         assert_eq!(expected.len(), shadowed.len());
         for (id, name, winner) in expected {
-            let s = shadowed
-                .iter()
-                .find(|s| s.entity_id == *id)
+            let s = shadowed.iter().find(|s| s.entity_id == *id)
                 .unwrap_or_else(|| panic!("missing shadow report for {id}"));
             assert_eq!(s.canonical_name, *name, "{id} canonical name");
             assert_eq!(s.shadowed_by, *winner, "{id} winner");
@@ -640,18 +591,9 @@ mod tests {
         assert_eq!(kb.find_by_name("Moku").expect("Moku").id, "fruit:moku");
         // Resolution is unchanged and correct for the shadowed pairs too:
         // the winners are the real fruits, the duplicates are the noise.
-        assert_eq!(
-            resolve(kb, "Dark"),
-            Resolution::Exact("fruit:yami".to_string())
-        );
-        assert_eq!(
-            resolve(kb, "Phoenix"),
-            Resolution::Exact("fruit:tori".to_string())
-        );
-        assert_eq!(
-            resolve(kb, "Love"),
-            Resolution::Exact("fruit:mero".to_string())
-        );
+        assert_eq!(resolve(kb, "Dark"), Resolution::Exact("fruit:yami".to_string()));
+        assert_eq!(resolve(kb, "Phoenix"), Resolution::Exact("fruit:tori".to_string()));
+        assert_eq!(resolve(kb, "Love"), Resolution::Exact("fruit:mero".to_string()));
     }
 
     #[test]
@@ -662,26 +604,12 @@ mod tests {
         assert_eq!(view.len(), kb.len());
 
         for c in &view {
-            let expect = shadowed
-                .iter()
-                .find(|s| s.entity_id == c.entity_id)
-                .map(|s| s.shadowed_by.clone());
-            assert_eq!(
-                c.shadowed_by, expect,
-                "shadowed_by mismatch for {}",
-                c.entity_id
-            );
+            let expect = shadowed.iter().find(|s| s.entity_id == c.entity_id).map(|s| s.shadowed_by.clone());
+            assert_eq!(c.shadowed_by, expect, "shadowed_by mismatch for {}", c.entity_id);
         }
         // Shadowed entries carry Some(...).
-        let v = |id: &str| {
-            view.iter()
-                .find(|c| c.entity_id == id)
-                .unwrap_or_else(|| panic!("{id}"))
-        };
-        assert_eq!(
-            v("fruit:phoenix").shadowed_by.as_deref(),
-            Some("fruit:tori")
-        );
+        let v = |id: &str| view.iter().find(|c| c.entity_id == id).unwrap_or_else(|| panic!("{id}"));
+        assert_eq!(v("fruit:phoenix").shadowed_by.as_deref(), Some("fruit:tori"));
         assert_eq!(v("fruit:dark").shadowed_by.as_deref(), Some("fruit:yami"));
         assert_eq!(v("fruit:love").shadowed_by.as_deref(), Some("fruit:mero"));
         // Non-shadowed entries carry None.
@@ -692,43 +620,26 @@ mod tests {
         assert_eq!(v("bait:common").shadowed_by, None);
         assert_eq!(v("ui:you-fished").shadowed_by, None);
         // Exactly `shadowed.len()` rows are flagged.
-        assert_eq!(
-            view.iter().filter(|c| c.shadowed_by.is_some()).count(),
-            shadowed.len()
-        );
+        assert_eq!(view.iter().filter(|c| c.shadowed_by.is_some()).count(), shadowed.len());
     }
 
     #[test]
     fn unicode_fold_and_ocr_variant_fold_are_conservative() {
         // unicode_fold: fullwidth ASCII → ASCII.
-        assert_eq!(
-            unicode_fold("\u{FF33}\u{FF57}\u{FF4F}\u{FF52}\u{FF44}"),
-            "Sword"
-        );
+        assert_eq!(unicode_fold("\u{FF33}\u{FF57}\u{FF4F}\u{FF52}\u{FF44}"), "Sword");
         // unicode_fold: combining diacritics dropped.
         assert_eq!(unicode_fold("Sword\u{0301}fish"), "Swordfish");
         // unicode_fold: nbsp family + curly quotes → ASCII space.
-        assert_eq!(
-            unicode_fold("a\u{00A0}b\u{202F}c\u{2019}d\u{201C}e"),
-            "a b c d e"
-        );
+        assert_eq!(unicode_fold("a\u{00A0}b\u{202F}c\u{2019}d\u{201C}e"), "a b c d e");
         // unicode_fold: everything else is untouched (no ligature folding).
         assert_eq!(unicode_fold("Sword\u{FB01}sh"), "Sword\u{FB01}sh");
 
         // ocr_variant_fold = normalize(unicode_fold(..)) + the 3 confusable classes.
-        assert_eq!(
-            ocr_variant_fold("Swordfish"),
-            "swordflsh",
-            "i folds into the l class (LOSSY)"
-        );
+        assert_eq!(ocr_variant_fold("Swordfish"), "swordflsh", "i folds into the l class (LOSSY)");
         assert_eq!(ocr_variant_fold("swordf1sh"), "swordflsh");
         assert_eq!(ocr_variant_fold("5w0rdf15h"), "swordflsh");
         assert_eq!(ocr_variant_fold("\u{FF33}wordfish"), "swordflsh");
-        assert_eq!(
-            ocr_variant_fold("Snapper"),
-            "snapper",
-            "no confusable in 'snapper'"
-        );
+        assert_eq!(ocr_variant_fold("Snapper"), "snapper", "no confusable in 'snapper'");
         assert_eq!(ocr_variant_fold("Common Bait"), "common balt");
         assert_eq!(ocr_variant_fold(""), "");
         assert_eq!(ocr_variant_fold("!!!"), "");
@@ -741,21 +652,18 @@ mod tests {
         let kb = KnowledgeBase::bundled();
         // REAL collision in the bundled KB: "Phoenix" is fruit:tori's alias
         // AND fruit:phoenix's own canonical name, so they fold together.
-        assert_eq!(
-            folded_hits(kb, &ocr_variant_fold("Phoenix")),
-            vec!["fruit:phoenix".to_string(), "fruit:tori".to_string(),]
-        );
+        assert_eq!(folded_hits(kb, &ocr_variant_fold("Phoenix")), vec![
+            "fruit:phoenix".to_string(),
+            "fruit:tori".to_string(),
+        ]);
         // "ph0enix" misses the plain index, so the folded retry sees BOTH.
         assert!(kb.find_by_name("ph0enix").is_none());
-        assert_eq!(
-            resolve(kb, "ph0enix"),
-            Resolution::Ambiguous(vec!["fruit:phoenix".to_string(), "fruit:tori".to_string(),])
-        );
+        assert_eq!(resolve(kb, "ph0enix"), Resolution::Ambiguous(vec![
+            "fruit:phoenix".to_string(),
+            "fruit:tori".to_string(),
+        ]));
         // The plain path still wins for the honest spelling (unchanged Exact).
-        assert_eq!(
-            resolve(kb, "Phoenix"),
-            Resolution::Exact("fruit:tori".to_string())
-        );
+        assert_eq!(resolve(kb, "Phoenix"), Resolution::Exact("fruit:tori".to_string()));
     }
 
     #[test]
@@ -769,11 +677,7 @@ mod tests {
             // Sanity: every entity is its own folded hit.
             for folded_query in candidate_names(e).map(ocr_variant_fold) {
                 let hits = folded_hits(kb, &folded_query);
-                assert!(
-                    hits.contains(&e.id),
-                    "{} missing from its own folded hits",
-                    e.id
-                );
+                assert!(hits.contains(&e.id), "{} missing from its own folded hits", e.id);
                 for id in &hits {
                     assert!(valid.contains(id.as_str()), "folded id {id} not in KB");
                 }
@@ -823,7 +727,10 @@ mod tests {
         );
         // Fruit canonical.
         let suna = kb.find_by_name("Suna").expect("Suna in KB");
-        assert_eq!(resolve(kb, "Suna"), Resolution::Exact(suna.id.clone()));
+        assert_eq!(
+            resolve(kb, "Suna"),
+            Resolution::Exact(suna.id.clone())
+        );
     }
 
     #[test]
@@ -914,10 +821,7 @@ mod tests {
         assert_eq!(tori.id, "fruit:tori");
         // Canonical view preserves ids unchanged.
         let view = canonical_view(kb);
-        let vg = view
-            .iter()
-            .find(|c| c.entity_id == "fish:golden")
-            .expect("view has fish:golden");
+        let vg = view.iter().find(|c| c.entity_id == "fish:golden").expect("view has fish:golden");
         assert_eq!(vg.canonical_name, "Golden");
     }
 
@@ -927,50 +831,22 @@ mod tests {
         let valid: std::collections::HashSet<&str> =
             kb.entities().iter().map(|e| e.id.as_str()).collect();
         let words = [
-            "Suna",
-            "sand",
-            "Phoenix",
-            "tori",
-            "Golden",
-            "golden",
-            "shark",
-            "fish",
-            "devil",
-            "tuna",
-            "crab",
-            "squid",
-            "T-Rex",
-            "trex",
-            "Common Bait",
-            "common",
-            "you caught",
-            "spawned",
-            "zzzqqqxzy123",
-            "",
-            "   ",
-            "Blue-Lip Grouper",
-            "Tigerfin",
-            "Skeletal Shark",
-            "Sunken Armor",
-            "Candy Corn Squid",
-            "skeletal shark",
-            "snappe",
+            "Suna", "sand", "Phoenix", "tori", "Golden", "golden", "shark",
+            "fish", "devil", "tuna", "crab", "squid", "T-Rex", "trex",
+            "Common Bait", "common", "you caught", "spawned",
+            "zzzqqqxzy123", "", "   ",
+            "Blue-Lip Grouper", "Tigerfin", "Skeletal Shark", "Sunken Armor",
+            "Candy Corn Squid", "skeletal shark", "snappe",
         ];
         for w in words {
             match resolve(kb, w) {
                 Resolution::Exact(id) => {
-                    assert!(
-                        valid.contains(id.as_str()),
-                        "Exact({id}) for {w:?} not in KB"
-                    );
+                    assert!(valid.contains(id.as_str()), "Exact({id}) for {w:?} not in KB");
                 }
                 Resolution::Ambiguous(ids) => {
                     assert!(ids.len() >= 2, "Ambiguous for {w:?} must hold 2+ ids");
                     for id in &ids {
-                        assert!(
-                            valid.contains(id.as_str()),
-                            "Ambiguous id {id} for {w:?} not in KB"
-                        );
+                        assert!(valid.contains(id.as_str()), "Ambiguous id {id} for {w:?} not in KB");
                     }
                 }
                 Resolution::Unknown => {}
@@ -1013,9 +889,7 @@ mod tests {
         for name in REQUESTED_ABSENT {
             let norm = fruit::normalize(name);
             assert!(
-                !view
-                    .iter()
-                    .any(|c| fruit::normalize(&c.canonical_name) == norm),
+                !view.iter().any(|c| fruit::normalize(&c.canonical_name) == norm),
                 "{name:?} must not appear as a canonical entity"
             );
         }
@@ -1033,11 +907,7 @@ mod tests {
                     assert!(c.fishing_drop, "{} should be fishing_drop", c.entity_id)
                 }
                 EntityCategory::Bait | EntityCategory::UiTerm => {
-                    assert!(
-                        !c.fishing_drop,
-                        "{} should not be fishing_drop",
-                        c.entity_id
-                    )
+                    assert!(!c.fishing_drop, "{} should not be fishing_drop", c.entity_id)
                 }
                 _ => assert!(!c.fishing_drop),
             }
@@ -1050,13 +920,7 @@ mod tests {
             assert_eq!(c.visual_refs_count, 0);
         }
         // Spot-check: Tori aliases include Phoenix from FRUIT_ALIASES.
-        let tori = view
-            .iter()
-            .find(|c| c.entity_id == "fruit:tori")
-            .expect("fruit:tori");
-        assert!(tori
-            .aliases
-            .iter()
-            .any(|a| a.eq_ignore_ascii_case("Phoenix")));
+        let tori = view.iter().find(|c| c.entity_id == "fruit:tori").expect("fruit:tori");
+        assert!(tori.aliases.iter().any(|a| a.eq_ignore_ascii_case("Phoenix")));
     }
 }

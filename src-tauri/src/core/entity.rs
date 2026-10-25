@@ -105,19 +105,8 @@ fn unknown(event_id: Option<String>, evidence: Vec<Evidence>, reason: String) ->
 /// Decide from one OCR+KB observation. Pure function.
 pub fn decide_from_observation(event_id: Option<String>, obs: &Observation) -> ResultEntity {
     let Some(m) = obs.entity.as_ref() else {
-        let reason = obs
-            .unknown_reason
-            .clone()
-            .unwrap_or_else(|| "no entity matched".to_string());
-        return unknown(
-            event_id,
-            obs.candidates
-                .iter()
-                .flat_map(|c| c.evidence.clone())
-                .take(3)
-                .collect(),
-            reason,
-        );
+        let reason = obs.unknown_reason.clone().unwrap_or_else(|| "no entity matched".to_string());
+        return unknown(event_id, obs.candidates.iter().flat_map(|c| c.evidence.clone()).take(3).collect(), reason);
     };
     let (entity_type, discount, note) = match m.category.as_str() {
         "fish" => (EntityType::Fish, 1.0, None),
@@ -130,54 +119,26 @@ pub fn decide_from_observation(event_id: Option<String>, obs: &Observation) -> R
                 .iter()
                 .any(|k| m.entity_id.contains(k));
             if is_fruit_event {
-                (
-                    EntityType::DevilFruit,
-                    0.5,
-                    Some("ui-phrase proves a fruit event, not which fruit".to_string()),
-                )
+                (EntityType::DevilFruit, 0.5, Some("ui-phrase proves a fruit event, not which fruit".to_string()))
             } else {
-                (
-                    EntityType::Other,
-                    0.5,
-                    Some("ui-phrase proves an event, not an identity".to_string()),
-                )
+                (EntityType::Other, 0.5, Some("ui-phrase proves an event, not an identity".to_string()))
             }
         }
-        _ => (
-            EntityType::Other,
-            0.5,
-            Some("unmapped KB category: no identity claim".to_string()),
-        ),
+        _ => (EntityType::Other, 0.5, Some("unmapped KB category: no identity claim".to_string())),
     };
     let mut evidence = m.evidence.clone();
     if let Some(n) = &note {
-        evidence.push(Evidence {
-            kind: "type_mapping".to_string(),
-            detail: n.clone(),
-            weight: discount - 1.0,
-        });
+        evidence.push(Evidence { kind: "type_mapping".to_string(), detail: n.clone(), weight: discount - 1.0 });
     }
     let has_identity = discount >= 1.0;
     ResultEntity {
         event_id,
         state: "RESULT".to_string(),
         entity_type,
-        entity_id: if has_identity {
-            Some(m.entity_id.clone())
-        } else {
-            None
-        },
-        entity_name: if has_identity {
-            Some(m.canonical_name.clone())
-        } else {
-            None
-        },
+        entity_id: if has_identity { Some(m.entity_id.clone()) } else { None },
+        entity_name: if has_identity { Some(m.canonical_name.clone()) } else { None },
         confidence: round2(m.confidence * discount),
-        source: if obs.vision_hint.is_some() {
-            EntitySource::Hybrid
-        } else {
-            EntitySource::Ocr
-        },
+        source: if obs.vision_hint.is_some() { EntitySource::Hybrid } else { EntitySource::Ocr },
         evidence,
         confirmed: false,
         unknown_reason: None,
@@ -214,11 +175,7 @@ pub struct TemporalBuffer {
 
 impl TemporalBuffer {
     pub fn new(k: usize, window_ms: u64) -> Self {
-        Self {
-            k: k.max(1),
-            window_ms,
-            readings: Vec::new(),
-        }
+        Self { k: k.max(1), window_ms, readings: Vec::new() }
     }
 
     pub fn push(&mut self, entity_id: Option<String>, now_ms: u64) -> TemporalVerdict {
@@ -246,9 +203,9 @@ impl TemporalBuffer {
 
 #[cfg(test)]
 mod tests {
-    use super::super::knowledge::KnowledgeBase;
-    use super::super::perception::{correlate_text, ScreenKind};
     use super::*;
+    use super::super::knowledge::KnowledgeBase;
+    use super::super::perception::{ScreenKind, correlate_text};
 
     fn kb() -> &'static KnowledgeBase {
         KnowledgeBase::bundled()
@@ -263,11 +220,7 @@ mod tests {
         let d = decide_from_observation(None, &obs_for("You caught Golden Fish"));
         assert_eq!(d.entity_type, EntityType::Fish);
         assert_eq!(d.entity_id.as_deref(), Some("fish:golden"));
-        assert!(
-            d.confidence >= 0.80,
-            "measured matcher score, got {}",
-            d.confidence
-        );
+        assert!(d.confidence >= 0.80, "measured matcher score, got {}", d.confidence);
         assert_eq!(d.source, EntitySource::Ocr);
         assert!(!d.confirmed, "single observations are never confirmed");
         assert!(!d.evidence.is_empty());
@@ -285,10 +238,7 @@ mod tests {
         let d = decide_from_observation(None, &obs_for("zxqwv blorpt 123"));
         assert_eq!(d.entity_type, EntityType::Unknown);
         assert_eq!(d.entity_id, None);
-        assert_eq!(
-            d.confidence, 0.0,
-            "UNKNOWN carries no claim, hence no confidence"
-        );
+        assert_eq!(d.confidence, 0.0, "UNKNOWN carries no claim, hence no confidence");
         assert!(d.unknown_reason.is_some());
     }
 
@@ -297,10 +247,7 @@ mod tests {
         // "devil fruit" banner phrase with no name: fruit EVENT, no identity.
         let d = decide_from_observation(None, &obs_for("devil fruit"));
         assert_eq!(d.entity_type, EntityType::DevilFruit);
-        assert_eq!(
-            d.entity_id, None,
-            "phrase match must not invent an identity"
-        );
+        assert_eq!(d.entity_id, None, "phrase match must not invent an identity");
         assert!(d.confidence < 0.80, "discounted below confirm threshold");
     }
 
@@ -316,14 +263,8 @@ mod tests {
         let mut buf = TemporalBuffer::new(3, 10_000);
         assert_eq!(buf.push(None, 0), TemporalVerdict::Insufficient);
         assert_eq!(buf.push(None, 100), TemporalVerdict::Insufficient);
-        assert_eq!(
-            buf.push(Some("fish:golden".into()), 200),
-            TemporalVerdict::Insufficient
-        );
-        assert_eq!(
-            buf.push(Some("fish:golden".into()), 300),
-            TemporalVerdict::Insufficient
-        );
+        assert_eq!(buf.push(Some("fish:golden".into()), 200), TemporalVerdict::Insufficient);
+        assert_eq!(buf.push(Some("fish:golden".into()), 300), TemporalVerdict::Insufficient);
         assert_eq!(
             buf.push(Some("fish:golden".into()), 400),
             TemporalVerdict::Stable("fish:golden".to_string())
@@ -335,10 +276,7 @@ mod tests {
         let mut buf = TemporalBuffer::new(2, 10_000);
         buf.push(Some("fish:shark".into()), 0);
         buf.push(Some("fish:shark".into()), 100);
-        assert_eq!(
-            buf.push(Some("fish:golden".into()), 200),
-            TemporalVerdict::Unstable
-        );
+        assert_eq!(buf.push(Some("fish:golden".into()), 200), TemporalVerdict::Unstable);
     }
 
     #[test]

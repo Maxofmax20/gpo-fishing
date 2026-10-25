@@ -13,11 +13,7 @@ use gpo_autofish_lib::core::knowledge::{ImportEntity, KnowledgeBase};
 use gpo_autofish_lib::core::perception::{match_entities, ScreenKind};
 
 fn find_export() -> Option<std::path::PathBuf> {
-    find_repo_file(
-        &std::path::Path::new("ml")
-            .join("gpo_ocr_audit")
-            .join("kb_export.json"),
-    )
+    find_repo_file(&std::path::Path::new("ml").join("gpo_ocr_audit").join("kb_export.json"))
 }
 
 fn find_repo_file(rel: &std::path::Path) -> Option<std::path::PathBuf> {
@@ -50,41 +46,23 @@ fn effective_kb(export: &serde_json::Value) -> (KnowledgeBase, std::collections:
         .map(|e| ImportEntity {
             id: e["id"].as_str().unwrap().to_string(),
             canonical_name: e["canonical_name"].as_str().unwrap().to_string(),
-            aliases: e["aliases"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default(),
+            aliases: e["aliases"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default(),
             category: e["category"].as_str().unwrap().to_string(),
             rarity: e["rarity"].as_str().map(str::to_string),
             description: None,
-            ocr_aliases: e["ocr_aliases"]
-                .as_array()
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
-                .unwrap_or_default(),
+            ocr_aliases: e["ocr_aliases"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default(),
             visual_refs: vec![],
             provenance: gpo_autofish_lib::core::knowledge::EntityProvenance {
                 source: "kb_export.json".to_string(),
-                url: Some(
-                    "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary".to_string(),
-                ),
+                url: Some("https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary".to_string()),
                 updated: None,
             },
         })
         .collect();
-    let added: std::collections::HashSet<String> = imports.iter().map(|i| i.id.clone()).collect();
+    let added: std::collections::HashSet<String> =
+        imports.iter().map(|i| i.id.clone()).collect();
     let report = kb.merge_import(&imports, false);
-    assert_eq!(
-        report.added, 15,
-        "the export must carry the 15 overlay species: {report:?}"
-    );
+    assert_eq!(report.added, 15, "the export must carry the 15 overlay species: {report:?}");
     (kb, added)
 }
 
@@ -122,10 +100,7 @@ fn every_documented_fish_name_resolves_to_its_export_id() {
             // legitimately lists up to 5 candidates; the top one confirms.
             assert!(!candidates.is_empty(), "{name} produced no candidates");
         }
-        assert_eq!(
-            candidates[0].entity_id, id,
-            "{name} resolved to the wrong entity"
-        );
+        assert_eq!(candidates[0].entity_id, id, "{name} resolved to the wrong entity");
         checked += 1;
     }
     assert_eq!(checked, 16, "all 16 documented fish must be checked");
@@ -155,19 +130,15 @@ fn every_documented_fish_name_resolves_to_its_export_id() {
 // `tests/test_projected_fixture.py` (Python) re-derives the manifest from the same
 // embedded inputs, so a stale expectation cannot hide here.
 
-fn fixture_projection() -> Option<(
-    serde_json::Value,
-    gpo_autofish_lib::core::training::ProjectedLabels,
-)> {
+fn fixture_projection() -> Option<(serde_json::Value, gpo_autofish_lib::core::training::ProjectedLabels)>
+{
     use gpo_autofish_lib::core::ml_dataset::MlAnnotation;
     use gpo_autofish_lib::core::review::ReviewStore;
 
-    let path = find_repo_file(
-        &std::path::Path::new("src-tauri")
-            .join("tests")
-            .join("fixtures")
-            .join("projected_class_distribution.json"),
-    )?;
+    let path = find_repo_file(&std::path::Path::new("src-tauri")
+        .join("tests")
+        .join("fixtures")
+        .join("projected_class_distribution.json"))?;
     let fx: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
 
     let rows: Vec<MlAnnotation> = fx["labels"]
@@ -214,11 +185,7 @@ fn the_projected_class_distribution_equals_the_python_dataset_manifest() {
     };
     let manifest = &fx["manifest"];
     let by_id: std::collections::HashMap<&str, &gpo_autofish_lib::core::ml_dataset::MlAnnotation> =
-        projected
-            .rows
-            .iter()
-            .map(|r| (r.image_id.as_str(), r))
-            .collect();
+        projected.rows.iter().map(|r| (r.image_id.as_str(), r)).collect();
 
     let manifest_rows = manifest["rows"].as_array().expect("manifest rows");
     assert_eq!(
@@ -228,15 +195,13 @@ fn the_projected_class_distribution_equals_the_python_dataset_manifest() {
 
     // Per row: the human verdict the projection applied IS the label the Python
     // builder recorded, and the split is the same function on both sides.
-    let mut per_class: std::collections::BTreeMap<
-        String,
-        (usize, std::collections::BTreeSet<String>, usize, usize),
-    > = Default::default();
+    let mut per_class: std::collections::BTreeMap<String, (usize, std::collections::BTreeSet<String>, usize, usize)> =
+        Default::default();
     for m in manifest_rows {
         let image_id = m["image_id"].as_str().unwrap();
-        let row = by_id
-            .get(image_id)
-            .unwrap_or_else(|| panic!("{image_id} is in the manifest but not in the projection"));
+        let row = by_id.get(image_id).unwrap_or_else(|| {
+            panic!("{image_id} is in the manifest but not in the projection")
+        });
         assert_eq!(
             row.entity_id.as_deref(),
             m["entity_id"].as_str(),
@@ -247,11 +212,7 @@ fn the_projected_class_distribution_equals_the_python_dataset_manifest() {
             m["split"].as_str().unwrap(),
             "{image_id}: session split drifted between Rust and Python"
         );
-        assert_eq!(
-            row.hard_example,
-            m["hard_example"].as_bool().unwrap_or(false),
-            "{image_id}"
-        );
+        assert_eq!(row.hard_example, m["hard_example"].as_bool().unwrap_or(false), "{image_id}");
         assert_eq!(
             !row.ocr_text.trim().is_empty(),
             m["ocr_text_present"].as_bool().unwrap_or(false),
@@ -283,21 +244,9 @@ fn the_projected_class_distribution_equals_the_python_dataset_manifest() {
             panic!("{cls}: manifest declares a class the projection never produces")
         });
         assert_eq!(d["rows"].as_u64().unwrap() as usize, *rows, "{cls} rows");
-        assert_eq!(
-            d["sessions"].as_u64().unwrap() as usize,
-            sessions.len(),
-            "{cls} sessions"
-        );
-        assert_eq!(
-            d["val_support"].as_u64().unwrap() as usize,
-            *val,
-            "{cls} val support"
-        );
-        assert_eq!(
-            d["test_support"].as_u64().unwrap() as usize,
-            *test,
-            "{cls} test support"
-        );
+        assert_eq!(d["sessions"].as_u64().unwrap() as usize, sessions.len(), "{cls} sessions");
+        assert_eq!(d["val_support"].as_u64().unwrap() as usize, *val, "{cls} val support");
+        assert_eq!(d["test_support"].as_u64().unwrap() as usize, *test, "{cls} test support");
     }
 
     // The class MAP: sorted, and exactly the set the projection produces for the
@@ -311,10 +260,7 @@ fn the_projected_class_distribution_equals_the_python_dataset_manifest() {
     let mut from_projection: Vec<String> = per_class.keys().cloned().collect();
     from_projection.sort();
     assert_eq!(class_map, from_projection);
-    assert_eq!(
-        class_map.len(),
-        manifest["class_map_width"].as_u64().unwrap() as usize
-    );
+    assert_eq!(class_map.len(), manifest["class_map_width"].as_u64().unwrap() as usize);
     // Same fingerprint rule as `class_vocab::fish_vocab_sha` and
     // `reviewed_dataset.build`: SHA-256 of the newline-joined list.
     assert_eq!(
@@ -329,29 +275,21 @@ fn the_projection_keeps_exactly_the_rows_the_manifest_omits_by_design() {
         eprintln!("SKIP: projected_class_distribution.json not found");
         return;
     };
-    let manifest_ids: std::collections::HashSet<&str> = fx["manifest"]["rows"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|m| m["image_id"].as_str().unwrap())
-        .collect();
+    let manifest_ids: std::collections::HashSet<&str> =
+        fx["manifest"]["rows"].as_array().unwrap().iter()
+            .map(|m| m["image_id"].as_str().unwrap())
+            .collect();
     let projected_ids: std::collections::HashSet<&str> =
         projected.rows.iter().map(|r| r.image_id.as_str()).collect();
 
     // Rows a human rejected are gone from the projection entirely.
-    let rejected: Vec<&str> = fx["reviews"]
-        .as_array()
-        .unwrap()
-        .iter()
+    let rejected: Vec<&str> = fx["reviews"].as_array().unwrap().iter()
         .filter(|r| r["training_eligible"].as_bool() == Some(false))
         .map(|r| r["image_id"].as_str().unwrap())
         .collect();
     assert!(!rejected.is_empty(), "the fixture must exercise exclusion");
     for id in &rejected {
-        assert!(
-            !projected_ids.contains(id),
-            "{id} is review-excluded but projected"
-        );
+        assert!(!projected_ids.contains(id), "{id} is review-excluded but projected");
     }
 
     // Two DIFFERENCES between the two rule sets, both deliberate, and both
@@ -371,19 +309,13 @@ fn the_projection_keeps_exactly_the_rows_the_manifest_omits_by_design() {
         .keys()
         .map(String::as_str)
         .collect();
-    assert!(
-        !blocked.is_empty(),
-        "the fixture must exercise a blocked class"
-    );
+    assert!(!blocked.is_empty(), "the fixture must exercise a blocked class");
     let blocked_rows = projected
         .rows
         .iter()
         .filter(|r| r.entity_id.as_deref().is_some_and(|e| blocked.contains(&e)))
         .count();
-    assert!(
-        blocked_rows > 0,
-        "a blocked class with no rows would prove nothing"
-    );
+    assert!(blocked_rows > 0, "a blocked class with no rows would prove nothing");
 
     let omitted: Vec<&str> = projected_ids
         .iter()
@@ -396,26 +328,16 @@ fn the_projection_keeps_exactly_the_rows_the_manifest_omits_by_design() {
         "projection = manifest rows + unreviewed + class-gate-blocked, nothing else"
     );
     for id in &omitted {
-        let row = projected
-            .rows
-            .iter()
-            .find(|r| r.image_id == *id)
-            .expect("projected");
+        let row = projected.rows.iter().find(|r| r.image_id == *id).expect("projected");
         let e = row.entity_id.as_deref().unwrap_or("");
-        let has_review = fx["reviews"]
-            .as_array()
-            .unwrap()
-            .iter()
+        let has_review = fx["reviews"].as_array().unwrap().iter()
             .any(|r| r["image_id"].as_str() == Some(*id));
         assert!(
             !has_review || blocked.contains(&e),
             "{id} is omitted by the manifest for an unexplained reason (entity {e}, reviewed: {has_review})"
         );
     }
-    assert!(
-        projected.rows_relabelled_by_review > 0,
-        "the fixture must exercise relabelling"
-    );
+    assert!(projected.rows_relabelled_by_review > 0, "the fixture must exercise relabelling");
     assert_eq!(
         projected.rows.len(),
         manifest_ids.len() + omitted.len(),

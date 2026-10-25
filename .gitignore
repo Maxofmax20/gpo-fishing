@@ -88,3 +88,5 @@ reports/ui-preview.tsx
 /playwright-report/
 
 **/target/
+
+/node_modules

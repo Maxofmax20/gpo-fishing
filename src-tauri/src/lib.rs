@@ -1,26 +1,26 @@
 pub mod app;
 pub mod bot;
 pub mod commands;
+pub mod commands_review;
 mod commands_ontology;
 pub mod commands_ontology_workstation;
-pub mod commands_review;
+pub mod label_review;
+pub mod ontology_web;
+pub mod ontology_web_refresh;
 pub mod commands_training;
 pub mod config;
 pub mod core;
-pub mod discord_rpc;
 pub mod events;
 pub mod hotkeys;
-pub mod label_review;
-pub mod laptop_fan;
-pub mod laptop_light;
-pub mod multi_roblox;
-pub mod ontology_web;
-pub mod ontology_web_refresh;
 pub mod tray;
-pub mod vpn;
-pub mod vpn_helper;
 pub mod webhook;
 pub mod windows;
+pub mod discord_rpc;
+pub mod vpn;
+pub mod vpn_helper;
+pub mod multi_roblox;
+pub mod laptop_light;
+pub mod laptop_fan;
 
 use tauri::Manager;
 

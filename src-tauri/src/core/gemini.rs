@@ -1,16 +1,12 @@
-use crate::core::bait::BaitStock;
-use crate::core::types::Frame;
+use std::io::Cursor;
+use std::time::Duration;
 use base64::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::io::Cursor;
-use std::time::Duration;
+use crate::core::bait::BaitStock;
+use crate::core::types::Frame;
 
-pub fn scan_bait_stock_gemini(
-    frame: &Frame,
-    api_key: &str,
-    model: &str,
-) -> Result<BaitStock, String> {
+pub fn scan_bait_stock_gemini(frame: &Frame, api_key: &str, model: &str) -> Result<BaitStock, String> {
     let key = api_key.trim();
     if key.is_empty() {
         return Err("Gemini API key is empty".into());
@@ -66,12 +62,11 @@ pub fn scan_bait_stock_gemini(
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-    let response = client.post(&url).json(&payload).send().map_err(|e| {
-        format!(
-            "Gemini API request failed: {}",
-            crate::core::secrets::strip_key_param(&e.to_string())
-        )
-    })?;
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .map_err(|e| format!("Gemini API request failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     let body_text = response
@@ -96,37 +91,19 @@ pub fn scan_bait_stock_gemini(
         .ok_or_else(|| format!("Invalid candidate text in Gemini response: {body_text}"))?;
 
     // Parse extracted JSON from text
-    let clean_json = text
-        .trim()
-        .strip_prefix("```json")
-        .unwrap_or(text.trim())
-        .strip_suffix("```")
-        .unwrap_or(text.trim())
-        .trim();
+    let clean_json = text.trim().strip_prefix("```json").unwrap_or(text.trim()).strip_suffix("```").unwrap_or(text.trim()).trim();
 
     let stock_obj: serde_json::Value = serde_json::from_str(clean_json)
         .map_err(|e| format!("Failed to parse bait stock JSON '{clean_json}': {e}"))?;
 
-    let is_visible = stock_obj
-        .get("visible")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
+    let is_visible = stock_obj.get("visible").and_then(|v| v.as_bool()).unwrap_or(true);
     if !is_visible {
         return Err("Fishing Baits menu is not visible in frame".into());
     }
 
-    let legendary = stock_obj
-        .get("legendary")
-        .and_then(|v| v.as_u64())
-        .map(|v| v as u32);
-    let rare = stock_obj
-        .get("rare")
-        .and_then(|v| v.as_u64())
-        .map(|v| v as u32);
-    let common = stock_obj
-        .get("common")
-        .and_then(|v| v.as_u64())
-        .map(|v| v as u32);
+    let legendary = stock_obj.get("legendary").and_then(|v| v.as_u64()).map(|v| v as u32);
+    let rare = stock_obj.get("rare").and_then(|v| v.as_u64()).map(|v| v as u32);
+    let common = stock_obj.get("common").and_then(|v| v.as_u64()).map(|v| v as u32);
 
     Ok(BaitStock {
         legendary,
@@ -165,12 +142,11 @@ pub fn test_gemini_connection(api_key: &str, model: &str) -> Result<String, Stri
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-    let response = client.post(&url).json(&payload).send().map_err(|e| {
-        format!(
-            "Connection failed: {}",
-            crate::core::secrets::strip_key_param(&e.to_string())
-        )
-    })?;
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .map_err(|e| format!("Connection failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     if status.is_success() {
@@ -193,11 +169,7 @@ pub struct FruitEventAnalysis {
     pub telegram_message: Option<String>,
 }
 
-pub fn analyze_fruit_event_gemini(
-    frame: &Frame,
-    api_key: &str,
-    model: &str,
-) -> Result<FruitEventAnalysis, String> {
+pub fn analyze_fruit_event_gemini(frame: &Frame, api_key: &str, model: &str) -> Result<FruitEventAnalysis, String> {
     let key = api_key.trim();
     if key.is_empty() {
         return Err("Gemini API key is empty".into());
@@ -269,12 +241,11 @@ Respond ONLY with valid JSON in this format:
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-    let response = client.post(&url).json(&payload).send().map_err(|e| {
-        format!(
-            "Gemini API request failed: {}",
-            crate::core::secrets::strip_key_param(&e.to_string())
-        )
-    })?;
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .map_err(|e| format!("Gemini API request failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     let body_text = response
@@ -298,13 +269,7 @@ Respond ONLY with valid JSON in this format:
         .and_then(|t| t.as_str())
         .ok_or_else(|| format!("Invalid candidate text in Gemini response: {body_text}"))?;
 
-    let clean_json = text
-        .trim()
-        .strip_prefix("```json")
-        .unwrap_or(text.trim())
-        .strip_suffix("```")
-        .unwrap_or(text.trim())
-        .trim();
+    let clean_json = text.trim().strip_prefix("```json").unwrap_or(text.trim()).strip_suffix("```").unwrap_or(text.trim()).trim();
 
     serde_json::from_str::<FruitEventAnalysis>(clean_json)
         .map_err(|e| format!("Failed to parse FruitEventAnalysis JSON '{clean_json}': {e}"))
@@ -360,12 +325,11 @@ pub fn rewrite_fruit_message_gemini(
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-    let response = client.post(&url).json(&payload).send().map_err(|e| {
-        format!(
-            "Gemini API request failed: {}",
-            crate::core::secrets::strip_key_param(&e.to_string())
-        )
-    })?;
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .map_err(|e| format!("Gemini API request failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     let body_text = response
@@ -389,13 +353,7 @@ pub fn rewrite_fruit_message_gemini(
         .and_then(|t| t.as_str())
         .ok_or_else(|| format!("Invalid candidate text in Gemini response: {body_text}"))?;
 
-    let clean = text
-        .trim()
-        .strip_prefix("```html")
-        .unwrap_or(text.trim())
-        .strip_suffix("```")
-        .unwrap_or(text.trim())
-        .trim();
+    let clean = text.trim().strip_prefix("```html").unwrap_or(text.trim()).strip_suffix("```").unwrap_or(text.trim()).trim();
     Ok(clean.to_string())
 }
 
@@ -454,12 +412,11 @@ pub fn rewrite_spawn_message_gemini(
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-    let response = client.post(&url).json(&payload).send().map_err(|e| {
-        format!(
-            "Gemini API request failed: {}",
-            crate::core::secrets::strip_key_param(&e.to_string())
-        )
-    })?;
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .map_err(|e| format!("Gemini API request failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     let body_text = response
@@ -483,13 +440,7 @@ pub fn rewrite_spawn_message_gemini(
         .and_then(|t| t.as_str())
         .ok_or_else(|| format!("Invalid candidate text in Gemini response: {body_text}"))?;
 
-    let clean = text
-        .trim()
-        .strip_prefix("```html")
-        .unwrap_or(text.trim())
-        .strip_suffix("```")
-        .unwrap_or(text.trim())
-        .trim();
+    let clean = text.trim().strip_prefix("```html").unwrap_or(text.trim()).strip_suffix("```").unwrap_or(text.trim()).trim();
     Ok(clean.to_string())
 }
 
@@ -566,12 +517,11 @@ pub fn interpret_smart_bot_command(
         .build()
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-    let response = client.post(&url).json(&payload).send().map_err(|e| {
-        format!(
-            "Gemini API request failed: {}",
-            crate::core::secrets::strip_key_param(&e.to_string())
-        )
-    })?;
+    let response = client
+        .post(&url)
+        .json(&payload)
+        .send()
+        .map_err(|e| format!("Gemini API request failed: {}", crate::core::secrets::strip_key_param(&e.to_string())))?;
 
     let status = response.status();
     let body_text = response
@@ -595,13 +545,8 @@ pub fn interpret_smart_bot_command(
         .and_then(|t| t.as_str())
         .ok_or_else(|| format!("Invalid candidate text in Gemini response: {body_text}"))?;
 
-    let clean = text
-        .trim()
-        .strip_prefix("```json")
-        .unwrap_or(text.trim())
-        .strip_suffix("```")
-        .unwrap_or(text.trim())
-        .trim();
+    let clean = text.trim().strip_prefix("```json").unwrap_or(text.trim()).strip_suffix("```").unwrap_or(text.trim()).trim();
     serde_json::from_str::<SmartCommandResult>(clean)
         .map_err(|e| format!("Failed to parse SmartCommandResult '{clean}': {e}"))
 }
+

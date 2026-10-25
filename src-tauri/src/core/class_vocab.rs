@@ -56,8 +56,7 @@ use std::collections::BTreeSet;
 /// wrong prefix) is a hard error rather than a silent skip: a class map that
 /// differs from what the trainer used is exactly the failure this module
 /// exists to prevent.
-const FISH_VOCAB_RAW: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../FISH_VOCAB.txt"));
+const FISH_VOCAB_RAW: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../FISH_VOCAB.txt"));
 
 /// Parse a vocabulary file: one class per line, `#` comments, blank lines
 /// ignored, order preserved.
@@ -144,7 +143,10 @@ pub fn missing_from<'a>(present: impl IntoIterator<Item = &'a str>) -> Vec<&'sta
 /// curation is incomplete - NOT something to resolve by adding classes.
 pub fn not_in_target<'a>(present: impl IntoIterator<Item = &'a str>) -> Vec<&'a str> {
     let want = fish_vocab_set();
-    present.into_iter().filter(|c| !want.contains(c)).collect()
+    present
+        .into_iter()
+        .filter(|c| !want.contains(c))
+        .collect()
 }
 
 #[cfg(test)]
@@ -174,9 +176,7 @@ mod tests {
         }
         for m in ["fish_v1.json", "state_v1.json"] {
             let raw = std::fs::read_to_string(
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("models")
-                    .join(m),
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("models").join(m),
             )
             .unwrap_or_default();
             if let Ok(vj) = serde_json::from_str::<serde_json::Value>(&raw) {
@@ -228,10 +228,7 @@ mod tests {
     #[test]
     fn the_gate_is_set_based_not_a_count() {
         let all = fish_vocab();
-        assert!(
-            missing_from(all.iter().copied()).is_empty(),
-            "full vocabulary must pass"
-        );
+        assert!(missing_from(all.iter().copied()).is_empty(), "full vocabulary must pass");
 
         // A DIFFERENT set of the same size must NOT pass. This is the exact
         // failure that produced `10/10` over an 8-class artifact.
@@ -271,19 +268,12 @@ mod tests {
             assert!(missing.contains(c), "{c} should be reported missing");
         }
         let extra = not_in_target(partial.iter().copied());
-        assert_eq!(
-            extra,
-            vec!["fish:not_a_class"],
-            "unknown ids must be surfaced"
-        );
+        assert_eq!(extra, vec!["fish:not_a_class"], "unknown ids must be surfaced");
     }
 
     #[test]
     fn malformed_vocabularies_are_rejected() {
-        assert!(
-            parse_vocab("").is_err(),
-            "empty vocabulary must be an error"
-        );
+        assert!(parse_vocab("").is_err(), "empty vocabulary must be an error");
         assert!(parse_vocab("# only comments\n").is_err());
         assert!(
             parse_vocab("fish:a\nfish:a").is_err(),
@@ -308,10 +298,7 @@ mod tests {
         // the count are the same fact twice. The concrete list is asserted
         // against the DEPLOYED manifest in
         // `tests/deployed_shadow_model::the_bundled_pair_is_internally_consistent`.
-        assert!(
-            fish_vocab_len() >= 2,
-            "a vocabulary of fewer than 2 classes is degenerate"
-        );
+        assert!(fish_vocab_len() >= 2, "a vocabulary of fewer than 2 classes is degenerate");
         assert!(
             fish_vocab().iter().all(|c| c.starts_with("fish:")),
             "every canonical class must be a fish id"

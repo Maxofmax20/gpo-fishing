@@ -21,13 +21,9 @@ pub fn register(app: &AppHandle, keys: &Hotkeys) -> Result<(), String> {
     if let Err(error) = bind(app, keys) {
         if let Some(old) = previous.as_ref() {
             if let Err(rollback) = bind(app, old) {
-                return Err(format!(
-                    "{error}; restoring previous shortcuts failed: {rollback}"
-                ));
+                return Err(format!("{error}; restoring previous shortcuts failed: {rollback}"));
             }
-        } else {
-            let _ = app.global_shortcut().unregister_all();
-        }
+        } else { let _ = app.global_shortcut().unregister_all(); }
         return Err(error);
     }
     *previous = Some(keys.clone());
@@ -36,22 +32,10 @@ pub fn register(app: &AppHandle, keys: &Hotkeys) -> Result<(), String> {
 
 fn validate(keys: &Hotkeys) -> Result<(), String> {
     let mut seen = std::collections::HashSet::new();
-    for combo in [
-        &keys.toggle,
-        &keys.overlay,
-        &keys.quit,
-        &keys.hide_hud,
-        &keys.record_toggle,
-    ] {
-        if combo.trim().is_empty() {
-            continue;
-        }
-        let shortcut: Shortcut = combo
-            .parse()
-            .map_err(|_| format!("Invalid hotkey: {combo}"))?;
-        if !seen.insert(shortcut.id()) {
-            return Err(format!("Duplicate hotkey: {combo}"));
-        }
+    for combo in [&keys.toggle, &keys.overlay, &keys.quit, &keys.hide_hud, &keys.record_toggle] {
+        if combo.trim().is_empty() { continue; }
+        let shortcut: Shortcut = combo.parse().map_err(|_| format!("Invalid hotkey: {combo}"))?;
+        if !seen.insert(shortcut.id()) { return Err(format!("Duplicate hotkey: {combo}")); }
     }
     Ok(())
 }
@@ -70,9 +54,7 @@ fn bind(app: &AppHandle, keys: &Hotkeys) -> Result<(), String> {
         if combo.trim().is_empty() {
             continue;
         }
-        let shortcut: Shortcut = combo
-            .parse()
-            .map_err(|_| format!("Invalid hotkey: {combo}"))?;
+        let shortcut: Shortcut = combo.parse().map_err(|_| format!("Invalid hotkey: {combo}"))?;
         gs.on_shortcut(shortcut, move |app, _sc, ev| {
             if ev.state() != ShortcutState::Pressed {
                 return;
@@ -111,9 +93,7 @@ fn dispatch(app: &AppHandle, action: Action) {
             let res = crate::bot::recorder::toggle_recording();
             match res {
                 Ok(now_recording) => {
-                    tracing::info!(
-                        "📼 Macro recording toggled via hotkey. Recording: {now_recording}"
-                    );
+                    tracing::info!("📼 Macro recording toggled via hotkey. Recording: {now_recording}");
                 }
                 Err(e) => {
                     tracing::warn!("📼 Macro record hotkey error: {e}");

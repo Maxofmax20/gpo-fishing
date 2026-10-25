@@ -53,10 +53,7 @@ fn live_deployed_dir() -> Option<PathBuf> {
 /// "check each of these", and so adding a source cannot reintroduce the
 /// redundant `.into_iter()` on an argument that already takes `IntoIterator`.
 fn fish_manifests_to_check() -> Vec<(&'static str, PathBuf)> {
-    let mut out = vec![(
-        "the bundled fish manifest",
-        models_dir().join("fish_v1.json"),
-    )];
+    let mut out = vec![("the bundled fish manifest", models_dir().join("fish_v1.json"))];
     if let Some(d) = live_deployed_dir() {
         out.push(("the live deployed fish manifest", d.join("fish_v1.json")));
     }
@@ -72,10 +69,7 @@ fn one_source_of_truth_defines_the_fish_class_set() {
     let mut seen = std::collections::BTreeSet::new();
     for c in vocab {
         assert!(c.starts_with("fish:"), "not a fish class id: {c}");
-        assert!(
-            seen.insert(*c),
-            "duplicate class in the canonical list: {c}"
-        );
+        assert!(seen.insert(*c), "duplicate class in the canonical list: {c}");
     }
     assert_eq!(seen.len(), vocab.len());
 }
@@ -106,10 +100,7 @@ fn the_deployed_model_class_set_equals_the_canonical_vocabulary() {
     // Checked against the LIVE deployed model (what `shadow_infer` verifies) and
     // the bundled one (what a release ships). Both are replaced together by the
     // deploy script, so they cannot drift from each other or from the file.
-    let canonical: Vec<String> = class_vocab::fish_vocab()
-        .iter()
-        .map(|c| c.to_string())
-        .collect();
+    let canonical: Vec<String> = class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect();
 
     let mut checked = 0usize;
     for (what, path) in fish_manifests_to_check() {
@@ -117,10 +108,7 @@ fn the_deployed_model_class_set_equals_the_canonical_vocabulary() {
             continue;
         }
         let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| {
-            panic!(
-                "{} unreadable ({e}); refusing to guess what it claims",
-                path.display()
-            )
+            panic!("{} unreadable ({e}); refusing to guess what it claims", path.display())
         });
         let v: serde_json::Value = serde_json::from_str(&raw)
             .unwrap_or_else(|e| panic!("{} is not valid JSON: {e}", path.display()));
@@ -132,8 +120,7 @@ fn the_deployed_model_class_set_equals_the_canonical_vocabulary() {
             .collect();
 
         assert_eq!(
-            deployed,
-            canonical,
+            deployed, canonical,
             "{}",
             behind_vocabulary_message(what, &path)
         );
@@ -145,10 +132,7 @@ fn the_deployed_model_class_set_equals_the_canonical_vocabulary() {
         );
         checked += 1;
     }
-    assert!(
-        checked > 0,
-        "no deployed fish manifest found to check against the vocabulary"
-    );
+    assert!(checked > 0, "no deployed fish manifest found to check against the vocabulary");
 }
 
 #[test]
@@ -172,23 +156,15 @@ fn the_deployed_manifest_pins_the_canonical_class_map_fingerprint() {
         );
         checked += 1;
     }
-    assert!(
-        checked > 0,
-        "no deployed fish manifest found to check the fingerprint against"
-    );
+    assert!(checked > 0, "no deployed fish manifest found to check the fingerprint against");
 }
 
 #[test]
 fn the_python_trainer_reads_the_same_canonical_file() {
     // The trainer must not carry a second hardcoded list. If it does, the two
     // can drift and every gate above becomes a lie.
-    let src = std::fs::read_to_string(
-        repo_root()
-            .join("ml")
-            .join("gpo_train")
-            .join("fish_train.py"),
-    )
-    .expect("fish_train.py must exist");
+    let src = std::fs::read_to_string(repo_root().join("ml").join("gpo_train").join("fish_train.py"))
+        .expect("fish_train.py must exist");
     assert!(
         src.contains("FISH_VOCAB.txt"),
         "fish_train.py must read FISH_VOCAB.txt, not carry its own list"
@@ -213,9 +189,7 @@ fn no_scalar_fish_class_count_survives_anywhere() {
     let mut offenders: Vec<String> = Vec::new();
     let mut stack = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")];
     while let Some(dir) = stack.pop() {
-        let Ok(rd) = std::fs::read_dir(&dir) else {
-            continue;
-        };
+        let Ok(rd) = std::fs::read_dir(&dir) else { continue };
         for e in rd.flatten() {
             let p = e.path();
             if p.is_dir() {
@@ -225,9 +199,7 @@ fn no_scalar_fish_class_count_survives_anywhere() {
             if p.extension().and_then(|s| s.to_str()) != Some("rs") {
                 continue;
             }
-            let Ok(text) = std::fs::read_to_string(&p) else {
-                continue;
-            };
+            let Ok(text) = std::fs::read_to_string(&p) else { continue };
             for (i, line) in text.lines().enumerate() {
                 let t = line.trim_start();
                 if t.starts_with("//") {
@@ -248,11 +220,8 @@ fn no_scalar_fish_class_count_survives_anywhere() {
 
 #[test]
 fn the_registry_gate_requires_exact_vocabulary_coverage() {
-    use gpo_autofish_lib::core::registry::{compare, ComparisonVerdict, ModelMetrics};
-    let vocab: Vec<String> = class_vocab::fish_vocab()
-        .iter()
-        .map(|c| c.to_string())
-        .collect();
+    use gpo_autofish_lib::core::registry::{compare, ModelMetrics, ComparisonVerdict};
+    let vocab: Vec<String> = class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect();
 
     let full = |f1: f32| {
         let mut m = ModelMetrics::from_trainer_files(

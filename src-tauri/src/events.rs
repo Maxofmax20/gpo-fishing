@@ -114,22 +114,14 @@ pub struct MlSessionState {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BotEvent {
     SettingsInvalidated,
-    State {
-        state: BotState,
-        detail: Option<String>,
-    },
+    State { state: BotState, detail: Option<String> },
     Stats(Stats),
     Log(LogLine),
     Reading(Option<TrackFrame>),
     FruitDrop(DropInfo),
     FruitSpawn(SpawnInfo),
-    Purchase {
-        amount: u32,
-    },
-    Recovery {
-        attempt: u32,
-        reason: String,
-    },
+    Purchase { amount: u32 },
+    Recovery { attempt: u32, reason: String },
     Roblox(Option<WindowInfo>),
     MlSession(MlSessionState),
 }

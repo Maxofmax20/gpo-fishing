@@ -213,17 +213,11 @@ pub fn get_keyboard_light_status() -> KeyboardLightStatus {
 
 pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
     if !matches!(action, "off" | "low" | "high" | "cycle" | "toggle") {
-        return KeyboardLightStatus {
-            error: Some("Unsupported keyboard light action".into()),
-            ..Default::default()
-        };
+        return KeyboardLightStatus { error: Some("Unsupported keyboard light action".into()), ..Default::default() };
     }
     static COMMAND: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
     let Some(_command) = COMMAND.try_lock() else {
-        return KeyboardLightStatus {
-            error: Some("A keyboard light change is already running".into()),
-            ..Default::default()
-        };
+        return KeyboardLightStatus { error: Some("A keyboard light change is already running".into()), ..Default::default() };
     };
     ensure_worker_scripts();
     let dir = get_data_dir();
@@ -231,13 +225,12 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
     let state_file = dir.join("keyboard_light_state.json");
 
     if let Err(error) = fs::write(&target_file, action) {
-        return KeyboardLightStatus {
-            error: Some(format!("Could not request keyboard light change: {error}")),
-            ..Default::default()
-        };
+        return KeyboardLightStatus { error: Some(format!("Could not request keyboard light change: {error}")), ..Default::default() };
     }
 
-    let prev_mtime = fs::metadata(&state_file).and_then(|m| m.modified()).ok();
+    let prev_mtime = fs::metadata(&state_file)
+        .and_then(|m| m.modified())
+        .ok();
 
     #[cfg(windows)]
     {
@@ -285,13 +278,7 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
             .creation_flags(CREATE_NO_WINDOW)
             .status();
         if !matches!(result, Ok(status) if status.success()) {
-            return KeyboardLightStatus {
-                error: Some(
-                    "Windows refused the keyboard light worker. Check the keyboard helper setup."
-                        .into(),
-                ),
-                ..Default::default()
-            };
+            return KeyboardLightStatus { error: Some("Windows refused the keyboard light worker. Check the keyboard helper setup.".into()), ..Default::default() };
         }
 
         let start = Instant::now();
@@ -305,10 +292,7 @@ pub fn set_keyboard_light(action: &str) -> KeyboardLightStatus {
                 }
             }
         }
-        KeyboardLightStatus {
-            error: Some("Keyboard light result was not confirmed".into()),
-            ..Default::default()
-        }
+        KeyboardLightStatus { error: Some("Keyboard light result was not confirmed".into()), ..Default::default() }
     }
 
     #[cfg(not(windows))]

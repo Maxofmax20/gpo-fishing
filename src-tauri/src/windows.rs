@@ -1,6 +1,4 @@
-use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewWindow,
-};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 use crate::app::AppState;
 use crate::core::types::{PxPoint, PxRect, RelPoint, WindowInfo};
@@ -94,10 +92,7 @@ pub fn on_roblox_changed(app: &AppHandle, info: Option<WindowInfo>) {
             }
         }
     }
-    let _ = app.emit(
-        "ui:visibility",
-        roblox_active(info).is_some() || info.is_none(),
-    );
+    let _ = app.emit("ui:visibility", roblox_active(info).is_some() || info.is_none());
     emit_panel_visible(app);
 }
 
@@ -159,9 +154,7 @@ fn show_noactivate(w: &WebviewWindow) {
 #[cfg(windows)]
 pub fn show_window(w: &WebviewWindow) {
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        BringWindowToTop, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW,
-    };
+    use windows::Win32::UI::WindowsAndMessaging::{BringWindowToTop, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW};
     let _ = w.unminimize();
     let _ = w.show();
     if let Ok(h) = w.hwnd() {
@@ -222,14 +215,8 @@ fn position_hud(app: &AppHandle, client: PxRect) {
     let margin = (MARGIN * scale) as i32;
     let x = client.x + (offset.x * client.w as f32) as i32 - w / 2;
     let y = client.y + (offset.y * client.h as f32) as i32 + margin;
-    let x = x.clamp(
-        client.x + margin,
-        (client.right() - w - margin).max(client.x),
-    );
-    let y = y.clamp(
-        client.y + margin,
-        (client.bottom() - h - margin).max(client.y),
-    );
+    let x = x.clamp(client.x + margin, (client.right() - w - margin).max(client.x));
+    let y = y.clamp(client.y + margin, (client.bottom() - h - margin).max(client.y));
     let _ = hud.set_position(PhysicalPosition::new(x, y));
     if !hud.is_visible().unwrap_or(false) {
         show_noactivate(&hud);
@@ -254,14 +241,8 @@ fn position_panel(app: &AppHandle, client: PxRect) {
     let _ = panel.set_size(PhysicalSize::new(w as u32, h as u32));
     let x = client.x + (offset.x * client.w as f32) as i32 - w;
     let y = client.y + (offset.y * client.h as f32) as i32 - h / 2;
-    let x = x.clamp(
-        client.x + margin,
-        (client.right() - w - margin).max(client.x + margin),
-    );
-    let y = y.clamp(
-        client.y + margin,
-        (client.bottom() - h - margin).max(client.y + margin),
-    );
+    let x = x.clamp(client.x + margin, (client.right() - w - margin).max(client.x + margin));
+    let y = y.clamp(client.y + margin, (client.bottom() - h - margin).max(client.y + margin));
     let _ = panel.set_position(PhysicalPosition::new(x, y));
     if !panel.is_visible().unwrap_or(false) && !panel.is_minimized().unwrap_or(false) {
         show_noactivate(&panel);
@@ -289,12 +270,8 @@ pub fn save_panel_placement(app: &AppHandle) {
         return;
     }
     let st = app.state::<AppState>();
-    let Some(client) = st.roblox.read().map(|w| w.client) else {
-        return;
-    };
-    let (Ok(pos), Ok(size)) = (panel.outer_position(), panel.inner_size()) else {
-        return;
-    };
+    let Some(client) = st.roblox.read().map(|w| w.client) else { return };
+    let (Ok(pos), Ok(size)) = (panel.outer_position(), panel.inner_size()) else { return };
     let scale = panel.scale_factor().unwrap_or(1.0);
     let w_unscaled = (size.width as f64 / scale) as u32;
     let h_unscaled = (size.height as f64 / scale) as u32;
@@ -304,8 +281,7 @@ pub fn save_panel_placement(app: &AppHandle) {
     let mut s = st.settings.read().clone();
     s.ui.panel_offset = RelPoint {
         x: ((pos.x + size.width as i32 - client.x) as f32 / client.w.max(1) as f32).clamp(0.0, 1.0),
-        y: ((pos.y + size.height as i32 / 2 - client.y) as f32 / client.h.max(1) as f32)
-            .clamp(0.0, 1.0),
+        y: ((pos.y + size.height as i32 / 2 - client.y) as f32 / client.h.max(1) as f32).clamp(0.0, 1.0),
     };
     s.ui.panel_size = [w_unscaled, h_unscaled];
     *st.settings.write() = s.clone();
@@ -322,9 +298,7 @@ pub fn set_hud_visible(app: &AppHandle, visible: bool) {
 
 pub fn panel_visible(app: &AppHandle) -> bool {
     PANEL_OPEN.load(std::sync::atomic::Ordering::SeqCst)
-        && panel(app)
-            .map(|p| p.is_visible().unwrap_or(false) && !p.is_minimized().unwrap_or(false))
-            .unwrap_or(false)
+        && panel(app).map(|p| p.is_visible().unwrap_or(false) && !p.is_minimized().unwrap_or(false)).unwrap_or(false)
 }
 
 pub fn emit_panel_visible(app: &AppHandle) {
@@ -400,21 +374,16 @@ pub fn show_overlay(app: &AppHandle, roblox: PxRect, interactive: bool) -> Resul
     let st = app.state::<AppState>();
     if interactive && st.bot.is_running() {
         st.bot.pause();
-        st.resume_after_overlay
-            .store(true, std::sync::atomic::Ordering::SeqCst);
+        st.resume_after_overlay.store(true, std::sync::atomic::Ordering::SeqCst);
     }
     fit_overlay(&o, roblox);
-    o.set_ignore_cursor_events(!interactive)
-        .map_err(|e| e.to_string())?;
+    o.set_ignore_cursor_events(!interactive).map_err(|e| e.to_string())?;
     o.show().map_err(|e| e.to_string())?;
     let _ = o.set_always_on_top(true);
     if interactive {
         o.set_focus().map_err(|e| e.to_string())?;
     }
-    Ok(PxPoint {
-        x: roblox.x,
-        y: roblox.y,
-    })
+    Ok(PxPoint { x: roblox.x, y: roblox.y })
 }
 
 pub fn hide_overlay(app: &AppHandle) {
@@ -425,16 +394,11 @@ pub fn hide_overlay(app: &AppHandle) {
         let _ = o.set_ignore_cursor_events(true);
         let _ = o.hide();
     }
-    if st
-        .resume_after_overlay
-        .swap(false, std::sync::atomic::Ordering::SeqCst)
-    {
+    if st.resume_after_overlay.swap(false, std::sync::atomic::Ordering::SeqCst) {
         st.bot.start();
     }
 }
 
 pub fn overlay_visible(app: &AppHandle) -> bool {
-    overlay(app)
-        .map(|o| o.is_visible().unwrap_or(false))
-        .unwrap_or(false)
+    overlay(app).map(|o| o.is_visible().unwrap_or(false)).unwrap_or(false)
 }

@@ -70,10 +70,7 @@ use std::sync::{Arc, LazyLock, RwLock};
 /// failure for a tool whose whole job is trustworthy evidence.
 ///
 /// Readers clone the `Arc`, which is a refcount bump, not a 190 KB copy.
-fn cached(
-    cell: &'static RwLock<Option<Arc<serde_json::Value>>>,
-    name: &str,
-) -> Option<Arc<serde_json::Value>> {
+fn cached(cell: &'static RwLock<Option<Arc<serde_json::Value>>>, name: &str) -> Option<Arc<serde_json::Value>> {
     if let Some(v) = cell.read().ok().and_then(|g| g.clone()) {
         return Some(v);
     }
@@ -134,9 +131,7 @@ pub fn ontology_review_index() -> Option<serde_json::Value> {
 }
 
 fn read_json(p: &Path) -> Option<serde_json::Value> {
-    std::fs::read_to_string(p)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
+    std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str(&s).ok())
 }
 
 /// Locate `reports/ontology_review/`.
@@ -156,12 +151,8 @@ pub fn find_report_dir() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("GPO_ONTOLOGY_REVIEW_DIR") {
         return Some(PathBuf::from(p));
     }
-    let local = crate::app::data_dir()
-        .join("reports")
-        .join("ontology_review");
-    if local.join("workstation").join("index.json").is_file() {
-        return Some(local);
-    }
+    let local = crate::app::data_dir().join("reports").join("ontology_review");
+    if local.join("workstation").join("index.json").is_file() { return Some(local); }
     if let Ok(root) = std::env::var("GPO_REPO_ROOT") {
         let c = PathBuf::from(root).join("reports").join("ontology_review");
         if c.join("workstation").join("index.json").is_file() {
@@ -269,11 +260,7 @@ pub fn is_plausible_image_id(id: &str) -> bool {
         Some((h, s)) => (h, Some(s)),
         None => (id, None),
     };
-    if hex.len() != 16
-        || !hex
-            .bytes()
-            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
-    {
+    if hex.len() != 16 || !hex.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()) {
         return false;
     }
     match suffix {
@@ -307,9 +294,7 @@ pub struct WorkstationStatus {
 }
 
 pub fn decision_kind_of(v: &serde_json::Value) -> Option<String> {
-    v.get("decision")
-        .and_then(|d| d.as_str())
-        .map(str::to_string)
+    v.get("decision").and_then(|d| d.as_str()).map(str::to_string)
 }
 
 /// Every recorded decision, keyed by concept, last one winning.
@@ -317,11 +302,7 @@ pub fn decision_kind_of(v: &serde_json::Value) -> Option<String> {
 /// A malformed or unparseable line is SKIPPED rather than fatal: a reviewer
 /// mid-session should never lose the screen because one earlier record is odd.
 /// The Python reader is strict; this one is forgiving, and only for display.
-pub fn read_decisions() -> (
-    HashMap<String, serde_json::Value>,
-    usize,
-    HashMap<String, usize>,
-) {
+pub fn read_decisions() -> (HashMap<String, serde_json::Value>, usize, HashMap<String, usize>) {
     let mut current: HashMap<String, serde_json::Value> = HashMap::new();
     let mut by_kind: HashMap<String, usize> = HashMap::new();
     let mut total = 0usize;
@@ -378,11 +359,7 @@ pub fn ontology_review_status() -> WorkstationStatus {
 
     let (current, _records, by_kind) = read_decisions();
 
-    let concepts = idx
-        .get("concepts")
-        .and_then(|c| c.as_array())
-        .cloned()
-        .unwrap_or_default();
+    let concepts = idx.get("concepts").and_then(|c| c.as_array()).cloned().unwrap_or_default();
     let mut counts: HashMap<String, usize> = HashMap::new();
     let mut remaining: HashMap<String, usize> = HashMap::new();
     let mut queue = Vec::new();
@@ -395,11 +372,7 @@ pub fn ontology_review_status() -> WorkstationStatus {
             continue;
         };
         order.push(cid.to_string());
-        let band = c
-            .get("priority")
-            .and_then(|x| x.as_str())
-            .unwrap_or("P3")
-            .to_string();
+        let band = c.get("priority").and_then(|x| x.as_str()).unwrap_or("P3").to_string();
         *counts.entry(band.clone()).or_insert(0) += 1;
         if current.get(cid).and_then(decision_kind_of).is_some() {
             decided += 1;
@@ -454,12 +427,7 @@ pub fn ontology_review_concept(concept_id: String) -> Option<serde_json::Value> 
                 "decisionNote".into(),
                 d.get("notes").cloned().unwrap_or(serde_json::Value::Null),
             );
-            o.insert(
-                "decidedAt".into(),
-                d.get("timestamp")
-                    .cloned()
-                    .unwrap_or(serde_json::Value::Null),
-            );
+            o.insert("decidedAt".into(), d.get("timestamp").cloned().unwrap_or(serde_json::Value::Null));
         }
     }
     Some(found)
@@ -521,27 +489,19 @@ pub fn ontology_review_family(family_id: String) -> Option<FamilyView> {
                 }
                 o.insert(
                     "modifiers".into(),
-                    full.get("modifiers")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Array(vec![])),
+                    full.get("modifiers").cloned().unwrap_or(serde_json::Value::Array(vec![])),
                 );
                 o.insert(
                     "occurrences".into(),
-                    full.get("occurrences")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::from(0)),
+                    full.get("occurrences").cloned().unwrap_or(serde_json::Value::from(0)),
                 );
                 o.insert(
                     "sessionCount".into(),
-                    full.get("sessionCount")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::from(0)),
+                    full.get("sessionCount").cloned().unwrap_or(serde_json::Value::from(0)),
                 );
                 o.insert(
                     "dayCount".into(),
-                    full.get("dayCount")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::from(0)),
+                    full.get("dayCount").cloned().unwrap_or(serde_json::Value::from(0)),
                 );
                 o.insert(
                     "humanDecision".into(),
@@ -558,10 +518,7 @@ pub fn ontology_review_family(family_id: String) -> Option<FamilyView> {
 
     Some(FamilyView {
         family_id,
-        base_name: f
-            .get("baseName")
-            .and_then(|x| x.as_str())
-            .map(str::to_string),
+        base_name: f.get("baseName").and_then(|x| x.as_str()).map(str::to_string),
         member_count: f.get("memberCount").and_then(|x| x.as_u64()).unwrap_or(0) as usize,
         occurrences: f.get("occurrences").and_then(|x| x.as_u64()).unwrap_or(0) as usize,
         decision_required: "are these one entity, several entities, a base fish plus \
@@ -603,24 +560,12 @@ pub fn ontology_review_kb_search(query: String, limit: Option<usize>) -> Vec<KbE
     let mut out: Vec<KbEntityOption> = Vec::new();
 
     for e in entities {
-        let id = e
-            .get("id")
-            .and_then(|x| x.as_str())
-            .unwrap_or("")
-            .to_string();
-        let name = e
-            .get("canonicalName")
-            .and_then(|x| x.as_str())
-            .unwrap_or("")
-            .to_string();
+        let id = e.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let name = e.get("canonicalName").and_then(|x| x.as_str()).unwrap_or("").to_string();
         let aliases: Vec<String> = e
             .get("aliases")
             .and_then(|x| x.as_array())
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str().map(str::to_string))
-                    .collect()
-            })
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
             .unwrap_or_default();
         let hits = q.is_empty()
             || id.to_lowercase().contains(&q)
@@ -631,16 +576,9 @@ pub fn ontology_review_kb_search(query: String, limit: Option<usize>) -> Vec<KbE
                 id,
                 canonical_name: name,
                 aliases,
-                category: e
-                    .get("category")
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("")
-                    .to_string(),
+                category: e.get("category").and_then(|x| x.as_str()).unwrap_or("").to_string(),
                 rarity: e.get("rarity").and_then(|x| x.as_str()).map(str::to_string),
-                in_fish_vocab: e
-                    .get("inFishVocab")
-                    .and_then(|x| x.as_bool())
-                    .unwrap_or(false),
+                in_fish_vocab: e.get("inFishVocab").and_then(|x| x.as_bool()).unwrap_or(false),
             });
         }
         if out.len() >= cap {
@@ -708,24 +646,12 @@ fn base64_encode(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
-        let b = [
-            chunk[0],
-            *chunk.get(1).unwrap_or(&0),
-            *chunk.get(2).unwrap_or(&0),
-        ];
+        let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
         let n = ((b[0] as u32) << 16) | ((b[1] as u32) << 8) | b[2] as u32;
         out.push(T[(n >> 18) as usize & 63] as char);
         out.push(T[(n >> 12) as usize & 63] as char);
-        out.push(if chunk.len() > 1 {
-            T[(n >> 6) as usize & 63] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            T[n as usize & 63] as char
-        } else {
-            '='
-        });
+        out.push(if chunk.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 2 { T[n as usize & 63] as char } else { '=' });
     }
     out
 }
@@ -829,7 +755,8 @@ pub fn validate_shape(
         "VARIANT_OF_EXISTING" => {
             if non_empty(existing_entity_id).is_none() {
                 problems.push(
-                    "VARIANT_OF_EXISTING requires existingEntityId naming the base entity".into(),
+                    "VARIANT_OF_EXISTING requires existingEntityId naming the base entity"
+                        .into(),
                 );
             }
             if non_empty(variant_descriptor).is_none() {
@@ -901,9 +828,7 @@ pub fn append_decision(record: &serde_json::Value) -> Result<(), String> {
     // atomic. A temp file elsewhere could degrade to a non-atomic copy.
     let tmp = dir.join(format!(
         ".{}.tmp",
-        path.file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("decisions")
+        path.file_name().and_then(|s| s.to_str()).unwrap_or("decisions")
     ));
     {
         let mut f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
@@ -1006,9 +931,7 @@ pub fn record_human_decision(
                             error: format!(
                                 "the knowledge base already has {} as {:?}; use \
                                  EXISTING_ENTITY instead of proposing a new entity",
-                                hit.get("canonicalName")
-                                    .and_then(|x| x.as_str())
-                                    .unwrap_or(&want),
+                                hit.get("canonicalName").and_then(|x| x.as_str()).unwrap_or(&want),
                                 hit.get("id").and_then(|x| x.as_str()).unwrap_or("")
                             ),
                         });
@@ -1031,13 +954,14 @@ pub fn record_human_decision(
         "source": source,
     });
 
-    append_decision(&record).map_err(|e| DecisionError {
-        ok: false,
-        error: e,
-    })?;
+    append_decision(&record).map_err(|e| DecisionError { ok: false, error: e })?;
 
     let status = ontology_review_status();
-    let next = status.queue.iter().find(|c| **c != concept_id).cloned();
+    let next = status
+        .queue
+        .iter()
+        .find(|c| **c != concept_id)
+        .cloned();
 
     Ok(DecisionResult {
         ok: true,
@@ -1102,10 +1026,7 @@ pub fn undo_human_decision(
         "notes": "reversed via the workstation UI",
         "source": source,
     });
-    append_decision(&reversal).map_err(|e| DecisionError {
-        ok: false,
-        error: e,
-    })?;
+    append_decision(&reversal).map_err(|e| DecisionError { ok: false, error: e })?;
     Ok(ontology_review_status())
 }
 
@@ -1188,12 +1109,9 @@ mod tests {
                 // the Rust message uses the UI's spelling (`existingEntityId`).
                 // They are the same field, so compare with case and separators
                 // removed rather than forcing the message to carry both.
-                let norm = |x: &str| {
-                    x.to_lowercase()
-                        .chars()
-                        .filter(|c| c.is_ascii_alphanumeric())
-                        .collect::<String>()
-                };
+                let norm = |x: &str| x.to_lowercase().chars()
+                    .filter(|c| c.is_ascii_alphanumeric())
+                    .collect::<String>();
                 let joined = norm(&problems.join(" | "));
                 assert!(
                     joined.contains(&norm(must)),
@@ -1208,23 +1126,10 @@ mod tests {
     fn image_ids_are_validated_before_touching_the_filesystem() {
         // The traversal defence: a hostile id must be refused by shape, so it
         // never becomes a path at all.
-        for bad in [
-            "../secrets",
-            "..",
-            "a/../../b",
-            "",
-            "ZZZZZZZZZZZZZZZZ",
-            "0123456789abcde",
-            "0123456789abcdefg",
-            "-1",
-            "0123456789abcdef-",
-            "0123456789abcdef-x",
-            "0123456789ABCDEF",
-            "0123456789abcdef-1a",
-            "0123456789abcdef-1/2",
-            "0123456789abcdef-1\\..",
-            "0123456789abcdef-1\n",
-        ] {
+        for bad in ["../secrets", "..", "a/../../b", "", "ZZZZZZZZZZZZZZZZ",
+                    "0123456789abcde", "0123456789abcdefg", "-1", "0123456789abcdef-",
+                    "0123456789abcdef-x", "0123456789ABCDEF", "0123456789abcdef-1a",
+                    "0123456789abcdef-1/2", "0123456789abcdef-1\\..", "0123456789abcdef-1\n"] {
             assert!(!is_plausible_image_id(bad), "{bad:?} must be refused");
         }
         // Both real shapes, measured from the dataset: 4,865 of 14,805 ids carry

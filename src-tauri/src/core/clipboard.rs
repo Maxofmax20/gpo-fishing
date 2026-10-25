@@ -89,13 +89,13 @@ pub fn set_text(text: &str) -> Result<usize, String> {
                 let _ = GlobalUnlock(h);
                 // On success the system owns `h` — never free it.
                 // On failure it stays ours — free it to avoid leaking.
-                match SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(h.0))) {
-                    Ok(_) => Ok(chars),
-                    Err(e) => {
-                        let _ = GlobalFree(Some(h));
-                        Err(format!("clipboard write failed: {e}"))
+                    match SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(h.0))) {
+                        Ok(_) => Ok(chars),
+                        Err(e) => {
+                            let _ = GlobalFree(Some(h));
+                            Err(format!("clipboard write failed: {e}"))
+                        }
                     }
-                }
             })();
             let _ = CloseClipboard();
             return result;
@@ -114,10 +114,7 @@ mod tests {
         let token = format!("GPO-CLIP-TEST-αβγ-🎣-{}", std::process::id());
         let n = set_text(&token).expect("clipboard must be writable in test");
         assert_eq!(n, token.chars().count());
-        assert_eq!(
-            get_text().expect("readable").as_deref(),
-            Some(token.as_str())
-        );
+        assert_eq!(get_text().expect("readable").as_deref(), Some(token.as_str()));
         // Restore whatever was there (or clear when there was no text).
         if let Some(prev) = saved {
             let _ = set_text(&prev);

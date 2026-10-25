@@ -131,15 +131,7 @@ pub fn evaluate_entity_samples(
         lat_ocr += t0.elapsed().as_micros();
 
         let t1 = Instant::now();
-        let obs = correlate_text(
-            kb,
-            text,
-            &a.region_name,
-            ScreenKind::Fishing,
-            lex.fuzzy_threshold,
-            0.80,
-            None,
-        );
+        let obs = correlate_text(kb, text, &a.region_name, ScreenKind::Fishing, lex.fuzzy_threshold, 0.80, None);
         lat_kb += t1.elapsed().as_micros();
         let p2 = obs.entity.map(|m| {
             kb.find_by_name(&m.canonical_name)
@@ -157,16 +149,9 @@ pub fn evaluate_entity_samples(
     }
 
     let n = scored.len();
-    report
-        .stages
-        .insert("ocr_exact".into(), metrics_of(&ocr_only, lat_ocr, n));
-    report.stages.insert(
-        "ocr_knowledge".into(),
-        metrics_of(&ocr_knowledge, lat_kb, n),
-    );
-    report
-        .stages
-        .insert("combined".into(), metrics_of(&combined, lat_kb, n));
+    report.stages.insert("ocr_exact".into(), metrics_of(&ocr_only, lat_ocr, n));
+    report.stages.insert("ocr_knowledge".into(), metrics_of(&ocr_knowledge, lat_kb, n));
+    report.stages.insert("combined".into(), metrics_of(&combined, lat_kb, n));
 
     for (gold, pred) in &combined {
         *report
@@ -177,8 +162,7 @@ pub fn evaluate_entity_samples(
             .or_insert(0) += 1;
     }
     report.notes.push(
-        "Vision stages not scored: labeled bar-frame samples required (none collected yet)."
-            .to_string(),
+        "Vision stages not scored: labeled bar-frame samples required (none collected yet).".to_string(),
     );
     report
 }

@@ -38,10 +38,7 @@ pub struct DxgiCapture {
 
 impl DxgiCapture {
     pub fn new() -> Self {
-        Self {
-            session: Mutex::new(None),
-            fallback: GdiCapture::new(),
-        }
+        Self { session: Mutex::new(None), fallback: GdiCapture::new() }
     }
 
     fn open(rect: PxRect) -> std::result::Result<Session, String> {
@@ -55,11 +52,7 @@ impl DxgiCapture {
                     output_index += 1;
                     let Ok(desc) = output.GetDesc() else { continue };
                     let dc = desc.DesktopCoordinates;
-                    if rect.x < dc.left
-                        || rect.y < dc.top
-                        || rect.x >= dc.right
-                        || rect.y >= dc.bottom
-                    {
+                    if rect.x < dc.left || rect.y < dc.top || rect.x >= dc.right || rect.y >= dc.bottom {
                         continue;
                     }
                     let base: IDXGIAdapter = adapter.cast().map_err(|e| e.to_string())?;
@@ -81,9 +74,7 @@ impl DxgiCapture {
                         return Err("D3D11CreateDevice returned nothing".into());
                     };
                     let output1: IDXGIOutput1 = output.cast().map_err(|e| e.to_string())?;
-                    let dup = output1
-                        .DuplicateOutput(&device)
-                        .map_err(|e| e.to_string())?;
+                    let dup = output1.DuplicateOutput(&device).map_err(|e| e.to_string())?;
                     let dd: DXGI_OUTDUPL_DESC = dup.GetDesc();
                     let (w, h) = (dd.ModeDesc.Width as i32, dd.ModeDesc.Height as i32);
                     let tex_desc = D3D11_TEXTURE2D_DESC {
@@ -92,30 +83,18 @@ impl DxgiCapture {
                         MipLevels: 1,
                         ArraySize: 1,
                         Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                        SampleDesc: DXGI_SAMPLE_DESC {
-                            Count: 1,
-                            Quality: 0,
-                        },
+                        SampleDesc: DXGI_SAMPLE_DESC { Count: 1, Quality: 0 },
                         Usage: D3D11_USAGE_STAGING,
                         BindFlags: 0,
                         CPUAccessFlags: D3D11_CPU_ACCESS_READ.0 as u32,
                         MiscFlags: 0,
                     };
                     let mut staging: Option<ID3D11Texture2D> = None;
-                    device
-                        .CreateTexture2D(&tex_desc, None, Some(&mut staging))
-                        .map_err(|e| e.to_string())?;
+                    device.CreateTexture2D(&tex_desc, None, Some(&mut staging)).map_err(|e| e.to_string())?;
                     let Some(staging) = staging else {
                         return Err("CreateTexture2D returned nothing".into());
                     };
-                    return Ok(Session {
-                        context,
-                        dup,
-                        staging,
-                        origin: (dc.left, dc.top),
-                        size: (w, h),
-                        has_frame: false,
-                    });
+                    return Ok(Session { context, dup, staging, origin: (dc.left, dc.top), size: (w, h), has_frame: false });
                 }
             }
             Err("no output contains the capture rect".into())
@@ -147,11 +126,7 @@ impl DxgiCapture {
     unsafe fn read(s: &mut Session, rect: PxRect) -> std::result::Result<Frame, String> {
         let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
         let mut resource: Option<IDXGIResource> = None;
-        let timeout = if s.has_frame {
-            0
-        } else {
-            FIRST_FRAME_TIMEOUT_MS
-        };
+        let timeout = if s.has_frame { 0 } else { FIRST_FRAME_TIMEOUT_MS };
         match s.dup.AcquireNextFrame(timeout, &mut info, &mut resource) {
             Ok(()) => {
                 let copied = resource
@@ -176,9 +151,7 @@ impl DxgiCapture {
         let w = rect.w as usize;
         let h = rect.h as usize;
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
-        s.context
-            .Map(&s.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
-            .map_err(|e| e.to_string())?;
+        s.context.Map(&s.staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped)).map_err(|e| e.to_string())?;
         let pitch = mapped.RowPitch as usize;
         let base = mapped.pData as *const u8;
         let mut rgba = vec![0u8; w * h * 4];
@@ -218,3 +191,4 @@ impl Capture for DxgiCapture {
         }
     }
 }
+

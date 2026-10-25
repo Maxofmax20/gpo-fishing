@@ -80,13 +80,7 @@ pub struct EntityQual {
 }
 
 fn normalize_key(entity_id: &str) -> String {
-    pub_normalize_ocr(
-        &entity_id
-            .split(':')
-            .nth(1)
-            .unwrap_or(entity_id)
-            .replace('-', " "),
-    )
+    pub_normalize_ocr(&entity_id.split(':').nth(1).unwrap_or(entity_id).replace('-', " "))
 }
 
 fn pub_normalize_ocr(s: &str) -> String {
@@ -130,11 +124,7 @@ pub fn qualify_entities(rows: &[MlAnnotation], prefix: &str) -> Vec<EntityQual> 
                     disagree += 1;
                 }
             }
-            let sessions = rs
-                .iter()
-                .map(|r| r.session_id.as_str())
-                .collect::<HashSet<_>>()
-                .len();
+            let sessions = rs.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len();
             EntityQual {
                 entity: e.to_string(),
                 examples: rs.len(),
@@ -174,10 +164,7 @@ fn gate(
 }
 
 fn sessions_of(rows: &[&MlAnnotation]) -> usize {
-    rows.iter()
-        .map(|r| r.session_id.as_str())
-        .collect::<HashSet<_>>()
-        .len()
+    rows.iter().map(|r| r.session_id.as_str()).collect::<HashSet<_>>().len()
 }
 
 /// Sessions whose timestamp-ordered states contain a WAITING->BITE->RESULT
@@ -204,9 +191,7 @@ pub fn complete_workflow_sessions(rows: &[MlAnnotation]) -> HashMap<String, Vec<
         }
         if stage == 3 {
             let split = MlDatasetStore::split_of(sess);
-            out.entry(split.as_str().to_string())
-                .or_default()
-                .push(sess.to_string());
+            out.entry(split.as_str().to_string()).or_default().push(sess.to_string());
         }
     }
     out
@@ -224,27 +209,18 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
             }
         }
     }
-    let state_ok = ["waiting_for_bite", "bite", "catch_result"]
-        .iter()
-        .all(|s| {
-            state_counts
-                .get(*s)
-                .map(|v| {
-                    v.len() >= STATE_MIN_ROWS_PER_STATE && sessions_of(v) >= STATE_MIN_SESSIONS
-                })
-                .unwrap_or(false)
-        });
+    let state_ok = ["waiting_for_bite", "bite", "catch_result"].iter().all(|s| {
+        state_counts
+            .get(*s)
+            .map(|v| v.len() >= STATE_MIN_ROWS_PER_STATE && sessions_of(v) >= STATE_MIN_SESSIONS)
+            .unwrap_or(false)
+    });
     let state_rows: usize = state_counts.values().map(|v| v.len()).sum();
     let state_detail = ["waiting_for_bite", "bite", "catch_result"]
         .iter()
         .map(|s| {
             let v = state_counts.get(*s);
-            format!(
-                "{}:{}/{}sess",
-                s,
-                v.map(|x| x.len()).unwrap_or(0),
-                v.map(|x| sessions_of(x)).unwrap_or(0)
-            )
+            format!("{}:{}/{}sess", s, v.map(|x| x.len()).unwrap_or(0), v.map(|x| sessions_of(x)).unwrap_or(0))
         })
         .collect::<Vec<_>>()
         .join(" ");
@@ -252,12 +228,7 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
     // ACTION UI: frames tagged by the v5.3.0+ collector hooks (unreviewed).
     let action_region_rows: Vec<&MlAnnotation> = rows
         .iter()
-        .filter(|r| {
-            matches!(
-                r.region_name.as_str(),
-                "store_banner" | "drop_banner" | "confirm_banner"
-            )
-        })
+        .filter(|r| matches!(r.region_name.as_str(), "store_banner" | "drop_banner" | "confirm_banner"))
         .collect();
 
     // ENTITY: per-prefix coverage.
@@ -269,14 +240,10 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
     }
     // Gate arithmetic counts QUALIFIED entities only (>=20 ex, >=3 sess);
     // the explorer shows all entities with per-entity reasons.
-    let fish_q: Vec<EntityQual> = qualify_entities(rows, "fish:")
-        .into_iter()
-        .filter(|q| q.qualified)
-        .collect();
-    let fruit_q: Vec<EntityQual> = qualify_entities(rows, "fruit:")
-        .into_iter()
-        .filter(|q| q.qualified)
-        .collect();
+    let fish_q: Vec<EntityQual> =
+        qualify_entities(rows, "fish:").into_iter().filter(|q| q.qualified).collect();
+    let fruit_q: Vec<EntityQual> =
+        qualify_entities(rows, "fruit:").into_iter().filter(|q| q.qualified).collect();
     // FISH GATE (v5.7.1): set-based, derived from the canonical vocabulary.
     //
     // Was: `fish_q.len() >= FISH_MIN_ENTITIES(10) && fish_test >= 5`. That
@@ -293,7 +260,11 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
     let fish_required_no_test: Vec<&str> = fish_required
         .iter()
         .copied()
-        .filter(|c| !fish_q.iter().any(|q| q.entity == *c && q.test_covered))
+        .filter(|c| {
+            !fish_q
+                .iter()
+                .any(|q| q.entity == *c && q.test_covered)
+        })
         .collect();
     let fish_ready = fish_missing.is_empty() && fish_required_no_test.is_empty();
     // Entities qualified in the data but OUTSIDE the target vocabulary. Not a
@@ -306,17 +277,7 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
     let qual_detail = |q: &[EntityQual]| {
         q.iter()
             .filter(|x| x.qualified)
-            .map(|x| {
-                format!(
-                    "{}(n={} sess={} ocr±={}/{}{})",
-                    x.entity,
-                    x.examples,
-                    x.sessions,
-                    x.ocr_agree,
-                    x.ocr_disagree,
-                    if x.test_covered { " T" } else { "" }
-                )
-            })
+            .map(|x| format!("{}(n={} sess={} ocr±={}/{}{})", x.entity, x.examples, x.sessions, x.ocr_agree, x.ocr_disagree, if x.test_covered { " T" } else { "" }))
             .collect::<Vec<_>>()
             .join(", ")
     };
@@ -453,15 +414,8 @@ pub fn assess_capabilities(rows: &[MlAnnotation]) -> Vec<CapabilityGate> {
         ),
     ];
     // evidence_sessions for entity gates: distinct sessions across qualified entities.
-    for g in gates
-        .iter_mut()
-        .filter(|g| g.id == "fish_entity" || g.id == "fruit_entity")
-    {
-        let prefix = if g.id == "fish_entity" {
-            "fish:"
-        } else {
-            "fruit:"
-        };
+    for g in gates.iter_mut().filter(|g| g.id == "fish_entity" || g.id == "fruit_entity") {
+        let prefix = if g.id == "fish_entity" { "fish:" } else { "fruit:" };
         let sess: HashSet<&str> = ent_counts
             .iter()
             .filter(|(e, _)| e.starts_with(prefix))
@@ -565,15 +519,10 @@ pub fn shadow_status(
 
 #[cfg(test)]
 mod tests {
-    use super::super::ml_dataset::{MlTask, UiLabel, DATASET_VERSION};
     use super::*;
+    use super::super::ml_dataset::{DATASET_VERSION, MlTask, UiLabel};
 
-    fn row(
-        session: &str,
-        ts: u64,
-        state: Option<GameStateLabel>,
-        entity: Option<&str>,
-    ) -> MlAnnotation {
+    fn row(session: &str, ts: u64, state: Option<GameStateLabel>, entity: Option<&str>) -> MlAnnotation {
         MlAnnotation {
             image_id: format!("{session}-{ts}"),
             dataset_version: DATASET_VERSION,
@@ -637,10 +586,7 @@ mod tests {
         let wf = complete_workflow_sessions(&rows);
         assert_eq!(wf.get("test").map(|v| v.len()), Some(1));
         assert!(wf.values().flatten().any(|s| s == "full-1"));
-        assert!(
-            !wf.values().flatten().any(|s| s == "partial-1"),
-            "bite-less chain is not complete"
-        );
+        assert!(!wf.values().flatten().any(|s| s == "partial-1"), "bite-less chain is not complete");
         let gates = assess_capabilities(&rows);
         let g = gates.iter().find(|g| g.id == "workflow").unwrap();
         assert!(!g.ready, "1 test session < 3 required");
@@ -652,10 +598,7 @@ mod tests {
         for id in ["other_drop", "action_ui", "confirmation"] {
             let g = gates.iter().find(|g| g.id == id).unwrap();
             assert!(!g.ready, "{id} must stay red with no evidence");
-            assert!(
-                g.blocking_requirement.is_some(),
-                "{id} must name its blocker"
-            );
+            assert!(g.blocking_requirement.is_some(), "{id} must name its blocker");
         }
         assert_eq!(gates.len(), 8);
     }
@@ -678,27 +621,10 @@ mod tests {
         // distinct tiny pngs
         let mut rgba = vec![0u8; 16 * 16 * 4];
         rgba[0] = 7;
-        let id = ds
-            .import_png(
-                &rgba_to_png(&rgba),
-                "sess-e",
-                MlTask::GameState,
-                Some(GameStateLabel::Bite),
-                "",
-                "bar",
-                "t",
-            )
-            .unwrap();
+        let id = ds.import_png(&rgba_to_png(&rgba), "sess-e", MlTask::GameState, Some(GameStateLabel::Bite), "", "bar", "t").unwrap();
         assert!(ds.set_event(&id, "sess-e#f000003", 3).unwrap());
-        assert!(
-            !ds.set_event(&id, "sess-e#f000009", 9).unwrap(),
-            "first capture wins"
-        );
-        let back = ds
-            .annotations()
-            .into_iter()
-            .find(|r| r.image_id == id)
-            .unwrap();
+        assert!(!ds.set_event(&id, "sess-e#f000009", 9).unwrap(), "first capture wins");
+        let back = ds.annotations().into_iter().find(|r| r.image_id == id).unwrap();
         assert_eq!(back.event_id.as_deref(), Some("sess-e#f000003"));
         assert_eq!(back.frame_index, Some(3));
         let _ = std::fs::remove_dir_all(&dir);
@@ -782,10 +708,7 @@ mod tests {
         assert_eq!(legacy.model_revision, None);
         assert_eq!(legacy.vision_confidence, None);
         let legacy_line = serde_json::to_string(&legacy).unwrap();
-        assert!(
-            legacy_line.contains("\"model_revision\":null"),
-            "unknown revision must stay explicit null, got {legacy_line}"
-        );
+        assert!(legacy_line.contains("\"model_revision\":null"), "unknown revision must stay explicit null, got {legacy_line}");
         let legacy_back: ShadowEvent = serde_json::from_str(&legacy_line).unwrap();
         assert_eq!(legacy_back.model_revision, None);
         // Explicit null in the log is also tolerated.
@@ -801,9 +724,7 @@ mod tests {
         val: impl Into<serde_json::Value>,
     ) -> serde_json::Value {
         let mut o = v.clone();
-        o.as_object_mut()
-            .unwrap()
-            .insert(key.to_string(), val.into());
+        o.as_object_mut().unwrap().insert(key.to_string(), val.into());
         o
     }
 }

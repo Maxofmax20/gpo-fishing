@@ -123,11 +123,7 @@ impl Frame {
             let s = (row * self.w + x) * 4;
             out.extend_from_slice(&self.rgba[s..s + cw * 4]);
         }
-        Frame {
-            w: cw,
-            h: ch,
-            rgba: out,
-        }
+        Frame { w: cw, h: ch, rgba: out }
     }
 
     pub fn downscale(&self, max_dim: usize) -> Frame {
@@ -146,11 +142,7 @@ impl Frame {
                 out.extend_from_slice(&self.rgba[i..i + 4]);
             }
         }
-        Frame {
-            w: nw,
-            h: nh,
-            rgba: out,
-        }
+        Frame { w: nw, h: nh, rgba: out }
     }
 
     pub fn upscale(&self, factor: usize) -> Frame {
@@ -168,11 +160,7 @@ impl Frame {
                 out.extend_from_slice(&self.rgba[i..i + 4]);
             }
         }
-        Frame {
-            w: nw,
-            h: nh,
-            rgba: out,
-        }
+        Frame { w: nw, h: nh, rgba: out }
     }
 
     pub fn to_png_bytes(&self) -> Result<Vec<u8>, String> {

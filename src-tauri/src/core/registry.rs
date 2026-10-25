@@ -72,10 +72,7 @@ impl ModelMetrics {
             .or_else(|| evaluation_test.get("macroF1"))
             .and_then(|v| v.as_f64())? as f32;
         let mut per_class_f1 = HashMap::new();
-        if let Some(map) = evaluation_test
-            .get("per_entity")
-            .and_then(|v| v.as_object())
-        {
+        if let Some(map) = evaluation_test.get("per_entity").and_then(|v| v.as_object()) {
             for (k, v) in map {
                 if let Some(f) = v.get("f1").and_then(|x| x.as_f64()) {
                     per_class_f1.insert(k.clone(), f as f32);
@@ -89,19 +86,10 @@ impl ModelMetrics {
                 }
             }
         }
-        let ece = evaluation_test
-            .get("ece")
-            .or_else(|| calibration.and_then(|c| c.get("ece")))
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32);
-        let kept_accuracy = rejection
-            .and_then(|r| r.get("test_kept_accuracy"))
-            .and_then(|v| v.as_f64())
-            .map(|v| v as f32);
-        let test_n = evaluation_test
-            .get("n")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
+        let ece = evaluation_test.get("ece").or_else(|| calibration.and_then(|c| c.get("ece"))).and_then(|v| v.as_f64()).map(|v| v as f32);
+        let kept_accuracy =
+            rejection.and_then(|r| r.get("test_kept_accuracy")).and_then(|v| v.as_f64()).map(|v| v as f32);
+        let test_n = evaluation_test.get("n").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
         let mut per_class_test_support = HashMap::new();
         for shape in ["per_entity", "per_class"] {
             if let Some(map) = evaluation_test.get(shape).and_then(|m| m.as_object()) {
@@ -113,19 +101,12 @@ impl ModelMetrics {
             }
         }
         let valid = |v: f32| v.is_finite() && (0.0..=1.0).contains(&v);
-        if !valid(accuracy)
-            || !valid(macro_f1)
-            || ece.is_some_and(|v| !valid(v))
-            || kept_accuracy.is_some_and(|v| !valid(v))
-            || per_class_f1.values().any(|v| !valid(*v))
-        {
+        if !valid(accuracy) || !valid(macro_f1) || ece.is_some_and(|v| !valid(v))
+            || kept_accuracy.is_some_and(|v| !valid(v)) || per_class_f1.values().any(|v| !valid(*v)) {
             return None;
         }
         Some(Self {
-            holdout_fingerprint: evaluation_test
-                .get("holdout_fingerprint")
-                .and_then(|v| v.as_str())
-                .map(str::to_string),
+            holdout_fingerprint: evaluation_test.get("holdout_fingerprint").and_then(|v| v.as_str()).map(str::to_string),
             accuracy,
             macro_f1,
             ece,
@@ -244,9 +225,8 @@ pub fn load_registry(data_dir: &Path) -> Vec<CandidateRecord> {
 pub fn registry_is_corrupt(data_dir: &Path) -> bool {
     let path = registry_path(data_dir);
     match std::fs::read_to_string(&path) {
-        Ok(raw) => {
-            !raw.trim().is_empty() && serde_json::from_str::<Vec<CandidateRecord>>(&raw).is_err()
-        }
+        Ok(raw) => !raw.trim().is_empty()
+            && serde_json::from_str::<Vec<CandidateRecord>>(&raw).is_err(),
         Err(_) => false,
     }
 }
@@ -273,9 +253,7 @@ fn save_registry_locked(data_dir: &Path, records: &[CandidateRecord]) -> Result<
 /// more often than as obviously broken.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
-    let parent = path
-        .parent()
-        .ok_or_else(|| format!("{} has no parent", path.display()))?;
+    let parent = path.parent().ok_or_else(|| format!("{} has no parent", path.display()))?;
     std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     // Unique per write, not per process: two deploys in one process must not
     // share a staging file.
@@ -466,8 +444,7 @@ pub fn register_candidate(
     code_version: &str,
     inputs: &CandidateInputs,
 ) -> Result<CandidateRecord, String> {
-    let stem = shadow_stem(model_family)
-        .ok_or_else(|| format!("no shadow slot for family '{model_family}'"))?;
+    let stem = shadow_stem(model_family).ok_or_else(|| format!("no shadow slot for family '{model_family}'"))?;
     let mut records = load_registry(data_dir);
     let version = next_version_checked(data_dir, &records, model_family)?;
     let candidate_id = format!("{model_family}-v{version}-{job_id}");
@@ -476,11 +453,8 @@ pub fn register_candidate(
     let art = dir.join("model.onnx");
     std::fs::copy(&inputs.onnx_path, &art).map_err(|e| format!("copy artifact: {e}"))?;
     let eval_path = dir.join("evaluation.json");
-    std::fs::write(
-        &eval_path,
-        serde_json::to_string_pretty(&inputs.eval_json).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
+    std::fs::write(&eval_path, serde_json::to_string_pretty(&inputs.eval_json).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
     let artifact_sha = sha_file(&art)?;
     let eval_sha = sha_file(&eval_path)?;
     let rec = CandidateRecord {
@@ -582,14 +556,7 @@ pub fn compare(
                     .get(cls.as_str())
                     .copied()
                     .unwrap_or(0);
-                if support < PER_CLASS_MIN_TEST_SUPPORT
-                    || current
-                        .per_class_test_support
-                        .get(cls)
-                        .copied()
-                        .unwrap_or(0)
-                        < PER_CLASS_MIN_TEST_SUPPORT
-                {
+                if support < PER_CLASS_MIN_TEST_SUPPORT || current.per_class_test_support.get(cls).copied().unwrap_or(0) < PER_CLASS_MIN_TEST_SUPPORT {
                     thin_support.push(format!("{cls} ({support} test example(s))"));
                     continue;
                 }
@@ -603,11 +570,8 @@ pub fn compare(
     }
     // Unqualified classes in the candidate can never promote.
     let qual: HashSet<&str> = qualified_classes.iter().map(|s| s.as_str()).collect();
-    let unqualified: Vec<String> = candidate_classes
-        .iter()
-        .filter(|c| !qual.contains(c.as_str()))
-        .cloned()
-        .collect();
+    let unqualified: Vec<String> =
+        candidate_classes.iter().filter(|c| !qual.contains(c.as_str())).cloned().collect();
 
     let mut verdict = ComparisonVerdict::Pass;
     // (Plain pushes instead of closures: two &mut closures over
@@ -640,10 +604,8 @@ pub fn compare(
     // order, and therefore the same `vocab_sha`.
     if family == "fish" {
         let required = crate::core::class_vocab::fish_vocab();
-        let missing =
-            crate::core::class_vocab::missing_from(candidate_classes.iter().map(|s| s.as_str()));
-        let extra =
-            crate::core::class_vocab::not_in_target(candidate_classes.iter().map(|s| s.as_str()));
+        let missing = crate::core::class_vocab::missing_from(candidate_classes.iter().map(|s| s.as_str()));
+        let extra = crate::core::class_vocab::not_in_target(candidate_classes.iter().map(|s| s.as_str()));
         if !missing.is_empty() {
             reject! {format!(
                 "candidate does not cover the canonical vocabulary (missing {} of {}): {}",
@@ -658,32 +620,15 @@ pub fn compare(
         }
     }
     let valid = |v: f32| v.is_finite() && (0.0..=1.0).contains(&v);
-    let metrics_valid = [current, candidate].iter().all(|m| {
-        valid(m.accuracy)
-            && valid(m.macro_f1)
-            && m.ece.is_some_and(valid)
-            && m.test_sessions > 0
-            && m.test_n > 0
-            && candidate_classes.iter().all(|c| {
-                m.per_class_f1.get(c).is_some_and(|v| valid(*v))
-                    && m.per_class_test_support.get(c).copied().unwrap_or(0)
-                        >= PER_CLASS_MIN_TEST_SUPPORT
-            })
-    });
-    let same_holdout = current.holdout_fingerprint.as_ref().is_some_and(|f| {
-        f.len() == 64
-            && f.chars().all(|c| c.is_ascii_hexdigit())
-            && candidate.holdout_fingerprint.as_ref() == Some(f)
-    });
+    let metrics_valid = [current, candidate].iter().all(|m| valid(m.accuracy) && valid(m.macro_f1)
+        && m.ece.is_some_and(valid) && m.test_sessions > 0 && m.test_n > 0
+        && candidate_classes.iter().all(|c| m.per_class_f1.get(c).is_some_and(|v| valid(*v))
+            && m.per_class_test_support.get(c).copied().unwrap_or(0) >= PER_CLASS_MIN_TEST_SUPPORT));
+    let same_holdout = current.holdout_fingerprint.as_ref().is_some_and(|f| f.len() == 64
+        && f.chars().all(|c| c.is_ascii_hexdigit()) && candidate.holdout_fingerprint.as_ref() == Some(f));
     let evidence_valid = metrics_valid && same_holdout;
-    if !metrics_valid {
-        inconclusive!(
-            "Missing or invalid metrics, calibration, session evidence or per-class support"
-        );
-    }
-    if !same_holdout {
-        inconclusive!("Holdout fingerprints missing or different; evaluate both models on the same frozen test set");
-    }
+    if !metrics_valid { inconclusive!("Missing or invalid metrics, calibration, session evidence or per-class support"); }
+    if !same_holdout { inconclusive!("Holdout fingerprints missing or different; evaluate both models on the same frozen test set"); }
     // Rejection is advisory for the state model; fish admission requires a measured operating point.
     if family == "fish" && !candidate.kept_accuracy.is_some_and(valid) {
         inconclusive!("Fish rejection operating point is unavailable; evaluate calibrated retention before admission");
@@ -733,24 +678,13 @@ pub fn compare(
             improvements.len()
         ));
     }
-    Comparison {
-        acc_delta,
-        f1_delta,
-        ece_delta,
-        regressions,
-        improvements,
-        verdict,
-        reasons,
-    }
+    Comparison { acc_delta, f1_delta, ece_delta, regressions, improvements, verdict, reasons }
 }
 
 // ---- promotion + rollback (shadow files only, never production) ----
 
 fn shadow_paths(models_dir: &Path, stem: &str) -> (PathBuf, PathBuf) {
-    (
-        models_dir.join(format!("{stem}.onnx")),
-        models_dir.join(format!("{stem}.json")),
-    )
+    (models_dir.join(format!("{stem}.onnx")), models_dir.join(format!("{stem}.json")))
 }
 
 /// Promote an EVALUATED+Pass candidate to shadow. Archives the running
@@ -763,21 +697,13 @@ pub fn promote_to_shadow(
     comparison: &Comparison,
 ) -> Result<PathBuf, String> {
     if comparison.verdict != ComparisonVerdict::Pass {
-        return Err(format!(
-            "promotion refused: comparison verdict is {:?}",
-            comparison.verdict
-        ));
+        return Err(format!("promotion refused: comparison verdict is {:?}", comparison.verdict));
     }
     let mut records = load_registry(data_dir);
-    let idx = records
-        .iter()
-        .position(|r| r.candidate_id == candidate_id)
-        .ok_or("candidate not found")?;
+    let idx =
+        records.iter().position(|r| r.candidate_id == candidate_id).ok_or("candidate not found")?;
     if records[idx].status != Lifecycle::Evaluated {
-        return Err(format!(
-            "candidate is {:?}, only EVALUATED promotes",
-            records[idx].status
-        ));
+        return Err(format!("candidate is {:?}, only EVALUATED promotes", records[idx].status));
     }
     let stem = shadow_stem(&records[idx].model_family)
         .ok_or_else(|| "no shadow slot for family".to_string())?
@@ -848,26 +774,16 @@ pub fn promote_to_shadow(
     });
     let manifest_body = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
     let onnx_bytes = std::fs::read(&art).map_err(|e| e.to_string())?;
-    super::shadow_infer::deploy_model_pair(
-        models_dir,
-        &stem,
-        &onnx_bytes,
-        manifest_body.as_bytes(),
-    )?;
+    super::shadow_infer::deploy_model_pair(models_dir, &stem, &onnx_bytes, manifest_body.as_bytes())?;
     // Re-verify the deployed bytes through the real loader path.
     let load_err = super::shadow_infer::ShadowEngine::load(models_dir).err();
     if let Some(e) = load_err {
         rollback_family(data_dir, models_dir, &records[idx].model_family)?;
-        return Err(format!(
-            "deployed model rejected by loader; restored archive: {e}"
-        ));
+        return Err(format!("deployed model rejected by loader; restored archive: {e}"));
     }
     records[idx].status = Lifecycle::Shadow;
     records[idx].manifest_sha = sha_file(&live_json).ok();
-    records[idx].decision_reason = Some(format!(
-        "promoted to shadow: {}",
-        comparison.reasons.join("; ")
-    ));
+    records[idx].decision_reason = Some(format!("promoted to shadow: {}", comparison.reasons.join("; ")));
     save_registry(data_dir, &records)?;
     // The running process still holds the previous weights; drop the cache so
     // the next observation actually runs the promoted candidate and stamps
@@ -879,13 +795,8 @@ pub fn promote_to_shadow(
 
 /// Restore the newest archive for a family, re-verified. Records
 /// ROLLED_BACK on the displaced shadow version when identifiable.
-pub fn rollback_family(
-    data_dir: &Path,
-    models_dir: &Path,
-    family: &str,
-) -> Result<PathBuf, String> {
-    let stem =
-        shadow_stem(family).ok_or_else(|| format!("no shadow slot for family '{family}'"))?;
+pub fn rollback_family(data_dir: &Path, models_dir: &Path, family: &str) -> Result<PathBuf, String> {
+    let stem = shadow_stem(family).ok_or_else(|| format!("no shadow slot for family '{family}'"))?;
     let arch_root = registry_dir(data_dir).join("archive").join(family);
     let mut cands: Vec<PathBuf> = std::fs::read_dir(&arch_root)
         .map_err(|_| format!("no archive for family '{family}': nothing to roll back to"))?
@@ -894,23 +805,16 @@ pub fn rollback_family(
         .filter(|p| p.is_dir())
         .collect();
     cands.sort();
-    let newest = cands
-        .pop()
-        .ok_or_else(|| format!("archive for '{family}' is empty"))?;
+    let newest = cands.pop().ok_or_else(|| format!("archive for '{family}' is empty"))?;
     let (_live_onnx, live_json) = shadow_paths(models_dir, stem);
-    let onnx_bytes =
-        std::fs::read(newest.join(format!("{stem}.onnx"))).map_err(|e| e.to_string())?;
-    let json_bytes =
-        std::fs::read(newest.join(format!("{stem}.json"))).map_err(|e| e.to_string())?;
+    let onnx_bytes = std::fs::read(newest.join(format!("{stem}.onnx"))).map_err(|e| e.to_string())?;
+    let json_bytes = std::fs::read(newest.join(format!("{stem}.json"))).map_err(|e| e.to_string())?;
     super::shadow_infer::deploy_model_pair(models_dir, stem, &onnx_bytes, &json_bytes)?;
     // The restored files must verify, or the rollback itself is refused.
     super::shadow_infer::ShadowEngine::load(models_dir)
         .map_err(|e| format!("restored archive failed to load: {e}"))?;
     let mut records = load_registry(data_dir);
-    if let Some(r) = records
-        .iter_mut()
-        .find(|r| r.model_family == family && r.status == Lifecycle::Shadow)
-    {
+    if let Some(r) = records.iter_mut().find(|r| r.model_family == family && r.status == Lifecycle::Shadow) {
         r.status = Lifecycle::RolledBack;
         r.decision_reason = Some("rolled back: archive restored".to_string());
     }
@@ -1072,16 +976,10 @@ pub fn soak_stats_for(
     stats.agree = agree;
     stats.disagree = disagree;
     stats.no_ocr_baseline = no_base;
-    stats.mean_confidence = if conf_n > 0 {
-        Some((conf_sum / conf_n as f64) as f32)
-    } else {
-        None
-    };
-    stats.agreement_rate = if scored > 0 {
-        Some(agree as f32 / scored as f32)
-    } else {
-        None
-    };
+    stats.mean_confidence =
+        if conf_n > 0 { Some((conf_sum / conf_n as f64) as f32) } else { None };
+    stats.agreement_rate =
+        if scored > 0 { Some(agree as f32 / scored as f32) } else { None };
     stats
 }
 
@@ -1098,11 +996,7 @@ mod tests {
             test_sessions: sessions,
             test_n: 100,
             per_class_f1: per.iter().map(|(k, v)| (k.to_string(), *v)).collect(),
-            per_class_test_support: crate::core::class_vocab::fish_vocab()
-                .iter()
-                .map(|c| (c.to_string(), 40))
-                .chain(per.iter().map(|(c, _)| (c.to_string(), 40)))
-                .collect(),
+            per_class_test_support: crate::core::class_vocab::fish_vocab().iter().map(|c| (c.to_string(), 40)).chain(per.iter().map(|(c, _)| (c.to_string(), 40))).collect(),
             kept_accuracy: Some(0.95),
         }
     }
@@ -1122,10 +1016,14 @@ mod tests {
             test_sessions: sessions,
             test_n: 100,
             per_class_f1: per.iter().map(|(k, v, _)| (k.to_string(), *v)).collect(),
-            per_class_test_support: per.iter().map(|(k, _, n)| (k.to_string(), *n)).collect(),
+            per_class_test_support: per
+                .iter()
+                .map(|(k, _, n)| (k.to_string(), *n))
+                .collect(),
             kept_accuracy: Some(0.95),
         }
     }
+
 
     /// Full canonical-vocabulary metrics: every class in FISH_VOCAB present,
     /// with `over` supplying the per-class F1 values the test cares about and a
@@ -1152,10 +1050,7 @@ mod tests {
             test_sessions: sessions,
             test_n: 100,
             per_class_f1: per.into_iter().collect(),
-            per_class_test_support: crate::core::class_vocab::fish_vocab()
-                .iter()
-                .map(|c| (c.to_string(), 40))
-                .collect(),
+            per_class_test_support: crate::core::class_vocab::fish_vocab().iter().map(|c| (c.to_string(), 40)).collect(),
             kept_accuracy: Some(0.95),
         }
     }
@@ -1210,22 +1105,13 @@ mod tests {
         candidate.macro_f1 += 0.03;
         candidate.per_class_test_support.clear();
         let classes = fish_classes();
-        assert_eq!(
-            compare("fish", &current, &candidate, &classes, &classes, &classes).verdict,
-            ComparisonVerdict::Inconclusive
-        );
+        assert_eq!(compare("fish", &current, &candidate, &classes, &classes, &classes).verdict, ComparisonVerdict::Inconclusive);
         candidate.per_class_test_support = current.per_class_test_support.clone();
         candidate.holdout_fingerprint = Some("b".repeat(64));
-        assert_eq!(
-            compare("fish", &current, &candidate, &classes, &classes, &classes).verdict,
-            ComparisonVerdict::Inconclusive
-        );
+        assert_eq!(compare("fish", &current, &candidate, &classes, &classes, &classes).verdict, ComparisonVerdict::Inconclusive);
         candidate.holdout_fingerprint = current.holdout_fingerprint.clone();
         candidate.accuracy = f32::NAN;
-        assert_eq!(
-            compare("fish", &current, &candidate, &classes, &classes, &classes).verdict,
-            ComparisonVerdict::Inconclusive
-        );
+        assert_eq!(compare("fish", &current, &candidate, &classes, &classes, &classes).verdict, ComparisonVerdict::Inconclusive);
     }
     #[test]
     fn support_is_parsed_from_both_trainer_shapes_and_invalid_numbers_refuse() {
@@ -1254,12 +1140,7 @@ mod tests {
         let c = compare("fish", &cur, &cand, &cls, &cls, &cls);
         assert_eq!(c.verdict, ComparisonVerdict::Pass, "{:?}", c.reasons);
         assert!(!c.reasons.is_empty());
-        assert_eq!(
-            c.improvements.len(),
-            2,
-            "both classes improved: {:?}",
-            c.improvements
-        );
+        assert_eq!(c.improvements.len(), 2, "both classes improved: {:?}", c.improvements);
         assert!(
             c.improvements.iter().any(|(x, _, _)| x == &a)
                 && c.improvements.iter().any(|(x, _, _)| x == &b),
@@ -1314,17 +1195,11 @@ mod tests {
     fn unqualified_classes_reject() {
         let cur = fish_metrics(5, &[]);
         let mut cand = fish_metrics(6, &[("fish:shark", 0.85)]);
-        cand.per_class_f1.insert("fish:megalodon".to_string(), 0.9);
+        cand.per_class_f1
+            .insert("fish:megalodon".to_string(), 0.9);
         let mut cand_cls = fish_classes();
         cand_cls.push("fish:megalodon".to_string());
-        let c = compare(
-            "fish",
-            &cur,
-            &cand,
-            &fish_classes(),
-            &cand_cls,
-            &fish_classes(),
-        );
+        let c = compare("fish", &cur, &cand, &fish_classes(), &cand_cls, &fish_classes());
         assert_eq!(c.verdict, ComparisonVerdict::Reject, "{:?}", c.reasons);
     }
 
@@ -1345,51 +1220,28 @@ mod tests {
         let art_sha = sha_file(&cand_dir.join("model.onnx")).unwrap();
         let eval_sha = sha_file(&cand_dir.join("evaluation.json")).unwrap();
         let rec = CandidateRecord {
-            candidate_id: "fish-v9-j1".into(),
-            model_family: "fish".into(),
-            model_version: 9,
-            parent_name: "fish_v1".into(),
-            parent_sha: None,
-            dataset_fingerprint: "fp-t".into(),
-            dataset_version: 1,
-            training_config_hash: "cfg".into(),
-            code_version: "t".into(),
-            job_id: "j1".into(),
-            created_at: 1,
-            artifact_sha: art_sha,
-            manifest_sha: None,
-            eval_sha,
-            metrics: metrics(0.9, 0.9, 9, &[("fish:shark", 0.9)]),
-            vocab_sha: String::new(),
-            classes: classes(&["fish:shark"]),
-            temperature: 1.0,
-            mean: [0.0; 3],
-            std: [1.0; 3],
-            status: Lifecycle::Evaluated,
-            decision_reason: None,
+            candidate_id: "fish-v9-j1".into(), model_family: "fish".into(), model_version: 9,
+            parent_name: "fish_v1".into(), parent_sha: None,
+            dataset_fingerprint: "fp-t".into(), dataset_version: 1,
+            training_config_hash: "cfg".into(), code_version: "t".into(), job_id: "j1".into(),
+            created_at: 1, artifact_sha: art_sha, manifest_sha: None, eval_sha,
+            metrics: metrics(0.9, 0.9, 9, &[("fish:shark", 0.9)]), vocab_sha: String::new(),
+            classes: classes(&["fish:shark"]), temperature: 1.0,
+            mean: [0.0; 3], std: [1.0; 3],
+            status: Lifecycle::Evaluated, decision_reason: None,
         };
         save_registry(&dir, &[rec]).unwrap();
         // Tamper AFTER registration: promotion must refuse on hash mismatch.
         std::fs::write(cand_dir.join("model.onnx"), b"tampered-bytes").unwrap();
         let cmp = Comparison {
-            acc_delta: 0.3,
-            f1_delta: 0.3,
-            ece_delta: None,
-            regressions: vec![],
-            improvements: vec![],
-            verdict: ComparisonVerdict::Pass,
-            reasons: vec!["test".into()],
+            acc_delta: 0.3, f1_delta: 0.3, ece_delta: None,
+            regressions: vec![], improvements: vec![],
+            verdict: ComparisonVerdict::Pass, reasons: vec!["test".into()],
         };
         let err = promote_to_shadow(&dir, &models, "fish-v9-j1", &cmp).unwrap_err();
-        assert!(
-            err.contains("hash mismatch"),
-            "tampering must refuse: {err}"
-        );
+        assert!(err.contains("hash mismatch"), "tampering must refuse: {err}");
         // Live shadow untouched by the refused promotion.
-        assert_eq!(
-            std::fs::read(models.join("fish_v1.onnx")).unwrap(),
-            b"live-bytes"
-        );
+        assert_eq!(std::fs::read(models.join("fish_v1.onnx")).unwrap(), b"live-bytes");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1402,20 +1254,12 @@ mod tests {
         let repo_models = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
         let models = dir.join("models");
         std::fs::create_dir_all(&models).unwrap();
-        for n in [
-            "fish_v1.onnx",
-            "fish_v1.json",
-            "state_v1.onnx",
-            "state_v1.json",
-        ] {
+        for n in ["fish_v1.onnx", "fish_v1.json", "state_v1.onnx", "state_v1.json"] {
             std::fs::copy(repo_models.join(n), models.join(n)).unwrap();
         }
         let before = std::fs::read(models.join("fish_v1.onnx")).unwrap();
         // Simulate a promoted v2 then roll back to the archived v1 bytes.
-        let arch = registry_dir(&dir)
-            .join("archive")
-            .join("fish")
-            .join("v2-0001");
+        let arch = registry_dir(&dir).join("archive").join("fish").join("v2-0001");
         std::fs::create_dir_all(&arch).unwrap();
         std::fs::copy(models.join("fish_v1.onnx"), arch.join("fish_v1.onnx")).unwrap();
         std::fs::copy(models.join("fish_v1.json"), arch.join("fish_v1.json")).unwrap();
@@ -1468,9 +1312,7 @@ mod tests {
             "model_version": "fish_v1",
         });
         if let Some(r) = revision {
-            v.as_object_mut()
-                .unwrap()
-                .insert("model_revision".into(), r.into());
+            v.as_object_mut().unwrap().insert("model_revision".into(), r.into());
         }
         v
     }
@@ -1480,10 +1322,8 @@ mod tests {
         let dir = std::env::temp_dir().join(name);
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        let body: String = lines
-            .iter()
-            .map(|l| format!("{}\n", serde_json::to_string(l).unwrap()))
-            .collect();
+        let body: String =
+            lines.iter().map(|l| format!("{}\n", serde_json::to_string(l).unwrap())).collect();
         std::fs::write(super::super::ml_capability::shadow_log_path(&dir), body).unwrap();
         dir
     }
@@ -1525,10 +1365,7 @@ mod tests {
         // apart: 3 observed events, never 8.
         let dir = two_revision_log("gpo-reg-soak-rev-a");
         let v2 = soak_stats_for(&dir, "fish_v1", Some("2"), 500);
-        assert_eq!(
-            v2.events, 3,
-            "a candidate's soak must not include its predecessor's events"
-        );
+        assert_eq!(v2.events, 3, "a candidate's soak must not include its predecessor's events");
         assert_eq!(v2.agree, 0);
         assert_eq!(v2.disagree, 3);
         assert_eq!(v2.revision, "2");
@@ -1563,19 +1400,8 @@ mod tests {
     #[test]
     fn events_without_a_revision_parse_and_only_count_unfiltered() {
         let old = soak_line("old#1", "sOld", None, Some(true), None, None, Some(0.7));
-        assert!(
-            old.get("model_revision").is_none(),
-            "legacy line must omit the key"
-        );
-        let new = soak_line(
-            "new#1",
-            "sNew",
-            Some("2"),
-            Some(true),
-            None,
-            None,
-            Some(0.7),
-        );
+        assert!(old.get("model_revision").is_none(), "legacy line must omit the key");
+        let new = soak_line("new#1", "sNew", Some("2"), Some(true), None, None, Some(0.7));
         let dir = soak_dir("gpo-reg-soak-legacy", &[old, new]);
         // Old-format events still parse and still count for the stem view...
         let all = soak_stats(&dir, "fish_v1", 500);
@@ -1590,33 +1416,9 @@ mod tests {
 
     #[test]
     fn duplicate_event_ids_are_counted_once() {
-        let a = soak_line(
-            "dup#1",
-            "sA",
-            Some("2"),
-            Some(true),
-            Some("fish:shark"),
-            None,
-            Some(0.8),
-        );
-        let b = soak_line(
-            "dup#1",
-            "sA",
-            Some("2"),
-            Some(true),
-            Some("fish:shark"),
-            None,
-            Some(0.8),
-        );
-        let c = soak_line(
-            "dup#2",
-            "sB",
-            Some("2"),
-            Some(false),
-            Some("fish:golden"),
-            None,
-            Some(0.6),
-        );
+        let a = soak_line("dup#1", "sA", Some("2"), Some(true), Some("fish:shark"), None, Some(0.8));
+        let b = soak_line("dup#1", "sA", Some("2"), Some(true), Some("fish:shark"), None, Some(0.8));
+        let c = soak_line("dup#2", "sB", Some("2"), Some(false), Some("fish:golden"), None, Some(0.6));
         let dir = soak_dir("gpo-reg-soak-dupes", &[a, b, c]);
         let s = soak_stats_for(&dir, "fish_v1", Some("2"), 500);
         assert_eq!(s.events, 2, "a re-appended line must not inflate the soak");
@@ -1625,24 +1427,13 @@ mod tests {
         assert_eq!(s.disagree, 1);
         // Dedupe is per requested view: the duplicate of a DIFFERENT revision
         // is still just that other revision's event.
-        assert_eq!(
-            soak_stats_for(&dir, "fish_v1", Some("9"), 500).duplicates_skipped,
-            0
-        );
+        assert_eq!(soak_stats_for(&dir, "fish_v1", Some("9"), 500).duplicates_skipped, 0);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn malformed_lines_are_counted_and_do_not_abort_the_parse() {
-        let good = soak_line(
-            "ok#1",
-            "sA",
-            Some("2"),
-            Some(true),
-            Some("fish:shark"),
-            None,
-            Some(0.8),
-        );
+        let good = soak_line("ok#1", "sA", Some("2"), Some(true), Some("fish:shark"), None, Some(0.8));
         let dir = soak_dir("gpo-reg-soak-malformed", &[good]);
         // Append garbage: a truncated object, a non-JSON line, and a blank.
         let log = super::super::ml_capability::shadow_log_path(&dir);
@@ -1650,25 +1441,10 @@ mod tests {
         raw.push_str("{\"session_id\":\"sA\",\"event_id\":\"torn\n");
         raw.push_str("not json at all\n");
         raw.push('\n');
-        raw.push_str(&format!(
-            "{}\n",
-            serde_json::to_string(&soak_line(
-                "ok#2",
-                "sB",
-                Some("2"),
-                Some(true),
-                Some("fish:golden"),
-                None,
-                Some(0.9)
-            ))
-            .unwrap()
-        ));
+        raw.push_str(&format!("{}\n", serde_json::to_string(&soak_line("ok#2", "sB", Some("2"), Some(true), Some("fish:golden"), None, Some(0.9))).unwrap()));
         std::fs::write(&log, raw).unwrap();
         let s = soak_stats_for(&dir, "fish_v1", Some("2"), 500);
-        assert_eq!(
-            s.events, 2,
-            "a malformed line must not abort or corrupt the parse"
-        );
+        assert_eq!(s.events, 2, "a malformed line must not abort or corrupt the parse");
         assert_eq!(s.malformed_lines, 2);
         assert_eq!(s.sessions, 2);
         let _ = std::fs::remove_dir_all(&dir);
@@ -1677,43 +1453,11 @@ mod tests {
     #[test]
     fn soak_counts_distinct_sessions_and_entities() {
         let lines = vec![
-            soak_line(
-                "e1",
-                "s1",
-                Some("2"),
-                Some(true),
-                Some("fish:shark"),
-                None,
-                Some(0.9),
-            ),
-            soak_line(
-                "e2",
-                "s1",
-                Some("2"),
-                Some(true),
-                Some("fish:shark"),
-                None,
-                Some(0.7),
-            ),
-            soak_line(
-                "e3",
-                "s2",
-                Some("2"),
-                Some(false),
-                Some("fish:golden"),
-                None,
-                Some(0.3),
-            ),
+            soak_line("e1", "s1", Some("2"), Some(true), Some("fish:shark"), None, Some(0.9)),
+            soak_line("e2", "s1", Some("2"), Some(true), Some("fish:shark"), None, Some(0.7)),
+            soak_line("e3", "s2", Some("2"), Some(false), Some("fish:golden"), None, Some(0.3)),
             // No vision label: the normalized OCR id still names an entity.
-            soak_line(
-                "e4",
-                "s3",
-                Some("2"),
-                None,
-                None,
-                Some("fish:megalodon"),
-                None,
-            ),
+            soak_line("e4", "s3", Some("2"), None, None, Some("fish:megalodon"), None),
             // Neither: not attributable to any entity.
             soak_line("e5", "s3", Some("2"), None, None, None, None),
         ];
@@ -1728,10 +1472,7 @@ mod tests {
         assert_eq!(s.disagree, 1);
         // mean over the events that carried a confidence (3 of 5).
         let mean = s.mean_confidence.unwrap();
-        assert!(
-            (mean - 1.9 / 3.0).abs() < 1e-5,
-            "mean confidence drifted: {mean}"
-        );
+        assert!((mean - 1.9 / 3.0).abs() < 1e-5, "mean confidence drifted: {mean}");
         assert!((s.agreement_rate.unwrap() - 2.0 / 3.0).abs() < 1e-5);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -1773,20 +1514,20 @@ mod tests {
         assert_eq!(s.malformed_lines, 0);
         assert_eq!(s.duplicates_skipped, 0);
         assert_eq!(s.revision, "");
-        let round: SoakStats = serde_json::from_str(
-            &serde_json::to_string(&soak_stats_for(
+        let round: SoakStats =
+            serde_json::from_str(&serde_json::to_string(&soak_stats_for(
                 &two_revision_log("gpo-reg-soak-rev-d"),
                 "fish_v1",
                 Some("2"),
                 10,
             ))
-            .unwrap(),
-        )
-        .unwrap();
+            .unwrap())
+            .unwrap();
         assert_eq!(round.events, 3);
         assert_eq!(round.revision, "2");
         let _ = std::fs::remove_dir_all(std::env::temp_dir().join("gpo-reg-soak-rev-d"));
     }
+
 
     fn record_for(family: &str, version: u32) -> CandidateRecord {
         CandidateRecord {
@@ -1824,11 +1565,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
 
-        let recs = vec![
-            record_for("fish", 1),
-            record_for("fish", 2),
-            record_for("fish", 3),
-        ];
+        let recs = vec![record_for("fish", 1), record_for("fish", 2), record_for("fish", 3)];
         let v4 = next_version_checked(&dir, &recs, "fish").unwrap();
         assert_eq!(v4, 4);
 
@@ -1869,10 +1606,7 @@ mod tests {
         // With an intact registry holding records, numbering resumes safely.
         let _ = std::fs::remove_file(dir.join("shadow_events.jsonl"));
         save_registry(&dir, &[record_for("fish", 3)]).unwrap();
-        assert_eq!(
-            next_version_checked(&dir, &load_registry(&dir), "fish").unwrap(),
-            4
-        );
+        assert_eq!(next_version_checked(&dir, &load_registry(&dir), "fish").unwrap(), 4);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1928,10 +1662,7 @@ mod tests {
             .filter_map(|e| e.ok())
             .filter(|e| e.file_name().to_string_lossy().ends_with(".tmp"))
             .collect();
-        assert!(
-            leftovers.is_empty(),
-            "no staging file may survive: {leftovers:?}"
-        );
+        assert!(leftovers.is_empty(), "no staging file may survive: {leftovers:?}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1958,9 +1689,7 @@ mod tests {
         let cls = fish_classes();
         let c = compare("fish", &current, &thin, &cls, &cls, &cls);
         assert!(
-            !c.regressions
-                .iter()
-                .any(|(cls, _, _)| cls == "fish:swordfish"),
+            !c.regressions.iter().any(|(cls, _, _)| cls == "fish:swordfish"),
             "a 2-example class must not register as a regression: {:?}",
             c.regressions
         );
@@ -1981,9 +1710,7 @@ mod tests {
         // The support floor must not become a loophole.
         let current = metrics(0.58, 0.54, 5, &[("fish:shark", 0.80)]);
         let worse = metrics_with_support(0.90, 0.90, 5, &[("fish:shark", 0.40, 40)]);
-        let c = compare(
-            "fish",
-            &current,
+        let c = compare("fish", &current,
             &worse,
             &["fish:shark".to_string()],
             &["fish:shark".to_string()],

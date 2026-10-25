@@ -192,9 +192,7 @@ impl RamResult {
             ));
         }
         if self.preprocessing.trim().is_empty() {
-            return Err(
-                "preprocessing is empty; a result must state how the image was prepared".into(),
-            );
+            return Err("preprocessing is empty; a result must state how the image was prepared".into());
         }
         Ok(())
     }
@@ -326,25 +324,19 @@ impl EvidenceFusion {
     /// first would make `Crimson Snapper` look like agreement with
     /// `fish:snapper` when the KB has never claimed they are the same thing.
     fn ocr_agrees(&self) -> bool {
-        let (Some(o), Some(c)) = (&self.ocr_text, &self.current_entity) else {
-            return false;
-        };
+        let (Some(o), Some(c)) = (&self.ocr_text, &self.current_entity) else { return false };
         let short = norm(short_name(c));
         // Guard against an empty short name matching everything.
         !short.is_empty() && norm(o).contains(&short)
     }
 
     fn ram_agrees(&self) -> bool {
-        let (Some(r), Some(c)) = (&self.ram_top, &self.current_entity) else {
-            return false;
-        };
+        let (Some(r), Some(c)) = (&self.ram_top, &self.current_entity) else { return false };
         same_entity(r, c)
     }
 
     fn ocr_ram_agree(&self) -> bool {
-        let (Some(o), Some(r)) = (&self.ocr_text, &self.ram_top) else {
-            return false;
-        };
+        let (Some(o), Some(r)) = (&self.ocr_text, &self.ram_top) else { return false };
         let short = norm(short_name(r));
         !short.is_empty() && norm(o).contains(&short)
     }
@@ -455,7 +447,8 @@ pub fn fuse(
                 }
                 1 => {} // exactly one canonical name: resolved, not a concept
                 _ => {
-                    let mut names: Vec<&str> = hits.iter().map(|e| short_name(e)).collect();
+                    let mut names: Vec<&str> =
+                        hits.iter().map(|e| short_name(e)).collect();
                     names.sort_unstable();
                     unresolved.insert(format!("ambiguous: {}", names.join(" | ")));
                 }
@@ -498,7 +491,12 @@ pub fn fuse(
     fusion
 }
 
-fn classify(kb: Option<&str>, ocr: Option<&str>, ram: Option<&str>, unresolved: bool) -> Agreement {
+fn classify(
+    kb: Option<&str>,
+    ocr: Option<&str>,
+    ram: Option<&str>,
+    unresolved: bool,
+) -> Agreement {
     if unresolved {
         // A name with no canonical entity cannot "agree" with anything. This
         // is the case that must never be resolved by inventing an entity.
@@ -706,10 +704,7 @@ mod tests {
         assert!(r.validate().is_ok());
 
         r.checkpoint_sha256 = "short".into();
-        assert!(
-            r.validate().is_err(),
-            "an unpinned checkpoint is not evidence"
-        );
+        assert!(r.validate().is_err(), "an unpinned checkpoint is not evidence");
 
         r = ram_ok("fish:shark", 0.5);
         r.preprocessing = String::new();

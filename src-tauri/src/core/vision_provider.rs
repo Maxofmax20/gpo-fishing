@@ -157,10 +157,7 @@ mod tests {
     fn heuristic_provider_reports_bar_with_bbox() {
         let p = HeuristicBarProvider::new(Palette::default());
         let obs = p.detect(&bar_frame());
-        let bar = obs
-            .iter()
-            .find(|o| o.label == "fishing_bar")
-            .expect("bar observation");
+        let bar = obs.iter().find(|o| o.label == "fishing_bar").expect("bar observation");
         assert!(bar.confidence > 0.0);
         assert!(bar.bbox.is_some());
         assert!(bar.confidence <= 1.0);

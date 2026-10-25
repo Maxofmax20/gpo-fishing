@@ -10,11 +10,7 @@ const WHEEL_STEP: i32 = 120;
 pub fn fishing_point(ctx: &Ctx) -> Option<PxPoint> {
     let rect = ctx.roblox_rect()?;
     let s = ctx.settings.read();
-    let rel = if s.features.auto_mouse_position {
-        RelPoint { x: 0.5, y: 0.33 }
-    } else {
-        s.points.fishing
-    };
+    let rel = if s.features.auto_mouse_position { RelPoint { x: 0.5, y: 0.33 } } else { s.points.fishing };
     Some(rel.to_px(&rect))
 }
 
@@ -23,18 +19,13 @@ fn rel_to_px(ctx: &Ctx, p: RelPoint) -> Option<PxPoint> {
 }
 
 pub fn click(ctx: &Ctx, p: PxPoint) -> bool {
-    if !ctx.alive() || !ctx.roblox_in_front() {
-        ctx.release_mouse();
-        return false;
-    }
+    if !ctx.alive() || !ctx.roblox_in_front() { ctx.release_mouse(); return false; }
     let input = &ctx.platform.input;
     input.move_to(p);
     if !ctx.sleep_ms(35) {
         return false;
     }
-    if !ctx.alive() || !ctx.roblox_in_front() {
-        return false;
-    }
+    if !ctx.alive() || !ctx.roblox_in_front() { return false; }
     input.button(MouseButton::Left, true);
     if !ctx.sleep_ms(45) {
         input.button(MouseButton::Left, false);
@@ -47,18 +38,13 @@ pub fn click(ctx: &Ctx, p: PxPoint) -> bool {
 /// A rock-solid, deliberate click designed specifically for Roblox UI dialogs and shop prompts.
 /// Guarantees that mouse down/up states are registered by Roblox across multiple game engine ticks.
 pub fn ui_click(ctx: &Ctx, p: PxPoint) -> bool {
-    if !ctx.alive() || !ctx.roblox_in_front() {
-        ctx.release_mouse();
-        return false;
-    }
+    if !ctx.alive() || !ctx.roblox_in_front() { ctx.release_mouse(); return false; }
     let input = &ctx.platform.input;
     input.move_to(p);
     if !ctx.sleep_ms(60) {
         return false;
     }
-    if !ctx.alive() || !ctx.roblox_in_front() {
-        return false;
-    }
+    if !ctx.alive() || !ctx.roblox_in_front() { return false; }
     input.button(MouseButton::Left, true);
     if !ctx.sleep_ms(70) {
         input.button(MouseButton::Left, false);
@@ -69,18 +55,13 @@ pub fn ui_click(ctx: &Ctx, p: PxPoint) -> bool {
 }
 
 pub fn right_click(ctx: &Ctx, p: PxPoint) -> bool {
-    if !ctx.alive() || !ctx.roblox_in_front() {
-        ctx.release_mouse();
-        return false;
-    }
+    if !ctx.alive() || !ctx.roblox_in_front() { ctx.release_mouse(); return false; }
     let input = &ctx.platform.input;
     input.move_to(p);
     if !ctx.sleep_ms(40) {
         return false;
     }
-    if !ctx.alive() || !ctx.roblox_in_front() {
-        return false;
-    }
+    if !ctx.alive() || !ctx.roblox_in_front() { return false; }
     input.button(MouseButton::Right, true);
     if !ctx.sleep_ms(40) {
         input.button(MouseButton::Right, false);
@@ -91,10 +72,7 @@ pub fn right_click(ctx: &Ctx, p: PxPoint) -> bool {
 }
 
 pub fn key_tap(ctx: &Ctx, k: Key) -> bool {
-    if !ctx.alive() || !ctx.roblox_in_front() {
-        ctx.release_mouse();
-        return false;
-    }
+    if !ctx.alive() || !ctx.roblox_in_front() { ctx.release_mouse(); return false; }
     ctx.platform.input.key(k, true);
     let ok = ctx.sleep_ms(30);
     ctx.platform.input.key(k, false);
@@ -102,10 +80,7 @@ pub fn key_tap(ctx: &Ctx, k: Key) -> bool {
 }
 
 pub fn key_hold(ctx: &Ctx, k: Key, d: Duration) -> bool {
-    if !ctx.alive() || !ctx.roblox_in_front() {
-        ctx.release_mouse();
-        return false;
-    }
+    if !ctx.alive() || !ctx.roblox_in_front() { ctx.release_mouse(); return false; }
     ctx.platform.input.key(k, true);
     let ok = ctx.sleep(d);
     ctx.platform.input.key(k, false);
@@ -128,9 +103,7 @@ pub fn align_camera_shift_lock(ctx: &Ctx) -> bool {
 
 pub fn wheel_steps(ctx: &Ctx, steps: u32, dir: i32, step_delay_ms: u32) -> bool {
     for _ in 0..steps {
-        if !ctx.alive() || !ctx.roblox_in_front() {
-            return false;
-        }
+        if !ctx.alive() || !ctx.roblox_in_front() { return false; }
         ctx.platform.input.wheel(WHEEL_STEP * dir);
         if !ctx.sleep_ms(step_delay_ms) {
             return false;
@@ -140,9 +113,7 @@ pub fn wheel_steps(ctx: &Ctx, steps: u32, dir: i32, step_delay_ms: u32) -> bool 
 }
 
 fn click_pair(ctx: &Ctx, primary: RelPoint, backup: Option<RelPoint>, settle_ms: u32) -> bool {
-    let Some(p) = rel_to_px(ctx, primary) else {
-        return false;
-    };
+    let Some(p) = rel_to_px(ctx, primary) else { return false };
     if !click(ctx, p) || !ctx.sleep_ms(settle_ms) {
         return false;
     }
@@ -266,12 +237,7 @@ pub fn is_bait_depleted(ctx: &Ctx) -> bool {
     };
     if ctx.platform.ocr.available() {
         if let Ok(frame) = ctx.platform.capture.grab(scan_rect) {
-            let text = ctx
-                .platform
-                .ocr
-                .read(&frame)
-                .unwrap_or_default()
-                .to_lowercase();
+            let text = ctx.platform.ocr.read(&frame).unwrap_or_default().to_lowercase();
             let trimmed = text.trim();
             if trimmed == "x0" || trimmed == "0" || trimmed == "x 0" || trimmed.ends_with(" 0") {
                 return true;
@@ -313,11 +279,7 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
 
     // 2. Try Gemini Vision if enabled and configured (fallback)
     if s.gemini.enabled && !s.gemini.api_key.trim().is_empty() {
-        match crate::core::gemini::scan_bait_stock_gemini(
-            &frame,
-            &s.gemini.api_key,
-            &s.gemini.model,
-        ) {
+        match crate::core::gemini::scan_bait_stock_gemini(&frame, &s.gemini.api_key, &s.gemini.model) {
             Ok(stock) => {
                 ctx.log_info(&format!(
                     "🐟 Bait stock recognized via Gemini Vision ({}): Leg={:?}, Rare={:?}, Com={:?}",
@@ -326,9 +288,7 @@ pub fn scan_bait_stock_raw(ctx: &Ctx) -> Result<(crate::core::bait::BaitStock, b
                 return Ok((stock, true));
             }
             Err(e) => {
-                ctx.log_warn(&format!(
-                    "Gemini Vision scan failed ({e}); falling back to Windows OCR"
-                ));
+                ctx.log_warn(&format!("Gemini Vision scan failed ({e}); falling back to Windows OCR"));
             }
         }
     }
@@ -367,27 +327,14 @@ pub fn select_bait(ctx: &Ctx) -> bool {
 
         if !menu_visible {
             // Menu is not open on screen. If rod is already in hand from previous cast, it is already baited!
-            ctx.log_debug(
-                "Smart Bait: bait menu not visible (rod already baited); skipping selection.",
-            );
+            ctx.log_debug("Smart Bait: bait menu not visible (rod already baited); skipping selection.");
             return true;
         }
 
-        let leg_str = stock
-            .legendary
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| "?".into());
-        let rare_str = stock
-            .rare
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| "?".into());
-        let com_str = stock
-            .common
-            .map(|n| n.to_string())
-            .unwrap_or_else(|| "?".into());
-        ctx.log_info(&format!(
-            "🐟 Bait Stock: [Legendary: {leg_str} | Rare: {rare_str} | Common: {com_str}]"
-        ));
+        let leg_str = stock.legendary.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
+        let rare_str = stock.rare.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
+        let com_str = stock.common.map(|n| n.to_string()).unwrap_or_else(|| "?".into());
+        ctx.log_info(&format!("🐟 Bait Stock: [Legendary: {leg_str} | Rare: {rare_str} | Common: {com_str}]"));
 
         // Dynamic auto-purchase trigger:
         // In GPO, ONLY Common Fish Bait can be purchased from the NPC shop.
@@ -417,15 +364,10 @@ pub fn select_bait(ctx: &Ctx) -> bool {
             }
         }
 
-        let chosen_tier = crate::core::bait::resolve_tier(
-            &stock,
-            s.purchase.bait_tier,
-            s.purchase.legendary_reserve,
-        );
+        let chosen_tier = crate::core::bait::resolve_tier(&stock, s.purchase.bait_tier, s.purchase.legendary_reserve);
 
         // Notify user if a high tier bait depleted or reached reserve limit
-        if (s.purchase.bait_tier == crate::core::bait::BaitTier::Legendary
-            || s.purchase.bait_tier == crate::core::bait::BaitTier::Highest)
+        if (s.purchase.bait_tier == crate::core::bait::BaitTier::Legendary || s.purchase.bait_tier == crate::core::bait::BaitTier::Highest)
             && chosen_tier != crate::core::bait::BaitTier::Legendary
         {
             if let Some(l_qty) = stock.legendary {
@@ -435,16 +377,10 @@ pub fn select_bait(ctx: &Ctx) -> bool {
                         s.purchase.legendary_reserve, chosen_tier
                     ));
                 } else if l_qty == 0 {
-                    ctx.log_warn(&format!(
-                        "⚠️ Legendary bait depleted! Automatically fell back to {:?}.",
-                        chosen_tier
-                    ));
+                    ctx.log_warn(&format!("⚠️ Legendary bait depleted! Automatically fell back to {:?}.", chosen_tier));
                 }
             }
-        } else if s.purchase.bait_tier == crate::core::bait::BaitTier::Rare
-            && chosen_tier == crate::core::bait::BaitTier::Common
-            && stock.rare == Some(0)
-        {
+        } else if s.purchase.bait_tier == crate::core::bait::BaitTier::Rare && chosen_tier == crate::core::bait::BaitTier::Common && stock.rare == Some(0) {
             ctx.log_warn("⚠️ Rare bait depleted! Automatically fell back to Common bait.");
         }
 
@@ -564,30 +500,19 @@ pub fn cast(ctx: &Ctx) -> bool {
 
 pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
     let s = ctx.settings();
-    let (Some(confirm), Some(quantity)) = (
-        s.points.purchase[0].and_then(|p| rel_to_px(ctx, p)),
-        s.points.purchase[1].and_then(|p| rel_to_px(ctx, p)),
-    ) else {
+    let (Some(confirm), Some(quantity)) = (s.points.purchase[0].and_then(|p| rel_to_px(ctx, p)), s.points.purchase[1].and_then(|p| rel_to_px(ctx, p))) else {
         ctx.log_warn("Auto purchase: confirm and quantity points not both set");
         return true;
     };
     let max_cap = s.purchase.max_bait.clamp(1, 300);
-    let amount = amount_override
-        .unwrap_or(s.purchase.amount)
-        .clamp(1, max_cap);
+    let amount = amount_override.unwrap_or(s.purchase.amount).clamp(1, max_cap);
     ctx.set_state(BotState::Purchasing, None);
-    ctx.log_info(&format!(
-        "Buying {amount} bait (up to {max_cap} max capacity)"
-    ));
+    ctx.log_info(&format!("Buying {amount} bait (up to {max_cap} max capacity)"));
     let p = &s.purchase;
     let delay = p.click_delay_ms;
 
     ctx.ensure_roblox_focus();
-    if !key_hold(
-        ctx,
-        Key::Char(s.keys.shop),
-        Duration::from_millis(p.hold_shop_key_ms.max(800) as u64),
-    ) {
+    if !key_hold(ctx, Key::Char(s.keys.shop), Duration::from_millis(p.hold_shop_key_ms.max(800) as u64)) {
         return false;
     }
     // Wait for the barrel merchant dialog to open
@@ -596,19 +521,13 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
     }
 
     // 1. Click Confirm option in merchant dialog to open the quantity prompt
-    ctx.log_info(&format!(
-        "🛒 Auto purchase: clicking Confirm button at ({}, {})",
-        confirm.x, confirm.y
-    ));
+    ctx.log_info(&format!("🛒 Auto purchase: clicking Confirm button at ({}, {})", confirm.x, confirm.y));
     if !ui_click(ctx, confirm) || !ctx.sleep_ms((delay + 300).max(500)) {
         return false;
     }
 
     // 2. Click the middle button (quantity text input box) to focus it
-    ctx.log_info(&format!(
-        "🛒 Auto purchase: focusing quantity textbox at ({}, {})",
-        quantity.x, quantity.y
-    ));
+    ctx.log_info(&format!("🛒 Auto purchase: focusing quantity textbox at ({}, {})", quantity.x, quantity.y));
     if !ui_click(ctx, quantity) || !ctx.sleep_ms(150) {
         return false;
     }
@@ -642,14 +561,9 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
     }
 
     // 5. Click the Buy button to finalize and execute purchase
-    let buy_button = s.points.purchase[2]
-        .or(s.points.purchase[0])
-        .and_then(|p| rel_to_px(ctx, p));
+    let buy_button = s.points.purchase[2].or(s.points.purchase[0]).and_then(|p| rel_to_px(ctx, p));
     if let Some(buy_btn) = buy_button {
-        ctx.log_info(&format!(
-            "🛒 Auto purchase: clicking final Buy button at ({}, {})",
-            buy_btn.x, buy_btn.y
-        ));
+        ctx.log_info(&format!("🛒 Auto purchase: clicking final Buy button at ({}, {})", buy_btn.x, buy_btn.y));
         if !ui_click(ctx, buy_btn) || !ctx.sleep_ms((delay + 300).max(500)) {
             return false;
         }
@@ -661,23 +575,15 @@ pub fn purchase_amount(ctx: &Ctx, amount_override: Option<u32>) -> bool {
         y: s.points.purchase[0].map(|p| p.y).unwrap_or(0.906),
     };
     if let Some(cancel_btn) = rel_to_px(ctx, cancel_pt) {
-        ctx.log_info(&format!(
-            "🛒 Auto purchase: clicking Cancel button at ({}, {}) to ensure prompt dismisses",
-            cancel_btn.x, cancel_btn.y
-        ));
+        ctx.log_info(&format!("🛒 Auto purchase: clicking Cancel button at ({}, {}) to ensure prompt dismisses", cancel_btn.x, cancel_btn.y));
         let _ = ui_click(ctx, cancel_btn);
         let _ = ctx.sleep_ms((delay + 200).max(400));
     }
 
     // 7. Click the final middle button (OK / Close) (purchase[3], or fallback to middle point purchase[1])
-    let middle_button = s.points.purchase[3]
-        .or(s.points.purchase[1])
-        .and_then(|p| rel_to_px(ctx, p));
+    let middle_button = s.points.purchase[3].or(s.points.purchase[1]).and_then(|p| rel_to_px(ctx, p));
     if let Some(mid_btn) = middle_button {
-        ctx.log_info(&format!(
-            "🛒 Auto purchase: clicking final middle button (OK / Close) at ({}, {})",
-            mid_btn.x, mid_btn.y
-        ));
+        ctx.log_info(&format!("🛒 Auto purchase: clicking final middle button (OK / Close) at ({}, {})", mid_btn.x, mid_btn.y));
         if !ui_click(ctx, mid_btn) || !ctx.sleep_ms((delay + 200).max(500)) {
             return false;
         }
@@ -711,9 +617,7 @@ pub fn purchase(ctx: &Ctx) -> bool {
         Ok((stock, visible)) if visible => {
             if let Some(c_qty) = stock.common {
                 if c_qty >= max_cap {
-                    ctx.log_info(&format!(
-                        "🛒 Bait stock is already full ({c_qty}/{max_cap}); skipping purchase."
-                    ));
+                    ctx.log_info(&format!("🛒 Bait stock is already full ({c_qty}/{max_cap}); skipping purchase."));
                     ctx.session.lock().since_purchase = 0;
                     ctx.emit_stats();
                     return true;
@@ -766,19 +670,12 @@ pub fn capture_fruit_screenshot(ctx: &Ctx, s: &crate::config::Settings) -> Optio
         }
     }
 
-    ctx.platform
-        .capture
-        .grab(r)
-        .ok()
+    ctx.platform.capture.grab(r).ok()
         .map(|f| f.downscale(1280))
         .and_then(|f| f.to_png_bytes().ok())
 }
 
-pub fn capture_drop_screenshot(
-    ctx: &Ctx,
-    s: &crate::config::Settings,
-    is_high_tier: bool,
-) -> Option<Vec<u8>> {
+pub fn capture_drop_screenshot(ctx: &Ctx, s: &crate::config::Settings, is_high_tier: bool) -> Option<Vec<u8>> {
     if !s.webhook.send_screenshot || !s.webhook.send_drop_screenshot {
         return None;
     }
@@ -811,114 +708,61 @@ pub fn capture_drop_screenshot(
         }
     }
 
-    ctx.platform
-        .capture
-        .grab(r)
-        .ok()
+    ctx.platform.capture.grab(r).ok()
         .map(|f| f.downscale(1280))
         .and_then(|f| f.to_png_bytes().ok())
 }
 
 /// Store/drop locally, then publish one terminal outcome before any notification work.
-pub fn store_fruit(
-    ctx: &Ctx,
-    catch: &crate::core::fruit_storage::FruitCatchContext,
-    workflow_id: &str,
-) -> crate::core::fruit_storage::StorageOutcome {
+pub fn store_fruit(ctx: &Ctx, catch: &crate::core::fruit_storage::FruitCatchContext, workflow_id: &str) -> crate::core::fruit_storage::StorageOutcome {
     use crate::core::fruit_storage::{run_storage, StorageOutcome};
     use crate::core::workflow::{ActionEvent, ConfirmationState};
     let s = ctx.settings();
-    if !s.features.fruit_storage {
-        return StorageOutcome::Cancelled;
-    }
+    if !s.features.fruit_storage { return StorageOutcome::Cancelled; }
     let now = crate::events::now_ms();
     let mut event = ActionEvent {
-        workflow_id: workflow_id.into(),
-        event_id: format!("{workflow_id}#store"),
-        frame_index: None,
-        session_id: ctx
-            .ml
-            .active_session_id()
-            .unwrap_or_else(|| "no-session".into()),
-        result_event_id: None,
-        entity_id: None,
-        entity_type: Some("fruit".into()),
-        policy_decision: Some(catch.policy.action.as_str().into()),
-        action_requested: Some("store_attempt".into()),
-        action_sent_at: Some(now),
-        confirmation_state: ConfirmationState::Pending,
-        confirmation_evidence: None,
-        confirmation_at: None,
-        retry_count: 0,
-        final_outcome: None,
+        workflow_id: workflow_id.into(), event_id: format!("{workflow_id}#store"),
+        frame_index: None, session_id: ctx.ml.active_session_id().unwrap_or_else(|| "no-session".into()),
+        result_event_id: None, entity_id: None, entity_type: Some("fruit".into()),
+        policy_decision: Some(catch.policy.action.as_str().into()), action_requested: Some("store_attempt".into()),
+        action_sent_at: Some(now), confirmation_state: ConfirmationState::Pending,
+        confirmation_evidence: None, confirmation_at: None, retry_count: 0, final_outcome: None,
     };
     let _ = crate::core::workflow::append_action_event(ctx.store.dir(), &event);
-    ctx.set_state(
-        BotState::StoringFruit,
-        Some(format!("Storing {}", catch.name)),
-    );
+    ctx.set_state(BotState::StoringFruit, Some(format!("Storing {}", catch.name)));
     let outcome = if s.points.fruit[0].is_none() {
         StorageOutcome::Failed("Store button point is not configured".into())
     } else {
-        let mut io = LocalStorageIo {
-            ctx,
-            settings: &s,
-            last_text: String::new(),
-            drop_sent: false,
-        };
+        let mut io = LocalStorageIo { ctx, settings: &s, last_text: String::new(), drop_sent: false };
         let result = run_storage(&mut io, catch);
-        if result == StorageOutcome::Unknown
-            && s.fruit_storage.continue_on_unconfirmed
-            && io.drop_sent
-        {
+        if result == StorageOutcome::Unknown && s.fruit_storage.continue_on_unconfirmed && io.drop_sent {
             ctx.log_info("Fruit outcome unconfirmed; rechecking without sending another drop");
             match io.observe(5000, true) {
-                Ok(Some(
-                    crate::core::fruit::StorageBannerResult::Dropped { .. }
-                    | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. },
-                )) => StorageOutcome::Dropped,
+                Ok(Some(crate::core::fruit::StorageBannerResult::Dropped { .. }
+                    | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. })) => StorageOutcome::Dropped,
                 Ok(_) => StorageOutcome::Unknown,
                 Err(()) => StorageOutcome::Cancelled,
             }
-        } else {
-            result
-        }
+        } else { result }
     };
     event.confirmation_state = match &outcome {
-        StorageOutcome::Stored | StorageOutcome::ProtectedKept | StorageOutcome::Dropped => {
-            ConfirmationState::Confirmed
-        }
+        StorageOutcome::Stored | StorageOutcome::ProtectedKept | StorageOutcome::Dropped => ConfirmationState::Confirmed,
         StorageOutcome::Failed(_) => ConfirmationState::Failed,
         StorageOutcome::Unknown | StorageOutcome::Cancelled => ConfirmationState::Unknown,
     };
     event.confirmation_at = Some(crate::events::now_ms());
     event.confirmation_evidence = Some(outcome.detail().into());
-    event.final_outcome = Some(
-        match &outcome {
-            StorageOutcome::Stored => "stored",
-            StorageOutcome::ProtectedKept => "protected_kept",
-            StorageOutcome::Dropped => "dropped_confirmed",
-            StorageOutcome::Failed(_) => "store_failed",
-            StorageOutcome::Unknown => "unconfirmed",
-            StorageOutcome::Cancelled => "cancelled",
-        }
-        .into(),
-    );
+    event.final_outcome = Some(match &outcome {
+        StorageOutcome::Stored => "stored", StorageOutcome::ProtectedKept => "protected_kept",
+        StorageOutcome::Dropped => "dropped_confirmed", StorageOutcome::Failed(_) => "store_failed",
+        StorageOutcome::Unknown => "unconfirmed", StorageOutcome::Cancelled => "cancelled",
+    }.into());
     let _ = crate::core::workflow::append_action_event(ctx.store.dir(), &event);
     ctx.log_info(&format!("{}: {}", catch.name, outcome.detail()));
     // Publish the completion before capture/encoding or queued HTTP delivery.
-    if ctx.alive() {
-        ctx.set_state(
-            BotState::PostCatch,
-            Some(format!("{}: {}", catch.name, outcome.detail())),
-        );
-    }
+    if ctx.alive() { ctx.set_state(BotState::PostCatch, Some(format!("{}: {}", catch.name, outcome.detail()))); }
     let notify = crate::webhook::should_notify_fruit_outcome(&s, catch, &outcome);
-    let photo = if notify && ctx.alive() && ctx.roblox_in_front() {
-        capture_drop_screenshot(ctx, &s, catch.high_tier())
-    } else {
-        None
-    };
+    let photo = if notify && ctx.alive() && ctx.roblox_in_front() { capture_drop_screenshot(ctx, &s, catch.high_tier()) } else { None };
     ctx.webhook.fruit_storage_outcome(catch, &outcome, photo);
 
     outcome
@@ -926,18 +770,12 @@ pub fn store_fruit(
 
 /// High-contrast white result text, used only after an ordinary OCR read is unknown.
 /// This does not classify the catch: the same strict result parser remains authoritative.
-pub(crate) fn catch_banner_ocr_frame(
-    frame: &crate::core::types::Frame,
-) -> crate::core::types::Frame {
+pub(crate) fn catch_banner_ocr_frame(frame: &crate::core::types::Frame) -> crate::core::types::Frame {
     let mut mask = frame.clone();
     for px in mask.rgba.chunks_exact_mut(4) {
         let min = px[0].min(px[1]).min(px[2]);
         let max = px[0].max(px[1]).max(px[2]);
-        let value = if min >= 170 && max - min <= 55 {
-            0
-        } else {
-            255
-        };
+        let value = if min >= 170 && max - min <= 55 { 0 } else { 255 };
         px.copy_from_slice(&[value, value, value, 255]);
     }
     let factor = if mask.w.max(mask.h) <= 1280 { 2 } else { 1 };
@@ -950,8 +788,8 @@ pub(crate) fn catch_banner_ocr_frame(
 fn drop_banner_ocr_frame(frame: &crate::core::types::Frame) -> crate::core::types::Frame {
     let mut mask = frame.clone();
     for px in mask.rgba.chunks_exact_mut(4) {
-        let yellow =
-            px[0] >= 130 && px[1] >= 110 && (px[2] as u16 + 55) < (px[0].min(px[1]) as u16);
+        let yellow = px[0] >= 130 && px[1] >= 110
+            && (px[2] as u16 + 55) < (px[0].min(px[1]) as u16);
         let value = if yellow { 0 } else { 255 };
         px.copy_from_slice(&[value, value, value, 255]);
     }
@@ -971,71 +809,30 @@ impl LocalStorageIo<'_> {
     /// drop confirmation later than the default 350 ms; wait longer before
     /// treating the result as unconfirmed. This only reads the screen:
     /// it never retries a destructive input or assumes a drop succeeded.
-    fn observe(
-        &mut self,
-        wait_ms: u32,
-        drop_only: bool,
-    ) -> Result<Option<crate::core::fruit::StorageBannerResult>, ()> {
+    fn observe(&mut self, wait_ms: u32, drop_only: bool) -> Result<Option<crate::core::fruit::StorageBannerResult>, ()> {
         let reads: u32 = if drop_only { 9 } else { 3 };
-        let window_ms = if drop_only {
-            wait_ms.max(1400)
-        } else {
-            wait_ms
-        };
+        let window_ms = if drop_only { wait_ms.max(1400) } else { wait_ms };
         let gap = window_ms.div_ceil(reads);
         for _ in 0..reads {
-            if !self.ctx.sleep_ms(gap) || !self.ctx.roblox_in_front() {
-                return Err(());
-            }
-            let Some(r) = self.ctx.roblox_rect() else {
-                return Err(());
-            };
-            let rect = RelRect {
-                x: 0.18,
-                y: 0.02,
-                w: 0.64,
-                h: 0.28,
-            }
-            .to_px(&r);
+            if !self.ctx.sleep_ms(gap) || !self.ctx.roblox_in_front() { return Err(()); }
+            let Some(r) = self.ctx.roblox_rect() else { return Err(()); };
+            let rect = RelRect { x: 0.18, y: 0.02, w: 0.64, h: 0.28 }.to_px(&r);
             let frame = match self.ctx.platform.capture.grab(rect) {
                 Ok(f) => f,
-                Err(_) => {
-                    return Ok(Some(crate::core::fruit::StorageBannerResult::Failed {
-                        reason: "Storage capture failed".into(),
-                    }))
-                }
+                Err(_) => return Ok(Some(crate::core::fruit::StorageBannerResult::Failed { reason: "Storage capture failed".into() })),
             };
             let text = match self.ctx.platform.ocr.read(&frame) {
                 Ok(t) => t,
-                Err(_) => {
-                    return Ok(Some(crate::core::fruit::StorageBannerResult::Failed {
-                        reason: "Storage OCR failed".into(),
-                    }))
-                }
+                Err(_) => return Ok(Some(crate::core::fruit::StorageBannerResult::Failed { reason: "Storage OCR failed".into() })),
             };
             self.last_text = text;
-            let mut parsed =
-                crate::core::fruit::parse_storage_banner(&self.settings.lexicon, &self.last_text);
-            if drop_only
-                && !matches!(
-                    parsed,
-                    Some(
-                        crate::core::fruit::StorageBannerResult::Dropped { .. }
-                            | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. }
-                    )
-                )
-            {
+            let mut parsed = crate::core::fruit::parse_storage_banner(&self.settings.lexicon, &self.last_text);
+            if drop_only && !matches!(parsed, Some(crate::core::fruit::StorageBannerResult::Dropped { .. } | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. })) {
                 // One bounded fallback on the SAME captured frame: no extra
                 // Backspace, click or other game input.
                 if let Ok(enhanced) = self.ctx.platform.ocr.read(&drop_banner_ocr_frame(&frame)) {
-                    if let Some(banner) =
-                        crate::core::fruit::parse_storage_banner(&self.settings.lexicon, &enhanced)
-                    {
-                        if matches!(
-                            banner,
-                            crate::core::fruit::StorageBannerResult::Dropped { .. }
-                                | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. }
-                        ) {
+                    if let Some(banner) = crate::core::fruit::parse_storage_banner(&self.settings.lexicon, &enhanced) {
+                        if matches!(banner, crate::core::fruit::StorageBannerResult::Dropped { .. } | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. }) {
                             self.last_text = enhanced;
                             parsed = Some(banner);
                         }
@@ -1043,62 +840,32 @@ impl LocalStorageIo<'_> {
                 }
             }
             if let Some(banner) = parsed {
-                if drop_only
-                    && !matches!(
-                        banner,
-                        crate::core::fruit::StorageBannerResult::Dropped { .. }
-                            | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. }
-                    )
-                {
-                    continue;
-                }
+                if drop_only && !matches!(banner, crate::core::fruit::StorageBannerResult::Dropped { .. } | crate::core::fruit::StorageBannerResult::DuplicateDropped { .. }) { continue; }
                 submit_action_frame(self.ctx, "confirm_banner", &self.last_text);
                 return Ok(Some(banner));
             }
         }
         if drop_only {
             let excerpt: String = self.last_text.chars().take(180).collect();
-            self.ctx.log_warn(&format!(
-                "Drop confirmation OCR remained unrecognized: {excerpt:?}"
-            ));
+            self.ctx.log_warn(&format!("Drop confirmation OCR remained unrecognized: {excerpt:?}"));
         }
         Ok(None)
     }
 }
 impl crate::core::fruit_storage::StorageIo for LocalStorageIo<'_> {
-    fn active(&self) -> bool {
-        self.ctx.alive() && self.ctx.roblox_in_front()
-    }
+    fn active(&self) -> bool { self.ctx.alive() && self.ctx.roblox_in_front() }
     fn attempt_store(&mut self) -> Result<Option<crate::core::fruit::StorageBannerResult>, ()> {
-        let Some(primary) = self.settings.points.fruit[0] else {
-            return Err(());
-        };
-        for slot in [
-            self.settings.keys.fruit_slot_1,
-            self.settings.keys.fruit_slot_2,
-        ] {
-            if !key_tap(self.ctx, Key::Char(slot))
-                || !self.ctx.sleep_ms(self.settings.fruit_storage.key_settle_ms)
-                || !click_pair(
-                    self.ctx,
-                    primary,
-                    self.settings.points.fruit[1],
-                    self.settings.fruit_storage.click_settle_ms,
-                )
-            {
-                return Err(());
-            }
-            if let Some(banner) = self.observe(self.settings.fruit_storage.dialog_wait_ms, false)? {
-                return Ok(Some(banner));
-            }
+        let Some(primary) = self.settings.points.fruit[0] else { return Err(()); };
+        for slot in [self.settings.keys.fruit_slot_1, self.settings.keys.fruit_slot_2] {
+            if !key_tap(self.ctx, Key::Char(slot)) || !self.ctx.sleep_ms(self.settings.fruit_storage.key_settle_ms)
+                || !click_pair(self.ctx, primary, self.settings.points.fruit[1], self.settings.fruit_storage.click_settle_ms) { return Err(()); }
+            if let Some(banner) = self.observe(self.settings.fruit_storage.dialog_wait_ms, false)? { return Ok(Some(banner)); }
             submit_action_frame(self.ctx, "store_banner", &self.last_text);
         }
         Ok(None)
     }
     fn drop_once(&mut self) -> bool {
-        if self.drop_sent {
-            return false;
-        }
+        if self.drop_sent { return false; }
         self.drop_sent = true;
         key_hold(self.ctx, Key::Backspace, Duration::from_millis(180))
     }
@@ -1122,12 +889,7 @@ fn submit_action_frame(ctx: &Ctx, region_tag: &str, ocr_text: &str) {
         return;
     }
     let Some(r) = ctx.roblox_rect() else { return };
-    let banner_rect = RelRect {
-        x: 0.18,
-        y: 0.02,
-        w: 0.64,
-        h: 0.28,
-    };
+    let banner_rect = RelRect { x: 0.18, y: 0.02, w: 0.64, h: 0.28 };
     let frame = match ctx.platform.capture.grab(banner_rect.to_px(&r)) {
         Ok(f) => f,
         Err(_) => return,
@@ -1179,26 +941,12 @@ pub fn extract_timestamp(text: &str) -> Option<(String, i64)> {
     let mut days: i64 = 0;
     if let Some(idx) = lower.find("day") {
         let before = &lower[..idx];
-        let digits: String = before
-            .chars()
-            .rev()
-            .take_while(|c| c.is_ascii_digit())
-            .collect::<String>()
-            .chars()
-            .rev()
-            .collect();
+        let digits: String = before.chars().rev().take_while(|c| c.is_ascii_digit()).collect::<String>().chars().rev().collect();
         days = digits.parse::<i64>().unwrap_or(1);
     } else if lower.contains("dap") || lower.contains("dys") {
         if let Some(idx) = lower.find("dap").or_else(|| lower.find("dys")) {
             let before = &lower[..idx];
-            let digits: String = before
-                .chars()
-                .rev()
-                .take_while(|c| c.is_ascii_digit())
-                .collect::<String>()
-                .chars()
-                .rev()
-                .collect();
+            let digits: String = before.chars().rev().take_while(|c| c.is_ascii_digit()).collect::<String>().chars().rev().collect();
             days = digits.parse::<i64>().unwrap_or(1);
         } else {
             days = 1;
@@ -1215,11 +963,7 @@ pub fn extract_timestamp(text: &str) -> Option<(String, i64)> {
                 let m_str = clean_ocr_digits(parts[1]);
                 let s_str = clean_ocr_digits(parts[2]);
 
-                if let (Ok(h), Ok(m), Ok(s)) = (
-                    h_str.parse::<i64>(),
-                    m_str.parse::<i64>(),
-                    s_str.parse::<i64>(),
-                ) {
+                if let (Ok(h), Ok(m), Ok(s)) = (h_str.parse::<i64>(), m_str.parse::<i64>(), s_str.parse::<i64>()) {
                     if m < 60 && s < 60 {
                         let total = days * 86400 + h * 3600 + m * 60 + s;
                         let display = if days > 0 {
@@ -1320,12 +1064,8 @@ pub fn scan_server_age(ctx: &Ctx) -> Result<(i64, String, i64, bool), String> {
         .read(&upscaled)
         .map_err(|e| format!("OCR read failed: {e}"))?;
 
-    let (time_str, uptime_sec) = extract_timestamp(&text).ok_or_else(|| {
-        format!(
-            "Could not find time (HH:MM:SS) in bottom-right corner. OCR detected: '{}'",
-            text.trim()
-        )
-    })?;
+    let (time_str, uptime_sec) = extract_timestamp(&text)
+        .ok_or_else(|| format!("Could not find time (HH:MM:SS) in bottom-right corner. OCR detected: '{}'", text.trim()))?;
 
     let (rem, is_spawned) = crate::core::boss_tracker::merchant_spawn_from_server_age(uptime_sec);
 
@@ -1335,28 +1075,15 @@ pub fn scan_server_age(ctx: &Ctx) -> Result<(i64, String, i64, bool), String> {
 #[cfg(test)]
 mod storage_replay_tests {
     use super::*;
-    use crate::core::fruit::DropInfo;
-    use crate::core::fruit_storage::{FruitCatchContext, StorageOutcome};
-    use crate::core::platform::{
-        mock::{InputEvent, MockWindow, RecordingInput, ScriptedCapture, ScriptedOcr},
-        Platform,
-    };
-    use crate::core::types::{Frame, WindowInfo};
+    use std::sync::{Arc, atomic::Ordering};
     use parking_lot::{Mutex, RwLock};
-    use std::sync::{atomic::Ordering, Arc};
+    use crate::core::platform::{Platform, mock::{MockWindow, ScriptedCapture, ScriptedOcr, RecordingInput, InputEvent}};
+    use crate::core::types::{Frame, WindowInfo};
+    use crate::core::fruit::{DropInfo};
+    use crate::core::fruit_storage::{FruitCatchContext, StorageOutcome};
 
-    struct Harness {
-        ctx: Ctx,
-        input: Arc<RecordingInput>,
-        window: Arc<MockWindow>,
-        rx: crossbeam_channel::Receiver<crate::events::BotEvent>,
-        dir: std::path::PathBuf,
-    }
-    impl Drop for Harness {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.dir);
-        }
-    }
+    struct Harness { ctx: Ctx, input: Arc<RecordingInput>, window: Arc<MockWindow>, rx: crossbeam_channel::Receiver<crate::events::BotEvent>, dir: std::path::PathBuf }
+    impl Drop for Harness { fn drop(&mut self) { let _ = std::fs::remove_dir_all(&self.dir); } }
     fn harness(texts: &[&str]) -> Harness {
         let mut settings = crate::config::Settings::default();
         settings.features.fruit_storage = true;
@@ -1370,129 +1097,53 @@ mod storage_replay_tests {
         // Even with Gemini enabled, the replay never contacts a network service.
         settings.gemini.enabled = true;
         settings.gemini.api_key = "test-not-a-real-key".into();
-        let info = WindowInfo {
-            client: PxRect {
-                x: 0,
-                y: 0,
-                w: 1920,
-                h: 1080,
-            },
-            is_foreground: true,
-            visible: true,
-            dpi: 96,
-        };
-        let window = Arc::new(MockWindow {
-            info: Mutex::new(Some(info)),
-        });
-        let cap = Arc::new(ScriptedCapture::default());
-        cap.push(Frame::new(4, 4, vec![255; 64]));
+        let info = WindowInfo { client: PxRect { x: 0, y: 0, w: 1920, h: 1080 }, is_foreground: true, visible: true, dpi: 96 };
+        let window = Arc::new(MockWindow { info: Mutex::new(Some(info)) });
+        let cap = Arc::new(ScriptedCapture::default()); cap.push(Frame::new(4, 4, vec![255; 64]));
         let input = Arc::new(RecordingInput::default());
         let ocr = Arc::new(ScriptedOcr::default());
         ocr.texts.lock().extend(texts.iter().map(|s| s.to_string()));
-        let platform = Platform {
-            window: window.clone(),
-            capture: cap,
-            input: input.clone(),
-            ocr,
-        };
+        let platform = Platform { window: window.clone(), capture: cap, input: input.clone(), ocr };
         let (tx, rx) = crossbeam_channel::unbounded();
         // Windows clock resolution can give concurrent replays the same
         // timestamp. Each harness must have its own action-event log.
         static NEXT_REPLAY: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let replay_id = NEXT_REPLAY.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "gpo-storage-{}-{replay_id}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        let ctx = Ctx::new(
-            platform,
-            Arc::new(RwLock::new(settings)),
-            Arc::new(RwLock::new(Some(info))),
-            tx,
-            Arc::new(crate::webhook::WebhookQueue::disabled()),
-            Arc::new(crate::config::Store::new(dir.clone())),
-        );
+        let dir = std::env::temp_dir().join(format!("gpo-storage-{}-{replay_id}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        let ctx = Ctx::new(platform, Arc::new(RwLock::new(settings)), Arc::new(RwLock::new(Some(info))), tx, Arc::new(crate::webhook::WebhookQueue::disabled()), Arc::new(crate::config::Store::new(dir.clone())));
         ctx.running.store(true, Ordering::SeqCst);
-        Harness {
-            ctx,
-            input,
-            window,
-            rx,
-            dir,
-        }
+        Harness { ctx, input, window, rx, dir }
     }
     fn catch(raw: &str) -> FruitCatchContext {
-        let d = DropInfo {
-            name: None,
-            pity: None,
-            text: raw.into(),
-            is_legendary: false,
-            custom_telegram_message: None,
-        };
+        let d = DropInfo { name: None, pity: None, text: raw.into(), is_legendary: false, custom_telegram_message: None };
         FruitCatchContext::new(&d, raw, true, true)
     }
-    fn drops(h: &Harness) -> usize {
-        h.input
-            .events
-            .lock()
-            .iter()
-            .filter(|e| **e == InputEvent::Key(Key::Backspace, true))
-            .count()
-    }
+    fn drops(h: &Harness) -> usize { h.input.events.lock().iter().filter(|e| **e == InputEvent::Key(Key::Backspace, true)).count() }
     fn terminal(h: &Harness, expected: &str) {
         let lines = std::fs::read_to_string(h.dir.join("action_events.jsonl")).unwrap();
         let last: serde_json::Value = serde_json::from_str(lines.lines().last().unwrap()).unwrap();
         assert_eq!(last["final_outcome"], expected);
         assert!(last["confirmation_at"].is_number());
     }
-    #[test]
-    fn protected_full_storage_has_zero_drop_inputs_and_finishes_state() {
+    #[test] fn protected_full_storage_has_zero_drop_inputs_and_finishes_state() {
         let h = harness(&["You can only store one of each fruit!"]);
-        assert_eq!(
-            store_fruit(&h.ctx, &catch("0/40"), "test-protected"),
-            StorageOutcome::ProtectedKept
-        );
-        assert_eq!(drops(&h), 0);
-        assert_eq!(h.ctx.state(), BotState::PostCatch);
+        assert_eq!(store_fruit(&h.ctx, &catch("0/40"), "test-protected"), StorageOutcome::ProtectedKept);
+        assert_eq!(drops(&h), 0); assert_eq!(h.ctx.state(), BotState::PostCatch);
         terminal(&h, "protected_kept");
-        assert!(h.rx.try_iter().any(|e| matches!(
-            e,
-            crate::events::BotEvent::State {
-                state: BotState::PostCatch,
-                ..
-            }
-        )));
+        assert!(h.rx.try_iter().any(|e| matches!(e, crate::events::BotEvent::State { state: BotState::PostCatch, .. })));
     }
-    #[test]
-    fn delayed_drop_ignores_old_duplicate_banner_and_drops_once() {
-        let h = harness(&[
-            "You can only store one of each fruit!",
-            "You can only store one of each fruit!",
-            "",
-            "Dropped Kilo will despawn in 10 minutes",
-        ]);
-        assert_eq!(
-            store_fruit(&h.ctx, &catch("unreadable"), "test-drop"),
-            StorageOutcome::Dropped
-        );
-        assert_eq!(drops(&h), 1);
-        terminal(&h, "dropped_confirmed");
+    #[test] fn delayed_drop_ignores_old_duplicate_banner_and_drops_once() {
+        let h = harness(&["You can only store one of each fruit!", "You can only store one of each fruit!", "", "Dropped Kilo will despawn in 10 minutes"]);
+        assert_eq!(store_fruit(&h.ctx, &catch("unreadable"), "test-drop"), StorageOutcome::Dropped);
+        assert_eq!(drops(&h), 1); terminal(&h, "dropped_confirmed");
     }
     #[test]
     fn enhanced_catch_frame_is_bounded_and_isolates_white_result_text() {
-        let frame = Frame::new(
-            3,
-            1,
-            vec![255, 255, 255, 255, 220, 180, 20, 255, 20, 90, 160, 255],
-        );
+        let frame = Frame::new(3, 1, vec![255,255,255,255, 220,180,20,255, 20,90,160,255]);
         let enhanced = catch_banner_ocr_frame(&frame);
         assert_eq!((enhanced.w, enhanced.h), (6, 2));
-        assert_eq!(&enhanced.rgba[..4], &[0, 0, 0, 255]);
-        assert_eq!(&enhanced.rgba[8..12], &[255, 255, 255, 255]);
+        assert_eq!(&enhanced.rgba[..4], &[0,0,0,255]);
+        assert_eq!(&enhanced.rgba[8..12], &[255,255,255,255]);
     }
 
     #[test]
@@ -1502,31 +1153,21 @@ mod storage_replay_tests {
         texts.push("Dropped Bomb will despawn in 10 minutes");
         let h = harness(&texts);
         h.ctx.settings.write().fruit_storage.continue_on_unconfirmed = true;
-        assert_eq!(
-            store_fruit(&h.ctx, &catch("4/40"), "late-recheck"),
-            StorageOutcome::Dropped
-        );
+        assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "late-recheck"), StorageOutcome::Dropped);
         assert_eq!(drops(&h), 1);
         terminal(&h, "dropped_confirmed");
     }
 
-    #[test]
-    fn late_drop_confirmation_is_not_mistaken_for_an_unconfirmed_drop() {
+    #[test] fn late_drop_confirmation_is_not_mistaken_for_an_unconfirmed_drop() {
         // The old three-read drop window paused even though Roblox later
         // displayed its confirmation. A stale duplicate banner may linger.
         let h = harness(&[
             "You can only store one of each fruit!",
             "You can only store one of each fruit!",
-            "",
-            "",
-            "",
-            "",
+            "", "", "", "",
             "Dropped Kilo will despawn in 10 minutes",
         ]);
-        assert_eq!(
-            store_fruit(&h.ctx, &catch("4/40"), "test-late-drop"),
-            StorageOutcome::Dropped
-        );
+        assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "test-late-drop"), StorageOutcome::Dropped);
         assert_eq!(drops(&h), 1);
         terminal(&h, "dropped_confirmed");
     }
@@ -1537,21 +1178,14 @@ mod storage_replay_tests {
             "Dr0p text unreadable",
             "Drcpped Bomb will despawn in 10 minutes",
         ]);
-        assert_eq!(
-            store_fruit(&h.ctx, &catch("4/40"), "test-enhanced-drop"),
-            StorageOutcome::Dropped
-        );
+        assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "test-enhanced-drop"), StorageOutcome::Dropped);
         assert_eq!(drops(&h), 1);
         terminal(&h, "dropped_confirmed");
     }
 
     #[test]
     fn drop_banner_mask_is_bounded_and_excludes_red_and_white_text() {
-        let source = crate::core::types::Frame::new(
-            3,
-            1,
-            vec![240, 220, 20, 255, 240, 10, 10, 255, 255, 255, 255, 255],
-        );
+        let source = crate::core::types::Frame::new(3, 1, vec![240, 220, 20, 255, 240, 10, 10, 255, 255, 255, 255, 255]);
         let mask = drop_banner_ocr_frame(&source);
         assert_eq!((mask.w, mask.h), (6, 2));
         assert_eq!(mask.px(0, 0), (0, 0, 0));
@@ -1559,50 +1193,26 @@ mod storage_replay_tests {
         assert_eq!(mask.px(4, 0), (255, 255, 255));
     }
 
-    #[test]
-    fn stored_banner_stops_slot_attempts() {
+    #[test] fn stored_banner_stops_slot_attempts() {
         let h = harness(&["Successfully stored Pika"]);
-        assert_eq!(
-            store_fruit(&h.ctx, &catch("0/100"), "test-stored"),
-            StorageOutcome::Stored
-        );
-        assert_eq!(drops(&h), 0);
-        terminal(&h, "stored");
+        assert_eq!(store_fruit(&h.ctx, &catch("0/100"), "test-stored"), StorageOutcome::Stored);
+        assert_eq!(drops(&h), 0); terminal(&h, "stored");
         let events = h.input.events.lock();
-        assert!(!events
-            .iter()
-            .any(|e| *e == InputEvent::Key(Key::Char(h.ctx.settings().keys.fruit_slot_2), true)));
+        assert!(!events.iter().any(|e| *e == InputEvent::Key(Key::Char(h.ctx.settings().keys.fruit_slot_2), true)));
     }
-    #[test]
-    fn unconfirmed_drop_has_terminal_unknown() {
+    #[test] fn unconfirmed_drop_has_terminal_unknown() {
         let h = harness(&["You can only store one of each fruit!"]);
-        assert_eq!(
-            store_fruit(&h.ctx, &catch("4/40"), "test-unknown"),
-            StorageOutcome::Unknown
-        );
-        assert_eq!(drops(&h), 1);
-        terminal(&h, "unconfirmed");
+        assert_eq!(store_fruit(&h.ctx, &catch("4/40"), "test-unknown"), StorageOutcome::Unknown);
+        assert_eq!(drops(&h), 1); terminal(&h, "unconfirmed");
     }
-    #[test]
-    fn focus_loss_never_sends_storage_inputs() {
-        let h = harness(&[]);
-        h.window.info.lock().as_mut().unwrap().is_foreground = false;
-        assert_eq!(
-            store_fruit(&h.ctx, &catch("0/40"), "test-focus"),
-            StorageOutcome::Cancelled
-        );
-        assert!(h.input.events.lock().is_empty());
-        terminal(&h, "cancelled");
+    #[test] fn focus_loss_never_sends_storage_inputs() {
+        let h = harness(&[]); h.window.info.lock().as_mut().unwrap().is_foreground = false;
+        assert_eq!(store_fruit(&h.ctx, &catch("0/40"), "test-focus"), StorageOutcome::Cancelled);
+        assert!(h.input.events.lock().is_empty()); terminal(&h, "cancelled");
     }
-    #[test]
-    fn cancellation_never_leaves_a_pending_workflow() {
-        let h = harness(&[]);
-        h.ctx.running.store(false, Ordering::SeqCst);
-        assert_eq!(
-            store_fruit(&h.ctx, &catch("0/40"), "test-cancel"),
-            StorageOutcome::Cancelled
-        );
-        assert!(h.input.events.lock().is_empty());
-        terminal(&h, "cancelled");
+    #[test] fn cancellation_never_leaves_a_pending_workflow() {
+        let h = harness(&[]); h.ctx.running.store(false, Ordering::SeqCst);
+        assert_eq!(store_fruit(&h.ctx, &catch("0/40"), "test-cancel"), StorageOutcome::Cancelled);
+        assert!(h.input.events.lock().is_empty()); terminal(&h, "cancelled");
     }
 }

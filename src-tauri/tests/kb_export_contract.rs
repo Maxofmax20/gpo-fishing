@@ -46,10 +46,7 @@ fn exported_fish_vocab_is_exactly_the_canonical_file() {
         .join("ml")
         .join("gpo_ocr_audit")
         .join("kb_export.json");
-    let Some(export) = std::fs::read_to_string(&export_path)
-        .ok()
-        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-    else {
+    let Some(export) = std::fs::read_to_string(&export_path).ok().and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()) else {
         eprintln!(
             "SKIP: no effective export at {}; run \
              `cargo run --example kb_export -- --effective ml/gpo_ocr_audit/kb_export.json`",
@@ -91,10 +88,7 @@ fn exported_fish_vocab_is_exactly_the_canonical_file() {
             .iter()
             .map(|s| s.as_str().unwrap_or_default().to_string())
             .collect::<Vec<_>>(),
-        class_vocab::fish_vocab()
-            .iter()
-            .map(|c| c.to_string())
-            .collect::<Vec<_>>(),
+        class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect::<Vec<_>>(),
         "the export's fish_vocab must be FISH_VOCAB.txt in canonical order"
     );
     assert_eq!(
@@ -207,16 +201,9 @@ fn excluded_concepts_stay_out_of_the_knowledge_base() {
     // ever added without that decision being recorded.
     let kb = KnowledgeBase::bundled();
     for excluded in [
-        "Tigerfin",
-        "Exotic Tigerfin",
-        "Golden Tigerfin",
-        "Candy Corn Squid",
-        "Dark Skeletal Shark",
-        "Blue-Lip Grouper",
-        "Golden Polka Puffer",
-        "Zebra Ribbon Angelfish",
-        "Golden Ribbon Angelfish",
-        "Jack-O'-Bite",
+        "Tigerfin", "Exotic Tigerfin", "Golden Tigerfin", "Candy Corn Squid",
+        "Dark Skeletal Shark", "Blue-Lip Grouper", "Golden Polka Puffer",
+        "Zebra Ribbon Angelfish", "Golden Ribbon Angelfish", "Jack-O'-Bite",
     ] {
         assert!(
             kb.find_by_name(excluded).is_none(),

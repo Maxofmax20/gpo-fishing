@@ -94,31 +94,18 @@ impl Trace {
 
     pub fn blind(&mut self, bar_present: bool) {
         self.blind += 1;
-        self.frames
-            .push(json!({ "t": self.t_ms(), "blind": true, "bar_present": bar_present }));
+        self.frames.push(json!({ "t": self.t_ms(), "blind": true, "bar_present": bar_present }));
     }
 
     pub fn finish(self, outcome: &str) -> (String, ReelMetrics) {
-        let tracked = self
-            .frames
-            .iter()
-            .filter(|f| f.get("blind").is_none())
-            .count() as u32;
+        let tracked = self.frames.iter().filter(|f| f.get("blind").is_none()).count() as u32;
         let secs = self.started.elapsed().as_secs_f32().max(0.001);
         let metrics = ReelMetrics {
             frames: tracked,
             duration_ms: self.t_ms(),
             fps: (tracked + self.blind) as f32 / secs,
-            on_target: if tracked > 0 {
-                self.on_target as f32 / tracked as f32
-            } else {
-                0.0
-            },
-            mean_abs_error: if tracked > 0 {
-                self.abs_err_sum / tracked as f32
-            } else {
-                0.0
-            },
+            on_target: if tracked > 0 { self.on_target as f32 / tracked as f32 } else { 0.0 },
+            mean_abs_error: if tracked > 0 { self.abs_err_sum / tracked as f32 } else { 0.0 },
             max_abs_error: self.abs_err_max,
             flips_per_s: self.flips as f32 / secs,
             blind_frames: self.blind,
@@ -131,29 +118,15 @@ impl Trace {
             "metrics": metrics,
             "frames": self.frames,
         });
-        let _ = fs::write(
-            self.dir.join(format!("{}.json", self.stem)),
-            serde_json::to_vec_pretty(&doc).unwrap_or_default(),
-        );
+        let _ = fs::write(self.dir.join(format!("{}.json", self.stem)), serde_json::to_vec_pretty(&doc).unwrap_or_default());
         append_index(&self.dir, &self.stem, &metrics, &self.gains);
-        (
-            format!(
-                "{} ({} frames, on-target {:.0}%)",
-                self.stem,
-                tracked,
-                metrics.on_target * 100.0
-            ),
-            metrics,
-        )
+        (format!("{} ({} frames, on-target {:.0}%)", self.stem, tracked, metrics.on_target * 100.0), metrics)
     }
 }
 
 fn append_index(dir: &Path, stem: &str, m: &ReelMetrics, g: &ControlGains) {
     let path = dir.join("index.json");
-    let mut list: Vec<Value> = fs::read_to_string(&path)
-        .ok()
-        .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default();
+    let mut list: Vec<Value> = fs::read_to_string(&path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
     list.push(json!({ "reel": stem, "metrics": m, "mode": g.mode, "lookahead_ms": g.lookahead_ms, "hysteresis": g.hysteresis, "latency_ms": g.physics.latency_ms }));
     if list.len() > 500 {
         let drop = list.len() - 500;

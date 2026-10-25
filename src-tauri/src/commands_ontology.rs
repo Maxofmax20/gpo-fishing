@@ -226,11 +226,7 @@ pub fn ontology_review_read() -> OntologyReviewPayload {
                             .and_then(|x| x.as_str())
                             .unwrap_or("")
                             .to_string(),
-                        day: e
-                            .get("day")
-                            .and_then(|x| x.as_str())
-                            .unwrap_or("")
-                            .to_string(),
+                        day: e.get("day").and_then(|x| x.as_str()).unwrap_or("").to_string(),
                         raw_ocr: e
                             .get("raw_ocr")
                             .and_then(|x| x.as_str())
@@ -270,10 +266,7 @@ pub fn ontology_review_read() -> OntologyReviewPayload {
             display_name: s("display_name"),
             occurrences: n("occurrences"),
             session_count: ln("sessions").max(
-                c.get("sessions")
-                    .and_then(|x| x.as_array())
-                    .map(|a| a.len())
-                    .unwrap_or(0),
+                c.get("sessions").and_then(|x| x.as_array()).map(|a| a.len()).unwrap_or(0),
             ),
             day_count: c
                 .get("calendar_days")
@@ -294,39 +287,21 @@ pub fn ontology_review_read() -> OntologyReviewPayload {
             current_kb_candidates: c
                 .get("current_kb_candidates")
                 .and_then(|x| x.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
                 .unwrap_or_default(),
-            base_name: c
-                .get("base_name")
-                .and_then(|x| x.as_str())
-                .map(str::to_string),
+            base_name: c.get("base_name").and_then(|x| x.as_str()).map(str::to_string),
             modifiers: c
                 .get("modifiers")
                 .and_then(|x| x.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
                 .unwrap_or_default(),
-            family_id: c
-                .get("family_id")
-                .and_then(|x| x.as_str())
-                .map(str::to_string),
+            family_id: c.get("family_id").and_then(|x| x.as_str()).map(str::to_string),
             stored_labels,
             stored_agrees_with_candidate: n("stored_agrees_with_candidate"),
             ocr_variants: c
                 .get("ocr_variants")
                 .and_then(|x| x.as_array())
-                .map(|a| {
-                    a.iter()
-                        .filter_map(|x| x.as_str().map(str::to_string))
-                        .collect()
-                })
+                .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
                 .unwrap_or_default(),
             representative_images,
             human_decision,
@@ -348,10 +323,7 @@ pub fn ontology_review_read() -> OntologyReviewPayload {
             .map(|c| c.concept_id.clone())
             .collect()
     };
-    let decided_total = concepts
-        .iter()
-        .filter(|c| c.human_decision.is_some())
-        .count();
+    let decided_total = concepts.iter().filter(|c| c.human_decision.is_some()).count();
     let pending_total = concepts.len() - decided_total;
 
     OntologyReviewPayload {
@@ -386,11 +358,7 @@ mod tests {
         let payload = ontology_review_read();
         if !payload.available {
             assert_eq!(payload.concepts_total, 0);
-            assert!(
-                payload.detail.contains("ontology_review"),
-                "{}",
-                payload.detail
-            );
+            assert!(payload.detail.contains("ontology_review"), "{}", payload.detail);
             assert!(payload.concepts.is_empty());
         }
     }

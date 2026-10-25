@@ -3,12 +3,11 @@ use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::Graphics::Gdi::ClientToScreen;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
-    VK_MENU,
+    SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP, VK_MENU,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, GetClientRect, GetForegroundWindow, IsIconic, IsWindow, IsWindowVisible,
-    SetForegroundWindow, ShowWindow, SW_RESTORE,
+    FindWindowW, GetClientRect, GetForegroundWindow, IsIconic, IsWindow,
+    IsWindowVisible, SetForegroundWindow, ShowWindow, SW_RESTORE,
 };
 
 use crate::core::platform::GameWindow;
@@ -25,10 +24,7 @@ fn wide(s: &str) -> Vec<u16> {
 
 impl Win32Window {
     pub fn new(title: &str) -> Self {
-        Self {
-            class: wide("WINDOWSCLIENT"),
-            title: wide(title),
-        }
+        Self { class: wide("WINDOWSCLIENT"), title: wide(title) }
     }
 
     fn hwnd(&self) -> Option<HWND> {
@@ -54,11 +50,7 @@ fn alt_tap() {
             ki: KEYBDINPUT {
                 wVk: VK_MENU,
                 wScan: 0,
-                dwFlags: if up {
-                    KEYEVENTF_KEYUP
-                } else {
-                    KEYBD_EVENT_FLAGS(0)
-                },
+                dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) },
                 time: 0,
                 dwExtraInfo: 0,
             },
@@ -96,10 +88,7 @@ impl GameWindow for Win32Window {
             let minimized = IsIconic(h).as_bool();
             let mut rc = RECT::default();
             GetClientRect(h, &mut rc).ok()?;
-            let mut origin = POINT {
-                x: rc.left,
-                y: rc.top,
-            };
+            let mut origin = POINT { x: rc.left, y: rc.top };
             if !ClientToScreen(h, &mut origin).as_bool() {
                 return None;
             }

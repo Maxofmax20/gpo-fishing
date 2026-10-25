@@ -94,7 +94,10 @@ fn sandbox() -> PathBuf {
     // `find_images_dir` resolves from `GPO_DATASET_ROOT`. Pointing it at the
     // fixture is what makes the `/full` assertion hermetic; no production code
     // is involved.
-    std::env::set_var("GPO_DATASET_ROOT", fixture_dir().join("dataset"));
+    std::env::set_var(
+        "GPO_DATASET_ROOT",
+        fixture_dir().join("dataset"),
+    );
     let _ = DIR.set(tmp.clone());
     tmp
 }
@@ -138,22 +141,16 @@ impl Res {
 }
 
 static TEST_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
-fn test_port() -> u16 {
-    TEST_PORT.load(std::sync::atomic::Ordering::SeqCst)
-}
+fn test_port() -> u16 { TEST_PORT.load(std::sync::atomic::Ordering::SeqCst) }
 
 fn request(method: &str, path: &str, body: Option<&str>) -> Res {
-    let mut s =
-        TcpStream::connect(("127.0.0.1", test_port())).expect("connect to the review server");
+    let mut s = TcpStream::connect(("127.0.0.1", test_port()))
+        .expect("connect to the review server");
     s.set_read_timeout(Some(std::time::Duration::from_secs(10)))
         .unwrap();
     let body = body.unwrap_or("");
     let port = test_port();
-    let csrf = if method == "POST" {
-        jget("/api/csrf")["token"].as_str().unwrap().to_string()
-    } else {
-        String::new()
-    };
+    let csrf = if method == "POST" { jget("/api/csrf")["token"].as_str().unwrap().to_string() } else { String::new() };
     let req = format!(
         "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nX-GPO-CSRF: {csrf}\r\nContent-Length: {}\r\n\
          Content-Type: application/json\r\nConnection: close\r\n\r\n{body}",
@@ -207,10 +204,7 @@ fn the_review_server_answers_real_http() {
     );
 
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
-    TEST_PORT.store(
-        listener.local_addr().unwrap().port(),
-        std::sync::atomic::Ordering::SeqCst,
-    );
+    TEST_PORT.store(listener.local_addr().unwrap().port(), std::sync::atomic::Ordering::SeqCst);
     gpo_autofish_lib::ontology_web::spawn_listener(listener).unwrap();
     // Give the listener thread a moment; binding happens synchronously in `spawn`,
     // but the accept loop is a thread.
@@ -224,34 +218,20 @@ fn the_review_server_answers_real_http() {
     let local_host = format!("127.0.0.1:{port}");
     for (host, origin, content_type, csrf) in [
         ("evil.example:17890", "", "application/json", token.as_str()),
-        (
-            local_host.as_str(),
-            "https://evil.example",
-            "application/json",
-            token.as_str(),
-        ),
+        (local_host.as_str(), "https://evil.example", "application/json", token.as_str()),
         (local_host.as_str(), "", "text/plain", token.as_str()),
         (local_host.as_str(), "", "application/json", ""),
     ] {
         let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
-        stream
-            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
-            .unwrap();
-        let origin_header = if origin.is_empty() {
-            String::new()
-        } else {
-            format!("Origin: {origin}\r\n")
-        };
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        let origin_header = if origin.is_empty() { String::new() } else { format!("Origin: {origin}\r\n") };
         let raw = format!("POST /api/ontology/decision HTTP/1.1\r\nHost: {host}\r\n{origin_header}Content-Type: {content_type}\r\nX-GPO-CSRF: {csrf}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}");
         stream.write_all(raw.as_bytes()).unwrap();
         let mut response = String::new();
         stream.read_to_string(&mut response).unwrap();
         assert!(response.starts_with("HTTP/1.1 403"), "{response}");
     }
-    assert_eq!(
-        before,
-        std::fs::read(sandbox_dir.join("ontology_decisions.jsonl")).unwrap()
-    );
+    assert_eq!(before, std::fs::read(sandbox_dir.join("ontology_decisions.jsonl")).unwrap());
 
     // ---------------------------------------------------------------------
     // Deep link. This is the requirement that most often silently fails.
@@ -266,10 +246,7 @@ fn the_review_server_answers_real_http() {
             direct.status
         );
         assert!(
-            direct
-                .header("content-type")
-                .unwrap_or_default()
-                .contains("text/html"),
+            direct.header("content-type").unwrap_or_default().contains("text/html"),
             "the route must return HTML"
         );
         // Refresh hits the same URL and must work the same way.
@@ -292,11 +269,7 @@ fn the_review_server_answers_real_http() {
     );
 
     // Traversal through the static handler.
-    for bad in [
-        "/../../../../Windows/win.ini",
-        "/..%2f..%2fetc",
-        "/./../../secret",
-    ] {
+    for bad in ["/../../../../Windows/win.ini", "/..%2f..%2fetc", "/./../../secret"] {
         let r = request("GET", bad, None);
         assert!(
             r.status.contains("404") || r.status.contains("400"),
@@ -315,9 +288,7 @@ fn the_review_server_answers_real_http() {
     // never from the gitignored generated index.
     // ---------------------------------------------------------------------
     let manifest = fixture_manifest();
-    let expected_total = manifest["concepts"]
-        .as_u64()
-        .expect("fixture concept count") as usize;
+    let expected_total = manifest["concepts"].as_u64().expect("fixture concept count") as usize;
     let expected_p0 = manifest["p0"].as_u64().expect("fixture P0 count") as usize;
     let fixture_index: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(sandbox().join("workstation").join("index.json")).unwrap(),
@@ -327,22 +298,13 @@ fn the_review_server_answers_real_http() {
     // swapping in a weaker index is a visible diff rather than a silent pass.
     for (rel, want) in manifest["files"].as_object().expect("fixture files") {
         let path = fixture_dir().join(rel);
-        let got = gpo_autofish_lib::core::ml_model::sha256_hex(
-            &std::fs::read(&path)
-                .unwrap_or_else(|e| panic!("fixture file missing: {} ({e})", path.display())),
-        );
-        assert_eq!(
-            &got,
-            want.as_str().unwrap(),
-            "fixture file changed: {}",
-            path.display()
-        );
+        let got = gpo_autofish_lib::core::ml_model::sha256_hex(&std::fs::read(&path).unwrap_or_else(
+            |e| panic!("fixture file missing: {} ({e})", path.display()),
+        ));
+        assert_eq!(&got, want.as_str().unwrap(), "fixture file changed: {}", path.display());
     }
     assert_eq!(
-        fixture_index["concepts"]
-            .as_array()
-            .expect("concepts")
-            .len(),
+        fixture_index["concepts"].as_array().expect("concepts").len(),
         expected_total,
         "the recorded count must describe the index it was taken from"
     );
@@ -352,15 +314,8 @@ fn the_review_server_answers_real_http() {
     let total = status["total"].as_u64().expect("total");
     // THE CONTRACT: the API reports exactly the index it serves, and its own
     // band counts agree with the concept list. Before this was a magic 77.
-    assert_eq!(
-        total as usize, expected_total,
-        "the API must report the whole fixture index"
-    );
-    assert_eq!(
-        status["decided"].as_u64(),
-        Some(0),
-        "no human has reviewed anything yet"
-    );
+    assert_eq!(total as usize, expected_total, "the API must report the whole fixture index");
+    assert_eq!(status["decided"].as_u64(), Some(0), "no human has reviewed anything yet");
     assert_eq!(status["pending"].as_u64(), Some(total));
     assert_eq!(status["counts"]["P0"].as_u64(), Some(expected_p0 as u64));
     let band_sum: u64 = status["counts"]
@@ -370,10 +325,7 @@ fn the_review_server_answers_real_http() {
         .filter(|(k, _)| k.as_str() != "total")
         .filter_map(|(_, v)| v.as_u64())
         .sum();
-    assert_eq!(
-        band_sum, total,
-        "every concept is in exactly one priority band"
-    );
+    assert_eq!(band_sum, total, "every concept is in exactly one priority band");
 
     let queue: Vec<String> = status["queue"]
         .as_array()
@@ -401,10 +353,7 @@ fn the_review_server_answers_real_http() {
         evidence.len()
     );
     let name = concept["displayName"].as_str().expect("displayName");
-    assert!(
-        !name.is_empty(),
-        "the observed game name is the point of the page"
-    );
+    assert!(!name.is_empty(), "the observed game name is the point of the page");
     assert!(concept["occurrences"].as_u64().unwrap_or(0) > 0);
     assert_eq!(
         evidence[0]["imageId"].as_str(),
@@ -430,11 +379,7 @@ fn the_review_server_answers_real_http() {
     let fam = jget("/api/ontology/families/family%3Atigerfin");
     assert_eq!(fam["familyId"], "family:tigerfin");
     let members = fam["members"].as_array().expect("members");
-    assert!(
-        members.len() >= 3,
-        "tigerfin has several observed names: {}",
-        members.len()
-    );
+    assert!(members.len() >= 3, "tigerfin has several observed names: {}", members.len());
     assert!(
         members[0].get("evidence").is_some(),
         "family members must carry images for comparison"
@@ -443,10 +388,7 @@ fn the_review_server_answers_real_http() {
     // KB search.
     let hits = jget("/api/ontology/kb/search?q=shark");
     let arr = hits.as_array().expect("kb hits");
-    assert!(
-        !arr.is_empty(),
-        "searching 'shark' must find real KB entities"
-    );
+    assert!(!arr.is_empty(), "searching 'shark' must find real KB entities");
     assert!(arr.iter().any(|h| h["id"] == "fish:shark"), "{arr:?}");
 
     // ---------------------------------------------------------------------
@@ -472,12 +414,11 @@ fn the_review_server_answers_real_http() {
     // documents. This is what turns the open structural questions into reviewable
     // names, so it is asserted against the real index rather than left in a report -
     // and against the FULL P0 list, so a new unmatched concept cannot slip in.
-    let p0: Vec<&serde_json::Value> = items.iter().filter(|c| c["priority"] == "P0").collect();
-    assert_eq!(
-        p0.len(),
-        expected_p0,
-        "the P0 list must match the reported band count"
-    );
+    let p0: Vec<&serde_json::Value> = items
+        .iter()
+        .filter(|c| c["priority"] == "P0")
+        .collect();
+    assert_eq!(p0.len(), expected_p0, "the P0 list must match the reported band count");
     let mut matched = 0usize;
     for c in &p0 {
         if c["wiki"]["matched"] == true {
@@ -503,12 +444,7 @@ fn the_review_server_answers_real_http() {
     // A reference verdict must never be a decision, in any form.
     for c in items {
         let blob = c["wiki"].to_string().to_lowercase();
-        for forbidden in [
-            "new_entity",
-            "existing_entity",
-            "variant_of_existing",
-            "\"decision\"",
-        ] {
+        for forbidden in ["new_entity", "existing_entity", "variant_of_existing", "\"decision\""] {
             assert!(
                 !blob.contains(forbidden),
                 "a wiki verdict must not contain {forbidden:?}"
@@ -535,10 +471,7 @@ fn the_review_server_answers_real_http() {
         refreshed.status
     );
     let rj: serde_json::Value = serde_json::from_slice(&refreshed.body).unwrap();
-    assert!(
-        rj["ok"].is_boolean(),
-        "refresh must report a boolean outcome"
-    );
+    assert!(rj["ok"].is_boolean(), "refresh must report a boolean outcome");
     assert!(rj["message"].is_string(), "an outcome must explain itself");
     if refreshed.status.contains("200") {
         assert_eq!(
@@ -578,11 +511,7 @@ fn the_review_server_answers_real_http() {
     let full = request("GET", &format!("/api/ontology/images/{img_id}/full"), None);
     assert!(full.status.contains("200"));
     assert_eq!(full.header("content-type").as_deref(), Some("image/png"));
-    assert_eq!(
-        &full.body[..4],
-        b"\x89PNG",
-        "full resolution must be the source PNG"
-    );
+    assert_eq!(&full.body[..4], b"\x89PNG", "full resolution must be the source PNG");
 
     // Hostile ids. A request must never become a path.
     for bad in [
@@ -625,21 +554,12 @@ fn the_review_server_answers_real_http() {
     let bad = request(
         "POST",
         "/api/ontology/decision",
-        Some(&format!(
-            r#"{{"conceptId":"{}","decision":"EXISTING_ENTITY"}}"#,
-            first
-        )),
+        Some(&format!(r#"{{"conceptId":"{}","decision":"EXISTING_ENTITY"}}"#, first)),
     );
-    assert!(
-        bad.status.contains("400"),
-        "a malformed decision must be refused"
-    );
+    assert!(bad.status.contains("400"), "a malformed decision must be refused");
     let err = serde_json::from_slice::<serde_json::Value>(&bad.body).unwrap();
     assert!(
-        err["error"]
-            .as_str()
-            .unwrap_or("")
-            .contains("existingEntityId"),
+        err["error"].as_str().unwrap_or("").contains("existingEntityId"),
         "the error must say what is missing: {}",
         bad.text()
     );
@@ -665,10 +585,7 @@ fn the_review_server_answers_real_http() {
         "/api/ontology/decision",
         Some(r#"{"conceptId":"concept:not-a-real-one","decision":"UNKNOWN"}"#),
     );
-    assert!(
-        ghost.status.contains("400"),
-        "unknown concept must be refused"
-    );
+    assert!(ghost.status.contains("400"), "unknown concept must be refused");
 
     // A valid decision records, advances, and lands in the sandbox log only.
     let good = request(
@@ -679,21 +596,14 @@ fn the_review_server_answers_real_http() {
             first
         )),
     );
-    assert!(
-        good.status.contains("200"),
-        "a valid decision must save: {}",
-        good.text()
-    );
+    assert!(good.status.contains("200"), "a valid decision must save: {}", good.text());
     let result: serde_json::Value = serde_json::from_slice(&good.body).unwrap();
     assert_eq!(result["ok"], true);
     let next = result["nextConceptId"].as_str().expect("next concept");
     assert_ne!(next, first, "must advance to a different concept");
     // Relative to the recorded baseline, not an absolute literal: one decision
     // removes exactly one concept from the pending queue.
-    assert_eq!(
-        result["pendingTotal"].as_u64(),
-        Some((expected_total - 1) as u64)
-    );
+    assert_eq!(result["pendingTotal"].as_u64(), Some((expected_total - 1) as u64));
 
     // Progress reflects it.
     let after = jget("/api/ontology/progress");
@@ -717,18 +627,13 @@ fn the_review_server_answers_real_http() {
         lines.len() >= 2,
         "the decision and its reversal must both survive: {log}"
     );
-    assert!(
-        log.contains("REVERSAL"),
-        "undo is an appended reversal, not a delete"
-    );
+    assert!(log.contains("REVERSAL"), "undo is an appended reversal, not a delete");
     assert!(
         log.contains("\"decision_maker\":\"human\""),
         "attribution is fixed to human: {log}"
     );
     assert!(
-        !lines
-            .iter()
-            .any(|l| l.contains("knowledge") || l.contains("FISH_VOCAB")),
+        !lines.iter().any(|l| l.contains("knowledge") || l.contains("FISH_VOCAB")),
         "a decision record must not reference production artefacts"
     );
 
@@ -736,11 +641,7 @@ fn the_review_server_answers_real_http() {
     // Locality and CORS.
     // ---------------------------------------------------------------------
     // No CORS header on any response: another origin cannot script this API.
-    for path in [
-        "/api/ontology/status",
-        "/ontology-review",
-        "/api/ontology/progress",
-    ] {
+    for path in ["/api/ontology/status", "/ontology-review", "/api/ontology/progress"] {
         let r = request("GET", path, None);
         assert!(
             r.header("access-control-allow-origin").is_none(),
@@ -759,10 +660,7 @@ fn the_review_server_answers_real_http() {
     let unknown = request("GET", "/api/ontology/../secrets", None);
     assert!(unknown.status.contains("404") || unknown.status.contains("400"));
     let not_a_route = request("GET", "/api/ontology/exec", None);
-    assert!(
-        not_a_route.status.contains("404"),
-        "no generic dispatch endpoint"
-    );
+    assert!(not_a_route.status.contains("404"), "no generic dispatch endpoint");
 
     let _ = port;
 }

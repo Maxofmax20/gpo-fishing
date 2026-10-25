@@ -14,9 +14,7 @@ use gpo_autofish_lib::core::ml_model::sha256_hex;
 use std::path::PathBuf;
 
 fn find_patch() -> Option<PathBuf> {
-    let rel = PathBuf::from("reports")
-        .join("ontology_review")
-        .join("fish_kb_patch.json");
+    let rel = PathBuf::from("reports").join("ontology_review").join("fish_kb_patch.json");
     let mut dir = std::env::current_dir().ok()?;
     for _ in 0..8 {
         let candidate = dir.join(&rel);
@@ -58,10 +56,7 @@ fn main() {
     let kb = store.effective_knowledge();
 
     for u in &doc.unresolved_concepts {
-        println!(
-            "  unresolved concept (reported, NOT created): {}",
-            u.entity_id
-        );
+        println!("  unresolved concept (reported, NOT created): {}", u.entity_id);
     }
 
     // Re-apply is a legitimate no-op, not an error: the patch has been consumed.
@@ -83,19 +78,12 @@ fn main() {
             for e in &errors {
                 eprintln!("  ERROR: {e}");
             }
-            fail(&format!(
-                "{} validation error(s); the overlay was not touched",
-                errors.len()
-            ));
+            fail(&format!("{} validation error(s); the overlay was not touched", errors.len()));
         }
     };
 
     println!();
-    println!(
-        "  patch        : {} (sha256 {}…)",
-        patch_path.display(),
-        &patch_digest[..16]
-    );
+    println!("  patch        : {} (sha256 {}…)", patch_path.display(), &patch_digest[..16]);
     println!("  validated    : {} entit(ies) to add", validated.len());
     for r in &doc.entities_reused {
         println!("  reused (already in KB, untouched): {}", r.entity_id);
@@ -122,10 +110,7 @@ fn main() {
                 println!("  backup       : {}", b.display());
             }
             println!();
-            println!(
-                "  applied {} entit(ies) through the overlay store",
-                out.added
-            );
+            println!("  applied {} entit(ies) through the overlay store", out.added);
             println!("  KB digest pre : {}", out.pre_digest);
             println!("  KB digest post: {}", out.post_digest);
             println!();

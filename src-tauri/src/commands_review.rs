@@ -44,9 +44,7 @@ use crate::core::training;
 /// Tauri command) that work happens on the main thread and the panel freezes
 /// on a large dataset. `spawn_blocking` moves it to the blocking pool, which
 /// is bounded - not an unbounded thread per call.
-async fn blocking<T: Send + 'static>(
-    f: impl FnOnce() -> Result<T, String> + Send + 'static,
-) -> Result<T, String> {
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, String> + Send + 'static) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(f)
         .await
         .map_err(|e| e.to_string())?
@@ -78,17 +76,11 @@ fn load_rows(data_dir: &std::path::Path) -> Rows {
             by_entity.entry(e.to_string()).or_default().push(i);
         }
     }
-    Rows {
-        all,
-        by_id,
-        by_entity,
-    }
+    Rows { all, by_id, by_entity }
 }
 
 fn dataset_images_dir(data_dir: &std::path::Path) -> std::path::PathBuf {
-    MlDatasetStore::new(data_dir.to_path_buf())
-        .root()
-        .join("images")
+    MlDatasetStore::new(data_dir.to_path_buf()).root().join("images")
 }
 
 /// Measure the eligibility facts the store cannot see itself.
@@ -147,17 +139,13 @@ pub fn review_image(
     }
     let path = dataset_images_dir(st.store.dir()).join(format!("{image_id}.png"));
     let bytes = std::fs::read(&path).map_err(|_| format!("no image for '{image_id}'"))?;
-    let img =
-        image::load_from_memory(&bytes).map_err(|_| format!("undecodable image '{image_id}'"))?;
+    let img = image::load_from_memory(&bytes).map_err(|_| format!("undecodable image '{image_id}'"))?;
     let dim = max_dim.unwrap_or(0);
     let (width, height, out) = if dim > 0 && (img.width() > dim || img.height() > dim) {
         let scaled = img.thumbnail(dim, dim);
         let mut buf: Vec<u8> = Vec::new();
         scaled
-            .write_to(
-                &mut ::std::io::Cursor::new(&mut buf),
-                image::ImageFormat::Png,
-            )
+            .write_to(&mut ::std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
             .map_err(|e| format!("encode '{image_id}': {e}"))?;
         (scaled.width(), scaled.height(), buf)
     } else {
@@ -226,10 +214,7 @@ pub struct ReviewIntegrity {
 }
 
 #[tauri::command]
-pub async fn review_integrity(
-    st: State<'_, AppState>,
-    tail: Option<usize>,
-) -> Result<ReviewIntegrity, String> {
+pub async fn review_integrity(st: State<'_, AppState>, tail: Option<usize>) -> Result<ReviewIntegrity, String> {
     let dir = st.store.dir().to_path_buf();
     blocking(move || Ok(review_integrity_sync(&dir, tail))).await
 }
@@ -250,10 +235,7 @@ fn review_integrity_sync(dir: &std::path::Path, tail: Option<usize>) -> ReviewIn
     let restorable: Vec<String> = store
         .list()
         .into_iter()
-        .filter(|r| {
-            r.review_status == ReviewStatus::Unreviewed
-                || r.excluded_reason.as_deref() == Some("undone")
-        })
+        .filter(|r| r.review_status == ReviewStatus::Unreviewed || r.excluded_reason.as_deref() == Some("undone"))
         .map(|r| r.image_id)
         .collect();
     ReviewIntegrity {
@@ -426,9 +408,7 @@ fn review_coverage_sync(dir: &std::path::Path) -> ReviewCoverageView {
             sl.eligible += 1;
         }
 
-        let Some(e) = r.entity_id.as_deref() else {
-            continue;
-        };
+        let Some(e) = r.entity_id.as_deref() else { continue };
         let entry = per.entry(e.to_string()).or_insert_with(|| PerEntityReview {
             entity: e.to_string(),
             collected: 0,
@@ -455,10 +435,7 @@ fn review_coverage_sync(dir: &std::path::Path) -> ReviewCoverageView {
             "test" => entry.test += 1,
             _ => {}
         }
-        ent_sessions
-            .entry(e.to_string())
-            .or_default()
-            .insert(r.session_id.clone());
+        ent_sessions.entry(e.to_string()).or_default().insert(r.session_id.clone());
         if let Some(rev) = rev {
             match rev.review_status {
                 ReviewStatus::ReviewedCorrect => {
@@ -672,11 +649,7 @@ pub fn review_apply(
             }
         }
     }
-    Ok(ReviewApplyResult {
-        record,
-        dataset_updated,
-        dataset_error,
-    })
+    Ok(ReviewApplyResult { record, dataset_updated, dataset_error })
 }
 
 #[tauri::command]
@@ -725,16 +698,8 @@ pub fn review_resolve(
     // training. Writing it for an ineligible resolution would leave a label
     // the snapshot then drops anyway, and would misreport what was done.
     if rec.training_eligible {
-        MlDatasetStore::new(st.store.dir().to_path_buf()).annotate(
-            &image_id,
-            None,
-            None,
-            None,
-            Some(entity_id),
-            "human",
-            false,
-            None,
-        )?;
+        MlDatasetStore::new(st.store.dir().to_path_buf())
+            .annotate(&image_id, None, None, None, Some(entity_id), "human", false, None)?;
     }
     Ok(rec)
 }
@@ -816,16 +781,7 @@ pub async fn review_priority(
 ) -> Result<PriorityPage, String> {
     let dir = st.store.dir().to_path_buf();
     blocking(move || {
-        Ok(review_priority_sync(
-            &dir,
-            limit,
-            entity,
-            session,
-            only_hard,
-            only_disagreement,
-            sort,
-            status,
-        ))
+        Ok(review_priority_sync(&dir, limit, entity, session, only_hard, only_disagreement, sort, status))
     })
     .await
 }
@@ -848,7 +804,9 @@ fn projected_class_support(
 
 /// Folded text each entity can legitimately be recognised by: canonical name,
 /// aliases, OCR aliases. Sorted + deduped so the map is deterministic.
-fn ocr_name_keys(kb: &crate::core::knowledge::KnowledgeBase) -> HashMap<&str, Vec<String>> {
+fn ocr_name_keys(
+    kb: &crate::core::knowledge::KnowledgeBase,
+) -> HashMap<&str, Vec<String>> {
     let mut out: HashMap<&str, Vec<String>> = HashMap::with_capacity(kb.len());
     for e in kb.entities() {
         let mut keys: Vec<String> = std::iter::once(e.canonical_name.as_str())
@@ -920,16 +878,9 @@ fn review_priority_sync(
     let reviewed_sessions: HashSet<&str> = records
         .iter()
         .filter(|r| {
-            !matches!(
-                r.review_status,
-                ReviewStatus::Unreviewed | ReviewStatus::ReviewedSkipped
-            )
+            !matches!(r.review_status, ReviewStatus::Unreviewed | ReviewStatus::ReviewedSkipped)
         })
-        .filter_map(|r| {
-            rows.by_id
-                .get(r.image_id.as_str())
-                .map(|i| rows.all[*i].session_id.as_str())
-        })
+        .filter_map(|r| rows.by_id.get(r.image_id.as_str()).map(|i| rows.all[*i].session_id.as_str()))
         .collect();
 
     // Per-class support, measured on the PROJECTED training set (human verdicts,
@@ -970,9 +921,7 @@ fn review_priority_sync(
             Some(id) if !id.is_empty() => !ocr_agrees_with_label(&name_keys, &r.ocr_text, id),
             _ => false,
         };
-        let n = e
-            .map(|id| counts.get(id).copied().unwrap_or(0))
-            .unwrap_or(0);
+        let n = e.map(|id| counts.get(id).copied().unwrap_or(0)).unwrap_or(0);
         let sess_n = e
             .map(|id| class_sessions.get(id).map(|s| s.len()).unwrap_or(0))
             .unwrap_or(0);
@@ -1007,17 +956,14 @@ fn review_priority_sync(
             timestamp_ms: r.timestamp_ms,
             ocr_text: r.ocr_text.chars().take(160).collect(),
             entity_id: e.map(str::to_string),
-            review_status: prior
-                .map(|p| p.review_status.as_str().to_string())
-                .unwrap_or_else(|| "UNREVIEWED".to_string()),
+            review_status: prior.map(|p| p.review_status.as_str().to_string()).unwrap_or_else(|| "UNREVIEWED".to_string()),
             score,
             reason,
             is_hard_example: r.hard_example,
             ocr_disagreement: ocr_disagree,
             model_confidence,
             in_latest_snapshot: false,
-        });
-    }
+        });    }
 
     let f = QueueFilter {
         entity,
@@ -1042,8 +988,7 @@ fn review_priority_sync(
     if let Some(want) = status {
         items.retain(|i| {
             let cur = reviews.get(i.image_id.as_str()).map(|r| r.review_status);
-            cur.map(|c| c == want)
-                .unwrap_or(want == review::ReviewStatus::Unreviewed)
+            cur.map(|c| c == want).unwrap_or(want == review::ReviewStatus::Unreviewed)
         });
     }
     let total_matching = items.len();
@@ -1103,11 +1048,7 @@ fn review_priority_sync(
         }),
     }
     items.truncate(cap);
-    PriorityPage {
-        items,
-        total_matching,
-        limit: cap,
-    }
+    PriorityPage { items, total_matching, limit: cap }
 }
 
 /// Flag rows that are already in the most recent frozen training snapshot, so
@@ -1116,9 +1057,7 @@ fn review_priority_sync(
 /// Bounded work: only the newest few snapshots are inspected, and a missing
 /// or unreadable snapshot simply leaves the flag false rather than failing.
 fn mark_in_latest_snapshot(data_dir: &std::path::Path, items: &mut [PriorityItem]) {
-    let Ok(rd) = std::fs::read_dir(data_dir.join("training").join("snapshots")) else {
-        return;
-    };
+    let Ok(rd) = std::fs::read_dir(data_dir.join("training").join("snapshots")) else { return };
     let newest = rd
         .filter_map(|e| e.ok())
         .filter(|e| e.path().is_dir())
@@ -1131,9 +1070,7 @@ fn mark_in_latest_snapshot(data_dir: &std::path::Path, items: &mut [PriorityItem
         .max_by_key(|(t, _)| *t)
         .map(|(_, p)| p);
     let Some(snap) = newest else { return };
-    let Ok(text) = std::fs::read_to_string(snap.join("labels.jsonl")) else {
-        return;
-    };
+    let Ok(text) = std::fs::read_to_string(snap.join("labels.jsonl")) else { return };
     // Streaming parse: `image_id` is read out of each line without building a
     // `serde_json::Value` for every row, which on a large snapshot was the
     // single most expensive part of building the queue.
@@ -1189,10 +1126,7 @@ pub fn review_search(st: State<'_, AppState>, query: String) -> Vec<EntityHit> {
         kind: kind.to_string(),
     };
     match canon::resolve(&kb, &query) {
-        Resolution::Exact(id) => by_id
-            .get(id.as_str())
-            .map(|e| vec![hit(e, "exact")])
-            .unwrap_or_default(),
+        Resolution::Exact(id) => by_id.get(id.as_str()).map(|e| vec![hit(e, "exact")]).unwrap_or_default(),
         Resolution::Ambiguous(ids) => ids
             .iter()
             .filter_map(|id| by_id.get(id.as_str()))
@@ -1230,23 +1164,19 @@ pub async fn drops_explorer(st: State<'_, AppState>) -> Result<Vec<DropEntry>, S
     blocking(move || Ok(drops_explorer_sync(&dir, kb))).await
 }
 
-fn drops_explorer_sync(
-    dir: &std::path::Path,
-    kb: crate::core::knowledge::KnowledgeBase,
-) -> Vec<DropEntry> {
+fn drops_explorer_sync(dir: &std::path::Path, kb: crate::core::knowledge::KnowledgeBase) -> Vec<DropEntry> {
     let rows = load_rows(dir);
     let reviews = review_store(dir).list();
     let rev_by_image: HashMap<&str, &ReviewRecord> =
         reviews.iter().map(|r| (r.image_id.as_str(), r)).collect();
-    let fish_scope: HashSet<String> =
-        std::fs::read_to_string(dir.join("models").join("fish_v1.json"))
-            .ok()
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            .and_then(|v| v.get("classes").cloned())
-            .and_then(|c| serde_json::from_value::<Vec<String>>(c).ok())
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
+    let fish_scope: HashSet<String> = std::fs::read_to_string(dir.join("models").join("fish_v1.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("classes").cloned())
+        .and_then(|c| serde_json::from_value::<Vec<String>>(c).ok())
+        .unwrap_or_default()
+        .into_iter()
+        .collect();
 
     let mut out = Vec::new();
     for c in canon::canonical_view(&kb) {
@@ -1322,11 +1252,14 @@ fn readiness_status_inner(
     // a training snapshot WOULD contain, not the collector's guesses. Before this
     // they read the live file, so readiness could show `fish:crimson` qualified
     // on 224 rows while the snapshot wrote 13 and the trainer refused.
-    let projected = crate::core::training::project_training_labels(all, &review_store(store_dir));
+    let projected =
+        crate::core::training::project_training_labels(all, &review_store(store_dir));
     // A review state that cannot be read back is a refusal, never a fallback to
     // the collector's labels: the fallback would be the lie this closes.
     let projection_note = match &projected.read_error {
-        Some(err) => format!("; review state unreadable, so no class counts are reported: {err}"),
+        Some(err) => format!(
+            "; review state unreadable, so no class counts are reported: {err}"
+        ),
         None => format!(
             "; class counts are measured on the projected training set ({} row(s), \
              {} relabelled by human review, {} excluded by review)",
@@ -1347,10 +1280,9 @@ fn readiness_status_inner(
     let jobs = training::list_jobs(store_dir);
 
     let mut out = Vec::new();
-    for (family, prefix, stem) in [
-        ("fish", Some("fish:"), "fish_v1"),
-        ("state", None, "state_v1"),
-    ] {
+    for (family, prefix, stem) in
+        [("fish", Some("fish:"), "fish_v1"), ("state", None, "state_v1")]
+    {
         let scoped: Vec<_> = gate_rows
             .iter()
             .filter(|r| match prefix {
@@ -1363,11 +1295,7 @@ fn readiness_status_inner(
             .collect();
         let reviewed_scoped = scoped
             .iter()
-            .filter(|r| {
-                projected
-                    .reviewed_eligible_ids
-                    .contains(r.image_id.as_str())
-            })
+            .filter(|r| projected.reviewed_eligible_ids.contains(r.image_id.as_str()))
             .count();
 
         // Structured data gate from the real capability gate + per-entity
@@ -1379,13 +1307,7 @@ fn readiness_status_inner(
         let sessions_short = qualified
             .iter()
             .find(|q| q.sessions < crate::core::ml_capability::ENTITY_MIN_SESSIONS)
-            .map(|q| {
-                (
-                    q.entity.clone(),
-                    q.sessions,
-                    crate::core::ml_capability::ENTITY_MIN_SESSIONS,
-                )
-            });
+            .map(|q| (q.entity.clone(), q.sessions, crate::core::ml_capability::ENTITY_MIN_SESSIONS));
         // REQUIRED CLASS COUNT IS NOW DERIVED, NEVER DECLARED.
         //
         // Was `FISH_MIN_ENTITIES = 10` - a scalar that contradicted the
@@ -1414,8 +1336,7 @@ fn readiness_status_inner(
             sessions_short,
             detail: format!(
                 "{}{}",
-                g.map(|x| x.detail.clone())
-                    .unwrap_or_else(|| "no gate".to_string()),
+                g.map(|x| x.detail.clone()).unwrap_or_else(|| "no gate".to_string()),
                 projection_note
             ),
             next_action: g
@@ -1447,7 +1368,12 @@ fn readiness_status_inner(
             Some(crate::core::shadow_infer::revision_from_manifest(&manifest))
         };
         let deployed_version: Option<u32> = deployed_rev.as_deref().and_then(|s| s.parse().ok());
-        let soak = registry::soak_stats_for(store_dir, stem, deployed_rev.as_deref(), 500);
+        let soak = registry::soak_stats_for(
+            store_dir,
+            stem,
+            deployed_rev.as_deref(),
+            500,
+        );
         let soak_opt = (soak.events > 0).then_some(&soak);
         let phase = job_phase(&jobs, family);
 
@@ -1470,19 +1396,11 @@ fn readiness_status_inner(
     {
         let scoped: Vec<_> = gate_rows
             .iter()
-            .filter(|r| {
-                r.entity_id
-                    .as_deref()
-                    .is_some_and(|e| e.starts_with("fruit:"))
-            })
+            .filter(|r| r.entity_id.as_deref().is_some_and(|e| e.starts_with("fruit:")))
             .collect();
         let reviewed_scoped = scoped
             .iter()
-            .filter(|r| {
-                projected
-                    .reviewed_eligible_ids
-                    .contains(r.image_id.as_str())
-            })
+            .filter(|r| projected.reviewed_eligible_ids.contains(r.image_id.as_str()))
             .count();
         let quals = qualify_entities(gate_rows, "fruit:");
         let qualified: Vec<_> = quals.iter().filter(|q| q.qualified).collect();
@@ -1498,8 +1416,7 @@ fn readiness_status_inner(
                 sessions_short: None,
                 detail: format!(
                     "{}{}",
-                    g.map(|x| x.detail.clone())
-                        .unwrap_or_else(|| "no gate".to_string()),
+                    g.map(|x| x.detail.clone()).unwrap_or_else(|| "no gate".to_string()),
                     projection_note
                 ),
                 next_action: g
@@ -1521,11 +1438,7 @@ fn readiness_status_inner(
 
 fn job_phase(jobs: &[training::TrainingJob], family: &str) -> JobPhase {
     if jobs.iter().any(|j| {
-        j.model_family == family
-            && matches!(
-                j.status,
-                training::JobStatus::Running | training::JobStatus::Queued
-            )
+        j.model_family == family && matches!(j.status, training::JobStatus::Running | training::JobStatus::Queued)
     }) {
         return JobPhase::Training;
     }
@@ -1539,9 +1452,7 @@ fn job_phase(jobs: &[training::TrainingJob], family: &str) -> JobPhase {
 }
 
 #[tauri::command]
-pub async fn readiness_status(
-    st: State<'_, AppState>,
-) -> Result<Vec<readiness::ModelReadiness>, String> {
+pub async fn readiness_status(st: State<'_, AppState>) -> Result<Vec<readiness::ModelReadiness>, String> {
     let store_dir = st.store.dir().to_path_buf();
     let settings = st.settings.read().clone();
     blocking(move || Ok(readiness_status_inner(&store_dir, &settings))).await
@@ -1566,13 +1477,8 @@ pub struct HermesTasks {
 pub fn hermes_tasks(st: State<'_, AppState>) -> HermesTasks {
     let rows = MlDatasetStore::new(st.store.dir().to_path_buf()).annotations();
     let gates = assess_capabilities(&rows);
-    let gate_ready = |id: &str| {
-        gates
-            .iter()
-            .find(|g| g.id == id)
-            .map(|g| g.ready)
-            .unwrap_or(false)
-    };
+    let gate_ready =
+        |id: &str| gates.iter().find(|g| g.id == id).map(|g| g.ready).unwrap_or(false);
     let prev = training::load_trigger_state(st.store.dir());
     let settings = st.settings.read();
     let triggers = training::evaluate_triggers(
@@ -1593,6 +1499,7 @@ pub fn hermes_tasks(st: State<'_, AppState>) -> HermesTasks {
     }
 }
 
+
 // ---------------------------------------------------------------------------
 // Semantic-teacher evidence fusion
 // ---------------------------------------------------------------------------
@@ -1602,9 +1509,7 @@ pub fn hermes_tasks(st: State<'_, AppState>) -> HermesTasks {
 /// Read from the ONTOLOGY, never from the dataset. The fusion logic has to judge
 /// a name against what the KB actually claims, not against whatever the
 /// collector happened to write onto the row.
-pub fn kb_entity_set(
-    kb: &crate::core::knowledge::KnowledgeBase,
-) -> std::collections::BTreeSet<String> {
+pub fn kb_entity_set(kb: &crate::core::knowledge::KnowledgeBase) -> std::collections::BTreeSet<String> {
     kb.entities().iter().map(|e| e.id.clone()).collect()
 }
 
@@ -1659,20 +1564,14 @@ pub fn semantic_teacher_status_sync(dir: &std::path::Path) -> SemanticTeacherSta
         last_analysis_ms: None,
         human_reviewed_assisted: 0,
         unresolved_concepts: 0,
-        detail: "Semantic teacher has not been run on this install. Review still works without it."
-            .to_string(),
+        detail: "Semantic teacher has not been run on this install. Review still works without it.".to_string(),
     };
     let path = dir.join("semantic_teacher").join("ram_results.jsonl");
-    let Ok(raw) = std::fs::read_to_string(&path) else {
-        return st;
-    };
+    let Ok(raw) = std::fs::read_to_string(&path) else { return st };
 
     let kb = kb_entity_set(crate::core::knowledge::KnowledgeBase::bundled());
-    let reviewed: std::collections::HashSet<String> = review_store(dir)
-        .list()
-        .into_iter()
-        .map(|r| r.image_id)
-        .collect();
+    let reviewed: std::collections::HashSet<String> =
+        review_store(dir).list().into_iter().map(|r| r.image_id).collect();
 
     let (mut ok_count, mut errors) = (0usize, 0usize);
     for line in raw.lines().filter(|l| !l.trim().is_empty()) {
@@ -1688,8 +1587,7 @@ pub fn semantic_teacher_status_sync(dir: &std::path::Path) -> SemanticTeacherSta
         st.model.get_or_insert_with(|| r.ram_model.clone());
         st.checkpoint_sha256
             .get_or_insert_with(|| r.checkpoint_sha256.clone());
-        st.preprocessing
-            .get_or_insert_with(|| r.preprocessing.clone());
+        st.preprocessing.get_or_insert_with(|| r.preprocessing.clone());
         st.last_analysis_ms = Some(st.last_analysis_ms.unwrap_or(0).max(r.timestamp_ms));
         if let Some((top, _)) = r.top_category() {
             if !kb.contains(top) {
@@ -1766,12 +1664,7 @@ mod tests {
     }
 
     /// Full `reviews.jsonl` schema, so both review parsers agree.
-    fn review_line(
-        image_id: &str,
-        eligible: bool,
-        human: Option<&str>,
-        reason: Option<&str>,
-    ) -> String {
+    fn review_line(image_id: &str, eligible: bool, human: Option<&str>, reason: Option<&str>) -> String {
         serde_json::json!({
             "review_id": format!("rv-{image_id}"),
             "image_id": image_id,
@@ -1834,12 +1727,7 @@ mod tests {
         let mut reviews = Vec::new();
         for i in 0..100 {
             let id = format!("g-{i}");
-            rows.push(row(
-                &id,
-                "fixture-session",
-                Some("fish:golden"),
-                "Golden Fish",
-            ));
+            rows.push(row(&id, "fixture-session", Some("fish:golden"), "Golden Fish"));
             if i < 60 {
                 reviews.push(review_line(&id, true, Some("fish:golden"), None));
             } else {
@@ -1852,10 +1740,7 @@ mod tests {
         let live = MlDatasetStore::new(dir.clone()).annotations();
         assert_eq!(live.len(), 100);
         let out = readiness_status_inner(&dir, &crate::config::Settings::default());
-        let fish = out
-            .iter()
-            .find(|r| r.family == "fish")
-            .expect("fish readiness");
+        let fish = out.iter().find(|r| r.family == "fish").expect("fish readiness");
         assert_eq!(
             fish.evidence["scoped_total"], 60,
             "rejected rows are not training rows: {}",
@@ -1863,13 +1748,8 @@ mod tests {
         );
         assert_eq!(fish.evidence["reviewed_scoped"], 60);
         assert!(
-            fish.checks
-                .iter()
-                .any(|c| c.detail.contains("projected training set"))
-                || out.iter().any(|r| r
-                    .checks
-                    .iter()
-                    .any(|c| c.detail.contains("projected training set"))),
+            fish.checks.iter().any(|c| c.detail.contains("projected training set"))
+                || out.iter().any(|r| r.checks.iter().any(|c| c.detail.contains("projected training set"))),
             "the evidence must say which set it measured"
         );
         let _ = std::fs::remove_dir_all(&dir);
@@ -1894,15 +1774,14 @@ mod tests {
         write_reviews(&dir, &reviews);
 
         let live = crate::core::ml_capability::qualify_entities(&rows, "fish:");
-        let crimson_live = live
-            .iter()
-            .find(|q| q.entity == "fish:crimson")
-            .expect("live class");
+        let crimson_live = live.iter().find(|q| q.entity == "fish:crimson").expect("live class");
         assert_eq!(crimson_live.examples, 224, "the live file still claims 224");
 
         let loaded = load_rows(&dir);
-        let projected =
-            crate::core::training::project_training_labels(&loaded.all, &review_store(&dir));
+        let projected = crate::core::training::project_training_labels(
+            &loaded.all,
+            &review_store(&dir),
+        );
         let (counts, sessions) = projected_class_support(&projected);
         assert_eq!(
             counts.get("fish:crimson").copied(),
@@ -1928,57 +1807,22 @@ mod tests {
         let dir = tmp_dir("queue-ocr");
         write_overlay(&dir, "fish:crimsonsnapper", "Crimson Snapper");
         let rows = vec![
-            row(
-                "ok-species",
-                "fixture-session",
-                Some("fish:crimsonsnapper"),
-                "Crimson Snapper",
-            ),
-            row(
-                "other-banner",
-                "fixture-session",
-                Some("fish:crimsonsnapper"),
-                "Golden Ribbon Angelfish",
-            ),
-            row(
-                "ok-stem",
-                "fixture-session",
-                Some("fish:crimson"),
-                "Crimson",
-            ),
-            row(
-                "stem-mismatch",
-                "fixture-session",
-                Some("fish:crimson"),
-                "Golden Ribbon Angelfish",
-            ),
+            row("ok-species", "fixture-session", Some("fish:crimsonsnapper"), "Crimson Snapper"),
+            row("other-banner", "fixture-session", Some("fish:crimsonsnapper"), "Golden Ribbon Angelfish"),
+            row("ok-stem", "fixture-session", Some("fish:crimson"), "Crimson"),
+            row("stem-mismatch", "fixture-session", Some("fish:crimson"), "Golden Ribbon Angelfish"),
         ];
         write_labels(&dir, &rows);
         write_reviews(&dir, &[]);
 
         let page = review_priority_sync(&dir, Some(50), None, None, None, None, None, None);
         let flag = |id: &str| -> Option<bool> {
-            page.items
-                .iter()
-                .find(|i| i.image_id == id)
-                .map(|i| i.ocr_disagreement)
+            page.items.iter().find(|i| i.image_id == id).map(|i| i.ocr_disagreement)
         };
         assert_eq!(flag("ok-species"), Some(false), "the banner names it");
-        assert_eq!(
-            flag("other-banner"),
-            Some(true),
-            "the banner names something else"
-        );
-        assert_eq!(
-            flag("ok-stem"),
-            Some(false),
-            "single-word behaviour is unchanged"
-        );
-        assert_eq!(
-            flag("stem-mismatch"),
-            Some(true),
-            "mismatch is still a disagreement"
-        );
+        assert_eq!(flag("other-banner"), Some(true), "the banner names something else");
+        assert_eq!(flag("ok-stem"), Some(false), "single-word behaviour is unchanged");
+        assert_eq!(flag("stem-mismatch"), Some(true), "mismatch is still a disagreement");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1990,30 +1834,15 @@ mod tests {
         let dir = tmp_dir("queue-overridden");
         let rows = vec![
             row("kept", "fixture-session", Some("fish:crimson"), "Crimson"),
-            row(
-                "overridden",
-                "fixture-session",
-                Some("fish:crimson"),
-                "Crimson Snapper",
-            ),
+            row("overridden", "fixture-session", Some("fish:crimson"), "Crimson Snapper"),
         ];
         write_labels(&dir, &rows);
         write_reviews(
             &dir,
-            &[review_line(
-                "overridden",
-                true,
-                Some("fish:crimsonsnapper"),
-                None,
-            )],
+            &[review_line("overridden", true, Some("fish:crimsonsnapper"), None)],
         );
         let page = review_priority_sync(&dir, Some(50), None, None, None, None, None, None);
-        assert_eq!(
-            page.items.len(),
-            1,
-            "the judged row is not pending: {:?}",
-            page.items
-        );
+        assert_eq!(page.items.len(), 1, "the judged row is not pending: {:?}", page.items);
         assert_eq!(page.items[0].image_id, "kept");
         assert!(!page.items[0].ocr_disagreement);
         let _ = std::fs::remove_dir_all(&dir);

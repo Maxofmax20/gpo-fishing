@@ -24,10 +24,7 @@ use gpo_autofish_lib::core::class_vocab;
 use gpo_autofish_lib::core::registry::{self, ComparisonVerdict, ModelMetrics};
 
 fn fish_classes() -> Vec<String> {
-    class_vocab::fish_vocab()
-        .iter()
-        .map(|c| c.to_string())
-        .collect()
+    class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect()
 }
 
 /// A metrics record over the canonical classes with real per-class support.
@@ -43,12 +40,12 @@ fn metrics_with_support(
     macro_f1: f32,
     over: &[(&str, f32, usize)],
 ) -> ModelMetrics {
-    let per_class_f1: Vec<(String, f32)> =
-        fish_classes().iter().map(|c| (c.clone(), 0.80)).collect();
-    let per_class_test_support: Vec<(String, usize)> = fish_classes()
+    let per_class_f1: Vec<(String, f32)> = fish_classes()
         .iter()
-        .map(|c| (c.clone(), 40usize))
+        .map(|c| (c.clone(), 0.80))
         .collect();
+    let per_class_test_support: Vec<(String, usize)> =
+        fish_classes().iter().map(|c| (c.clone(), 40usize)).collect();
     let mut m = ModelMetrics {
         holdout_fingerprint: Some("a".repeat(64)),
         accuracy: 0.80,
@@ -162,9 +159,7 @@ fn the_canonical_vocabulary_is_what_a_candidate_must_cover() {
     let c = registry::compare("fish", &cur, &cand, &cls, &partial, &cls);
     assert_eq!(c.verdict, ComparisonVerdict::Reject);
     assert!(
-        c.reasons
-            .iter()
-            .any(|r| r.contains("does not cover the canonical vocabulary")),
+        c.reasons.iter().any(|r| r.contains("does not cover the canonical vocabulary")),
         "{:?}",
         c.reasons
     );

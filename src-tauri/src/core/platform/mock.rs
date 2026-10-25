@@ -82,12 +82,7 @@ impl Input for RecordingInput {
         *self.pos.lock()
     }
     fn screen(&self) -> PxRect {
-        PxRect {
-            x: 0,
-            y: 0,
-            w: 1920,
-            h: 1080,
-        }
+        PxRect { x: 0, y: 0, w: 1920, h: 1080 }
     }
 }
 

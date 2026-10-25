@@ -323,7 +323,7 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
         match request.path.as_str() {
             "/api/control" => match body["command"].as_str().ok_or("Command is required")? {
                 "start" => server.bot.start_checked()?,
-                "pause" => server.bot.pause(),
+                "pause" => {server.bot.pause(); super::recorder::stop_playback();},
                 "stop" => {
                     server.bot.stop();
                     super::recorder::stop_playback();
@@ -333,10 +333,12 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
             },
             "/api/tap" => {
                 let key = body["key"].as_str().ok_or("Key is required")?;
+                InputAction::KeyDown{key:key.into()}.validate()?;
                 if super::recorder::is_playing() {
                     return Err("Stop playback before manual controls".into());
                 }
                 let control = super::control::service()?;
+                if body["epoch"].as_u64()!=Some(control.runtime.epoch()){return Err("Input session changed; refresh the remote".into());}
                 if body["focus"].as_bool().unwrap_or(false) {
                     control.focus()?;
                 }
@@ -360,6 +362,7 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
                     return Err("Stop playback before manual controls".into());
                 }
                 let control = super::control::service()?;
+                if body["epoch"].as_u64()!=Some(control.runtime.epoch()){return Err("Input session changed; refresh the remote".into());}
                 if body["focus"].as_bool().unwrap_or(false) {
                     control.focus()?;
                 }
@@ -399,6 +402,7 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
                     .ok_or("Recorder command is required")?
                 {
                     "record" => {
+                        if server.bot.is_running(){return Err("Pause fishing before recording".into());}
                         super::recorder::start_recording(super::recorder::RecordMode::WebScreen)?
                     }
                     "save" => {

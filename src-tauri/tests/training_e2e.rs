@@ -15,14 +15,13 @@
 
 use std::path::PathBuf;
 
-use gpo_autofish_lib::core::registry::{self, ComparisonVerdict, Lifecycle, ModelMetrics};
+use gpo_autofish_lib::core::registry::{
+    self, ComparisonVerdict, Lifecycle, ModelMetrics,
+};
 use gpo_autofish_lib::core::training::{self, JobStatus};
 
 fn fixtures() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("fixtures")
-        .join("training-stub")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests").join("fixtures").join("training-stub")
 }
 
 fn repo_models() -> PathBuf {
@@ -67,20 +66,12 @@ fn mini_dataset(dir: &PathBuf) -> (String, String) {
         + "\n";
     let v1 = dir.join("datasets").join("gpo-vision").join("v1");
     std::fs::write(v1.join("labels.jsonl"), body).unwrap();
-    std::fs::write(
-        v1.join("manifest.json"),
-        r#"{"version":1,"split_overrides":{}}"#,
-    )
-    .unwrap();
+    std::fs::write(v1.join("manifest.json"), r#"{"version":1,"split_overrides":{}}"#).unwrap();
     (tr, te)
 }
 
 fn current_metrics(acc: f32, f1: f32) -> (ModelMetrics, Vec<String>) {
-    let per: std::collections::HashMap<String, f32> =
-        gpo_autofish_lib::core::class_vocab::fish_vocab()
-            .iter()
-            .map(|c| (c.to_string(), 0.65))
-            .collect();
+    let per: std::collections::HashMap<String, f32> = gpo_autofish_lib::core::class_vocab::fish_vocab().iter().map(|c| (c.to_string(), 0.65)).collect();
     (
         ModelMetrics {
             holdout_fingerprint: Some("a".repeat(64)),
@@ -90,21 +81,18 @@ fn current_metrics(acc: f32, f1: f32) -> (ModelMetrics, Vec<String>) {
             test_sessions: 2,
             test_n: 20,
             per_class_f1: per,
-            per_class_test_support: gpo_autofish_lib::core::class_vocab::fish_vocab()
-                .iter()
-                .map(|c| (c.to_string(), 20))
-                .collect(),
+            per_class_test_support: gpo_autofish_lib::core::class_vocab::fish_vocab().iter().map(|c| (c.to_string(), 20)).collect(),
             kept_accuracy: Some(0.95),
         },
-        gpo_autofish_lib::core::class_vocab::fish_vocab()
-            .iter()
-            .map(|c| c.to_string())
-            .collect(),
+        gpo_autofish_lib::core::class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect(),
     )
 }
 
 /// Run one stub job to completion. Returns (data_dir, job, trainer_out).
-fn run_stub_job(tag: &str, mode: &str) -> (PathBuf, training::TrainingJob, PathBuf) {
+fn run_stub_job(
+    tag: &str,
+    mode: &str,
+) -> (PathBuf, training::TrainingJob, PathBuf) {
     let dir = fresh_dir(tag);
     mini_dataset(&dir);
     let store_rows = {
@@ -115,16 +103,7 @@ fn run_stub_job(tag: &str, mode: &str) -> (PathBuf, training::TrainingJob, PathB
     let snap_dir = dir.join("training").join("snapshots").join("snap-1");
     let snap = training::snapshot_dataset(&dir, &snap_dir, &store_rows, 1).unwrap();
     let mut job = training::create_job(
-        &dir,
-        "fish",
-        "manual",
-        &snap,
-        1,
-        "stub-trainer",
-        2,
-        7,
-        "e2e",
-        false,
+        &dir, "fish", "manual", &snap, 1, "stub-trainer", 2, 7, "e2e", false,
     )
     .unwrap();
     // The stub writes the trainer-shaped output tree the runner watches.
@@ -153,8 +132,7 @@ fn run_stub_job(tag: &str, mode: &str) -> (PathBuf, training::TrainingJob, PathB
         stage.join("payload.onnx").to_string_lossy().to_string(),
     ];
     let mut sup = training::Supervisor::new();
-    sup.launch_argv(&dir, &mut job, &argv, &[], &dir, 1)
-        .unwrap();
+    sup.launch_argv(&dir, &mut job, &argv, &[], &dir, 1).unwrap();
     // Poll until the stub finishes (fast) or time out loudly.
     let mut finished = false;
     for _ in 0..200 {
@@ -168,10 +146,14 @@ fn run_stub_job(tag: &str, mode: &str) -> (PathBuf, training::TrainingJob, PathB
     (dir, job, out)
 }
 
-fn candidate_inputs_from_stub(out: &PathBuf) -> registry::CandidateInputs {
+fn candidate_inputs_from_stub(
+    out: &PathBuf,
+) -> registry::CandidateInputs {
     let read = |n: &str| {
-        serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(out.join(n)).unwrap())
-            .unwrap()
+        serde_json::from_str::<serde_json::Value>(
+            &std::fs::read_to_string(out.join(n)).unwrap(),
+        )
+        .unwrap()
     };
     let eval = read("evaluation_test.json");
     let mut metrics =
@@ -195,7 +177,7 @@ fn candidate_inputs_from_stub(out: &PathBuf) -> registry::CandidateInputs {
     metrics.ece = Some(0.1);
     metrics.kept_accuracy = Some(0.95);
     let vocab_sha = gpo_autofish_lib::core::class_vocab::fish_vocab_sha();
-    registry::CandidateInputs {
+registry::CandidateInputs {
         onnx_path: out.join("model.onnx"),
         classes,
         vocab_sha,
@@ -210,67 +192,34 @@ fn candidate_inputs_from_stub(out: &PathBuf) -> registry::CandidateInputs {
 #[test]
 fn e2e_good_candidate_promotes_and_rolls_back() {
     let (dir, job, out) = run_stub_job("promote", "good");
-    assert_eq!(
-        job.status,
-        JobStatus::Passed,
-        "trainer succeeded: {:?}",
-        job.error
-    );
+    assert_eq!(job.status, JobStatus::Passed, "trainer succeeded: {:?}", job.error);
     assert!(job.evaluation.is_some(), "real evaluation must be attached");
     // Seed the "running" shadow with the real repo models.
     let models = dir.join("models");
     std::fs::create_dir_all(&models).unwrap();
-    for n in [
-        "fish_v1.onnx",
-        "fish_v1.json",
-        "state_v1.onnx",
-        "state_v1.json",
-    ] {
+    for n in ["fish_v1.onnx", "fish_v1.json", "state_v1.onnx", "state_v1.json"] {
         std::fs::copy(repo_models().join(n), models.join(n)).unwrap();
     }
     let before = std::fs::read(models.join("fish_v1.onnx")).unwrap();
     // Register + compare against a deliberately worse current.
     let inputs = candidate_inputs_from_stub(&out);
     let rec = registry::register_candidate(
-        &dir,
-        &job.job_id,
-        "fish",
-        &job.dataset_fingerprint,
-        1,
-        "cfghash",
-        "e2e",
-        &inputs,
+        &dir, &job.job_id, "fish", &job.dataset_fingerprint, 1, "cfghash", "e2e", &inputs,
     )
     .unwrap();
     assert_eq!(rec.status, Lifecycle::Evaluated);
     let (cur, cur_classes) = current_metrics(0.50, 0.45);
-    let qualified = gpo_autofish_lib::core::class_vocab::fish_vocab()
-        .iter()
-        .map(|c| c.to_string())
-        .collect::<Vec<_>>();
-    let cmp = registry::compare(
-        "fish",
-        &cur,
-        &rec.metrics,
-        &cur_classes,
-        &rec.classes,
-        &qualified,
-    );
+    let qualified = gpo_autofish_lib::core::class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect::<Vec<_>>();
+    let cmp = registry::compare("fish", &cur, &rec.metrics, &cur_classes, &rec.classes, &qualified);
     assert_eq!(cmp.verdict, ComparisonVerdict::Pass, "{:?}", cmp.reasons);
     // Promote: live bytes become the candidate; archive created.
-    let manifest = registry::promote_to_shadow(&dir, &models, &rec.candidate_id, &cmp).unwrap();
+    let manifest =
+        registry::promote_to_shadow(&dir, &models, &rec.candidate_id, &cmp).unwrap();
     assert!(manifest.exists());
-    assert_eq!(
-        std::fs::read(models.join("fish_v1.onnx")).unwrap(),
-        std::fs::read(out.join("model.onnx")).unwrap()
-    );
+    assert_eq!(std::fs::read(models.join("fish_v1.onnx")).unwrap(), std::fs::read(out.join("model.onnx")).unwrap());
     let records = registry::load_registry(&dir);
     assert_eq!(
-        records
-            .iter()
-            .find(|r| r.candidate_id == rec.candidate_id)
-            .unwrap()
-            .status,
+        records.iter().find(|r| r.candidate_id == rec.candidate_id).unwrap().status,
         Lifecycle::Shadow
     );
     // Rollback restores the exact previous bytes.
@@ -282,55 +231,26 @@ fn e2e_good_candidate_promotes_and_rolls_back() {
 #[test]
 fn e2e_bad_candidate_rejects_and_live_model_untouched() {
     let (dir, job, out) = run_stub_job("reject", "bad");
-    assert_eq!(
-        job.status,
-        JobStatus::Passed,
-        "stub trainer itself succeeded"
-    );
+    assert_eq!(job.status, JobStatus::Passed, "stub trainer itself succeeded");
     let models = dir.join("models");
     std::fs::create_dir_all(&models).unwrap();
-    for n in [
-        "fish_v1.onnx",
-        "fish_v1.json",
-        "state_v1.onnx",
-        "state_v1.json",
-    ] {
+    for n in ["fish_v1.onnx", "fish_v1.json", "state_v1.onnx", "state_v1.json"] {
         std::fs::copy(repo_models().join(n), models.join(n)).unwrap();
     }
     let live_before = std::fs::read(models.join("fish_v1.onnx")).unwrap();
     let inputs = candidate_inputs_from_stub(&out);
     let rec = registry::register_candidate(
-        &dir,
-        &job.job_id,
-        "fish",
-        &job.dataset_fingerprint,
-        1,
-        "cfghash",
-        "e2e",
-        &inputs,
+        &dir, &job.job_id, "fish", &job.dataset_fingerprint, 1, "cfghash", "e2e", &inputs,
     )
     .unwrap();
     // Current model is BETTER: comparison must Reject.
     let (cur, cur_classes) = current_metrics(0.95, 0.93);
-    let qualified = gpo_autofish_lib::core::class_vocab::fish_vocab()
-        .iter()
-        .map(|c| c.to_string())
-        .collect::<Vec<_>>();
-    let cmp = registry::compare(
-        "fish",
-        &cur,
-        &rec.metrics,
-        &cur_classes,
-        &rec.classes,
-        &qualified,
-    );
+    let qualified = gpo_autofish_lib::core::class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect::<Vec<_>>();
+    let cmp = registry::compare("fish", &cur, &rec.metrics, &cur_classes, &rec.classes, &qualified);
     assert_eq!(cmp.verdict, ComparisonVerdict::Reject, "{:?}", cmp.reasons);
     // Promotion refuses on a non-Pass verdict; live bytes provably untouched.
     let err = registry::promote_to_shadow(&dir, &models, &rec.candidate_id, &cmp).unwrap_err();
     assert!(err.contains("refused"), "{err}");
-    assert_eq!(
-        std::fs::read(models.join("fish_v1.onnx")).unwrap(),
-        live_before
-    );
+    assert_eq!(std::fs::read(models.join("fish_v1.onnx")).unwrap(), live_before);
     let _ = std::fs::remove_dir_all(&dir);
 }

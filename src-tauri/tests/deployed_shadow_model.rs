@@ -43,15 +43,15 @@ fn bundled_models_dir() -> PathBuf {
 /// A directory holding copies of the bundled pair, so a tamper case cannot
 /// touch the real ones.
 fn sandbox(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "gpo-shadow-{tag}-{}",
-        gpo_autofish_lib::events::now_ms()
-    ));
+    let dir = std::env::temp_dir().join(format!("gpo-shadow-{tag}-{}", gpo_autofish_lib::events::now_ms()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     for f in ["fish_v1.onnx", "fish_v1.json"] {
-        std::fs::copy(bundled_models_dir().join(f), dir.join(f))
-            .unwrap_or_else(|e| panic!("copy {f}: {e}"));
+        std::fs::copy(
+            bundled_models_dir().join(f),
+            dir.join(f),
+        )
+        .unwrap_or_else(|e| panic!("copy {f}: {e}"));
     }
     dir
 }
@@ -59,10 +59,7 @@ fn sandbox(tag: &str) -> PathBuf {
 #[test]
 fn the_deployed_engine_loads_and_answers_fifteen_classes() {
     let Some(dir) = live_models_dir() else {
-        eprintln!(
-            "SKIP: no live deployed models in {}",
-            live_models_dir().unwrap_or_default().display()
-        );
+        eprintln!("SKIP: no live deployed models in {}", live_models_dir().unwrap_or_default().display());
         return;
     };
     let engine = ShadowEngine::load(&dir)
@@ -83,9 +80,8 @@ fn the_deployed_engine_loads_and_answers_fifteen_classes() {
         pad: "square-black".into(),
         resize: "bilinear".into(),
     };
-    let chw =
-        gpo_autofish_lib::core::shadow_infer::preprocess_rgba(&rgba, spec_size, spec_size, &spec)
-            .expect("preprocess must produce a tensor");
+    let chw = gpo_autofish_lib::core::shadow_infer::preprocess_rgba(&rgba, spec_size, spec_size, &spec)
+        .expect("preprocess must produce a tensor");
     assert_eq!(chw.len(), 3 * 96 * 96, "input fact is [1,3,96,96]");
 
     let probs = engine
@@ -140,23 +136,13 @@ fn the_seeder_does_not_replace_a_deployed_model_with_the_bundled_one() {
     if before_version["version"] == after_version["version"]
         && before_version["sha256"] == after_version["sha256"]
     {
-        assert_eq!(
-            before, after,
-            "identical seed must not rewrite the manifest"
-        );
-        assert_eq!(
-            before_onnx, after_onnx,
-            "identical seed must not rewrite the weights"
-        );
+        assert_eq!(before, after, "identical seed must not rewrite the manifest");
+        assert_eq!(before_onnx, after_onnx, "identical seed must not rewrite the weights");
     } else {
         // Versions genuinely differ, so the seeder is entitled to write - but
         // only DOWNWARD is forbidden. Never to an older manifest.
-        let b = before_version["version"]
-            .as_str()
-            .and_then(|s| s.parse::<u64>().ok());
-        let a = after_version["version"]
-            .as_str()
-            .and_then(|s| s.parse::<u64>().ok());
+        let b = before_version["version"].as_str().and_then(|s| s.parse::<u64>().ok());
+        let a = after_version["version"].as_str().and_then(|s| s.parse::<u64>().ok());
         assert!(
             match (a, b) {
                 (Some(a), Some(b)) => a >= b,
@@ -176,7 +162,8 @@ fn a_manifest_that_disagrees_with_its_weights_is_refused() {
     // must not load.
     let dir = sandbox("tamper-sha");
     let p = dir.join("fish_v1.json");
-    let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+    let mut m: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
     m["sha256"] = serde_json::json!("0".repeat(64));
     std::fs::write(&p, serde_json::to_vec(&m).unwrap()).unwrap();
     let err = match ShadowEngine::load(&dir) {
@@ -197,7 +184,8 @@ fn a_manifest_with_a_foreign_class_map_is_refused() {
     // loads perfectly and attributes every observation to the wrong label.
     let dir = sandbox("tamper-vocab");
     let p = dir.join("fish_v1.json");
-    let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+    let mut m: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
     m["vocab_sha"] = serde_json::json!("f".repeat(64));
     std::fs::write(&p, serde_json::to_vec(&m).unwrap()).unwrap();
     let err = match ShadowEngine::load(&dir) {
@@ -215,7 +203,8 @@ fn a_manifest_with_a_foreign_class_map_is_refused() {
 fn a_manifest_in_the_wrong_slot_is_refused() {
     let dir = sandbox("tamper-slot");
     let p = dir.join("fish_v1.json");
-    let mut m: serde_json::Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+    let mut m: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
     m["name"] = serde_json::json!("state_v1");
     std::fs::write(&p, serde_json::to_vec(&m).unwrap()).unwrap();
     let err = match ShadowEngine::load(&dir) {
@@ -270,13 +259,7 @@ fn shadow_inference_cannot_reach_a_game_input() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/core/shadow_infer.rs"),
     )
     .unwrap();
-    for forbidden in [
-        "bot::actions",
-        "platform::windows::input",
-        "controller",
-        "send_key",
-        "click",
-    ] {
+    for forbidden in ["bot::actions", "platform::windows::input", "controller", "send_key", "click"] {
         assert!(
             !src.contains(forbidden),
             "shadow_infer must not reference {forbidden}: a shadow observation has no \

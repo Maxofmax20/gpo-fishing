@@ -88,10 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let export = Export {
         schema: 1,
         kb_version: kb.version,
-        fish_vocab: class_vocab::fish_vocab()
-            .iter()
-            .map(|c| c.to_string())
-            .collect(),
+        fish_vocab: class_vocab::fish_vocab().iter().map(|c| c.to_string()).collect(),
         fish_vocab_sha256: class_vocab::fish_vocab_sha().to_string(),
         entity_count: entities.len(),
         entities,

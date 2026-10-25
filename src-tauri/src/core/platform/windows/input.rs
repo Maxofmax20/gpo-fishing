@@ -1,10 +1,10 @@
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    MapVirtualKeyW, SendInput, VkKeyScanW, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT,
-    KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE,
-    KEYEVENTF_UNICODE, MAPVK_VK_TO_VSC, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN,
-    MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
-    MOUSEEVENTF_WHEEL, MOUSEINPUT, VIRTUAL_KEY, VK_BACK, VK_CONTROL, VK_DELETE, VK_DOWN, VK_ESCAPE,
-    VK_LEFT, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SPACE, VK_UP,
+    MapVirtualKeyW, SendInput, VkKeyScanW, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE,
+    KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE,
+    KEYEVENTF_UNICODE, MAPVK_VK_TO_VSC, MOUSEEVENTF_ABSOLUTE,
+    MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
+    MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEINPUT, VIRTUAL_KEY, VK_BACK, VK_CONTROL,
+    VK_DELETE, VK_ESCAPE, VK_RETURN, VK_SHIFT, VK_SPACE, VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetSystemMetrics, SetCursorPos, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
@@ -34,23 +34,11 @@ fn send(inputs: &[INPUT]) {
     }
 }
 
-fn mouse(
-    flags: windows::Win32::UI::Input::KeyboardAndMouse::MOUSE_EVENT_FLAGS,
-    dx: i32,
-    dy: i32,
-    data: i32,
-) -> INPUT {
+fn mouse(flags: windows::Win32::UI::Input::KeyboardAndMouse::MOUSE_EVENT_FLAGS, dx: i32, dy: i32, data: i32) -> INPUT {
     INPUT {
         r#type: INPUT_MOUSE,
         Anonymous: INPUT_0 {
-            mi: MOUSEINPUT {
-                dx,
-                dy,
-                mouseData: data as u32,
-                dwFlags: flags,
-                time: 0,
-                dwExtraInfo: 0,
-            },
+            mi: MOUSEINPUT { dx, dy, mouseData: data as u32, dwFlags: flags, time: 0, dwExtraInfo: 0 },
         },
     }
 }
@@ -70,13 +58,7 @@ fn vk(key: VIRTUAL_KEY, up: bool) -> INPUT {
     INPUT {
         r#type: INPUT_KEYBOARD,
         Anonymous: INPUT_0 {
-            ki: KEYBDINPUT {
-                wVk: key,
-                wScan: scan,
-                dwFlags: flags,
-                time: 0,
-                dwExtraInfo: 0,
-            },
+            ki: KEYBDINPUT { wVk: key, wScan: scan, dwFlags: flags, time: 0, dwExtraInfo: 0 },
         },
     }
 }
@@ -88,11 +70,7 @@ fn unicode(ch: u16, up: bool) -> INPUT {
             ki: KEYBDINPUT {
                 wVk: VIRTUAL_KEY(0),
                 wScan: ch,
-                dwFlags: if up {
-                    KEYEVENTF_UNICODE | KEYEVENTF_KEYUP
-                } else {
-                    KEYEVENTF_UNICODE
-                },
+                dwFlags: if up { KEYEVENTF_UNICODE | KEYEVENTF_KEYUP } else { KEYEVENTF_UNICODE },
                 time: 0,
                 dwExtraInfo: 0,
             },
@@ -138,10 +116,7 @@ impl Input for SendInputBackend {
         unsafe {
             let _ = SetCursorPos(p.x, p.y);
         }
-        send(&[
-            mouse(MOUSEEVENTF_MOVE, 0, 1, 0),
-            mouse(MOUSEEVENTF_MOVE, 0, -1, 0),
-        ]);
+        send(&[mouse(MOUSEEVENTF_MOVE, 0, 1, 0), mouse(MOUSEEVENTF_MOVE, 0, -1, 0)]);
     }
 
     fn button(&self, b: MouseButton, down: bool) {

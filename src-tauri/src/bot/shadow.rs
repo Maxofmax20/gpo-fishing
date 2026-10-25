@@ -12,7 +12,7 @@
 
 use std::time::Instant;
 
-use crate::core::ml_capability::{append_shadow_event, ShadowEvent};
+use crate::core::ml_capability::{ShadowEvent, append_shadow_event};
 
 /// Sample every Nth scan frame so the shadow log stays small at 30-60 Hz.
 pub const STATE_SAMPLE_EVERY: u64 = 30;
@@ -25,20 +25,14 @@ pub const STATE_SAMPLE_EVERY: u64 = 30;
 fn infer_state(ctx: &Observation, frame: &crate::core::types::Frame, production_bar_present: bool) {
     let t0 = Instant::now();
     let models_dir = ctx.store.dir().join("models");
-    let Some(eng) = crate::core::shadow_infer::engine(&models_dir) else {
-        return;
-    };
-    let Some(m) = eng.models.get("state_v1") else {
-        return;
-    };
+    let Some(eng) = crate::core::shadow_infer::engine(&models_dir) else { return };
+    let Some(m) = eng.models.get("state_v1") else { return };
     let Some(chw) =
         crate::core::shadow_infer::preprocess_rgba(&frame.rgba, frame.w, frame.h, &m.spec)
     else {
         return;
     };
-    let Some(probs) = eng.infer_probs("state_v1", &chw) else {
-        return;
-    };
+    let Some(probs) = eng.infer_probs("state_v1", &chw) else { return };
     let (top, conf) = probs
         .iter()
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
@@ -52,14 +46,7 @@ fn infer_state(ctx: &Observation, frame: &crate::core::types::Frame, production_
         event_id: format!("{session}#sh{now}"),
         timestamp_ms: now,
         vision_state: Some(top),
-        production_state: Some(
-            if production_bar_present {
-                "bar_present"
-            } else {
-                "bar_absent"
-            }
-            .to_string(),
-        ),
+        production_state: Some(if production_bar_present { "bar_present" } else { "bar_absent" }.to_string()),
         state_confidence: Some(conf),
         result_category: None,
         entity: None,
@@ -92,20 +79,14 @@ fn infer_fish(
 ) {
     let t0 = Instant::now();
     let models_dir = ctx.store.dir().join("models");
-    let Some(eng) = crate::core::shadow_infer::engine(&models_dir) else {
-        return;
-    };
-    let Some(m) = eng.models.get("fish_v1") else {
-        return;
-    };
+    let Some(eng) = crate::core::shadow_infer::engine(&models_dir) else { return };
+    let Some(m) = eng.models.get("fish_v1") else { return };
     let Some(chw) =
         crate::core::shadow_infer::preprocess_rgba(&frame.rgba, frame.w, frame.h, &m.spec)
     else {
         return;
     };
-    let Some(probs) = eng.infer_probs("fish_v1", &chw) else {
-        return;
-    };
+    let Some(probs) = eng.infer_probs("fish_v1", &chw) else { return };
     let (top, conf) = probs
         .iter()
         .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
@@ -141,6 +122,7 @@ fn infer_fish(
     let _ = append_shadow_event(ctx.store.dir(), &ev);
 }
 
+
 struct Observation {
     store: std::sync::Arc<crate::config::Store>,
     session: String,
@@ -148,74 +130,39 @@ struct Observation {
 }
 enum Sample {
     State(Observation, crate::core::types::Frame, bool),
-    Fish(
-        Observation,
-        crate::core::types::Frame,
-        Option<String>,
-        String,
-    ),
+    Fish(Observation, crate::core::types::Frame, Option<String>, String),
 }
 fn queue() -> &'static crossbeam_channel::Sender<Sample> {
-    static QUEUE: std::sync::OnceLock<crossbeam_channel::Sender<Sample>> =
-        std::sync::OnceLock::new();
+    static QUEUE: std::sync::OnceLock<crossbeam_channel::Sender<Sample>> = std::sync::OnceLock::new();
     QUEUE.get_or_init(|| {
         let (tx, rx) = crossbeam_channel::bounded::<Sample>(2);
-        std::thread::Builder::new()
-            .name("shadow-observation".into())
-            .spawn(move || {
-                for sample in rx {
-                    let result =
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match sample {
-                            Sample::State(ctx, frame, bar) => infer_state(&ctx, &frame, bar),
-                            Sample::Fish(ctx, frame, entity, text) => {
-                                infer_fish(&ctx, &frame, entity.as_deref(), &text)
-                            }
-                        }));
-                    if result.is_err() {
-                        tracing::warn!("shadow observation failed; macro unaffected");
-                    }
-                }
-            })
-            .expect("spawn shadow observation worker");
+        std::thread::Builder::new().name("shadow-observation".into()).spawn(move || {
+            for sample in rx {
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match sample {
+                    Sample::State(ctx, frame, bar) => infer_state(&ctx, &frame, bar),
+                    Sample::Fish(ctx, frame, entity, text) => infer_fish(&ctx, &frame, entity.as_deref(), &text),
+                }));
+                if result.is_err() { tracing::warn!("shadow observation failed; macro unaffected"); }
+            }
+        }).expect("spawn shadow observation worker");
         tx
     })
 }
 fn observation(ctx: &super::ctx::Ctx) -> Observation {
-    Observation {
-        store: std::sync::Arc::clone(&ctx.store),
-        session: ctx
-            .ml
-            .active_session_id()
-            .unwrap_or_else(|| "no-session".into()),
-        timestamp_ms: crate::events::now_ms(),
-    }
+    Observation { store: std::sync::Arc::clone(&ctx.store),
+        session: ctx.ml.active_session_id().unwrap_or_else(|| "no-session".into()),
+        timestamp_ms: crate::events::now_ms() }
 }
 fn enqueue(sample: Sample) {
     static DROPPED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     if queue().try_send(sample).is_err() {
         let count = DROPPED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-        if count == 1 || count % 100 == 0 {
-            tracing::warn!("shadow queue busy: {count} observations dropped");
-        }
+        if count == 1 || count % 100 == 0 { tracing::warn!("shadow queue busy: {count} observations dropped"); }
     }
 }
 pub fn observe_state(ctx: &super::ctx::Ctx, frame: &crate::core::types::Frame, bar: bool) {
-    if ctx.settings.read().features.ml_shadow {
-        enqueue(Sample::State(observation(ctx), frame.clone(), bar));
-    }
+    if ctx.settings.read().features.ml_shadow { enqueue(Sample::State(observation(ctx), frame.clone(), bar)); }
 }
-pub fn observe_fish(
-    ctx: &super::ctx::Ctx,
-    frame: &crate::core::types::Frame,
-    entity: Option<&str>,
-    text: &str,
-) {
-    if ctx.settings.read().features.ml_shadow {
-        enqueue(Sample::Fish(
-            observation(ctx),
-            frame.clone(),
-            entity.map(str::to_string),
-            text.to_string(),
-        ));
-    }
+pub fn observe_fish(ctx: &super::ctx::Ctx, frame: &crate::core::types::Frame, entity: Option<&str>, text: &str) {
+    if ctx.settings.read().features.ml_shadow { enqueue(Sample::Fish(observation(ctx), frame.clone(), entity.map(str::to_string), text.to_string())); }
 }

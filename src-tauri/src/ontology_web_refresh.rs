@@ -110,11 +110,7 @@ pub fn refresh_wiki_reference() -> WikiRefreshResult {
         return fail(&format!(
             "wiki refresh failed ({}): {}",
             out.status,
-            if tail.is_empty() {
-                "no output".into()
-            } else {
-                tail
-            }
+            if tail.is_empty() { "no output".into() } else { tail }
         ));
     }
 
@@ -206,11 +202,7 @@ fn wiki_digest(report_dir: &std::path::Path) -> String {
         .and_then(|t| {
             serde_json::from_str::<serde_json::Value>(&t)
                 .ok()
-                .and_then(|v| {
-                    v.get("contentSha256")
-                        .and_then(|h| h.as_str())
-                        .map(str::to_string)
-                })
+                .and_then(|v| v.get("contentSha256").and_then(|h| h.as_str()).map(str::to_string))
         })
         .unwrap_or_default()
 }
@@ -255,10 +247,7 @@ mod tests {
         // A configurable URL would make this an SSRF primitive and a way to write
         // remote content into a local file. The destination must stay a constant.
         let code = own_code();
-        assert!(
-            !code.contains("fn refresh_wiki_reference(url"),
-            "no URL parameter"
-        );
+        assert!(!code.contains("fn refresh_wiki_reference(url"), "no URL parameter");
         // The only URL-ish string is the module path being executed.
         assert!(
             !code.to_lowercase().contains("http://") && !code.to_lowercase().contains("https://"),
@@ -297,9 +286,7 @@ mod tests {
         // One command, no shell: an argument list cannot be re-interpreted, so a
         // concept name or a wiki entry can never become a second command.
         assert!(code.contains("Command::new"));
-        assert!(
-            !code.contains("cmd /C") && !code.contains("sh -c") && !code.contains("powershell")
-        );
+        assert!(!code.contains("cmd /C") && !code.contains("sh -c") && !code.contains("powershell"));
     }
 
     #[test]

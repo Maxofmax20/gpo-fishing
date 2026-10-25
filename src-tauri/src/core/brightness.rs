@@ -9,10 +9,10 @@ pub fn cached_brightness() -> u32 {
 
 #[cfg(windows)]
 pub mod windows_brightness {
-    use super::CACHED_BRIGHTNESS;
     use std::os::windows::process::CommandExt;
     use std::process::Command;
     use std::sync::atomic::Ordering;
+    use super::CACHED_BRIGHTNESS;
 
     const CREATE_NO_WINDOW: u32 = 0x08000000;
 
@@ -60,10 +60,7 @@ pub mod windows_brightness {
 
         if !output.status.success() {
             let err = String::from_utf8_lossy(&output.stderr);
-            return Err(format!(
-                "Brightness change failed: {}",
-                err.chars().take(240).collect::<String>()
-            ));
+            return Err(format!("Brightness change failed: {}", err.chars().take(240).collect::<String>()));
         }
 
         CACHED_BRIGHTNESS.store(clamped, Ordering::SeqCst);

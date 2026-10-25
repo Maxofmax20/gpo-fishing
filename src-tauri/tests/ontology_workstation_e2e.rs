@@ -82,10 +82,7 @@ fn run_isolated(name: &str, body: &str) -> Option<String> {
     let out = cmd.output().ok()?;
     let so = String::from_utf8_lossy(&out.stdout).to_string();
     if !out.status.success() {
-        eprintln!(
-            "scenario {name} failed:\n{so}\n{}",
-            String::from_utf8_lossy(&out.stderr)
-        );
+        eprintln!("scenario {name} failed:\n{so}\n{}", String::from_utf8_lossy(&out.stderr));
         return None;
     }
     Some(so)
@@ -125,8 +122,7 @@ fn zz_scenario_child() {
                     "WSRESULT family={} members={} evidence0={}",
                     f.family_id,
                     f.members.len(),
-                    f.members
-                        .first()
+                    f.members.first()
                         .and_then(|m| m.get("evidence"))
                         .and_then(|e| e.as_array())
                         .map(|a| a.len())
@@ -154,11 +150,7 @@ fn zz_scenario_child() {
                 .and_then(|e| e.as_array())
                 .map(|a| {
                     a.iter()
-                        .filter_map(|e| {
-                            e.get("imageId")
-                                .and_then(|x| x.as_str())
-                                .map(str::to_string)
-                        })
+                        .filter_map(|e| e.get("imageId").and_then(|x| x.as_str()).map(str::to_string))
                         .collect()
                 })
                 .unwrap_or_default();
@@ -214,14 +206,12 @@ fn zz_scenario_child() {
             );
         }
         "thumb_traversal" => {
-            let bad =
-                ws::ontology_review_thumb("../../../../windows/system32/drivers/etc/hosts".into());
+            let bad = ws::ontology_review_thumb("../../../../windows/system32/drivers/etc/hosts".into());
             let good = ws::ontology_review_thumb("606020203e34beb6".into());
             println!(
                 "WSRESULT traversal={} valid_starts_with_data_url={}",
                 bad.is_some(),
-                good.map(|g| g.starts_with("data:image/jpeg;base64,"))
-                    .unwrap_or(false)
+                good.map(|g| g.starts_with("data:image/jpeg;base64,")).unwrap_or(false)
             );
         }
         "decide_and_undo" => {
@@ -264,35 +254,25 @@ fn zz_scenario_child() {
             });
             let saved = ok.is_ok();
             let next = ok.as_ref().ok().and_then(|r| r.next_concept_id.clone());
-            println!(
-                "WSRESULT saved={} next_is_different={}",
-                saved,
-                next.as_deref().map(|n| n != first).unwrap_or(false)
-            );
+            println!("WSRESULT saved={} next_is_different={}", saved,
+                next.as_deref().map(|n| n != first).unwrap_or(false));
 
             let after = ws::ontology_review_status();
-            println!(
-                "WSRESULT decided_delta={} pending_delta={}",
+            println!("WSRESULT decided_delta={} pending_delta={}",
                 after.decided - before.decided,
-                (before.pending as i64 - after.pending as i64)
-            );
+                (before.pending as i64 - after.pending as i64));
 
             // Undo must record a reversal and leave history intact.
             let undone = ws::ontology_undo(first.clone());
             let undone_ok = undone.is_ok();
             let after_undo = ws::ontology_review_status();
-            println!(
-                "WSRESULT undo_ok={} decided_after_undo={}",
-                undone_ok, after_undo.decided
-            );
+            println!("WSRESULT undo_ok={} decided_after_undo={}", undone_ok, after_undo.decided);
 
             // The log must still contain BOTH records: a reversal is a new record,
             // never a deletion.
             let log = std::fs::read_to_string(
-                PathBuf::from(std::env::var("GPO_WS_SANDBOX").unwrap())
-                    .join("ontology_decisions.jsonl"),
-            )
-            .unwrap_or_default();
+                PathBuf::from(std::env::var("GPO_WS_SANDBOX").unwrap()).join("ontology_decisions.jsonl"),
+            ).unwrap_or_default();
             let lines = log.lines().filter(|l| !l.trim().is_empty()).count();
             let has_reversal = log.contains("REVERSAL");
             println!("WSRESULT log_lines={} has_reversal={}", lines, has_reversal);
@@ -316,10 +296,7 @@ fn real_index_reports_every_concept_and_band() {
     let p0 = field(&out, "p0=");
     let pending = field(&out, "pending=");
     assert!(total > 0, "the index must not be empty: {out}");
-    assert_eq!(
-        pending, total,
-        "nothing is decided yet, so pending == total: {out}"
-    );
+    assert_eq!(pending, total, "nothing is decided yet, so pending == total: {out}");
     assert!(p0 >= 11, "expected at least the 11 P0 concepts: {out}");
 }
 
@@ -330,10 +307,7 @@ fn kb_search_returns_real_entities() {
     };
     assert!(out.contains("WSRESULT"), "{out}");
     let hits = field(&out, "kb_hits=");
-    assert!(
-        hits > 0,
-        "searching 'shark' must find real KB entities: {out}"
-    );
+    assert!(hits > 0, "searching 'shark' must find real KB entities: {out}");
     // The bare stem still exists (legacy, retained), and the two documented
     // sharks joined it via the KB patch.
     for want in ["fish:shark", "fish:skeletalshark", "fish:darkskeletalshark"] {
@@ -352,15 +326,9 @@ fn the_tigerfin_family_resolves_with_its_evidence() {
         return;
     }
     let members = field(&out, "members=");
-    assert!(
-        members >= 3,
-        "tigerfin should have several observed names: {out}"
-    );
+    assert!(members >= 3, "tigerfin should have several observed names: {out}");
     let ev = field(&out, "evidence0=");
-    assert!(
-        ev > 0,
-        "family members must carry evidence for comparison: {out}"
-    );
+    assert!(ev > 0, "family members must carry evidence for comparison: {out}");
 }
 
 #[test]
@@ -369,10 +337,7 @@ fn thumbnail_endpoint_refuses_traversal_and_serves_valid_ids() {
         return;
     };
     assert!(out.contains("WSRESULT"), "{out}");
-    assert!(
-        out.contains("traversal=false"),
-        "a traversal id must be refused: {out}"
-    );
+    assert!(out.contains("traversal=false"), "a traversal id must be refused: {out}");
     assert!(
         out.contains("valid_starts_with_data_url=true"),
         "a real image id must serve a data URL: {out}"
@@ -400,10 +365,7 @@ fn report_real_latency_numbers() {
         .find_map(|t| t.strip_prefix("status="))
         .and_then(|v| v.parse().ok())
         .unwrap();
-    assert!(
-        status < 250.0,
-        "status took {status}ms; the decision log is growing"
-    );
+    assert!(status < 250.0, "status took {status}ms; the decision log is growing");
 }
 
 #[test]
@@ -426,10 +388,7 @@ fn a_decision_cycle_persists_advances_and_undoes_without_losing_history() {
     // Undo restores the unresolved count AND leaves both records on disk.
     assert!(out.contains("undo_ok=true"), "{out}");
     assert!(out.contains("decided_after_undo=0"), "{out}");
-    assert!(
-        out.contains("log_lines=2"),
-        "history must be preserved: {out}"
-    );
+    assert!(out.contains("log_lines=2"), "history must be preserved: {out}");
     assert!(out.contains("has_reversal=true"), "{out}");
 }
 
@@ -495,14 +454,7 @@ fn the_workstation_cannot_reach_game_input() {
     // `#[tauri::command]`, so banning the crate prefix would forbid the module
     // existing. The check is about what the commands REACH, not how they are
     // declared.
-    for forbidden in [
-        "enigo",
-        "rdev",
-        "SendInput",
-        "send_input",
-        "mouse",
-        "keyboard",
-    ] {
+    for forbidden in ["enigo", "rdev", "SendInput", "send_input", "mouse", "keyboard"] {
         assert!(
             !code.contains(forbidden),
             "the ontology workstation must never reach game input ({forbidden})"
