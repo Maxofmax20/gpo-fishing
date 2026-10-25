@@ -20,6 +20,7 @@ pub fn get_local_ip() -> Option<String> {
 }
 struct Server {
     control: Arc<super::control::Service>,
+    camera: Mutex<()>,
     bot: Arc<Bot>,
     settings: Arc<RwLock<Settings>>,
     streams: AtomicUsize,
@@ -164,6 +165,7 @@ pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
     };
     let server = Arc::new(Server {
         control,
+        camera: Mutex::new(()),
         bot,
         settings,
         streams: AtomicUsize::new(0),
@@ -290,6 +292,10 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
                     "control_epoch":server.control.runtime.epoch(),"stream_fps":fps,"fps_options":gpo_control_runtime::STREAM_RATES}),
                     ),
                 );
+            }
+            "/api/notifications/settings" => {
+                let settings = server.settings.read();
+                result(&mut stream, Ok(notification_view(&settings)));
             }
             "/api/notifications/status" => {
                 let (delivered, failed, error, pending) = server.bot.ctx().webhook.health();
@@ -485,6 +491,8 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
                     _ => return Err("Unknown recorder command".into()),
                 }
             }
+            "/api/camera" => camera_drag(&server, &body)?,
+            "/api/notifications/settings" => return update_notifications(&server, &body),
             "/api/notifications/test" => server.bot.ctx().webhook.test()?,
             _ => return Err("Unknown action route".into()),
         }
@@ -492,6 +500,162 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
     })();
     result(&mut stream, response);
 }
+const NOTIFICATION_FLAGS: &[&str] = &[
+    "enabled",
+    "progress",
+    "fruit_drop",
+    "spawn",
+    "purchase",
+    "recovery",
+    "legendary_only",
+    "pity_zero_only",
+    "send_screenshot",
+    "send_catch_screenshot",
+    "send_drop_screenshot",
+    "crop_fruit_screenshot",
+    "disconnect_alert",
+    "bait_alert",
+];
+fn notification_view(settings: &Settings) -> Value {
+    let all = serde_json::to_value(&settings.webhook).expect("notification settings serialize");
+    let mut public = serde_json::Map::new();
+    for key in NOTIFICATION_FLAGS
+        .iter()
+        .copied()
+        .chain(["provider", "progress_every_n"])
+    {
+        public.insert(key.into(), all[key].clone());
+    }
+    public.insert(
+        "remote_enabled".into(),
+        json!(settings.features.telegram_remote),
+    );
+    json!({"ok":true,"settings":public,
+        "telegram_configured":!settings.webhook.telegram_bot_token.trim().is_empty()&&!settings.webhook.telegram_chat_id.trim().is_empty(),
+        "discord_configured":!settings.webhook.url.trim().is_empty()})
+}
+fn update_notifications(server: &Server, body: &Value) -> Result<Value, String> {
+    let changes = body["changes"]
+        .as_object()
+        .filter(|c| !c.is_empty())
+        .ok_or("Notification changes are required")?;
+    // Validate the complete patch before touching memory or disk.
+    for (key, value) in changes {
+        if NOTIFICATION_FLAGS.contains(&key.as_str()) || key == "remote_enabled" {
+            if !value.is_boolean() {
+                return Err(format!("{key} must be true or false"));
+            }
+        } else if key == "provider" {
+            if !matches!(value.as_str(), Some("telegram" | "discord" | "both")) {
+                return Err("Unknown notification provider".into());
+            }
+        } else if key == "progress_every_n" {
+            if !value.as_u64().is_some_and(|n| (1..=10000).contains(&n)) {
+                return Err("Progress interval must be 1 to 10000 catches".into());
+            }
+        } else {
+            return Err("Unknown or protected notification setting".into());
+        }
+    }
+    let mut current = server.settings.write();
+    let mut webhook =
+        serde_json::to_value(&current.webhook).map_err(|_| "Settings could not be read")?;
+    for key in changes.keys() {
+        let actual = if key == "remote_enabled" {
+            Some(json!(current.features.telegram_remote))
+        } else {
+            webhook.get(key).cloned()
+        };
+        if body["expected"].get(key) != actual.as_ref() {
+            return Err("Notification settings changed elsewhere. Reload and retry.".into());
+        }
+    }
+    for (key, value) in changes {
+        if key != "remote_enabled" {
+            webhook[key] = value.clone();
+        }
+    }
+    let mut candidate = current.clone();
+    candidate.webhook =
+        serde_json::from_value(webhook).map_err(|_| "Invalid notification settings")?;
+    // Reuse the last working web save path: save first, replace memory only on success, invalidate native UI.
+    server
+        .bot
+        .ctx()
+        .store
+        .save(&candidate)
+        .map_err(|_| "Notification settings were not saved")?;
+    *current = candidate;
+    server
+        .bot
+        .ctx()
+        .emit(crate::events::BotEvent::SettingsInvalidated);
+    Ok(notification_view(&current))
+}
+fn camera_drag(server: &Server, body: &Value) -> Result<(), String> {
+    let (dx, dy) = match body["direction"].as_str() {
+        Some("up") => (0.0, -0.18),
+        Some("down") => (0.0, 0.18),
+        Some("left") => (-0.18, 0.0),
+        Some("right") => (0.18, 0.0),
+        _ => return Err("Unknown camera direction".into()),
+    };
+    let control = &server.control;
+    let epoch = body["epoch"]
+        .as_u64()
+        .filter(|e| *e == control.runtime.epoch())
+        .ok_or("Input session changed; refresh the remote")?;
+    if super::recorder::is_playing() {
+        return Err("Stop playback before camera controls".into());
+    }
+    let _camera = server.camera.try_lock().ok_or("Camera is already moving")?;
+    if server
+        .held
+        .lock()
+        .iter()
+        .any(|h| matches!(&h.0,InputAction::MouseUp{button} if button=="right"))
+    {
+        return Err("Release the right mouse button before using camera arrows".into());
+    }
+    if body["focus"].as_bool().unwrap_or(false) {
+        control.focus()?;
+    }
+    let apply = |action: InputAction| -> Result<(), String> {
+        control.runtime.apply(epoch, &action)?;
+        if super::recorder::get_status().record_mode == Some(super::recorder::RecordMode::WebScreen)
+        {
+            super::recorder::record_input(action);
+        }
+        Ok(())
+    };
+    apply(InputAction::Move {
+        x: 0.5 - dx,
+        y: 0.5 - dy,
+    })?;
+    apply(InputAction::MouseDown {
+        button: "right".into(),
+    })?;
+    let moved = (|| {
+        for index in 1..=10 {
+            if !control.runtime.sleep(epoch, Duration::from_millis(22)) {
+                return Err("Camera movement cancelled or Roblox lost focus".into());
+            }
+            // Same smooth right-drag trajectory as the last working camera pad.
+            let f = index as f32 / 10.0;
+            let ease = f * f * (3.0 - 2.0 * f);
+            apply(InputAction::Move {
+                x: 0.5 - dx + 2.0 * dx * ease,
+                y: 0.5 - dy + 2.0 * dy * ease,
+            })?;
+        }
+        Ok(())
+    })();
+    let released = apply(InputAction::MouseUp {
+        button: "right".into(),
+    });
+    moved.and(released)
+}
+
 fn stream_frames(mut stream: TcpStream, request: Request, server: Arc<Server>) {
     struct Permit(Arc<Server>);
     impl Drop for Permit {
@@ -612,13 +776,13 @@ mod remote_http_tests {
         });
         let mut client = TcpStream::connect(address).unwrap();
         client
-            .write_all(
-                b"POST /api/tap HTTP/1.1\r\nHost: localhost\r\nContent-Length: 20\r\n\r\n{",
-            )
+            .write_all(b"POST /api/tap HTTP/1.1\r\nHost: localhost\r\nContent-Length: 20\r\n\r\n{")
             .unwrap();
-        for _ in 0..4{
+        for _ in 0..4 {
             std::thread::sleep(Duration::from_millis(600));
-            if client.write_all(b"x").is_err(){break;}
+            if client.write_all(b"x").is_err() {
+                break;
+            }
         }
         worker.join().unwrap();
     }
@@ -664,6 +828,7 @@ mod remote_http_tests {
         );
         let server = Arc::new(Server {
             control: control.clone(),
+            camera: Mutex::new(()),
             bot,
             settings,
             streams: AtomicUsize::new(0),
@@ -703,6 +868,78 @@ mod remote_http_tests {
                 InputEvent::Key(Key::Char(' '), false)
             ]
         );
+        input.events.lock().clear();
+        let invalid_camera = exchange(
+            server.clone(),
+            post(
+                "synthetic-test-token",
+                "/api/camera",
+                json!({"direction":"invalid","epoch":epoch}),
+            ),
+        );
+        assert!(invalid_camera.starts_with("HTTP/1.1 400"));
+        assert!(input.events.lock().is_empty());
+        let camera = exchange(
+            server.clone(),
+            post(
+                "synthetic-test-token",
+                "/api/camera",
+                json!({"direction":"right","epoch":epoch}),
+            ),
+        );
+        assert!(camera.starts_with("HTTP/1.1 200"), "{camera}");
+        let events = input.events.lock().clone();
+        assert!(events.contains(&InputEvent::Button(
+            crate::core::types::MouseButton::Right,
+            true
+        )));
+        assert!(events.contains(&InputEvent::Button(
+            crate::core::types::MouseButton::Right,
+            false
+        )));
+        assert!(!events.iter().any(|e| matches!(
+            e,
+            InputEvent::Button(crate::core::types::MouseButton::Left, _)
+        )));
+        let saved = exchange(
+            server.clone(),
+            post(
+                "synthetic-test-token",
+                "/api/notifications/settings",
+                json!({"changes":{"progress":false,"send_drop_screenshot":false},"expected":{"progress":true,"send_drop_screenshot":true}}),
+            ),
+        );
+        assert!(saved.starts_with("HTTP/1.1 200"), "{saved}");
+        assert!(!server.settings.read().webhook.progress);
+        assert!(!server.bot.ctx().store.load().webhook.send_drop_screenshot);
+        let unchanged = std::fs::read(server.bot.ctx().store.dir().join("settings.json")).unwrap();
+        let forbidden = exchange(
+            server.clone(),
+            post(
+                "synthetic-test-token",
+                "/api/notifications/settings",
+                json!({"changes":{"enabled":true,"telegram_bot_token":"not-allowed"},"expected":{"enabled":false}}),
+            ),
+        );
+        assert!(forbidden.starts_with("HTTP/1.1 400"));
+        assert!(!server.settings.read().webhook.enabled);
+        let stale = exchange(
+            server.clone(),
+            post(
+                "synthetic-test-token",
+                "/api/notifications/settings",
+                json!({"changes":{"progress":true},"expected":{"progress":true}}),
+            ),
+        );
+        assert!(stale.starts_with("HTTP/1.1 400"));
+        assert_eq!(
+            unchanged,
+            std::fs::read(server.bot.ctx().store.dir().join("settings.json")).unwrap()
+        );
+        let view = notification_view(&server.settings.read()).to_string();
+        assert!(!view.contains("telegram_bot_token"));
+        assert!(!view.contains("telegram_chat_id"));
+        assert!(!view.contains("synthetic-test-token"));
         input.events.lock().clear();
         for key in (b'a'..=b'z').chain(b'0'..=b'5') {
             let response = exchange(
