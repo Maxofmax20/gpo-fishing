@@ -15,15 +15,71 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc, OnceLock,
 };
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Event {
+    Progress,
+    FruitCatch { high_tier: bool },
+    FruitOutcome { pity_zero: bool, high_tier: bool },
+    Spawn,
+    Purchase,
+    Recovery,
+    Disconnect,
+    Reconnected,
+    Bait,
+    General,
+    Test,
+}
+impl Event {
+    fn allowed(self, s: &Settings) -> bool {
+        let w = &s.webhook;
+        if !w.enabled {
+            return false;
+        }
+        // Test is an explicit user action, not an automatic catch notification.
+        if self == Self::Test {
+            return true;
+        }
+        if w.pity_zero_only {
+            return matches!(
+                self,
+                Self::FruitOutcome {
+                    pity_zero: true,
+                    ..
+                }
+            ) && w.fruit_drop;
+        }
+        match self {
+            Self::Progress => w.progress,
+            Self::FruitCatch { high_tier } | Self::FruitOutcome { high_tier, .. } => {
+                w.fruit_drop && (!w.legendary_only || high_tier)
+            }
+            Self::Spawn => w.spawn,
+            Self::Purchase => w.purchase,
+            Self::Recovery => w.recovery,
+            Self::Disconnect | Self::Reconnected => w.disconnect_alert,
+            Self::Bait => w.bait_alert,
+            Self::General | Self::Test => true,
+        }
+    }
+    fn photo_allowed(self, s: &Settings) -> bool {
+        s.webhook.send_screenshot
+            && match self {
+                Self::FruitCatch { .. } => s.webhook.send_catch_screenshot,
+                Self::FruitOutcome { .. } => s.webhook.send_drop_screenshot,
+                Self::Spawn | Self::Disconnect | Self::Reconnected => true,
+                _ => false,
+            }
+    }
+}
 #[derive(Clone)]
 struct Message {
     title: String,
     body: String,
     photo: Option<Vec<u8>>,
-    created: Instant,
-    zero_outcome: bool,
-    general: bool,
+    event: Event,
+    fruit_crop: bool,
 }
 #[derive(Clone, Default)]
 pub struct DeliveryHealth {
@@ -43,14 +99,12 @@ pub fn should_notify_fruit_outcome(
     catch: &FruitCatchContext,
     outcome: &StorageOutcome,
 ) -> bool {
-    s.webhook.enabled
-        && s.webhook.fruit_drop
-        && !matches!(outcome, StorageOutcome::Cancelled)
-        && if s.webhook.pity_zero_only {
-            catch.pity_zero
-        } else {
-            !s.webhook.legendary_only || catch.high_tier()
+    !matches!(outcome, StorageOutcome::Cancelled)
+        && Event::FruitOutcome {
+            pity_zero: catch.pity_zero,
+            high_tier: catch.high_tier(),
         }
+        .allowed(s)
 }
 impl WebhookQueue {
     pub fn disabled() -> Self {
@@ -71,41 +125,21 @@ impl WebhookQueue {
             health: Arc::new(RwLock::new(DeliveryHealth::default())),
             pending: Arc::new(AtomicUsize::new(0)),
         });
-        let platform = queue.platform.clone();
         let health = queue.health.clone();
         let pending = queue.pending.clone();
         std::thread::spawn(move || {
-            while let Ok(mut message) = receiver.recv() {
-                let s = settings.read().clone();
-                if !s.webhook.enabled
-                    || (s.webhook.pity_zero_only && !message.zero_outcome)
-                    || (!message.general && !s.webhook.fruit_drop)
-                {
-                    pending.fetch_sub(1, Ordering::SeqCst);
-                    continue;
-                }
-                if message.photo.is_none()
-                    && s.webhook.send_screenshot
-                    && message.title.contains("Pity 0")
-                    && message.created.elapsed() < Duration::from_secs(3)
-                {
-                    if let Some(p) = platform.read().as_ref() {
-                        if let Some(w) = p.window.find().filter(|w| w.visible && w.is_foreground) {
-                            if let Ok(frame) = p.capture.grab(w.client) {
-                                if p.window
-                                    .find()
-                                    .is_some_and(|n| n.is_foreground && n.client == w.client)
-                                {
-                                    message.photo = frame.downscale(1280).to_jpeg_bytes(80).ok();
-                                }
-                            }
-                        }
-                    }
-                }
-                let mut result = Err("No notification provider is configured".into());
+            while let Ok(message) = receiver.recv() {
+                let mut result = Ok(false);
                 let mut ack = ProviderAcks::default();
                 for attempt in 0..3 {
-                    result = deliver_pending(&s, &message, &mut ack);
+                    // Settings can change while queued or while a provider is offline.
+                    // Never retain a consent snapshot over retries or provider requests.
+                    result = deliver_pending_using(
+                        || settings.read().clone(),
+                        &message,
+                        &mut ack,
+                        &HttpTransport,
+                    );
                     if result.is_ok() {
                         break;
                     }
@@ -115,10 +149,11 @@ impl WebhookQueue {
                 }
                 let mut status = health.write();
                 match result {
-                    Ok(()) => {
+                    Ok(true) => {
                         status.delivered += 1;
                         status.last_error = None;
                     }
+                    Ok(false) => {} // Revoked consent is suppression, not successful delivery.
                     Err(error) => {
                         status.failed += 1;
                         status.last_error = Some(error);
@@ -141,28 +176,30 @@ impl WebhookQueue {
             self.pending.load(Ordering::SeqCst),
         )
     }
-    fn send(&self, title: &str, body: String, photo: Option<Vec<u8>>, is_outcome: bool) {
+    fn send(&self, event: Event, title: &str, body: String, photo: Option<Vec<u8>>) {
         let Some(settings) = self.settings.as_ref() else {
             return;
         };
         let s = settings.read();
-        if !s.webhook.enabled || (!is_outcome && s.webhook.pity_zero_only) {
+        if !event.allowed(&s) {
             return;
         }
+        // The producer supplied the actual event-time crop. Do not recapture a
+        // later unrelated game screen or resurrect a photo disabled at enqueue.
+        let photo = photo.filter(|bytes| event.photo_allowed(&s) && bytes.len() <= 4 * 1024 * 1024);
+        let fruit_crop = s.webhook.crop_fruit_screenshot;
         drop(s);
         let Some(sender) = &self.sender else {
             return;
         };
-        let photo = photo.filter(|bytes| bytes.len() <= 4 * 1024 * 1024);
         self.pending.fetch_add(1, Ordering::SeqCst);
         if sender
             .try_send(Message {
                 title: title.into(),
                 body,
                 photo,
-                created: Instant::now(),
-                zero_outcome: is_outcome && title.starts_with("Pity 0"),
-                general: !is_outcome,
+                event,
+                fruit_crop,
             })
             .is_err()
         {
@@ -189,41 +226,41 @@ impl WebhookQueue {
         parse_pity(&text, cap)
     }
     pub fn test(&self) -> Result<(), String> {
-        let s = self
+        let settings = self
             .settings
             .as_ref()
-            .ok_or("Notifications are not configured")?
-            .read()
-            .clone();
-        deliver(
-            &s,
-            &Message {
-                title: "GPO Autofish test".into(),
-                body: "This is an explicitly requested delivery test.".into(),
-                photo: None,
-                created: Instant::now(),
-                zero_outcome: false,
-                general: true,
-            },
+            .ok_or("Notifications are not configured")?;
+        let message = Message {
+            title: "GPO Autofish test".into(),
+            body: "This is an explicitly requested delivery test.".into(),
+            photo: None,
+            event: Event::Test,
+            fruit_crop: false,
+        };
+        deliver_pending_using(
+            || settings.read().clone(),
+            &message,
+            &mut ProviderAcks::default(),
+            &HttpTransport,
         )
+        .map(|_| ())
     }
     pub fn progress(&self, s: Stats) {
-        if !self
-            .settings
-            .as_ref()
-            .is_some_and(|s| s.read().webhook.progress)
-        {
-            return;
-        }
         self.send(
+            Event::Progress,
             "Fishing progress",
             format!("Confirmed catches: {}", s.fish),
             None,
-            false,
         );
     }
     pub fn fruit_drop(&self, d: &DropInfo, photo: Option<Vec<u8>>) {
+        let high_tier = d.is_legendary
+            || d.name
+                .as_deref()
+                .is_some_and(|name| crate::core::fruit::fruit_rarity(name).is_high_tier())
+            || crate::core::fruit::is_pity_zero(d.pity.as_deref(), &d.text);
         self.send(
+            Event::FruitCatch { high_tier },
             "Fruit caught",
             format!(
                 "{}\n{}",
@@ -231,7 +268,6 @@ impl WebhookQueue {
                 d.text
             ),
             photo,
-            false,
         );
     }
     pub fn fruit_storage_outcome(
@@ -240,10 +276,7 @@ impl WebhookQueue {
         outcome: &StorageOutcome,
         photo: Option<Vec<u8>>,
     ) {
-        let Some(settings) = &self.settings else {
-            return;
-        };
-        if !should_notify_fruit_outcome(&settings.read(), catch, outcome) {
+        if matches!(outcome, StorageOutcome::Cancelled) {
             return;
         }
         let title = if catch.pity_zero {
@@ -252,6 +285,10 @@ impl WebhookQueue {
             "Fruit workflow"
         };
         self.send(
+            Event::FruitOutcome {
+                pity_zero: catch.pity_zero,
+                high_tier: catch.high_tier(),
+            },
             title,
             format!(
                 "Fruit: {}\nReported result: {}\nPity: {}",
@@ -260,84 +297,53 @@ impl WebhookQueue {
                 catch.pity.as_deref().unwrap_or("unreadable")
             ),
             photo,
-            true,
         );
     }
     pub fn disconnect(&self, reason: &str, photo: Option<Vec<u8>>) {
-        if !self
-            .settings
-            .as_ref()
-            .is_some_and(|s| s.read().webhook.disconnect_alert)
-        {
-            return;
-        }
-        self.send("Connection interrupted", reason.into(), photo, false);
+        self.send(
+            Event::Disconnect,
+            "Connection interrupted",
+            reason.into(),
+            photo,
+        );
     }
     pub fn reconnected(&self, photo: Option<Vec<u8>>) {
         self.send(
+            Event::Reconnected,
             "Connection recovered",
             "Roblox was reconnected.".into(),
             photo,
-            false,
         );
     }
     pub fn bait_depleted(&self) {
-        if !self
-            .settings
-            .as_ref()
-            .is_some_and(|s| s.read().webhook.bait_alert)
-        {
-            return;
-        }
         self.send(
+            Event::Bait,
             "Bait unavailable",
             "Check your bait stock.".into(),
             None,
-            false,
         );
     }
     pub fn spawn(&self, info: &SpawnInfo, photo: Option<Vec<u8>>) {
-        if !self
-            .settings
-            .as_ref()
-            .is_some_and(|s| s.read().webhook.spawn)
-        {
-            return;
-        }
-        self.send("World fruit spawn", info.text.clone(), photo, false);
+        self.send(Event::Spawn, "World fruit spawn", info.text.clone(), photo);
     }
     pub fn purchase(&self, amount: u32) {
-        if !self
-            .settings
-            .as_ref()
-            .is_some_and(|s| s.read().webhook.purchase)
-        {
-            return;
-        }
         self.send(
+            Event::Purchase,
             "Bait purchase",
             format!("Requested amount: {amount}"),
             None,
-            false,
         );
     }
     pub fn recovery(&self, attempt: u32, reason: &str) {
-        if !self
-            .settings
-            .as_ref()
-            .is_some_and(|s| s.read().webhook.recovery)
-        {
-            return;
-        }
         self.send(
+            Event::Recovery,
             "Fishing recovery",
             format!("Attempt {attempt}: {reason}"),
             None,
-            false,
         );
     }
     pub fn notify_message(&self, title: &str, msg: &str) {
-        self.send(title, msg.into(), None, false);
+        self.send(Event::General, title, msg.into(), None);
     }
 }
 fn parse_pity(text: &str, cap: u32) -> Option<String> {
@@ -486,53 +492,64 @@ struct ProviderAcks {
     telegram: bool,
     discord: bool,
 }
-fn deliver(s: &Settings, m: &Message) -> Result<(), String> {
-    deliver_pending(s, m, &mut ProviderAcks::default())
+trait Transport {
+    fn telegram(&self, settings: &Settings, text: &str, photo: Option<&[u8]>)
+        -> Result<(), String>;
+    fn discord(&self, settings: &Settings, text: &str, photo: Option<&[u8]>) -> Result<(), String>;
 }
-fn deliver_pending(s: &Settings, m: &Message, ack: &mut ProviderAcks) -> Result<(), String> {
-    if !s.webhook.enabled {
-        return Err("Enable notifications before testing delivery".into());
-    }
-    let text = format!("{}\n\n{}", m.title, m.body);
-    let mut sent = false;
-    if matches!(s.webhook.provider.as_str(), "telegram" | "both") && !ack.telegram {
+struct HttpTransport;
+impl Transport for HttpTransport {
+    fn telegram(&self, s: &Settings, text: &str, photo: Option<&[u8]>) -> Result<(), String> {
         if s.webhook.telegram_bot_token.trim().is_empty()
             || s.webhook.telegram_chat_id.trim().is_empty()
         {
             return Err("Telegram bot token or chat is missing".into());
         }
-        if let Some(photo) = &m.photo {
+        if let Some(photo) = photo {
             if post_telegram_photo(
                 &s.webhook.telegram_bot_token,
                 &s.webhook.telegram_chat_id,
                 photo,
-                &text,
+                text,
             )
-            .is_err()
+            .is_ok()
             {
-                post_telegram(
-                    &s.webhook.telegram_bot_token,
-                    &s.webhook.telegram_chat_id,
-                    &text,
-                )?;
+                return Ok(());
             }
-        } else {
-            post_telegram(
-                &s.webhook.telegram_bot_token,
-                &s.webhook.telegram_chat_id,
-                &text,
-            )?;
         }
-        ack.telegram = true;
-        sent = true;
+        post_telegram(
+            &s.webhook.telegram_bot_token,
+            &s.webhook.telegram_chat_id,
+            text,
+        )
+        .map(|_| ())
     }
-    if matches!(s.webhook.provider.as_str(), "discord" | "both") && !ack.discord {
+    fn discord(&self, s: &Settings, text: &str, photo: Option<&[u8]>) -> Result<(), String> {
         if s.webhook.url.trim().is_empty() {
             return Err("Discord webhook URL is missing".into());
         }
-        let response = client()?
-            .post(&s.webhook.url)
-            .json(&json!({"content":plain(&text,1900)}))
+        let body = json!({"content":plain(text,1900)});
+        let request = client()?.post(&s.webhook.url);
+        let request = if let Some(photo) = photo {
+            // Preserve the event-time screenshot for both supported providers.
+            let (name, mime) = match image::guess_format(photo) {
+                Ok(image::ImageFormat::Png) => ("fruit-result.png", "image/png"),
+                Ok(image::ImageFormat::Jpeg) => ("fruit-result.jpg", "image/jpeg"),
+                _ => return Err("Screenshot is not a supported PNG or JPEG".into()),
+            };
+            let part = reqwest::blocking::multipart::Part::bytes(photo.to_vec())
+                .file_name(name)
+                .mime_str(mime)
+                .map_err(|_| "Screenshot format failed")?;
+            request.multipart(
+                reqwest::blocking::multipart::Form::new()
+                    .text("payload_json", body.to_string())
+                    .part("files[0]", part),
+            )
+        } else {
+            request.json(&body)
+        };
+        let response = request
             .send()
             .map_err(|_| "Discord network request failed")?;
         if !response.status().is_success() {
@@ -541,11 +558,59 @@ fn deliver_pending(s: &Settings, m: &Message, ack: &mut ProviderAcks) -> Result<
                 response.status().as_u16()
             ));
         }
-        ack.discord = true;
-        sent = true;
-    }
-    if sent || ack.telegram || ack.discord {
         Ok(())
+    }
+}
+
+/// Read consent again before each provider; a setting revoked during a request
+/// prevents the next provider or retry. Already acknowledged providers are not resent.
+fn deliver_pending_using(
+    settings: impl Fn() -> Settings,
+    message: &Message,
+    ack: &mut ProviderAcks,
+    transport: &impl Transport,
+) -> Result<bool, String> {
+    let initial = settings();
+    if message.event == Event::Test && !initial.webhook.enabled {
+        return Err("Enable notifications before testing delivery".into());
+    }
+    if !message.event.allowed(&initial) {
+        return Ok(false);
+    }
+    let text = format!("{}\n\n{}", message.title, message.body);
+    for telegram in [true, false] {
+        let current = settings();
+        if !message.event.allowed(&current) {
+            return Ok(ack.telegram || ack.discord);
+        }
+        let selected = if telegram {
+            matches!(current.webhook.provider.as_str(), "telegram" | "both") && !ack.telegram
+        } else {
+            matches!(current.webhook.provider.as_str(), "discord" | "both") && !ack.discord
+        };
+        if !selected {
+            continue;
+        }
+        let photo = message
+            .photo
+            .as_deref()
+            .filter(|_| message.event.photo_allowed(&current))
+            .filter(|_| {
+                !matches!(
+                    message.event,
+                    Event::FruitCatch { .. } | Event::FruitOutcome { .. }
+                ) || message.fruit_crop == current.webhook.crop_fruit_screenshot
+            });
+        if telegram {
+            transport.telegram(&current, &text, photo)?;
+            ack.telegram = true;
+        } else {
+            transport.discord(&current, &text, photo)?;
+            ack.discord = true;
+        }
+    }
+    if ack.telegram || ack.discord {
+        Ok(true)
     } else {
         Err("Choose Telegram, Discord or both in notification settings".into())
     }
@@ -553,6 +618,352 @@ fn deliver_pending(s: &Settings, m: &Message, ack: &mut ProviderAcks) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[derive(Default)]
+    struct FakeTransport {
+        calls: parking_lot::Mutex<Vec<(&'static str, bool)>>,
+        discord_fail_once: std::sync::atomic::AtomicBool,
+        revoke_after_telegram: Option<Arc<RwLock<Settings>>>,
+    }
+    impl Transport for FakeTransport {
+        fn telegram(&self, _: &Settings, _: &str, photo: Option<&[u8]>) -> Result<(), String> {
+            self.calls.lock().push(("telegram", photo.is_some()));
+            if let Some(settings) = &self.revoke_after_telegram {
+                settings.write().webhook.enabled = false;
+            }
+            Ok(())
+        }
+        fn discord(&self, _: &Settings, _: &str, photo: Option<&[u8]>) -> Result<(), String> {
+            self.calls.lock().push(("discord", photo.is_some()));
+            if self.discord_fail_once.swap(false, Ordering::SeqCst) {
+                return Err("synthetic offline provider".into());
+            }
+            Ok(())
+        }
+    }
+    fn configured() -> Settings {
+        let mut s = Settings::default();
+        s.webhook.enabled = true;
+        s.webhook.provider = "both".into();
+        s
+    }
+    fn queue(
+        settings: Arc<RwLock<Settings>>,
+    ) -> (WebhookQueue, crossbeam_channel::Receiver<Message>) {
+        let (sender, receiver) = bounded(16);
+        (
+            WebhookQueue {
+                sender: Some(sender),
+                settings: Some(settings),
+                platform: Arc::new(RwLock::new(None)),
+                health: Arc::new(RwLock::new(DeliveryHealth::default())),
+                pending: Arc::new(AtomicUsize::new(0)),
+            },
+            receiver,
+        )
+    }
+    fn revoke(s: &mut Settings, event: Event) {
+        match event {
+            Event::Progress => s.webhook.progress = false,
+            Event::FruitCatch { .. } | Event::FruitOutcome { .. } => s.webhook.fruit_drop = false,
+            Event::Spawn => s.webhook.spawn = false,
+            Event::Purchase => s.webhook.purchase = false,
+            Event::Recovery => s.webhook.recovery = false,
+            Event::Disconnect | Event::Reconnected => s.webhook.disconnect_alert = false,
+            Event::Bait => s.webhook.bait_alert = false,
+            _ => s.webhook.enabled = false,
+        }
+    }
+    #[test]
+    fn every_event_toggle_is_checked_before_enqueue_and_delivery() {
+        for event in [
+            Event::Progress,
+            Event::FruitCatch { high_tier: true },
+            Event::FruitOutcome {
+                pity_zero: true,
+                high_tier: true,
+            },
+            Event::Spawn,
+            Event::Purchase,
+            Event::Recovery,
+            Event::Disconnect,
+            Event::Reconnected,
+            Event::Bait,
+            Event::General,
+        ] {
+            let settings = Arc::new(RwLock::new(configured()));
+            let (queue, receiver) = queue(settings.clone());
+            queue.send(event, "event", "test".into(), None);
+            let queued = receiver.try_recv().unwrap();
+            revoke(&mut settings.write(), event);
+            let transport = FakeTransport::default();
+            assert!(
+                !deliver_pending_using(
+                    || settings.read().clone(),
+                    &queued,
+                    &mut ProviderAcks::default(),
+                    &transport
+                )
+                .unwrap(),
+                "{event:?}"
+            );
+            assert!(transport.calls.lock().is_empty());
+            queue.send(event, "event", "test".into(), None);
+            assert!(receiver.try_recv().is_err(), "revoked producer {event:?}");
+        }
+    }
+    #[test]
+    fn strict_mode_uses_typed_pity_evidence_never_titles_or_fruit_rarity() {
+        let settings = Arc::new(RwLock::new(configured()));
+        settings.write().webhook.pity_zero_only = true;
+        let (queue, receiver) = queue(settings.clone());
+        queue.notify_message("Pity 0 — fake title", "not a fruit outcome");
+        let mut drop = DropInfo {
+            name: Some("Pika".into()),
+            pity: Some("0/40".into()),
+            text: "New Item Pika Legendary Pity 0/40".into(),
+            is_legendary: true,
+            custom_telegram_message: None,
+        };
+        queue.fruit_drop(&drop, Some(vec![1]));
+        assert!(
+            receiver.try_recv().is_err(),
+            "strict mode must not send an early duplicate"
+        );
+        let zero = FruitCatchContext::new(&drop, "", true, true);
+        queue.fruit_storage_outcome(&zero, &StorageOutcome::Unknown, Some(vec![1]));
+        let message = receiver.try_recv().unwrap();
+        assert!(message.body.contains("unconfirmed"));
+        assert!(matches!(
+            message.event,
+            Event::FruitOutcome {
+                pity_zero: true,
+                ..
+            }
+        ));
+        drop.pity = None;
+        drop.text = "New Item Pika".into();
+        let unknown = FruitCatchContext::new(&drop, "", true, true);
+        queue.fruit_storage_outcome(&unknown, &StorageOutcome::Stored, None);
+        queue.fruit_storage_outcome(&zero, &StorageOutcome::Cancelled, None);
+        assert!(
+            receiver.try_recv().is_err(),
+            "legendary name and cancelled actions are not zero alerts"
+        );
+        settings.write().webhook.pity_zero_only = false;
+        queue.send(Event::Progress, "progress", String::new(), None);
+        let queued = receiver.try_recv().unwrap();
+        settings.write().webhook.pity_zero_only = true;
+        assert!(!deliver_pending_using(
+            || settings.read().clone(),
+            &queued,
+            &mut ProviderAcks::default(),
+            &FakeTransport::default()
+        )
+        .unwrap());
+    }
+    #[test]
+    fn screenshots_respect_master_and_per_event_flags_when_queued_and_delivered() {
+        for event in [
+            Event::FruitCatch { high_tier: true },
+            Event::FruitOutcome {
+                pity_zero: true,
+                high_tier: true,
+            },
+            Event::Spawn,
+        ] {
+            let settings = Arc::new(RwLock::new(configured()));
+            settings.write().webhook.send_catch_screenshot = true;
+            let (queue, receiver) = queue(settings.clone());
+            queue.send(event, "photo", String::new(), Some(vec![1]));
+            let queued = receiver.try_recv().unwrap();
+            assert!(queued.photo.is_some());
+            match event {
+                Event::FruitCatch { .. } => settings.write().webhook.send_catch_screenshot = false,
+                Event::FruitOutcome { .. } => settings.write().webhook.send_drop_screenshot = false,
+                _ => settings.write().webhook.send_screenshot = false,
+            }
+            let transport = FakeTransport::default();
+            assert!(deliver_pending_using(
+                || settings.read().clone(),
+                &queued,
+                &mut ProviderAcks::default(),
+                &transport
+            )
+            .unwrap());
+            assert_eq!(
+                *transport.calls.lock(),
+                vec![("telegram", false), ("discord", false)]
+            );
+            queue.send(event, "photo", String::new(), Some(vec![1]));
+            assert!(receiver.try_recv().unwrap().photo.is_none());
+        }
+    }
+    #[test]
+    fn changing_fruit_crop_does_not_deliver_an_old_full_screen_photo() {
+        let settings = Arc::new(RwLock::new(configured()));
+        settings.write().webhook.crop_fruit_screenshot = false;
+        let (queue, receiver) = queue(settings.clone());
+        queue.send(
+            Event::FruitOutcome {
+                pity_zero: true,
+                high_tier: true,
+            },
+            "fruit",
+            String::new(),
+            Some(vec![1]),
+        );
+        let queued = receiver.try_recv().unwrap();
+        settings.write().webhook.crop_fruit_screenshot = true;
+        let transport = FakeTransport::default();
+        assert!(deliver_pending_using(
+            || settings.read().clone(),
+            &queued,
+            &mut ProviderAcks::default(),
+            &transport
+        )
+        .unwrap());
+        assert_eq!(
+            *transport.calls.lock(),
+            vec![("telegram", false), ("discord", false)]
+        );
+    }
+
+    #[test]
+    fn master_screenshot_off_blocks_every_photo_even_if_event_flag_is_on() {
+        let mut s = configured();
+        s.webhook.send_screenshot = false;
+        s.webhook.send_catch_screenshot = true;
+        for event in [
+            Event::FruitCatch { high_tier: true },
+            Event::FruitOutcome {
+                pity_zero: true,
+                high_tier: true,
+            },
+            Event::Spawn,
+            Event::Disconnect,
+            Event::Reconnected,
+        ] {
+            assert!(!event.photo_allowed(&s));
+        }
+    }
+    #[test]
+    fn connection_toggle_and_fruit_toggle_apply_to_public_producers() {
+        let settings = Arc::new(RwLock::new(configured()));
+        settings.write().webhook.disconnect_alert = false;
+        settings.write().webhook.fruit_drop = false;
+        let (queue, receiver) = queue(settings);
+        queue.reconnected(Some(vec![1]));
+        queue.disconnect("offline", Some(vec![1]));
+        queue.fruit_drop(
+            &DropInfo {
+                name: Some("Pika".into()),
+                pity: Some("0/40".into()),
+                text: String::new(),
+                is_legendary: true,
+                custom_telegram_message: None,
+            },
+            Some(vec![1]),
+        );
+        assert!(receiver.try_recv().is_err());
+    }
+    #[test]
+    fn rarity_toggle_is_rechecked_for_already_queued_catches() {
+        let settings = Arc::new(RwLock::new(configured()));
+        settings.write().webhook.legendary_only = false;
+        let (queue, receiver) = queue(settings.clone());
+        queue.send(
+            Event::FruitOutcome {
+                pity_zero: false,
+                high_tier: false,
+            },
+            "fruit",
+            String::new(),
+            None,
+        );
+        let queued = receiver.try_recv().unwrap();
+        settings.write().webhook.legendary_only = true;
+        assert!(!deliver_pending_using(
+            || settings.read().clone(),
+            &queued,
+            &mut ProviderAcks::default(),
+            &FakeTransport::default()
+        )
+        .unwrap());
+    }
+    #[test]
+    fn retry_preserves_provider_ack_and_rechecks_revoked_consent() {
+        let settings = Arc::new(RwLock::new(configured()));
+        let message = Message {
+            event: Event::Progress,
+            title: "progress".into(),
+            body: String::new(),
+            photo: None,
+            fruit_crop: false,
+        };
+        let transport = FakeTransport {
+            discord_fail_once: std::sync::atomic::AtomicBool::new(true),
+            ..FakeTransport::default()
+        };
+        let mut ack = ProviderAcks::default();
+        assert!(
+            deliver_pending_using(|| settings.read().clone(), &message, &mut ack, &transport)
+                .is_err()
+        );
+        assert!(
+            deliver_pending_using(|| settings.read().clone(), &message, &mut ack, &transport)
+                .unwrap()
+        );
+        assert_eq!(
+            *transport.calls.lock(),
+            vec![("telegram", false), ("discord", false), ("discord", false)]
+        );
+        let transport = FakeTransport {
+            revoke_after_telegram: Some(settings.clone()),
+            ..FakeTransport::default()
+        };
+        assert!(deliver_pending_using(
+            || settings.read().clone(),
+            &message,
+            &mut ProviderAcks::default(),
+            &transport
+        )
+        .unwrap());
+        assert_eq!(*transport.calls.lock(), vec![("telegram", false)]);
+        assert!(!deliver_pending_using(
+            || settings.read().clone(),
+            &message,
+            &mut ProviderAcks::default(),
+            &transport
+        )
+        .unwrap());
+    }
+    #[test]
+    fn explicit_test_is_allowed_in_strict_mode_but_requires_master_enable() {
+        let mut settings = configured();
+        settings.webhook.pity_zero_only = true;
+        let message = Message {
+            event: Event::Test,
+            title: "test".into(),
+            body: String::new(),
+            photo: None,
+            fruit_crop: false,
+        };
+        assert!(deliver_pending_using(
+            || settings.clone(),
+            &message,
+            &mut ProviderAcks::default(),
+            &FakeTransport::default()
+        )
+        .unwrap());
+        settings.webhook.enabled = false;
+        assert!(deliver_pending_using(
+            || settings.clone(),
+            &message,
+            &mut ProviderAcks::default(),
+            &FakeTransport::default()
+        )
+        .is_err());
+    }
     #[test]
     fn unrelated_zero_is_not_pity() {
         assert_eq!(parse_pity("HP 0/100 Backpack 0/40", 40), None);
