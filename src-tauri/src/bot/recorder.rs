@@ -18,6 +18,8 @@ pub fn is_playing() -> bool {
 }
 
 static ROBLOX_REF: RwLock<Option<Arc<RwLock<Option<WindowInfo>>>>> = RwLock::new(None);
+static CTX_REF:RwLock<Option<std::sync::Weak<Ctx>>>=RwLock::new(None);
+pub fn bind_ctx(ctx:std::sync::Weak<Ctx>){*CTX_REF.write()=Some(ctx);}
 static STORE_REF: RwLock<Option<Arc<Store>>> = RwLock::new(None);
 
 pub fn init_roblox_ref(roblox: Arc<RwLock<Option<WindowInfo>>>, store: Arc<Store>) {
@@ -182,6 +184,7 @@ pub fn append_vpn_step(
     timeout_s: Option<u64>,
     required: Option<bool>,
 ) -> Result<CustomMacro, String> {
+    let _catalog = CATALOG_LOCK.lock();
     let mut list = checked_macros(store)?;
     let timeout_s = timeout_s.unwrap_or(20).clamp(5, 120);
     let required = required.unwrap_or(true);
@@ -243,6 +246,7 @@ struct Recording {
     steps: Vec<MacroStep>,
     last: u64,
 }
+static CATALOG_LOCK: parking_lot::Mutex<()> = parking_lot::Mutex::new(());
 static RECORDING: parking_lot::Mutex<Option<Recording>> = parking_lot::Mutex::new(None);
 static CANCEL: parking_lot::Mutex<Option<Arc<AtomicBool>>> = parking_lot::Mutex::new(None);
 static MESSAGE: RwLock<String> = RwLock::new(String::new());
@@ -259,8 +263,15 @@ fn atomic_write(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let tmp = path.with_extension("writing");
-    let mut file = fs::File::create(&tmp).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension(format!(
+        "writing-{}",
+        crate::core::secrets::generate_token_hex(12)
+    ));
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp)
+        .map_err(|e| e.to_string())?;
     file.write_all(bytes)
         .and_then(|_| file.sync_all())
         .map_err(|e| e.to_string())?;
@@ -291,7 +302,7 @@ fn checked_macros(store: &Store) -> Result<Vec<CustomMacro>, String> {
 pub fn load_macros(store: &Store) -> Vec<CustomMacro> {
     checked_macros(store).unwrap_or_default()
 }
-pub fn save_macros(store: &Store, list: &[CustomMacro]) -> Result<(), String> {
+fn save_macros(store: &Store, list: &[CustomMacro]) -> Result<(), String> {
     let path = macros_file_path(store);
     if path.exists() {
         fs::copy(&path, path.with_extension("backup.json")).map_err(|e| e.to_string())?;
@@ -332,6 +343,9 @@ pub fn toggle_recording() -> Result<bool, String> {
 }
 pub fn start_recording(mode: RecordMode) -> Result<(), String> {
     let _mode = super::control::MODE_LOCK.lock();
+    if CTX_REF.read().as_ref().and_then(|w|w.upgrade()).is_some_and(|ctx|ctx.alive()){
+        return Err("Pause fishing before recording".into());
+    }
     if is_playing() {
         return Err("Stop playback before recording".into());
     }
@@ -490,6 +504,7 @@ pub fn stop_recording(name: &str, store: &Store) -> Result<CustomMacro, String> 
     let r = active.as_mut().ok_or("No recording to save")?;
     r.events.sort_by_key(|event| event.at_ms);
     validate_recording(&r.events)?;
+    let _catalog = CATALOG_LOCK.lock();
     let mut list = checked_macros(store)?;
     let id = format!("r2_{}", crate::core::secrets::generate_token_hex(12));
     let title = if name.trim().is_empty() {
@@ -519,6 +534,7 @@ pub fn cancel_recording() {
     *MESSAGE.write() = "Recording discarded".into();
 }
 pub fn delete_macro(store: &Store, id: &str) -> Result<(), String> {
+    let _catalog = CATALOG_LOCK.lock();
     let mut list = checked_macros(store)?;
     let before = list.len();
     list.retain(|m| m.id != id && !m.name.eq_ignore_ascii_case(id));
@@ -531,6 +547,7 @@ pub fn rename_macro(store: &Store, id: &str, name: &str) -> Result<(), String> {
     if name.trim().is_empty() || name.chars().count() > 120 {
         return Err("Name must contain 1 to 120 characters".into());
     }
+    let _catalog = CATALOG_LOCK.lock();
     let mut list = checked_macros(store)?;
     let item = list
         .iter_mut()
@@ -801,6 +818,24 @@ fn start_pc_capture() -> Result<(), String> {
 #[cfg(test)]
 mod rebuild_tests {
     use super::*;
+    #[test]
+    fn concurrent_catalog_edits_preserve_each_recording(){
+        let dir=std::env::temp_dir().join(format!("gpo-recording-concurrent-{}-{}",std::process::id(),crate::events::now_ms()));
+        fs::create_dir_all(&dir).unwrap();let store=Arc::new(Store::new(dir));
+        let initial:Vec<_>=(0..8).map(|n|CustomMacro{id:format!("id{n}"),name:format!("old{n}"),created_at:"test".into(),steps:vec![]}).collect();
+        save_macros(&store,&initial).unwrap();
+        let barrier=Arc::new(std::sync::Barrier::new(8));
+        let workers:Vec<_>=(0..8).map(|n|{
+            let store=store.clone();let barrier=barrier.clone();
+            std::thread::spawn(move||{
+                barrier.wait();
+                for revision in 0..10{rename_macro(&store,&format!("id{n}"),&format!("name{n}-{revision}")).unwrap();}
+            })
+        }).collect();
+        for worker in workers{worker.join().unwrap();}
+        let saved=checked_macros(&store).unwrap();assert_eq!(saved.len(),8);
+        for n in 0..8{assert_eq!(saved.iter().find(|m|m.id==format!("id{n}")).unwrap().name,format!("name{n}-9"));}
+    }
     #[test]
     fn corrupt_recordings_are_never_overwritten() {
         let dir = std::env::temp_dir().join(format!(

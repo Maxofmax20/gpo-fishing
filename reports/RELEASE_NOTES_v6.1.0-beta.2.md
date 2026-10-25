@@ -1,4 +1,4 @@
-# v6.1.0-beta.1 — v5.9.0 fishing baseline, rebuilt auxiliary services
+# v6.1.0-beta.2 — v5.9.0 fishing baseline, rebuilt auxiliary services
 
 This candidate starts from the v5.9.0 fishing code rather than the later fishing changes. The minigame controller and vision are unchanged from v5.9.0.
 
@@ -14,3 +14,5 @@ This candidate starts from the v5.9.0 fishing code rather than the later fishing
 Known limits: VPN-containing legacy recordings are preserved but explicitly rejected by the new game-input player. Use the separate VPN controls. Removed broken advanced web controls are not simulated.
 Real Roblox gameplay, long AFK fishing and new-build Telegram phone delivery remain unverified until this candidate is installed. Keep v5.9.0 available for rollback.
 This prerelease does not replace the running app automatically.
+
+Independent review rejected ambiguous full-screen pity evidence. Only explicit, non-conflicting Legendary Pity labels are accepted; generic and Fruit Pity values cannot trigger a zero alert.

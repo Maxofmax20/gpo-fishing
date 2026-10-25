@@ -34,6 +34,16 @@ struct Request {
     body: Vec<u8>,
 }
 fn read_request(stream: &mut TcpStream) -> Result<Request, String> {
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let set_budget = |stream: &TcpStream| -> Result<(), String> {
+        let left = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|d| !d.is_zero())
+            .ok_or("Request deadline exceeded")?;
+        stream
+            .set_read_timeout(Some(left))
+            .map_err(|_| "Socket timeout".into())
+    };
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .map_err(|_| "Socket timeout")?;
@@ -44,6 +54,7 @@ fn read_request(stream: &mut TcpStream) -> Result<Request, String> {
     let split;
     loop {
         let mut chunk = [0; 2048];
+        set_budget(stream)?;
         let n = stream.read(&mut chunk).map_err(|_| "Request read failed")?;
         if n == 0 {
             return Err("Request ended before its headers".into());
@@ -86,6 +97,7 @@ fn read_request(stream: &mut TcpStream) -> Result<Request, String> {
     let offset = split + 4;
     while bytes.len() - offset < length {
         let mut chunk = [0; 2048];
+        set_budget(stream)?;
         let n = stream
             .read(&mut chunk)
             .map_err(|_| "Request body timed out")?;
@@ -377,8 +389,14 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
                 }
             }
             "/api/input" => {
-                let action: InputAction = serde_json::from_value(body["input"].clone())
+                let mut action: InputAction = serde_json::from_value(body["input"].clone())
                     .map_err(|_| "Input action is invalid")?;
+                match &mut action {
+                    InputAction::KeyDown { key } | InputAction::KeyUp { key } => {
+                        key.make_ascii_lowercase()
+                    }
+                    _ => {}
+                }
                 action.validate()?;
                 if super::recorder::is_playing() {
                     return Err("Stop playback before manual controls".into());
@@ -393,30 +411,6 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
                 let epoch = body["epoch"]
                     .as_u64()
                     .ok_or("Refresh the remote page before sending inputs")?;
-                let duplicate_release = match &action {
-                    InputAction::KeyDown { key } => Some(InputAction::KeyUp { key: key.clone() }),
-                    InputAction::MouseDown { button } => Some(InputAction::MouseUp {
-                        button: button.clone(),
-                    }),
-                    _ => None,
-                };
-                if let Some(release) = duplicate_release {
-                    if control
-                        .platform
-                        .window
-                        .find()
-                        .is_some_and(|w| w.visible && w.is_foreground)
-                    {
-                        let mut held = server.held.lock();
-                        if let Some(entry) =
-                            held.iter_mut().find(|h| h.0 == release && h.1 == epoch)
-                        {
-                            entry.2 = Instant::now();
-                            return Ok(json!({"ok":true,"renewed":true}));
-                        }
-                    }
-                }
-                control.runtime.apply(epoch, &action)?;
                 let release = match &action {
                     InputAction::KeyDown { key } => Some(InputAction::KeyUp { key: key.clone() }),
                     InputAction::MouseDown { button } => Some(InputAction::MouseUp {
@@ -424,19 +418,37 @@ fn handle(mut stream: TcpStream, request: Request, server: Arc<Server>) {
                     }),
                     _ => None,
                 };
-                if let Some(release) = release {
-                    let mut held = server.held.lock();
-                    held.retain(|h| h.0 != release);
-                    if held.len() < 32 {
-                        held.push((release, epoch, Instant::now()));
+                let mut held = server.held.lock();
+                held.retain(|h| h.1 == epoch);
+                if let Some(release) = &release {
+                    if control
+                        .platform
+                        .window
+                        .find()
+                        .is_some_and(|w| w.visible && w.is_foreground)
+                    {
+                        if let Some(entry) = held.iter_mut().find(|h| h.0 == *release) {
+                            entry.2 = Instant::now();
+                            return Ok(json!({"ok":true,"renewed":true}));
+                        }
                     }
+                    if held.len() >= 32 {
+                        return Err(
+                            "Held-input limit reached; release another control first".into()
+                        );
+                    }
+                }
+                control.runtime.apply(epoch, &action)?;
+                if let Some(release) = release {
+                    held.push((release, epoch, Instant::now()));
                 }
                 if matches!(
                     action,
                     InputAction::KeyUp { .. } | InputAction::MouseUp { .. }
                 ) {
-                    server.held.lock().retain(|h| h.0 != action);
+                    held.retain(|h| h.0 != action);
                 }
+                drop(held);
                 if super::recorder::get_status().record_mode
                     == Some(super::recorder::RecordMode::WebScreen)
                 {
@@ -589,6 +601,28 @@ mod remote_http_tests {
         format!("POST {path} HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer {token}\r\nContent-Length: {}\r\n\r\n{text}",text.len())
     }
     #[test]
+    fn incomplete_http_request_has_total_deadline() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let worker = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let at = Instant::now();
+            assert!(read_request(&mut socket).is_err());
+            assert!(at.elapsed() < Duration::from_secs(3));
+        });
+        let mut client = TcpStream::connect(address).unwrap();
+        client
+            .write_all(
+                b"POST /api/tap HTTP/1.1\r\nHost: localhost\r\nContent-Length: 20\r\n\r\n{",
+            )
+            .unwrap();
+        for _ in 0..4{
+            std::thread::sleep(Duration::from_millis(600));
+            if client.write_all(b"x").is_err(){break;}
+        }
+        worker.join().unwrap();
+    }
+    #[test]
     fn authenticated_jump_and_cancel_use_real_http_with_mock_game() {
         let input = Arc::new(RecordingInput::default());
         let window = Arc::new(MockWindow::default());
@@ -669,6 +703,39 @@ mod remote_http_tests {
                 InputEvent::Key(Key::Char(' '), false)
             ]
         );
+        input.events.lock().clear();
+        for key in (b'a'..=b'z').chain(b'0'..=b'5') {
+            let response = exchange(
+                server.clone(),
+                post(
+                    "synthetic-test-token",
+                    "/api/input",
+                    json!({"input":{"action":"key_down","key":(key as char).to_string()},"epoch":epoch}),
+                ),
+            );
+            assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+        }
+        assert_eq!(input.events.lock().len(), 32);
+        let renewed = exchange(
+            server.clone(),
+            post(
+                "synthetic-test-token",
+                "/api/input",
+                json!({"input":{"action":"key_down","key":"A"},"epoch":epoch}),
+            ),
+        );
+        assert!(renewed.starts_with("HTTP/1.1 200"));
+        assert_eq!(input.events.lock().len(), 32);
+        let full = exchange(
+            server.clone(),
+            post(
+                "synthetic-test-token",
+                "/api/input",
+                json!({"input":{"action":"key_down","key":"6"},"epoch":epoch}),
+            ),
+        );
+        assert!(full.starts_with("HTTP/1.1 400"));
+        assert_eq!(input.events.lock().len(), 32);
         let stopped = exchange(
             server.clone(),
             post(

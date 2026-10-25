@@ -2,6 +2,7 @@ import {useEffect,useState} from "react";
 import {Circle,Play,Square,Save,Globe,Trash2} from "lucide-react";
 import {api} from "../lib/ipc";
 import {showToast} from "../lib/store";
+import ConfirmModal from "../components/ConfirmModal";
 import type {CustomMacro,RecorderStatus} from "../lib/types";
 
 export default function Macros(){
@@ -10,6 +11,7 @@ export default function Macros(){
  const [name,setName]=useState("");
  const [speed,setSpeed]=useState(1),[loops,setLoops]=useState(1);
  const [pending,setPending]=useState(false);
+ const [deleting,setDeleting]=useState<CustomMacro|null>(null);
  async function refresh(){const [list,state]=await Promise.all([api.macroList(),api.macroStatus()]);setItems(list);setStatus(state);}
  useEffect(()=>{let active=true;const poll=()=>{if(!document.hidden&&active)refresh().catch(e=>showToast("error",String(e)));};poll();const timer=setInterval(poll,500);return()=>{active=false;clearInterval(timer);};},[]);
  async function act(action:()=>Promise<unknown>){if(pending)return;setPending(true);try{await action();await refresh();}catch(e){showToast("error",String(e));}finally{setPending(false);}}
@@ -32,7 +34,8 @@ export default function Macros(){
    <div className="flex flex-wrap gap-3"><label className="grid gap-1 text-sm">Speed<select className="rounded-xl bg-bg border border-line p-2" value={speed} onChange={e=>setSpeed(Number(e.target.value))}>{[1,2,5,10].map(n=><option key={n} value={n}>{n}×</option>)}</select></label>
    <label className="grid gap-1 text-sm">Repeat<select className="rounded-xl bg-bg border border-line p-2" value={loops} onChange={e=>setLoops(Number(e.target.value))}><option value={1}>Once</option><option value={10}>10 loops</option><option value={0}>Until stopped</option></select></label></div>
    {items.length===0&&<p className="text-fg-dim">Your saved recordings will appear here.</p>}
-   {items.map(item=><div key={item.id} className="rounded-xl border border-line p-3 flex gap-2 items-center"><div className="flex-1 min-w-0"><div className="truncate font-medium">{item.name}</div><small className="text-fg-dim">{item.steps.length} steps · existing recordings preserved</small></div><button className={button} disabled={pending||status?.is_playing||draft} onClick={()=>act(()=>api.macroPlay("play",item.id,loops!==1,speed,loops))} aria-label={"Play "+item.name}><Play size={15}/></button><button className={button} disabled={pending||status?.is_playing} aria-label={"Delete "+item.name} onClick={()=>act(()=>api.macroDelete(item.id))}><Trash2 size={15}/></button></div>)}
+   {items.map(item=><div key={item.id} className="rounded-xl border border-line p-3 flex gap-2 items-center"><div className="flex-1 min-w-0"><div className="truncate font-medium">{item.name}</div><small className="text-fg-dim">{item.steps.length} steps · existing recordings preserved</small></div><button className={button} disabled={pending||status?.is_playing||draft} onClick={()=>act(()=>api.macroPlay("play",item.id,loops!==1,speed,loops))} aria-label={"Play "+item.name}><Play size={15}/></button><button className={button} disabled={pending||status?.is_playing} aria-label={"Delete "+item.name} onClick={()=>setDeleting(item)}><Trash2 size={15}/></button></div>)}
   </section>
+  <ConfirmModal open={deleting!==null} title="Delete recording?" body={"Remove "+(deleting?.name||"this recording")+" from your saved list?"} confirmLabel="Delete" busy={pending} onCancel={()=>setDeleting(null)} onConfirm={()=>{if(deleting)void act(async()=>{await api.macroDelete(deleting.id);setDeleting(null);});}}/>
  </div>;
 }

@@ -66,6 +66,7 @@ pub fn build_state() -> AppState {
         Arc::clone(&webhook),
         Arc::clone(&store),
     );
+    crate::bot::recorder::bind_ctx(Arc::downgrade(bot.ctx()));
     crate::bot::recorder::init_roblox_ref(Arc::clone(&roblox), Arc::clone(&store));
     crate::bot::recorder::set_vpn_provider(Arc::clone(&vpn) as Arc<dyn crate::vpn::VpnControl>);
 

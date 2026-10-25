@@ -346,8 +346,11 @@ fn parse_pity(text: &str, cap: u32) -> Option<String> {
         .split(|c: char| !c.is_ascii_alphanumeric() && c != '/')
         .filter(|s| !s.is_empty())
         .collect();
+    let mut values = std::collections::BTreeSet::new();
     for (index, word) in words.iter().enumerate() {
-        if *word != "pity" && *word != "legendarypity" {
+        let legendary = *word == "legendarypity"
+            || (*word == "pity" && index > 0 && words[index - 1] == "legendary");
+        if !legendary {
             continue;
         }
         let Some(current) = words
@@ -366,11 +369,16 @@ fn parse_pity(text: &str, cap: u32) -> Option<String> {
             continue;
         };
         if total == cap && current <= total {
-            return Some(format!("{current}/{total}"));
+            values.insert(current);
         }
     }
-    None
+    if values.len() == 1 {
+        values.first().map(|current| format!("{current}/{cap}"))
+    } else {
+        None
+    }
 }
+
 fn client() -> Result<&'static reqwest::blocking::Client, String> {
     static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
     if let Some(client) = CLIENT.get() {
@@ -549,7 +557,21 @@ mod tests {
     fn unrelated_zero_is_not_pity() {
         assert_eq!(parse_pity("HP 0/100 Backpack 0/40", 40), None);
         assert_eq!(parse_pity("Legendary Pity 0/40", 40), Some("0/40".into()));
-        assert_eq!(parse_pity("Pity 28/40", 40), Some("28/40".into()));
+        assert_eq!(parse_pity("Pity 28/40", 40), None);
+        assert_eq!(
+            parse_pity("Fruit Pity 0/40 Legendary Pity 17/40", 40),
+            Some("17/40".into())
+        );
+        assert_eq!(
+            parse_pity("Legendary Pity 17/40 Fruit Pity 0/40", 40),
+            Some("17/40".into())
+        );
+        assert_eq!(
+            parse_pity("Legendary Pity 0/40 Legendary Pity 17/40", 40),
+            None
+        );
+        assert_eq!(parse_pity("Fruit Pity 0/40", 40), None);
+        assert_eq!(parse_pity("Legendary Pity O/4O", 40), Some("0/40".into()));
     }
     #[test]
     fn message_limits_count_unicode_units() {
