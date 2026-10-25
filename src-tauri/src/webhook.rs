@@ -491,6 +491,7 @@ pub fn post_telegram_photo(
 struct ProviderAcks {
     telegram: bool,
     discord: bool,
+    telegram_text_only: bool,
 }
 trait Transport {
     fn telegram(&self, settings: &Settings, text: &str, photo: Option<&[u8]>)
@@ -506,16 +507,13 @@ impl Transport for HttpTransport {
             return Err("Telegram bot token or chat is missing".into());
         }
         if let Some(photo) = photo {
-            if post_telegram_photo(
+            return post_telegram_photo(
                 &s.webhook.telegram_bot_token,
                 &s.webhook.telegram_chat_id,
                 photo,
                 text,
             )
-            .is_ok()
-            {
-                return Ok(());
-            }
+            .map(|_| ());
         }
         post_telegram(
             &s.webhook.telegram_bot_token,
@@ -602,7 +600,16 @@ fn deliver_pending_using(
                 ) || message.fruit_crop == current.webhook.crop_fruit_screenshot
             });
         if telegram {
-            transport.telegram(&current, &text, photo)?;
+            let photo = photo.filter(|_| !ack.telegram_text_only);
+            if let Err(error) = transport.telegram(&current, &text, photo) {
+                // Fall back to text on the next attempt, after reading current
+                // consent again. Never issue a second request using a snapshot
+                // that may have been revoked while the photo request failed.
+                if photo.is_some() {
+                    ack.telegram_text_only = true;
+                }
+                return Err(error);
+            }
             ack.telegram = true;
         } else {
             transport.discord(&current, &text, photo)?;
@@ -622,6 +629,7 @@ mod tests {
     struct FakeTransport {
         calls: parking_lot::Mutex<Vec<(&'static str, bool)>>,
         discord_fail_once: std::sync::atomic::AtomicBool,
+        telegram_photo_fail_once: std::sync::atomic::AtomicBool,
         revoke_after_telegram: Option<Arc<RwLock<Settings>>>,
     }
     impl Transport for FakeTransport {
@@ -629,6 +637,9 @@ mod tests {
             self.calls.lock().push(("telegram", photo.is_some()));
             if let Some(settings) = &self.revoke_after_telegram {
                 settings.write().webhook.enabled = false;
+            }
+            if photo.is_some() && self.telegram_photo_fail_once.swap(false, Ordering::SeqCst) {
+                return Err("synthetic photo failure".into());
             }
             Ok(())
         }
@@ -937,6 +948,53 @@ mod tests {
         )
         .unwrap());
     }
+    #[test]
+    fn photo_fallback_waits_for_fresh_consent_and_does_not_repeat_success() {
+        let settings = Arc::new(RwLock::new(configured()));
+        let message = Message {
+            event: Event::FruitOutcome {
+                pity_zero: true,
+                high_tier: true,
+            },
+            title: "fruit".into(),
+            body: String::new(),
+            photo: Some(vec![1]),
+            fruit_crop: settings.read().webhook.crop_fruit_screenshot,
+        };
+        let transport = FakeTransport {
+            telegram_photo_fail_once: std::sync::atomic::AtomicBool::new(true),
+            ..FakeTransport::default()
+        };
+        let mut ack = ProviderAcks::default();
+        assert!(
+            deliver_pending_using(|| settings.read().clone(), &message, &mut ack, &transport)
+                .is_err()
+        );
+        assert!(
+            deliver_pending_using(|| settings.read().clone(), &message, &mut ack, &transport)
+                .unwrap()
+        );
+        assert_eq!(
+            *transport.calls.lock(),
+            vec![("telegram", true), ("telegram", false), ("discord", true)]
+        );
+        let transport = FakeTransport {
+            telegram_photo_fail_once: std::sync::atomic::AtomicBool::new(true),
+            revoke_after_telegram: Some(settings.clone()),
+            ..FakeTransport::default()
+        };
+        let mut ack = ProviderAcks::default();
+        assert!(
+            deliver_pending_using(|| settings.read().clone(), &message, &mut ack, &transport)
+                .is_err()
+        );
+        assert!(
+            !deliver_pending_using(|| settings.read().clone(), &message, &mut ack, &transport)
+                .unwrap()
+        );
+        assert_eq!(*transport.calls.lock(), vec![("telegram", true)]);
+    }
+
     #[test]
     fn explicit_test_is_allowed_in_strict_mode_but_requires_master_enable() {
         let mut settings = configured();
