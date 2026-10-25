@@ -33,7 +33,7 @@ describe("signed updater state", () => {
   beforeEach(() => { vi.clearAllMocks(); useUpdater.setState({ available: null, busy: false, message: null }); });
   it("reports actual byte progress and install phase", async () => {
     const messages: (string | null)[] = [];
-    const update = { version: "5.9.0", downloadAndInstall: vi.fn(async (progress) => {
+    const update = { version: "5.9.0", close: vi.fn().mockResolvedValue(undefined), downloadAndInstall: vi.fn(async (progress) => {
       progress({ event: "Started", data: { contentLength: 100 } });
       messages.push(useUpdater.getState().message);
       progress({ event: "Progress", data: { chunkLength: 40 } });
@@ -51,4 +51,18 @@ describe("signed updater state", () => {
     expect(useUpdater.getState().message).toContain("offline");
     expect(useUpdater.getState().busy).toBe(false); expect(mocks.toast).toHaveBeenCalled();
   });
+});
+
+
+it("successful installation clears and releases the update so install cannot repeat", async () => {
+  const install = vi.fn().mockResolvedValue(undefined);
+  const close = vi.fn().mockResolvedValue(undefined);
+  mocks.check.mockResolvedValue({ version: "6.0.6", downloadAndInstall: install, close });
+  await useUpdater.getState().check();
+  await useUpdater.getState().install();
+  await useUpdater.getState().install();
+  expect(install).toHaveBeenCalledOnce();
+  expect(close).toHaveBeenCalledOnce();
+  expect(useUpdater.getState().available).toBeNull();
+  expect(useUpdater.getState().message).toContain("Restart");
 });

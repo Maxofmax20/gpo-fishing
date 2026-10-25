@@ -43,7 +43,9 @@ export const useUpdater = create<Updater>((set, get) => ({
           : `Downloading ${(downloaded / 1048576).toFixed(1)} MB`;
         if (message !== shown) { shown = message; set({ message }); }
       }, { timeout: 120000 });
-      set({ message: "Installed. Restart the app to use the new version." });
+      set({ available: null, message: "Installed. Restart the app to use the new version." });
+      // Installation consumed the resource; leave failed downloads available for retry.
+      await update.close().catch(() => {});
     } catch (e) {
       set({ message: `Update failed: ${String(e)}. You can retry.` });
       showToast("error", `Update failed: ${String(e)}`);
