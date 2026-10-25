@@ -84,7 +84,11 @@ pub struct EntityProvenance {
 
 impl EntityProvenance {
     pub fn bundled() -> Self {
-        Self { source: BUNDLED_SOURCE.to_string(), url: None, updated: None }
+        Self {
+            source: BUNDLED_SOURCE.to_string(),
+            url: None,
+            updated: None,
+        }
     }
 }
 
@@ -159,7 +163,10 @@ impl KnowledgeBase {
     }
 
     pub fn by_category(&self, category: EntityCategory) -> Vec<&GpoEntity> {
-        self.entities.iter().filter(|e| e.category == category).collect()
+        self.entities
+            .iter()
+            .filter(|e| e.category == category)
+            .collect()
     }
 
     fn push(&mut self, e: GpoEntity) {
@@ -192,7 +199,10 @@ impl KnowledgeBase {
         }
         let category = EntityCategory::parse(&item.category);
         if category == EntityCategory::Unknown {
-            return Err(format!("import entity '{id}' has unknown category '{}'", item.category));
+            return Err(format!(
+                "import entity '{id}' has unknown category '{}'",
+                item.category
+            ));
         }
         if item.provenance.source.trim().is_empty() {
             return Err(format!("import entity '{id}' has no provenance source"));
@@ -207,10 +217,23 @@ impl KnowledgeBase {
             canonical_name: name.to_string(),
             aliases: dedup_names(&item.aliases),
             category,
-            rarity: item.rarity.clone().map(|r| r.trim().to_string()).filter(|r| !r.is_empty()),
-            description: item.description.clone().map(|d| d.trim().to_string()).filter(|d| !d.is_empty()),
+            rarity: item
+                .rarity
+                .clone()
+                .map(|r| r.trim().to_string())
+                .filter(|r| !r.is_empty()),
+            description: item
+                .description
+                .clone()
+                .map(|d| d.trim().to_string())
+                .filter(|d| !d.is_empty()),
             ocr_aliases: dedup_names(&item.ocr_aliases),
-            visual_refs: item.visual_refs.iter().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect(),
+            visual_refs: item
+                .visual_refs
+                .iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
             related: Vec::new(),
             provenance: EntityProvenance {
                 source: item.provenance.source.trim().to_string(),
@@ -229,7 +252,10 @@ impl KnowledgeBase {
         for item in items {
             if !seen_ids.insert(item.id.trim().to_string()) {
                 report.skipped += 1;
-                report.errors.push(format!("duplicate import id '{}' in same batch", item.id.trim()));
+                report.errors.push(format!(
+                    "duplicate import id '{}' in same batch",
+                    item.id.trim()
+                ));
                 continue;
             }
             match Self::validate_import(item) {
@@ -283,7 +309,11 @@ impl KnowledgeBase {
     }
 
     fn build_bundled() -> Self {
-        let mut kb = KnowledgeBase { version: KNOWLEDGE_VERSION, entities: Vec::new(), index: HashMap::new() };
+        let mut kb = KnowledgeBase {
+            version: KNOWLEDGE_VERSION,
+            entities: Vec::new(),
+            index: HashMap::new(),
+        };
 
         // Fruits: canonical names from the trusted fruit list, rarity from
         // the battle-tested classifier, aliases only for unambiguous pairs.
@@ -346,7 +376,11 @@ impl KnowledgeBase {
         }
 
         // Bait tiers (generic menu labels).
-        for (id, name) in [("common", "Common Bait"), ("rare", "Rare Bait"), ("legendary", "Legendary Bait")] {
+        for (id, name) in [
+            ("common", "Common Bait"),
+            ("rare", "Rare Bait"),
+            ("legendary", "Legendary Bait"),
+        ] {
             kb.push(GpoEntity {
                 id: format!("bait:{id}"),
                 canonical_name: name.to_string(),
@@ -470,7 +504,10 @@ mod tests {
         let b = kb.find_by_name("Tori").expect("tori");
         assert_eq!(a.id, b.id);
         assert_eq!(a.rarity.as_deref(), Some("Mythical"));
-        assert_eq!(kb.find_by_name("sand").unwrap().id, kb.find_by_name("Suna").unwrap().id);
+        assert_eq!(
+            kb.find_by_name("sand").unwrap().id,
+            kb.find_by_name("Suna").unwrap().id
+        );
     }
 
     #[test]
@@ -482,16 +519,30 @@ mod tests {
             category: "fruit".into(),
             rarity: None,
             description: None,
-            ocr_aliases: vec![],            visual_refs: vec![],            provenance: EntityProvenance { source: "wiki:test".into(), url: None, updated: None },
+            ocr_aliases: vec![],
+            visual_refs: vec![],
+            provenance: EntityProvenance {
+                source: "wiki:test".into(),
+                url: None,
+                updated: None,
+            },
         };
         assert!(KnowledgeBase::validate_import(&bad).is_err());
-        let bad_cat = ImportEntity { id: "x".into(), category: "starship".into(), ..bad.clone() };
+        let bad_cat = ImportEntity {
+            id: "x".into(),
+            category: "starship".into(),
+            ..bad.clone()
+        };
         assert!(KnowledgeBase::validate_import(&bad_cat).is_err());
         let bad_url = ImportEntity {
             id: "x".into(),
             canonical_name: "X".into(),
             category: "fish".into(),
-            provenance: EntityProvenance { source: "wiki:test".into(), url: Some("ftp://x".into()), updated: None },
+            provenance: EntityProvenance {
+                source: "wiki:test".into(),
+                url: Some("ftp://x".into()),
+                updated: None,
+            },
             ..bad.clone()
         };
         assert!(KnowledgeBase::validate_import(&bad_url).is_err());
@@ -508,7 +559,13 @@ mod tests {
             category: "fruit".into(),
             rarity: Some("Common".into()),
             description: None,
-            ocr_aliases: vec![],            visual_refs: vec![],            provenance: EntityProvenance { source: "wiki:test".into(), url: None, updated: None },
+            ocr_aliases: vec![],
+            visual_refs: vec![],
+            provenance: EntityProvenance {
+                source: "wiki:test".into(),
+                url: None,
+                updated: None,
+            },
         };
         let rep = kb.merge_import(std::slice::from_ref(&evil), false);
         assert_eq!(rep.updated, 0);
@@ -516,7 +573,10 @@ mod tests {
         // Explicit curator override works and keeps new provenance.
         let rep2 = kb.merge_import(std::slice::from_ref(&evil), true);
         assert_eq!(rep2.updated, 1);
-        assert_eq!(kb.find_by_name("Suna").unwrap().provenance.source, "wiki:test");
+        assert_eq!(
+            kb.find_by_name("Suna").unwrap().provenance.source,
+            "wiki:test"
+        );
     }
 
     #[test]
@@ -529,7 +589,13 @@ mod tests {
             category: "fruit".into(),
             rarity: None,
             description: None,
-            ocr_aliases: vec![],            visual_refs: vec![],            provenance: EntityProvenance { source: "wiki:test".into(), url: None, updated: None },
+            ocr_aliases: vec![],
+            visual_refs: vec![],
+            provenance: EntityProvenance {
+                source: "wiki:test".into(),
+                url: None,
+                updated: None,
+            },
         };
         let rep = kb.merge_import(&[rename.clone(), rename], true);
         assert_eq!(rep.added, 0);
@@ -549,7 +615,9 @@ mod tests {
             category: "location".into(),
             rarity: None,
             description: Some("Second sea starter island".into()),
-            ocr_aliases: vec![],            visual_refs: vec![],            provenance: EntityProvenance {
+            ocr_aliases: vec![],
+            visual_refs: vec![],
+            provenance: EntityProvenance {
                 source: "wiki:test".into(),
                 url: Some("https://example.test/wiki/Rose_Kingdom".into()),
                 updated: Some("2026-01-01".into()),

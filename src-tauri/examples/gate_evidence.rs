@@ -105,11 +105,21 @@ fn main() -> Result<(), String> {
     let reviewed = projected
         .rows
         .iter()
-        .filter(|r| projected.reviewed_eligible_ids.contains(r.image_id.as_str()))
+        .filter(|r| {
+            projected
+                .reviewed_eligible_ids
+                .contains(r.image_id.as_str())
+        })
         .count();
-    let scoped = projected.rows.iter().filter(|r| {
-        r.entity_id.as_deref().is_some_and(|e| e.starts_with("fish:"))
-    }).count();
+    let scoped = projected
+        .rows
+        .iter()
+        .filter(|r| {
+            r.entity_id
+                .as_deref()
+                .is_some_and(|e| e.starts_with("fish:"))
+        })
+        .count();
     println!("  {reviewed}/{scoped} fish rows human-reviewed and training-eligible");
 
     match fish_train_support_failure(required, &support, ENTITY_MIN_EXAMPLES) {

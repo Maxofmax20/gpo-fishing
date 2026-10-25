@@ -6,8 +6,7 @@ use std::path::PathBuf;
 
 fn source(rel: &str) -> String {
     let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(rel);
-    std::fs::read_to_string(&p)
-        .unwrap_or_else(|e| panic!("{} unreadable: {e}", p.display()))
+    std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{} unreadable: {e}", p.display()))
 }
 
 /// Every `ctx.webhook.fruit_*` call in `src`, with the file and the exact line
@@ -26,7 +25,9 @@ fn fruit_webhook_calls() -> Vec<(String, usize, String)> {
     let mut out = Vec::new();
     let mut stack = vec![root];
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for e in entries.flatten() {
             let p = e.path();
             if p.is_dir() {
@@ -60,8 +61,11 @@ fn fruit_webhook_calls() -> Vec<(String, usize, String)> {
                         break;
                     }
                 }
-                let flat: String =
-                    extent.join(" ").split_whitespace().collect::<Vec<_>>().join(" ");
+                let flat: String = extent
+                    .join(" ")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
                 out.push((rel.clone(), i + 1, flat));
             }
         }

@@ -104,11 +104,15 @@ impl MultiRobloxManager {
                 Ok(s) => match serde_json::from_str::<Vec<SavedRobloxAccount>>(&s) {
                     Ok(accs) => accs,
                     Err(e) => {
-                        tracing::error!("Failed to parse accounts.json: {e}, falling back to backup");
+                        tracing::error!(
+                            "Failed to parse accounts.json: {e}, falling back to backup"
+                        );
                         if backup_path.is_file() {
                             std::fs::read_to_string(&backup_path)
                                 .ok()
-                                .and_then(|bs| serde_json::from_str::<Vec<SavedRobloxAccount>>(&bs).ok())
+                                .and_then(|bs| {
+                                    serde_json::from_str::<Vec<SavedRobloxAccount>>(&bs).ok()
+                                })
                                 .unwrap_or_default()
                         } else {
                             Vec::new()
@@ -214,7 +218,10 @@ impl MultiRobloxManager {
         let mut c_guard = self.cookie_lock.lock();
         if c_guard.is_none() {
             if let Some(local_appdata) = dirs::data_local_dir() {
-                let cookie_path = local_appdata.join("Roblox").join("LocalStorage").join("RobloxCookies.dat");
+                let cookie_path = local_appdata
+                    .join("Roblox")
+                    .join("LocalStorage")
+                    .join("RobloxCookies.dat");
                 if cookie_path.exists() {
                     // Open with read-only share mode to prevent Roblox from overwriting cookies when switching instances
                     match std::fs::OpenOptions::new()
@@ -227,7 +234,9 @@ impl MultiRobloxManager {
                             tracing::info!("Applied Error 773 cookie lock on {:?}", cookie_path);
                         }
                         Err(err) => {
-                            tracing::warn!("Could not lock RobloxCookies.dat (might be open): {err}");
+                            tracing::warn!(
+                                "Could not lock RobloxCookies.dat (might be open): {err}"
+                            );
                         }
                     }
                 }
@@ -355,7 +364,8 @@ impl MultiRobloxManager {
     }
 
     pub fn focus_instance(&self, pid: u32) -> Result<(), String> {
-        let hwnd = find_hwnd_for_pid(pid).ok_or_else(|| format!("No window found for PID {pid}"))?;
+        let hwnd =
+            find_hwnd_for_pid(pid).ok_or_else(|| format!("No window found for PID {pid}"))?;
         unsafe {
             if IsIconic(hwnd).as_bool() {
                 let _ = ShowWindow(hwnd, SW_RESTORE);
@@ -403,7 +413,10 @@ impl MultiRobloxManager {
                 a.cookie.clear();
                 if let Some(inst) = running_instances.iter().find(|i| {
                     i.user_id.as_deref() == Some(&acc.user_id.to_string())
-                        || i.username.as_deref().map(|u| u.eq_ignore_ascii_case(&acc.username)).unwrap_or(false)
+                        || i.username
+                            .as_deref()
+                            .map(|u| u.eq_ignore_ascii_case(&acc.username))
+                            .unwrap_or(false)
                 }) {
                     a.is_running = true;
                     a.running_pid = Some(inst.pid);
@@ -416,7 +429,11 @@ impl MultiRobloxManager {
             .collect()
     }
 
-    pub fn add_account(&self, cookie: &str, note: Option<String>) -> Result<SavedRobloxAccount, String> {
+    pub fn add_account(
+        &self,
+        cookie: &str,
+        note: Option<String>,
+    ) -> Result<SavedRobloxAccount, String> {
         let clean_cookie = cookie.trim().trim_matches('"');
         let clean_cookie = if clean_cookie.starts_with(".ROBLOSECURITY=") {
             clean_cookie.to_string()
@@ -487,7 +504,8 @@ impl MultiRobloxManager {
         // cannot leave a truncated accounts.json as the only copy.
         let tmp = self.accounts_path.with_extension("json.tmp");
         std::fs::write(&tmp, &json).map_err(|e| format!("Failed to save accounts: {e}"))?;
-        std::fs::rename(&tmp, &self.accounts_path).map_err(|e| format!("Failed to save accounts: {e}"))?;
+        std::fs::rename(&tmp, &self.accounts_path)
+            .map_err(|e| format!("Failed to save accounts: {e}"))?;
         let backup_path = self.accounts_path.with_file_name("accounts.backup.json");
         let _ = std::fs::write(backup_path, &json);
         Ok(())
@@ -515,7 +533,10 @@ impl MultiRobloxManager {
             acc.cookie.clone()
         };
 
-        launch_with_cookie(&cookie, place_id.unwrap_or(crate::config::DEFAULT_GPO_PLACE_ID))
+        launch_with_cookie(
+            &cookie,
+            place_id.unwrap_or(crate::config::DEFAULT_GPO_PLACE_ID),
+        )
     }
 
     fn resolve_user(&self, user_id: &str) -> Option<UserCacheEntry> {
@@ -537,7 +558,12 @@ impl MultiRobloxManager {
             .ok()?;
 
         let user_url = format!("https://users.roblox.com/v1/users/{user_id}");
-        let user_resp = client.get(&user_url).send().ok()?.json::<serde_json::Value>().ok()?;
+        let user_resp = client
+            .get(&user_url)
+            .send()
+            .ok()?
+            .json::<serde_json::Value>()
+            .ok()?;
 
         let username = user_resp.get("name")?.as_str()?.to_string();
         let display_name = user_resp
@@ -588,18 +614,19 @@ impl MultiRobloxManager {
             .ok()?;
 
         let url = format!("https://games.roblox.com/v1/games?universeIds={universe_id}");
-        let resp = client.get(&url).send().ok()?.json::<serde_json::Value>().ok()?;
+        let resp = client
+            .get(&url)
+            .send()
+            .ok()?
+            .json::<serde_json::Value>()
+            .ok()?;
 
-        let name = resp
-            .get("data")?
-            .get(0)?
-            .get("name")?
-            .as_str()?
-            .to_string();
+        let name = resp.get("data")?.get(0)?.get("name")?.as_str()?.to_string();
 
-        self.game_cache
-            .lock()
-            .insert(universe_id.to_string(), GameCacheEntry { name: name.clone() });
+        self.game_cache.lock().insert(
+            universe_id.to_string(),
+            GameCacheEntry { name: name.clone() },
+        );
 
         Some(name)
     }
@@ -661,7 +688,10 @@ pub fn find_hwnd_for_pid(pid: u32) -> Option<HWND> {
         found_hwnd: None,
     };
     unsafe {
-        let _ = EnumWindows(Some(enum_windows_callback), LPARAM(&mut data as *mut _ as isize));
+        let _ = EnumWindows(
+            Some(enum_windows_callback),
+            LPARAM(&mut data as *mut _ as isize),
+        );
     }
     data.found_hwnd
 }
@@ -778,7 +808,10 @@ fn validate_cookie(cookie: &str) -> Result<RobloxAccountSummary, String> {
         .map_err(|e| format!("Failed to connect to Roblox: {e}"))?;
 
     if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
-        return Err("Invalid or expired .ROBLOSECURITY cookie. Please check the cookie and try again.".into());
+        return Err(
+            "Invalid or expired .ROBLOSECURITY cookie. Please check the cookie and try again."
+                .into(),
+        );
     }
 
     let json: serde_json::Value = resp
@@ -850,8 +883,7 @@ fn get_auth_ticket(cookie: &str) -> Result<String, String> {
     };
 
     // 1. Initial request (frequently returns 403 with x-csrf-token)
-    let resp = send_req(None)
-        .map_err(|e| format!("Failed to reach auth.roblox.com: {e}"))?;
+    let resp = send_req(None).map_err(|e| format!("Failed to reach auth.roblox.com: {e}"))?;
 
     let csrf = if resp.status() == reqwest::StatusCode::FORBIDDEN {
         resp.headers()
@@ -885,8 +917,7 @@ fn get_auth_ticket(cookie: &str) -> Result<String, String> {
     };
 
     // 2. Second request with CSRF token
-    let resp2 = send_req(Some(&csrf))
-        .map_err(|e| format!("Auth ticket request failed: {e}"))?;
+    let resp2 = send_req(Some(&csrf)).map_err(|e| format!("Auth ticket request failed: {e}"))?;
 
     if !resp2.status().is_success() {
         let status = resp2.status();
@@ -990,8 +1021,7 @@ mod tests {
             let probe_name = wide("ROBLOX_singletonEvent");
             match CreateEventW(None, false, false, PCWSTR(probe_name.as_ptr())) {
                 Ok(h) => {
-                    let pre_existing = GetLastError()
-                        != windows::Win32::Foundation::WIN32_ERROR(0);
+                    let pre_existing = GetLastError() != windows::Win32::Foundation::WIN32_ERROR(0);
                     let _ = CloseHandle(h);
                     if pre_existing {
                         eprintln!("skipping: ROBLOX_singletonEvent already held");
@@ -1005,8 +1035,7 @@ mod tests {
             }
         }
 
-        let dir = std::env::temp_dir()
-            .join(format!("gpo-mr-handoff-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("gpo-mr-handoff-test-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let mgr = MultiRobloxManager::new(dir.clone());
         mgr.acquire_locks().expect("acquire_locks");
@@ -1066,9 +1095,12 @@ mod tests {
             r#"{"data":[{"targetId":156,"state":"Blocked","imageUrl":"https://tr.rbxcdn.com/abc"}]}"#,
         )
         .unwrap();
-        assert_eq!(parse_avatar_url(&blocked), None, "blocked renders must not be used");
+        assert_eq!(
+            parse_avatar_url(&blocked),
+            None,
+            "blocked renders must not be used"
+        );
         let empty: serde_json::Value = serde_json::from_str(r#"{"data":[]}"#).unwrap();
         assert_eq!(parse_avatar_url(&empty), None);
     }
 }
-

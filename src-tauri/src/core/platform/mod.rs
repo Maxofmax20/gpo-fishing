@@ -1,9 +1,10 @@
+pub mod ocr_gate;
 use std::sync::Arc;
 
 use crate::core::types::{Frame, Key, MouseButton, PxPoint, PxRect, WindowInfo};
 
-pub mod mock;
 pub mod guarded_input;
+pub mod mock;
 #[cfg(windows)]
 pub mod windows;
 
@@ -46,6 +47,9 @@ pub trait Input: Send + Sync {
 pub trait Ocr: Send + Sync {
     fn available(&self) -> bool;
     fn read(&self, frame: &Frame) -> Result<String>;
+    fn read_with_timeout(&self, frame: &Frame, _timeout: std::time::Duration) -> Result<String> {
+        self.read(frame)
+    }
 }
 
 #[derive(Clone)]
@@ -59,7 +63,10 @@ pub struct Platform {
 #[cfg(windows)]
 pub fn build() -> Platform {
     let window: Arc<dyn GameWindow> = Arc::new(windows::window::Win32Window::new("Roblox"));
-    let input = Arc::new(guarded_input::GuardedInput::new(Arc::clone(&window), Arc::new(windows::input::SendInputBackend::new())));
+    let input = Arc::new(guarded_input::GuardedInput::new(
+        Arc::clone(&window),
+        Arc::new(windows::input::SendInputBackend::new()),
+    ));
     guarded_input::GuardedInput::watch(&input);
     Platform {
         window,

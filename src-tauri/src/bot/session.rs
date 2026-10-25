@@ -65,9 +65,18 @@ impl Session {
             bait_purchased: self.base.bait_purchased + self.bait_purchased,
             runtime_s: self.base.runtime_s + self.runtime().as_secs(),
             sessions: self.base.sessions,
-            last_fruit: self.last_fruit.clone().or_else(|| self.base.last_fruit.clone()),
-            last_spawn: self.last_spawn.clone().or_else(|| self.base.last_spawn.clone()),
-            last_fish: self.last_fish.clone().or_else(|| self.base.last_fish.clone()),
+            last_fruit: self
+                .last_fruit
+                .clone()
+                .or_else(|| self.base.last_fruit.clone()),
+            last_spawn: self
+                .last_spawn
+                .clone()
+                .or_else(|| self.base.last_spawn.clone()),
+            last_fish: self
+                .last_fish
+                .clone()
+                .or_else(|| self.base.last_fish.clone()),
             pity_fruit: self.pity_fruit,
             pity_legendary: self.pity_legendary,
             estimated_peli: (total_fish as u64) * 95,
@@ -137,7 +146,8 @@ impl Session {
 
     pub fn runtime(&self) -> Duration {
         let end = self.paused_at.unwrap_or_else(Instant::now);
-        end.duration_since(self.started).saturating_sub(self.paused_total)
+        end.duration_since(self.started)
+            .saturating_sub(self.paused_total)
     }
 
     pub fn stats(&self) -> Stats {

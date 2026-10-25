@@ -78,7 +78,11 @@ pub struct Reading {
 fn row_counts(f: &Frame, color: Rgb, tol: u8) -> Vec<u32> {
     f.rgba
         .chunks_exact(f.w * 4)
-        .map(|row| row.chunks_exact(4).filter(|px| color.within(px[0], px[1], px[2], tol)).count() as u32)
+        .map(|row| {
+            row.chunks_exact(4)
+                .filter(|px| color.within(px[0], px[1], px[2], tol))
+                .count() as u32
+        })
         .collect()
 }
 
@@ -168,9 +172,16 @@ pub fn find_bar(f: &Frame, p: &Palette) -> Option<Bbox> {
     let white = row_counts(&strip, p.marker, p.tolerance);
     let min_row = ((xs.len() as f32) * 0.5).max(1.0) as u32;
     let block = long_run_mask(&dark, min_row, MIN_BLOCK_ROWS);
-    let filled: Vec<u32> = (0..rows.len()).map(|i| u32::from(rows[i] >= min_row || white[i] >= min_row || block[i])).collect();
+    let filled: Vec<u32> = (0..rows.len())
+        .map(|i| u32::from(rows[i] >= min_row || white[i] >= min_row || block[i]))
+        .collect();
     let ys = largest_run(&filled, 1, BAR_EDGE_GAP)?;
-    let bbox = Bbox { x0: xs.start, y0: ys.start, x1: xs.end, y1: ys.end };
+    let bbox = Bbox {
+        x0: xs.start,
+        y0: ys.start,
+        x1: xs.end,
+        y1: ys.end,
+    };
     if bbox.h() < p.min_bar_height_px || (bbox.h() as f32) < p.min_bar_aspect * bbox.w() as f32 {
         return None;
     }
@@ -210,7 +221,12 @@ pub fn read_locked(f: &Frame, p: &Palette, lock: Option<Bbox>) -> Option<Reading
     }
     let inner = f.crop(bar.x0, bar.y0, bar.w(), bar.h());
     let margin = MARKER_MARGIN.min(bar.y0);
-    let ext = f.crop(bar.x0, bar.y0 - margin, bar.w(), bar.h() + margin + MARKER_MARGIN);
+    let ext = f.crop(
+        bar.x0,
+        bar.y0 - margin,
+        bar.w(),
+        bar.h() + margin + MARKER_MARGIN,
+    );
     let raw = find_marker(&ext, p)?;
     let h = inner.h.max(1) as f32;
     let marker_center = ((raw.mid() - margin as f32) / h).clamp(0.0, 1.0);
@@ -221,7 +237,14 @@ pub fn read_locked(f: &Frame, p: &Palette, lock: Option<Bbox>) -> Option<Reading
     let max_gap = (marker.len() * 2).max(2);
     let fish = find_fish(&inner, p, max_gap)?;
     let fish_center = fish.mid() / h;
-    Some(Reading { bar, fish, marker, fish_center, marker_center, error: fish_center - marker_center })
+    Some(Reading {
+        bar,
+        fish,
+        marker,
+        fish_center,
+        marker_center,
+        error: fish_center - marker_center,
+    })
 }
 
 pub fn has_bar(f: &Frame, p: &Palette) -> bool {
@@ -251,7 +274,12 @@ pub fn confidence(f: &Frame, p: &Palette) -> Confidence {
     if marker > 0.005 {
         score += 0.3;
     }
-    Confidence { bar, fish, marker, score }
+    Confidence {
+        bar,
+        fish,
+        marker,
+        score,
+    }
 }
 
 #[cfg(test)]
@@ -291,9 +319,23 @@ mod tests {
             p.bar
         });
         let r = read(&f, &p).expect("reading");
-        assert_eq!(r.bar, Bbox { x0: 10, y0: 20, x1: 49, y1: 179 });
+        assert_eq!(
+            r.bar,
+            Bbox {
+                x0: 10,
+                y0: 20,
+                x1: 49,
+                y1: 179
+            }
+        );
         assert_eq!(r.fish, Span { start: 40, end: 69 });
-        assert_eq!(r.marker, Span { start: 100, end: 105 });
+        assert_eq!(
+            r.marker,
+            Span {
+                start: 100,
+                end: 105
+            }
+        );
         assert!(r.error < 0.0);
     }
 
@@ -324,10 +366,24 @@ mod tests {
         let mid = read(&frame(60, 200, paint(60..90)), &p).expect("mid");
         let low = read(&frame(60, 200, paint(150..180)), &p).expect("bottom");
         let high = read(&frame(60, 200, paint(20..50)), &p).expect("top");
-        assert_eq!(mid.bar, Bbox { x0: 10, y0: 20, x1: 49, y1: 179 });
+        assert_eq!(
+            mid.bar,
+            Bbox {
+                x0: 10,
+                y0: 20,
+                x1: 49,
+                y1: 179
+            }
+        );
         assert_eq!(low.bar, mid.bar);
         assert_eq!(high.bar, mid.bar);
-        assert_eq!(low.fish, Span { start: 130, end: 159 });
+        assert_eq!(
+            low.fish,
+            Span {
+                start: 130,
+                end: 159
+            }
+        );
         assert_eq!(high.fish, Span { start: 0, end: 29 });
     }
 
@@ -347,11 +403,30 @@ mod tests {
             }
             p.bar
         });
-        let lock = Bbox { x0: 0, y0: 20, x1: 0, y1: 179 };
+        let lock = Bbox {
+            x0: 0,
+            y0: 20,
+            x1: 0,
+            y1: 179,
+        };
         let r = read_locked(&f, &p, Some(lock)).expect("reading");
-        assert_eq!(r.bar, Bbox { x0: 10, y0: 20, x1: 49, y1: 179 });
+        assert_eq!(
+            r.bar,
+            Bbox {
+                x0: 10,
+                y0: 20,
+                x1: 49,
+                y1: 179
+            }
+        );
         assert_eq!(r.fish, Span { start: 40, end: 69 });
-        assert_eq!(r.marker, Span { start: 100, end: 102 });
+        assert_eq!(
+            r.marker,
+            Span {
+                start: 100,
+                end: 102
+            }
+        );
     }
 
     #[test]
@@ -373,7 +448,12 @@ mod tests {
             }
             p.bar
         });
-        let lock = Bbox { x0: 0, y0: 20, x1: 0, y1: 179 };
+        let lock = Bbox {
+            x0: 0,
+            y0: 20,
+            x1: 0,
+            y1: 179,
+        };
         let r = read_locked(&f, &p, Some(lock)).expect("reading");
         assert_eq!(r.bar.y0, 20);
         assert_eq!(r.marker, Span { start: 0, end: 0 });
@@ -392,25 +472,42 @@ mod tests {
     #[test]
     fn scattered_blue_noise_is_not_a_bar() {
         let p = Palette::default();
-        let f = frame(120, 200, |x, y| if (x * 7 + y * 13) % 11 == 0 { p.bar } else { Rgb::new(0, 0, 0) });
+        let f = frame(120, 200, |x, y| {
+            if (x * 7 + y * 13) % 11 == 0 {
+                p.bar
+            } else {
+                Rgb::new(0, 0, 0)
+            }
+        });
         assert!(find_bar(&f, &p).is_none());
     }
 
     #[test]
     fn wide_blue_patch_is_not_a_bar() {
         let p = Palette::default();
-        let f = frame(200, 100, |x, y| if (10..190).contains(&x) && (20..70).contains(&y) { p.bar } else { Rgb::new(0, 0, 0) });
+        let f = frame(200, 100, |x, y| {
+            if (10..190).contains(&x) && (20..70).contains(&y) {
+                p.bar
+            } else {
+                Rgb::new(0, 0, 0)
+            }
+        });
         assert!(find_bar(&f, &p).is_none());
     }
 
     #[test]
     fn fish_gap_merging() {
         let p = Palette::default();
-        let f = frame(10, 50, |_, y| if (5..10).contains(&y) || (12..20).contains(&y) { p.fish } else { p.bar });
+        let f = frame(10, 50, |_, y| {
+            if (5..10).contains(&y) || (12..20).contains(&y) {
+                p.fish
+            } else {
+                p.bar
+            }
+        });
         let s = find_fish(&f, &p, 3).unwrap();
         assert_eq!(s, Span { start: 5, end: 19 });
         let s = find_fish(&f, &p, 1).unwrap();
         assert_eq!(s, Span { start: 12, end: 19 });
     }
 }
-

@@ -46,7 +46,9 @@ pub struct DatasetStore {
 
 impl DatasetStore {
     pub fn new(data_dir: PathBuf) -> Self {
-        Self { dir: data_dir.join("dataset") }
+        Self {
+            dir: data_dir.join("dataset"),
+        }
     }
 
     pub fn dir(&self) -> &std::path::Path {
@@ -96,7 +98,11 @@ impl DatasetStore {
         line.push('\n');
         {
             use std::io::Write;
-            let mut f = std::fs::OpenOptions::new().create(true).append(true).open(self.manifest_path()).ok()?;
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(self.manifest_path())
+                .ok()?;
             f.write_all(line.as_bytes()).ok()?;
         }
         self.prune();
@@ -116,7 +122,10 @@ impl DatasetStore {
     }
 
     pub fn needs_label(&self) -> Vec<DatasetSample> {
-        self.list().into_iter().filter(|s| s.needs_label && s.label.is_none()).collect()
+        self.list()
+            .into_iter()
+            .filter(|s| s.needs_label && s.label.is_none())
+            .collect()
     }
 
     /// Attach a user label to a sample. `correct` records whether the
@@ -162,8 +171,11 @@ impl DatasetStore {
             samples.into_iter().partition(|s| s.label.is_some());
         unlabeled.sort_by_key(|s| s.timestamp_ms);
         let drop_n = keep_labeled.len() + unlabeled.len() - MAX_SAMPLES;
-        let drop_ids: std::collections::HashSet<String> =
-            unlabeled.iter().take(drop_n).map(|s| s.id.clone()).collect();
+        let drop_ids: std::collections::HashSet<String> = unlabeled
+            .iter()
+            .take(drop_n)
+            .map(|s| s.id.clone())
+            .collect();
         for id in &drop_ids {
             let _ = std::fs::remove_file(self.dir.join(format!("{id}.png")));
         }
@@ -196,21 +208,43 @@ mod tests {
         // Unique per test: the harness runs tests in parallel threads.
         static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let dir = std::env::temp_dir().join(format!("gpo-dataset-{}-{}-{n}", std::process::id(), name));
+        let dir =
+            std::env::temp_dir().join(format!("gpo-dataset-{}-{}-{n}", std::process::id(), name));
         let _ = std::fs::remove_dir_all(&dir);
         (DatasetStore::new(dir.clone()), dir)
     }
 
     fn obs(confirmed: bool) -> Observation {
-        let text = if confirmed { "Suna fruit" } else { "xqz wobble" };
-        correlate_text(KnowledgeBase::bundled(), text, "drop", ScreenKind::Fishing, 0.85, 0.80, None)
+        let text = if confirmed {
+            "Suna fruit"
+        } else {
+            "xqz wobble"
+        };
+        correlate_text(
+            KnowledgeBase::bundled(),
+            text,
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        )
     }
 
     #[test]
     fn record_and_list_round_trip() {
         let (ds, _dir) = store("t");
         let o = obs(true);
-        let id = ds.record("drop", "drop", "tracking", "Suna fruit", &o, Some(vec![1, 2, 3])).expect("record");
+        let id = ds
+            .record(
+                "drop",
+                "drop",
+                "tracking",
+                "Suna fruit",
+                &o,
+                Some(vec![1, 2, 3]),
+            )
+            .expect("record");
         let list = ds.list();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, id);
@@ -224,7 +258,8 @@ mod tests {
         let (ds, _dir) = store("t");
         let o = obs(false);
         assert!(o.entity.is_none());
-        ds.record("drop", "drop", "tracking", "xqz wobble", &o, None).expect("record");
+        ds.record("drop", "drop", "tracking", "xqz wobble", &o, None)
+            .expect("record");
         let flagged = ds.needs_label();
         assert_eq!(flagged.len(), 1);
     }
@@ -233,7 +268,9 @@ mod tests {
     fn labeling_confirms_or_corrects() {
         let (ds, _dir) = store("t");
         let o = obs(false);
-        let id = ds.record("drop", "drop", "tracking", "xqz wobble", &o, None).expect("record");
+        let id = ds
+            .record("drop", "drop", "tracking", "xqz wobble", &o, None)
+            .expect("record");
         let labeled = ds.label(&id, "Kraken", false).expect("label");
         assert_eq!(labeled.label.as_deref(), Some("Kraken"));
         assert_eq!(labeled.label_correct, Some(false));
@@ -246,10 +283,14 @@ mod tests {
     fn corrupt_manifest_rows_are_skipped_not_fatal() {
         let (ds, dir) = store("t");
         let o = obs(true);
-        ds.record("drop", "drop", "tracking", "Suna fruit", &o, None).expect("record");
+        ds.record("drop", "drop", "tracking", "Suna fruit", &o, None)
+            .expect("record");
         {
             use std::io::Write;
-            let mut f = std::fs::OpenOptions::new().append(true).open(dir.join("dataset").join("manifest.jsonl")).unwrap();
+            let mut f = std::fs::OpenOptions::new()
+                .append(true)
+                .open(dir.join("dataset").join("manifest.jsonl"))
+                .unwrap();
             writeln!(f, "{{not valid json").unwrap();
         }
         assert_eq!(ds.list().len(), 1);
@@ -261,7 +302,8 @@ mod tests {
         for i in 0..(MAX_SAMPLES + 10) {
             let mut o = obs(i % 2 == 0);
             o.timestamp_ms = 1000 + i as u64;
-            ds.record("drop", "drop", "tracking", "t", &o, None).expect("record");
+            ds.record("drop", "drop", "tracking", "t", &o, None)
+                .expect("record");
         }
         assert!(ds.list().len() <= MAX_SAMPLES);
     }

@@ -56,7 +56,10 @@ impl std::fmt::Display for ModelLoadError {
             ModelLoadError::InvalidManifest(m) => write!(f, "invalid model manifest: {m}"),
             ModelLoadError::MissingWeights(m) => write!(f, "model weights missing: {m}"),
             ModelLoadError::ChecksumMismatch { expected, actual } => {
-                write!(f, "model checksum mismatch: expected {expected}, got {actual}")
+                write!(
+                    f,
+                    "model checksum mismatch: expected {expected}, got {actual}"
+                )
             }
             ModelLoadError::UnsupportedRuntime(m) => write!(f, "unsupported model runtime: {m}"),
         }
@@ -100,25 +103,34 @@ fn try_load(manifest_path: &PathBuf) -> Option<LoadedModel> {
         );
         return None;
     }
-    Some(LoadedModel { manifest, weights_path: weights })
+    Some(LoadedModel {
+        manifest,
+        weights_path: weights,
+    })
 }
 
 pub fn load_manifest(path: &PathBuf) -> Result<ModelManifest, ModelLoadError> {
-    let raw =
-        std::fs::read_to_string(path).map_err(|_| ModelLoadError::MissingManifest(path.display().to_string()))?;
+    let raw = std::fs::read_to_string(path)
+        .map_err(|_| ModelLoadError::MissingManifest(path.display().to_string()))?;
     let m: ModelManifest =
         serde_json::from_str(&raw).map_err(|e| ModelLoadError::InvalidManifest(e.to_string()))?;
     if m.name.trim().is_empty() {
         return Err(ModelLoadError::InvalidManifest("empty name".into()));
     }
     if m.input_width == 0 || m.input_height == 0 {
-        return Err(ModelLoadError::InvalidManifest("input dimensions must be > 0".into()));
+        return Err(ModelLoadError::InvalidManifest(
+            "input dimensions must be > 0".into(),
+        ));
     }
     if m.classes.is_empty() {
-        return Err(ModelLoadError::InvalidManifest("classes must not be empty".into()));
+        return Err(ModelLoadError::InvalidManifest(
+            "classes must not be empty".into(),
+        ));
     }
     if m.sha256.len() != 64 || !m.sha256.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err(ModelLoadError::InvalidManifest("sha256 must be 64 hex chars".into()));
+        return Err(ModelLoadError::InvalidManifest(
+            "sha256 must be 64 hex chars".into(),
+        ));
     }
     Ok(m)
 }
@@ -127,15 +139,18 @@ pub fn sha256_file(path: &PathBuf) -> Result<String, ModelLoadError> {
     // No sha2 dependency: shell out to nothing — use a compact pure-Rust
     // SHA-256 (public domain algorithm, ~60 lines) so checksums stay honest
     // without new crates.
-    let bytes =
-        std::fs::read(path).map_err(|_| ModelLoadError::MissingWeights(path.display().to_string()))?;
+    let bytes = std::fs::read(path)
+        .map_err(|_| ModelLoadError::MissingWeights(path.display().to_string()))?;
     Ok(sha256_hex(&bytes))
 }
 
 pub fn verify_weights(manifest: &ModelManifest, weights: &PathBuf) -> Result<(), ModelLoadError> {
     let actual = sha256_file(weights)?;
     if !actual.eq_ignore_ascii_case(&manifest.sha256) {
-        return Err(ModelLoadError::ChecksumMismatch { expected: manifest.sha256.clone(), actual });
+        return Err(ModelLoadError::ChecksumMismatch {
+            expected: manifest.sha256.clone(),
+            actual,
+        });
     }
     Ok(())
 }
@@ -144,17 +159,20 @@ pub fn verify_weights(manifest: &ModelManifest, weights: &PathBuf) -> Result<(),
 
 pub fn sha256_hex(data: &[u8]) -> String {
     const K: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
     ];
     let mut h: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
     ];
     let mut msg = data.to_vec();
     let bit_len = (data.len() as u64).wrapping_mul(8);
@@ -166,19 +184,31 @@ pub fn sha256_hex(data: &[u8]) -> String {
     for chunk in msg.chunks_exact(64) {
         let mut w = [0u32; 64];
         for i in 0..16 {
-            w[i] = u32::from_be_bytes([chunk[4 * i], chunk[4 * i + 1], chunk[4 * i + 2], chunk[4 * i + 3]]);
+            w[i] = u32::from_be_bytes([
+                chunk[4 * i],
+                chunk[4 * i + 1],
+                chunk[4 * i + 2],
+                chunk[4 * i + 3],
+            ]);
         }
         for i in 16..64 {
             let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
             let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16].wrapping_add(s0).wrapping_add(w[i - 7]).wrapping_add(s1);
+            w[i] = w[i - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[i - 7])
+                .wrapping_add(s1);
         }
         let (mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut hh) =
             (h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]);
         for i in 0..64 {
             let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
             let ch = (e & f) ^ ((!e) & g);
-            let t1 = hh.wrapping_add(s1).wrapping_add(ch).wrapping_add(K[i]).wrapping_add(w[i]);
+            let t1 = hh
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[i])
+                .wrapping_add(w[i]);
             let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
             let maj = (a & b) ^ (a & c) ^ (b & c);
             let t2 = s0.wrapping_add(maj);
@@ -218,7 +248,11 @@ pub struct GpoMlProvider {
 impl GpoMlProvider {
     pub fn load(models_dir: PathBuf) -> Self {
         match select_model(models_dir.clone()) {
-            Some(m) => Self { models_dir, loaded: Some(m), unavailable_reason: None },
+            Some(m) => Self {
+                models_dir,
+                loaded: Some(m),
+                unavailable_reason: None,
+            },
             None => Self {
                 models_dir,
                 loaded: None,
@@ -315,11 +349,17 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join("m.json");
         std::fs::write(&p, b"{nope").unwrap();
-        assert!(matches!(load_manifest(&p), Err(ModelLoadError::InvalidManifest(_))));
+        assert!(matches!(
+            load_manifest(&p),
+            Err(ModelLoadError::InvalidManifest(_))
+        ));
         let mut m = manifest("gpo-v1", "none", &"0".repeat(64));
         m.classes.clear();
         std::fs::write(&p, serde_json::to_string(&m).unwrap()).unwrap();
-        assert!(matches!(load_manifest(&p), Err(ModelLoadError::InvalidManifest(_))));
+        assert!(matches!(
+            load_manifest(&p),
+            Err(ModelLoadError::InvalidManifest(_))
+        ));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -351,7 +391,11 @@ mod tests {
         std::fs::write(dir.join("gpo-v0.onnx"), weights).unwrap();
         let mut m = manifest("gpo-v0", "none", &sha256_hex(weights));
         m.name = "gpo-v0".into();
-        std::fs::write(dir.join("previous.json"), serde_json::to_string(&m).unwrap()).unwrap();
+        std::fs::write(
+            dir.join("previous.json"),
+            serde_json::to_string(&m).unwrap(),
+        )
+        .unwrap();
         let sel = select_model(dir.clone()).expect("previous must load");
         assert_eq!(sel.manifest.version, "0.1.0");
         // Corrupt current → still falls back to previous, never fails hard.
@@ -361,7 +405,11 @@ mod tests {
         let mut m2 = manifest("gpo-v1", "ort", &sha256_hex(weights));
         m2.name = "gpo-v1".into();
         std::fs::write(dir.join("gpo-v1.onnx"), weights).unwrap();
-        std::fs::write(dir.join("current.json"), serde_json::to_string(&m2).unwrap()).unwrap();
+        std::fs::write(
+            dir.join("current.json"),
+            serde_json::to_string(&m2).unwrap(),
+        )
+        .unwrap();
         let sel2 = select_model(dir.clone()).expect("previous fallback");
         assert_eq!(sel2.manifest.name, "gpo-v0");
         let _ = std::fs::remove_dir_all(&dir);
@@ -377,7 +425,10 @@ mod tests {
         assert!(p.model_info().is_none());
         assert!(p.unavailable_reason().is_some());
         let f = Frame::new(10, 10, vec![0u8; 400]);
-        assert!(p.detect(&f).is_empty(), "no model → no predictions, never fakes");
+        assert!(
+            p.detect(&f).is_empty(),
+            "no model → no predictions, never fakes"
+        );
         assert!(p.preprocess(&f, None).is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -399,7 +450,12 @@ mod tests {
         let f = Frame::new(320, 240, vec![9u8; 320 * 240 * 4]);
         let out = p.preprocess(&f, None).expect("preprocess");
         assert!(out.w.max(out.h) <= 160);
-        let roi = RelBox { x: 0.25, y: 0.25, w: 0.5, h: 0.5 };
+        let roi = RelBox {
+            x: 0.25,
+            y: 0.25,
+            w: 0.5,
+            h: 0.5,
+        };
         let out2 = p.preprocess(&f, Some(roi)).expect("roi");
         assert!(out2.w <= 160 && out2.h <= 160);
         let _ = std::fs::remove_dir_all(&dir);

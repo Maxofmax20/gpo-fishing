@@ -80,13 +80,19 @@ pub fn decide_fruit_policy(
     if high && never_drop_legendary {
         return PolicyDecision {
             action: PolicyAction::ProtectNoDrop,
-            reason: format!("{} fruit protected (never_drop_legendary_or_mythical)", rarity.as_str()),
+            reason: format!(
+                "{} fruit protected (never_drop_legendary_or_mythical)",
+                rarity.as_str()
+            ),
             protects_valuable: true,
         };
     }
     PolicyDecision {
         action: PolicyAction::AllowDuplicateDrop,
-        reason: format!("unprotected {} fruit: duplicate path allowed, outcome must be confirmed", rarity.as_str()),
+        reason: format!(
+            "unprotected {} fruit: duplicate path allowed, outcome must be confirmed",
+            rarity.as_str()
+        ),
         protects_valuable: false,
     }
 }
@@ -97,7 +103,8 @@ pub fn decide_entity_policy(entity: &ResultEntity) -> PolicyDecision {
     if entity.entity_type == EntityType::Unknown || entity.entity_id.is_none() {
         return PolicyDecision {
             action: PolicyAction::NeedsReview,
-            reason: "UNKNOWN entity: no automatic drop; require confirmation / safe fallback".to_string(),
+            reason: "UNKNOWN entity: no automatic drop; require confirmation / safe fallback"
+                .to_string(),
             protects_valuable: false,
         };
     }
@@ -129,9 +136,9 @@ pub fn decide_entity_policy(entity: &ResultEntity) -> PolicyDecision {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::entity::{EntitySource, EntityType, ResultEntity};
     use super::super::perception::Evidence;
+    use super::*;
 
     fn ent(t: EntityType, id: Option<&str>) -> ResultEntity {
         ResultEntity {
@@ -142,7 +149,11 @@ mod tests {
             entity_name: None,
             confidence: 0.9,
             source: EntitySource::Ocr,
-            evidence: vec![Evidence { kind: "t".into(), detail: "d".into(), weight: 1.0 }],
+            evidence: vec![Evidence {
+                kind: "t".into(),
+                detail: "d".into(),
+                weight: 1.0,
+            }],
             confirmed: false,
             unknown_reason: None,
         }
@@ -204,8 +215,14 @@ mod tests {
     fn mirrors_legacy_inline_rule() {
         // post_catch historically computed:
         // (never_drop && legendary_or_mythical) || (keep_pity && pity_zero).
-        for rarity in [FruitRarity::Common, FruitRarity::Rare, FruitRarity::Epic,
-                       FruitRarity::Legendary, FruitRarity::Mythical, FruitRarity::Unknown] {
+        for rarity in [
+            FruitRarity::Common,
+            FruitRarity::Rare,
+            FruitRarity::Epic,
+            FruitRarity::Legendary,
+            FruitRarity::Mythical,
+            FruitRarity::Unknown,
+        ] {
             for pity in [false, true] {
                 let legacy = (true && rarity.is_high_tier()) || (true && pity);
                 let d = decide_fruit_policy(rarity, pity, true, true);

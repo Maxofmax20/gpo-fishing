@@ -74,7 +74,10 @@ pub fn parse_patch(json: &str) -> Result<PatchDocument, String> {
     let doc: PatchDocument =
         serde_json::from_str(json).map_err(|e| format!("patch is not valid JSON: {e}"))?;
     if doc.kind != "fish-kb-patch" {
-        return Err(format!("patch kind {:?} is not \"fish-kb-patch\"", doc.kind));
+        return Err(format!(
+            "patch kind {:?} is not \"fish-kb-patch\"",
+            doc.kind
+        ));
     }
     if doc.version != 1 {
         return Err(format!("patch version {} is not supported", doc.version));
@@ -332,8 +335,12 @@ mod tests {
     #[test]
     fn parse_rejects_wrong_kind_version_and_empty() {
         assert!(parse_patch(r#"{"kind":"other","version":1,"entities_to_add":[1]}"#).is_err());
-        assert!(parse_patch(r#"{"kind":"fish-kb-patch","version":2,"entities_to_add":[1]}"#).is_err());
-        assert!(parse_patch(r#"{"kind":"fish-kb-patch","version":1,"entities_to_add":[]}"#).is_err());
+        assert!(
+            parse_patch(r#"{"kind":"fish-kb-patch","version":2,"entities_to_add":[1]}"#).is_err()
+        );
+        assert!(
+            parse_patch(r#"{"kind":"fish-kb-patch","version":1,"entities_to_add":[]}"#).is_err()
+        );
     }
 
     #[test]
@@ -341,10 +348,16 @@ mod tests {
         let kb = KnowledgeBase::bundled();
         // duplicate id within the patch
         let doc = parse_patch(&patch_json(&[("fish:x", "X"), ("fish:x", "X")], 5)).unwrap();
-        assert!(validate_additions(&doc, kb).unwrap_err().iter().any(|e| e.contains("duplicate")));
+        assert!(validate_additions(&doc, kb)
+            .unwrap_err()
+            .iter()
+            .any(|e| e.contains("duplicate")));
         // id already in the bundled KB
         let doc = parse_patch(&patch_json(&[("fish:swordfish", "Swordfish")], 5)).unwrap();
-        assert!(validate_additions(&doc, kb).unwrap_err().iter().any(|e| e.contains("already in")));
+        assert!(validate_additions(&doc, kb)
+            .unwrap_err()
+            .iter()
+            .any(|e| e.contains("already in")));
         // a name that resolves to a different id
         let doc = parse_patch(&patch_json(&[("fish:notswordfish", "Swordfish")], 5)).unwrap();
         assert!(validate_additions(&doc, kb)
@@ -353,7 +366,10 @@ mod tests {
             .any(|e| e.contains("already resolves")));
         // no human evidence
         let doc = parse_patch(&patch_json(&[("fish:newfish", "Newfish")], 0)).unwrap();
-        assert!(validate_additions(&doc, kb).unwrap_err().iter().any(|e| e.contains("no human")));
+        assert!(validate_additions(&doc, kb)
+            .unwrap_err()
+            .iter()
+            .any(|e| e.contains("no human")));
     }
 
     #[test]
@@ -369,7 +385,10 @@ mod tests {
         assert_eq!(consumed_state(&doc, &kb_after), ConsumedState::Consumed);
 
         let other = parse_patch(&patch_json(&[("fish:testfish", "A Different Name")], 25)).unwrap();
-        assert!(matches!(consumed_state(&other, &kb_after), ConsumedState::Conflict(_)));
+        assert!(matches!(
+            consumed_state(&other, &kb_after),
+            ConsumedState::Conflict(_)
+        ));
     }
 
     #[test]

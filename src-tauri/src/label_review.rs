@@ -78,11 +78,17 @@ static KB_IDS: LazyLock<Option<HashSet<String>>> = LazyLock::new(|| {
 });
 
 fn read_json(p: &std::path::Path) -> Option<serde_json::Value> {
-    std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str(&s).ok())
+    std::fs::read_to_string(p)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
 }
 
 fn label_thumb_dir() -> Option<PathBuf> {
-    Some(core::find_report_dir()?.join("workstation").join("label_thumbs"))
+    Some(
+        core::find_report_dir()?
+            .join("workstation")
+            .join("label_thumbs"),
+    )
 }
 
 // ===========================================================================
@@ -156,9 +162,18 @@ pub fn batch_index() -> BatchIndex {
                 .unwrap_or("")
                 .to_string(),
             row_count: batch.get("rowCount").and_then(|x| x.as_u64()).unwrap_or(0) as usize,
-            session_count: batch.get("sessionCount").and_then(|x| x.as_u64()).unwrap_or(0) as usize,
-            avg_confidence: batch.get("avgConfidence").and_then(|x| x.as_f64()).unwrap_or(0.0),
-            min_confidence: batch.get("minConfidence").and_then(|x| x.as_f64()).unwrap_or(0.0),
+            session_count: batch
+                .get("sessionCount")
+                .and_then(|x| x.as_u64())
+                .unwrap_or(0) as usize,
+            avg_confidence: batch
+                .get("avgConfidence")
+                .and_then(|x| x.as_f64())
+                .unwrap_or(0.0),
+            min_confidence: batch
+                .get("minConfidence")
+                .and_then(|x| x.as_f64())
+                .unwrap_or(0.0),
             in_knowledge_base: in_kb,
             stored_label_conflicts: batch
                 .get("storedLabelConflicts")
@@ -443,7 +458,10 @@ mod tests {
     #[test]
     fn confirmation_goes_through_the_real_review_store() {
         let code = own_code();
-        assert!(code.contains("apply_human_review"), "must use the real store");
+        assert!(
+            code.contains("apply_human_review"),
+            "must use the real store"
+        );
         assert!(code.contains("ReviewInput"));
         assert!(code.contains("EligibilityInput"));
         // No bespoke eligibility maths: that would be a second, weaker gate.

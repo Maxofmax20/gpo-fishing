@@ -1562,6 +1562,7 @@ dependencies = [
 name = "gpo-autofish"
 version = "5.9.0"
 dependencies = [
+ "gpo-control-runtime",
  "base64 0.22.1",
  "crossbeam-channel",
  "dirs",
@@ -6678,4 +6679,12 @@ dependencies = [
  "serde",
  "syn 3.0.5",
  "winnow 1.0.4",
+]
+
+
+[[package]]
+name = "gpo-control-runtime"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]

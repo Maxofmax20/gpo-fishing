@@ -63,7 +63,8 @@ impl Ctx {
     }
 
     pub fn touch(&self) {
-        self.heartbeat_ms.store(self.start.elapsed().as_millis() as u64, Ordering::Relaxed);
+        self.heartbeat_ms
+            .store(self.start.elapsed().as_millis() as u64, Ordering::Relaxed);
     }
 
     pub fn heartbeat_age(&self) -> Duration {
@@ -118,7 +119,11 @@ impl Ctx {
             LogLevel::Warn => tracing::warn!("{msg}"),
             LogLevel::Error => tracing::error!("{msg}"),
         }
-        self.emit(BotEvent::Log(LogLine { ts: now_ms(), level, msg: msg.to_string() }));
+        self.emit(BotEvent::Log(LogLine {
+            ts: now_ms(),
+            level,
+            msg: msg.to_string(),
+        }));
     }
 
     pub fn log_debug(&self, m: &str) {
@@ -140,7 +145,10 @@ impl Ctx {
 
     pub fn roblox_in_front(&self) -> bool {
         // Query the foreground now; the UI's cached window poll can be stale.
-        self.platform.window.find().is_some_and(|w| w.visible && w.is_foreground)
+        self.platform
+            .window
+            .find()
+            .is_some_and(|w| w.visible && w.is_foreground)
     }
 
     pub fn ensure_roblox_focus(&self) -> bool {
@@ -164,7 +172,9 @@ impl Ctx {
             if !self.alive() {
                 return false;
             }
-            if !self.roblox_in_front() { self.release_mouse(); }
+            if !self.roblox_in_front() {
+                self.release_mouse();
+            }
             let left = end.saturating_duration_since(Instant::now());
             std::thread::sleep(left.min(Duration::from_millis(25)));
             self.touch();

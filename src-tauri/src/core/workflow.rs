@@ -106,7 +106,10 @@ impl WorkflowState {
     }
 
     pub fn terminal(self) -> bool {
-        matches!(self, WorkflowState::Confirmed | WorkflowState::Failed | WorkflowState::Unknown)
+        matches!(
+            self,
+            WorkflowState::Confirmed | WorkflowState::Failed | WorkflowState::Unknown
+        )
     }
 }
 
@@ -135,31 +138,63 @@ impl WorkflowTracker {
         debug_assert_eq!(event.workflow_id, self.workflow_id, "cross-workflow event");
         let next = match self.state {
             WorkflowState::Waiting => {
-                if event.result_event_id.is_some() { WorkflowState::ResultPending } else { WorkflowState::Waiting }
+                if event.result_event_id.is_some() {
+                    WorkflowState::ResultPending
+                } else {
+                    WorkflowState::Waiting
+                }
             }
             WorkflowState::Bite => {
-                if event.result_event_id.is_some() { WorkflowState::ResultPending } else { WorkflowState::Bite }
+                if event.result_event_id.is_some() {
+                    WorkflowState::ResultPending
+                } else {
+                    WorkflowState::Bite
+                }
             }
             WorkflowState::ResultPending => {
-                if event.entity_id.is_some() { WorkflowState::EntityConfirmed } else { WorkflowState::EntityPending }
+                if event.entity_id.is_some() {
+                    WorkflowState::EntityConfirmed
+                } else {
+                    WorkflowState::EntityPending
+                }
             }
             WorkflowState::EntityPending => {
-                if event.entity_id.is_some() { WorkflowState::EntityConfirmed } else { WorkflowState::EntityPending }
+                if event.entity_id.is_some() {
+                    WorkflowState::EntityConfirmed
+                } else {
+                    WorkflowState::EntityPending
+                }
             }
             WorkflowState::EntityConfirmed => {
-                if event.policy_decision.is_some() { WorkflowState::PolicyPending } else { WorkflowState::EntityConfirmed }
+                if event.policy_decision.is_some() {
+                    WorkflowState::PolicyPending
+                } else {
+                    WorkflowState::EntityConfirmed
+                }
             }
             WorkflowState::PolicyPending => {
-                if event.action_sent_at.is_some() { WorkflowState::ConfirmationPending } else { WorkflowState::ActionPending }
+                if event.action_sent_at.is_some() {
+                    WorkflowState::ConfirmationPending
+                } else {
+                    WorkflowState::ActionPending
+                }
             }
             WorkflowState::ActionPending => {
-                if event.action_sent_at.is_some() { WorkflowState::ConfirmationPending } else { WorkflowState::ActionPending }
+                if event.action_sent_at.is_some() {
+                    WorkflowState::ConfirmationPending
+                } else {
+                    WorkflowState::ActionPending
+                }
             }
             WorkflowState::ConfirmationPending => match event.confirmation_state {
                 ConfirmationState::Confirmed => WorkflowState::Confirmed,
                 ConfirmationState::Failed | ConfirmationState::Timeout => WorkflowState::Failed,
                 ConfirmationState::Unknown => {
-                    if event.retry_count > 0 { WorkflowState::Recovery } else { WorkflowState::Unknown }
+                    if event.retry_count > 0 {
+                        WorkflowState::Recovery
+                    } else {
+                        WorkflowState::Unknown
+                    }
                 }
                 ConfirmationState::Pending => WorkflowState::ConfirmationPending,
             },
@@ -213,8 +248,16 @@ pub fn summarize_action_log(data_dir: &Path) -> serde_json::Value {
         for line in content.lines().filter(|l| !l.trim().is_empty()) {
             if let Ok(ev) = serde_json::from_str::<ActionEvent>(line) {
                 total += 1;
-                *outcomes.entry(ev.final_outcome.clone().unwrap_or_else(|| "open".to_string())).or_default() += 1;
-                *confirmations.entry(ev.confirmation_state.as_str().to_string()).or_default() += 1;
+                *outcomes
+                    .entry(
+                        ev.final_outcome
+                            .clone()
+                            .unwrap_or_else(|| "open".to_string()),
+                    )
+                    .or_default() += 1;
+                *confirmations
+                    .entry(ev.confirmation_state.as_str().to_string())
+                    .or_default() += 1;
             }
         }
     }
@@ -284,7 +327,10 @@ mod tests {
         // Entity stays unresolved: tracker parks in EntityPending, never acts.
         let e = ev("w2", "s1");
         assert_eq!(t.observe(e), WorkflowState::EntityPending);
-        assert!(!matches!(t.state, WorkflowState::ActionPending | WorkflowState::ConfirmationPending));
+        assert!(!matches!(
+            t.state,
+            WorkflowState::ActionPending | WorkflowState::ConfirmationPending
+        ));
     }
 
     #[test]
@@ -311,7 +357,11 @@ mod tests {
         e.confirmation_evidence = Some("no banner after send + re-observation".into());
         e.retry_count = 0;
         assert_eq!(t.observe(e), WorkflowState::Unknown);
-        assert_ne!(t.state, WorkflowState::Confirmed, "unconfirmed action must not read as success");
+        assert_ne!(
+            t.state,
+            WorkflowState::Confirmed,
+            "unconfirmed action must not read as success"
+        );
     }
 
     #[test]
@@ -344,7 +394,8 @@ mod tests {
 
     #[test]
     fn old_events_without_new_fields_parse() {
-        let raw = r#"{"workflow_id":"w","event_id":"e","session_id":"s","confirmation_state":"UNKNOWN"}"#;
+        let raw =
+            r#"{"workflow_id":"w","event_id":"e","session_id":"s","confirmation_state":"UNKNOWN"}"#;
         let e: ActionEvent = serde_json::from_str(raw).unwrap();
         assert_eq!(e.retry_count, 0);
         assert_eq!(e.final_outcome, None);

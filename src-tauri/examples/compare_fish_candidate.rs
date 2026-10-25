@@ -48,7 +48,8 @@ fn fail(msg: &str) -> ! {
 fn read_manifest(path: &std::path::Path) -> serde_json::Value {
     let raw = std::fs::read_to_string(path)
         .unwrap_or_else(|e| fail(&format!("{} unreadable: {e}", path.display())));
-    serde_json::from_str(&raw).unwrap_or_else(|e| fail(&format!("{} is not JSON: {e}", path.display())))
+    serde_json::from_str(&raw)
+        .unwrap_or_else(|e| fail(&format!("{} is not JSON: {e}", path.display())))
 }
 
 /// The incumbent's metrics, rebuilt from the DEPLOYED manifest - the same bytes
@@ -59,7 +60,9 @@ fn incumbent_from_deployed(live: bool) -> (ModelMetrics, Vec<String>, String) {
     let path = if live {
         data_dir().join("models").join("fish_v1.json")
     } else {
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models").join("fish_v1.json")
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("models")
+            .join("fish_v1.json")
     };
     let m = read_manifest(&path);
     let classes: Vec<String> = m["classes"]
@@ -77,11 +80,19 @@ fn incumbent_from_deployed(live: bool) -> (ModelMetrics, Vec<String>, String) {
         test_n: m["test_n"].as_u64().unwrap_or(0) as usize,
         per_class_f1: m["per_class_f1"]
             .as_object()
-            .map(|o| o.iter().filter_map(|(k, v)| v.as_f64().map(|f| (k.clone(), f as f32))).collect())
+            .map(|o| {
+                o.iter()
+                    .filter_map(|(k, v)| v.as_f64().map(|f| (k.clone(), f as f32)))
+                    .collect()
+            })
             .unwrap_or_default(),
         per_class_test_support: m["test_support"]
             .as_object()
-            .map(|o| o.iter().filter_map(|(k, v)| v.as_u64().map(|n| (k.clone(), n as usize))).collect())
+            .map(|o| {
+                o.iter()
+                    .filter_map(|(k, v)| v.as_u64().map(|n| (k.clone(), n as usize)))
+                    .collect()
+            })
             .unwrap_or_default(),
         kept_accuracy: m["kept_accuracy"].as_f64().map(|v| v as f32),
     };
@@ -106,7 +117,10 @@ fn main() {
             .unwrap_or_else(|| fail("no fish candidate in the registry")),
     };
     println!("candidate        : {}", rec.candidate_id);
-    println!("  family/version : {} v{}", rec.model_family, rec.model_version);
+    println!(
+        "  family/version : {} v{}",
+        rec.model_family, rec.model_version
+    );
     println!("  status         : {:?}", rec.status);
     println!("  classes        : {}", rec.classes.len());
     println!("  vocab_sha      : {}", rec.vocab_sha);
@@ -127,7 +141,10 @@ fn main() {
         current.accuracy, current.macro_f1, current.test_n, current.test_sessions
     );
     println!("  per_class_f1   : {} entries", current.per_class_f1.len());
-    println!("  test_support   : {} entries", current.per_class_test_support.len());
+    println!(
+        "  test_support   : {} entries",
+        current.per_class_test_support.len()
+    );
 
     // ---- qualified classes, from the PROJECTED training set --------------
     // Read through the same projection every gate uses, so "is this class
@@ -144,7 +161,11 @@ fn main() {
         .filter(|q| q.qualified)
         .map(|q| q.entity)
         .collect();
-    println!("\nqualified classes: {} of {} canonical", qualified.len(), class_vocab_len());
+    println!(
+        "\nqualified classes: {} of {} canonical",
+        qualified.len(),
+        class_vocab_len()
+    );
 
     // ---- THE GATE -------------------------------------------------------
     let cand_classes = rec.classes.clone();
@@ -161,7 +182,10 @@ fn main() {
     println!("  verdict       : {:?}", c.verdict);
     println!("  macro-F1 delta: {:+.4}", c.f1_delta);
     println!("  accuracy delta: {:+.4}", c.acc_delta);
-    println!("  ece delta     : {:?}", c.ece_delta.map(|d| format!("{d:+.4}")));
+    println!(
+        "  ece delta     : {:?}",
+        c.ece_delta.map(|d| format!("{d:+.4}"))
+    );
     println!("  regressions   : {}", c.regressions.len());
     for (cls, a, b) in &c.regressions {
         println!("      {cls} {a:.3} -> {b:.3}");

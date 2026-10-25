@@ -58,14 +58,19 @@ fn main() {
             .join("versions")
             .join("fish.version");
         if counter.is_file() {
-            fail(&format!("counter already exists at {}; refusing to reseed", counter.display()));
+            fail(&format!(
+                "counter already exists at {}; refusing to reseed",
+                counter.display()
+            ));
         }
         if n != 1 {
             fail("the only honest seed is 1: the deployed fish_v1 manifest is version \"1\"");
         }
-        std::fs::create_dir_all(counter.parent().unwrap()).map_err(|e| e.to_string())
+        std::fs::create_dir_all(counter.parent().unwrap())
+            .map_err(|e| e.to_string())
             .unwrap_or_else(|e| fail(&e));
-        std::fs::write(&counter, n.to_string()).unwrap_or_else(|e| fail(&format!("seed write: {e}")));
+        std::fs::write(&counter, n.to_string())
+            .unwrap_or_else(|e| fail(&format!("seed write: {e}")));
         println!("  seeded fish version counter to {n} (deployed fish_v1 is version 1)");
     }
 
@@ -76,7 +81,11 @@ fn main() {
     let cfg = read(&out, "config.json").unwrap_or_else(|e| fail(&e));
     let snap = read(&out, "dataset_snapshot.json").ok();
     let onnx_check = read(&out, "onnx_check.json").unwrap_or_else(|e| fail(&e));
-    if !onnx_check.get("pass").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if !onnx_check
+        .get("pass")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         fail("onnx_check.json pass != true: the export did not verify");
     }
 
@@ -85,8 +94,9 @@ fn main() {
         .and_then(|s| s.get("test_sessions"))
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as usize;
-    let metrics = ModelMetrics::from_trainer_files(&eval, cal.as_ref(), rej.as_ref(), test_sessions)
-        .unwrap_or_else(|| fail("evaluation files lack core accuracy/macro-F1"));
+    let metrics =
+        ModelMetrics::from_trainer_files(&eval, cal.as_ref(), rej.as_ref(), test_sessions)
+            .unwrap_or_else(|| fail("evaluation files lack core accuracy/macro-F1"));
 
     let per = eval.get("per_entity").or_else(|| eval.get("per_class"));
     let evaluated: Vec<String> = per
@@ -96,7 +106,11 @@ fn main() {
     let vocab: Vec<String> = cfg
         .get("vocab")
         .and_then(|v| v.as_array())
-        .map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
         .unwrap_or_default();
     if vocab.is_empty() {
         fail("config.json vocab is empty");
@@ -183,13 +197,18 @@ fn main() {
     };
 
     println!("  registered candidate: {}", rec.candidate_id);
-    println!("  family/version      : {} v{}", rec.model_family, rec.model_version);
+    println!(
+        "  family/version      : {} v{}",
+        rec.model_family, rec.model_version
+    );
     println!("  status              : {:?}", rec.status);
     println!("  classes             : {}", rec.classes.len());
     println!("  artifact sha256     : {}", rec.artifact_sha);
     println!("  dataset fingerprint : {}", rec.dataset_fingerprint);
-    println!("  test: acc={:.4} macroF1={:.4} n={} sessions={}",
-        rec.metrics.accuracy, rec.metrics.macro_f1, rec.metrics.test_n, rec.metrics.test_sessions);
+    println!(
+        "  test: acc={:.4} macroF1={:.4} n={} sessions={}",
+        rec.metrics.accuracy, rec.metrics.macro_f1, rec.metrics.test_n, rec.metrics.test_sessions
+    );
     println!("  NOT promoted. `compare()` is not called here: promotion is a");
     println!("  human decision, and this example's job ends at REGISTERED. Run the");
     println!("  comparison, read the verdict, and only then deploy.");

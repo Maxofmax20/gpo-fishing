@@ -120,11 +120,17 @@ fn the_full_chain_and_every_negative_case() {
     // And a fourth lands in CONFLICT (competing human verdicts).
     confirm(&reviews, "img-d", "fish:testfish", false);
     confirm(&reviews, "img-d", "fish:otherfish", false);
-    assert_eq!(reviews.get("img-d").unwrap().review_status, ReviewStatus::Conflict);
+    assert_eq!(
+        reviews.get("img-d").unwrap().review_status,
+        ReviewStatus::Conflict
+    );
 
     // Apply the patch through the canonical path.
     let doc = kb_patch::parse_patch(&patch_json(
-        &[("fish:testfish", "Testfish"), ("fish:otherfish", "Otherfish")],
+        &[
+            ("fish:testfish", "Testfish"),
+            ("fish:otherfish", "Otherfish"),
+        ],
         25,
     ))
     .unwrap();
@@ -155,11 +161,17 @@ fn the_full_chain_and_every_negative_case() {
 
     // THE CHAIN: confirmed + canonical KB entity -> eligible.
     let a = reviews.get("img-a").unwrap();
-    assert!(a.training_eligible, "confirmed row with KB entity must be eligible");
+    assert!(
+        a.training_eligible,
+        "confirmed row with KB entity must be eligible"
+    );
     // NEGATIVE 1: confirmed but the entity does not exist -> NOT eligible.
     let b = reviews.get("img-b").unwrap();
     assert!(!b.training_eligible);
-    assert_eq!(b.excluded_reason.as_deref(), Some("invalid canonical mapping"));
+    assert_eq!(
+        b.excluded_reason.as_deref(),
+        Some("invalid canonical mapping")
+    );
     // NEGATIVE 2: unreviewed/unknown proposal -> NOT eligible (even though the
     // model "predicted" a now-real entity with confidence 1.0).
     let c = reviews.get("img-c").unwrap();
@@ -184,7 +196,12 @@ fn the_full_chain_and_every_negative_case() {
         .any(|e| e.event == review::AUDIT_ELIGIBILITY_RECOMPUTED && e.image_id == "img-c"));
 
     // Idempotency: the same apply again adds nothing.
-    let outcome2 = kb_patch::apply_patch(&ConfigStore::new(config_dir.clone()), &config_dir, &validated).unwrap();
+    let outcome2 = kb_patch::apply_patch(
+        &ConfigStore::new(config_dir.clone()),
+        &config_dir,
+        &validated,
+    )
+    .unwrap();
     assert_eq!(outcome2.added, 0);
     assert_eq!(outcome2.already_present, 2);
     assert_eq!(outcome2.pre_digest, outcome2.post_digest);
@@ -214,10 +231,7 @@ fn the_full_chain_and_every_negative_case() {
     if app_overlay.is_file() {
         // If a real overlay exists, the test must not have modified it: it was
         // written before this test ran, so its mtime predates now.
-        let mtime = std::fs::metadata(&app_overlay)
-            .unwrap()
-            .modified()
-            .unwrap();
+        let mtime = std::fs::metadata(&app_overlay).unwrap().modified().unwrap();
         assert!(
             mtime <= std::time::SystemTime::now(),
             "sanity: real overlay mtime is coherent"

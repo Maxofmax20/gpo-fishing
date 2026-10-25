@@ -42,16 +42,24 @@ impl ScreenKind {
         match self {
             ScreenKind::Fishing => matches!(
                 category,
-                EntityCategory::Fish | EntityCategory::Fruit | EntityCategory::Item | EntityCategory::UiTerm
+                EntityCategory::Fish
+                    | EntityCategory::Fruit
+                    | EntityCategory::Item
+                    | EntityCategory::UiTerm
             ),
-            ScreenKind::BaitMenu => matches!(category, EntityCategory::Bait | EntityCategory::UiTerm),
+            ScreenKind::BaitMenu => {
+                matches!(category, EntityCategory::Bait | EntityCategory::UiTerm)
+            }
             ScreenKind::Shop => matches!(
                 category,
                 EntityCategory::Bait | EntityCategory::Item | EntityCategory::UiTerm
             ),
             ScreenKind::SpawnBanner => matches!(
                 category,
-                EntityCategory::Fruit | EntityCategory::Location | EntityCategory::UiTerm | EntityCategory::Npc
+                EntityCategory::Fruit
+                    | EntityCategory::Location
+                    | EntityCategory::UiTerm
+                    | EntityCategory::Npc
             ),
             ScreenKind::Unknown => true,
         }
@@ -143,7 +151,11 @@ fn round2(v: f32) -> f32 {
 
 /// Score one OCR word against one entity name. Returns (score, evidence
 /// kind, detail) for the best of exact/normalized/cleaned/fuzzy.
-fn score_word(word: &str, entity: &GpoEntity, fuzzy_threshold: f64) -> Option<(f32, String, String)> {
+fn score_word(
+    word: &str,
+    entity: &GpoEntity,
+    fuzzy_threshold: f64,
+) -> Option<(f32, String, String)> {
     if word.len() < 3 {
         return None;
     }
@@ -157,7 +169,11 @@ fn score_word(word: &str, entity: &GpoEntity, fuzzy_threshold: f64) -> Option<(f
     for (n, canonical) in &names {
         if n.eq_ignore_ascii_case(word) {
             let kind = if *canonical { "exact_ocr" } else { "alias" };
-            return Some((1.0, kind.to_string(), format!("'{word}' matches {kind} '{n}'")));
+            return Some((
+                1.0,
+                kind.to_string(),
+                format!("'{word}' matches {kind} '{n}'"),
+            ));
         }
     }
     // 2. OCR-cleaned exact (0→o, 1|l→i, @→a, 5→s).
@@ -165,7 +181,11 @@ fn score_word(word: &str, entity: &GpoEntity, fuzzy_threshold: f64) -> Option<(f
     if cleaned != lower {
         for (n, canonical) in &names {
             if n.eq_ignore_ascii_case(&cleaned) {
-                let kind = if *canonical { "normalized_ocr" } else { "alias" };
+                let kind = if *canonical {
+                    "normalized_ocr"
+                } else {
+                    "alias"
+                };
                 return Some((
                     0.95,
                     kind.to_string(),
@@ -262,7 +282,9 @@ fn strip_ui_templates(kb: &KnowledgeBase, norm_text: &str) -> (String, Vec<(Stri
     let mut residual = norm_text.to_string();
     let mut found: Vec<(String, String)> = Vec::new();
     for (tmpl, id) in ui_templates(kb) {
-        let Some(idx) = residual.find(&tmpl) else { continue };
+        let Some(idx) = residual.find(&tmpl) else {
+            continue;
+        };
         let end = idx + tmpl.len();
         let left_ok = idx == 0 || residual.as_bytes()[idx - 1] == b' ';
         let right_ok = end == residual.len() || residual.as_bytes()[end] == b' ';
@@ -272,7 +294,10 @@ fn strip_ui_templates(kb: &KnowledgeBase, norm_text: &str) -> (String, Vec<(Stri
         residual.replace_range(idx..end, " ");
         found.push((tmpl, id));
     }
-    (residual.split_whitespace().collect::<Vec<_>>().join(" "), found)
+    (
+        residual.split_whitespace().collect::<Vec<_>>().join(" "),
+        found,
+    )
 }
 
 /// Every claimable name in the KB: normalized name -> owning entity ids
@@ -281,7 +306,8 @@ fn strip_ui_templates(kb: &KnowledgeBase, norm_text: &str) -> (String, Vec<(Stri
 /// [`strip_ui_templates`], never entities a name resolves to.
 /// Ordered longest-name-first (chars), then name, for a greedy scan.
 fn phrase_name_index(kb: &KnowledgeBase) -> Vec<(String, Vec<String>)> {
-    let mut map: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    let mut map: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
     for e in kb.entities() {
         if e.category == EntityCategory::UiTerm {
             continue;
@@ -336,7 +362,11 @@ fn longest_span_matches(kb: &KnowledgeBase, residual: &str) -> Vec<SpanMatch> {
                 for t in taken.iter_mut().take(start + w).skip(start) {
                     *t = true;
                 }
-                spans.push(SpanMatch { start, words: w, entity_ids: ids.clone() });
+                spans.push(SpanMatch {
+                    start,
+                    words: w,
+                    entity_ids: ids.clone(),
+                });
             }
         }
     }
@@ -382,7 +412,9 @@ fn alias_linked(a: &GpoEntity, b: &GpoEntity) -> bool {
 fn alias_components(kb: &KnowledgeBase, ids: &[String]) -> Vec<Vec<String>> {
     let mut components: Vec<Vec<String>> = Vec::new();
     for id in ids {
-        let Some(entity) = kb.entities().iter().find(|e| &e.id == id) else { continue };
+        let Some(entity) = kb.entities().iter().find(|e| &e.id == id) else {
+            continue;
+        };
         let mut placed = false;
         for comp in components.iter_mut() {
             let linked = comp.iter().any(|other| {
@@ -403,9 +435,19 @@ fn alias_components(kb: &KnowledgeBase, ids: &[String]) -> Vec<Vec<String>> {
     }
     // KB-first entity first within each component, for a deterministic winner.
     for comp in components.iter_mut() {
-        comp.sort_by_key(|id| kb.entities().iter().position(|e| &e.id == id).unwrap_or(usize::MAX));
+        comp.sort_by_key(|id| {
+            kb.entities()
+                .iter()
+                .position(|e| &e.id == id)
+                .unwrap_or(usize::MAX)
+        });
     }
-    components.sort_by_key(|comp| kb.entities().iter().position(|e| e.id == comp[0]).unwrap_or(usize::MAX));
+    components.sort_by_key(|comp| {
+        kb.entities()
+            .iter()
+            .position(|e| e.id == comp[0])
+            .unwrap_or(usize::MAX)
+    });
     components
 }
 
@@ -429,7 +471,9 @@ fn phrase_outcome(kb: &KnowledgeBase, spans: &[SpanMatch]) -> PhraseOutcome {
     // span named it. A single-word hit is left to the per-word stage, which
     // owns the exact/alias/fuzzy evidence kinds for single-word names.
     if spans.iter().any(|s| s.words >= 2) {
-        PhraseOutcome::Resolved { entity_id: components[0][0].clone() }
+        PhraseOutcome::Resolved {
+            entity_id: components[0][0].clone(),
+        }
     } else {
         PhraseOutcome::NoMatch
     }
@@ -563,8 +607,15 @@ pub fn match_entities(
     }
     // Stage 2: the EXISTING per-word stage, unchanged, as the fallback for
     // single-word entities and garbled OCR.
-    let stage_text = if residual.is_empty() { norm.as_str() } else { residual.as_str() };
-    let words: Vec<&str> = stage_text.split_whitespace().filter(|w| w.len() >= 3).collect();
+    let stage_text = if residual.is_empty() {
+        norm.as_str()
+    } else {
+        residual.as_str()
+    };
+    let words: Vec<&str> = stage_text
+        .split_whitespace()
+        .filter(|w| w.len() >= 3)
+        .collect();
     if words.is_empty() {
         return Vec::new();
     }
@@ -573,13 +624,19 @@ pub fn match_entities(
         let mut best: Option<(f32, Evidence)> = None;
         for w in &words {
             if let Some((score, kind, detail)) = score_word(w, entity, fuzzy_threshold) {
-                let ev = Evidence { kind, detail, weight: score };
+                let ev = Evidence {
+                    kind,
+                    detail,
+                    weight: score,
+                };
                 if best.as_ref().map_or(true, |(b, _)| score > *b) {
                     best = Some((score, ev));
                 }
             }
         }
-        let Some((mut score, primary)) = best else { continue };
+        let Some((mut score, primary)) = best else {
+            continue;
+        };
         let mut evidence = vec![primary];
         // Stripped banner templates are recorded, never silently dropped.
         for (tmpl, id) in &templates {
@@ -592,7 +649,10 @@ pub fn match_entities(
         // Knowledge existence: the entity is real (not an OCR phantom).
         evidence.push(Evidence {
             kind: "knowledge_match".to_string(),
-            detail: format!("'{}' exists in knowledge base ({})", entity.canonical_name, entity.provenance.source),
+            detail: format!(
+                "'{}' exists in knowledge base ({})",
+                entity.canonical_name, entity.provenance.source
+            ),
             weight: 0.05,
         });
         score += 0.05;
@@ -633,7 +693,12 @@ pub fn match_entities(
         b.0.partial_cmp(&a.0)
             .unwrap_or(std::cmp::Ordering::Equal)
             .then_with(|| {
-                let pos = |id: &str| kb.entities().iter().position(|e| e.id == id).unwrap_or(usize::MAX);
+                let pos = |id: &str| {
+                    kb.entities()
+                        .iter()
+                        .position(|e| e.id == id)
+                        .unwrap_or(usize::MAX)
+                };
                 pos(&a.1.entity_id).cmp(&pos(&b.1.entity_id))
             })
     });
@@ -663,7 +728,11 @@ pub fn correlate_text(
     // produced the original stem contamination.
     let competitors: Vec<String> = candidates
         .iter()
-        .filter(|c| c.evidence.iter().any(|e| e.kind == EVIDENCE_AMBIGUOUS_PHRASE))
+        .filter(|c| {
+            c.evidence
+                .iter()
+                .any(|e| e.kind == EVIDENCE_AMBIGUOUS_PHRASE)
+        })
         .map(|c| c.entity_id.clone())
         .collect();
     if !competitors.is_empty() {
@@ -672,7 +741,10 @@ pub fn correlate_text(
             source: ObservationSource::Ocr,
             region: region.to_string(),
             screen,
-            ocr: Some(TextReading { text: text.to_string(), region: region.to_string() }),
+            ocr: Some(TextReading {
+                text: text.to_string(),
+                region: region.to_string(),
+            }),
             vision_hint,
             confidence: candidates.first().map(|c| c.confidence).unwrap_or(0.0),
             entity: None,
@@ -695,20 +767,30 @@ pub fn correlate_text(
                 let w = (hint.confidence * 0.15).min(0.12);
                 c.evidence.push(Evidence {
                     kind: "visual_agreement".to_string(),
-                    detail: format!("vision '{}' ({:.2}) agrees with '{}'", hint.label, hint.confidence, c.canonical_name),
+                    detail: format!(
+                        "vision '{}' ({:.2}) agrees with '{}'",
+                        hint.label, hint.confidence, c.canonical_name
+                    ),
                     weight: w,
                 });
                 c.confidence = round2((c.confidence + w).min(1.0));
             } else {
                 c.evidence.push(Evidence {
                     kind: "visual_mismatch".to_string(),
-                    detail: format!("vision '{}' does not match '{}'", hint.label, c.canonical_name),
+                    detail: format!(
+                        "vision '{}' does not match '{}'",
+                        hint.label, c.canonical_name
+                    ),
                     weight: -0.10,
                 });
                 c.confidence = round2((c.confidence - 0.10).max(0.0));
             }
         }
-        candidates.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal));
+        candidates.sort_by(|a, b| {
+            b.confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     let top = candidates.first().cloned();
@@ -718,7 +800,10 @@ pub fn correlate_text(
             source: ObservationSource::Ocr,
             region: region.to_string(),
             screen,
-            ocr: Some(TextReading { text: text.to_string(), region: region.to_string() }),
+            ocr: Some(TextReading {
+                text: text.to_string(),
+                region: region.to_string(),
+            }),
             vision_hint,
             confidence: m.confidence,
             entity: Some(m.clone()),
@@ -740,7 +825,10 @@ pub fn correlate_text(
                 source: ObservationSource::Ocr,
                 region: region.to_string(),
                 screen,
-                ocr: Some(TextReading { text: text.to_string(), region: region.to_string() }),
+                ocr: Some(TextReading {
+                    text: text.to_string(),
+                    region: region.to_string(),
+                }),
                 vision_hint,
                 confidence: candidates.first().map(|c| c.confidence).unwrap_or(0.0),
                 entity: None,
@@ -809,9 +897,11 @@ pub fn fuse_observations(ocr: &Observation, ml: Option<&Observation>) -> Observa
             // flip. Keep OCR candidates for inspection.
             fused.entity = None;
             fused.confidence = round2(
-                ocr.candidates.first().map(|c| c.confidence).unwrap_or(0.0).min(
-                    ml.candidates.first().map(|c| c.confidence).unwrap_or(0.0),
-                ),
+                ocr.candidates
+                    .first()
+                    .map(|c| c.confidence)
+                    .unwrap_or(0.0)
+                    .min(ml.candidates.first().map(|c| c.confidence).unwrap_or(0.0)),
             );
             fused.unknown_reason = Some(format!(
                 "UNCERTAIN: OCR reports '{}' but ML reports '{}' — disagreeing evidence, manual review needed.",
@@ -868,7 +958,9 @@ mod tests {
                 visual_refs: vec![],
                 provenance: EntityProvenance {
                     source: "test:confirmed-species".to_string(),
-                    url: Some("https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary".to_string()),
+                    url: Some(
+                        "https://grand-piece-online.fandom.com/wiki/Fishing/Bestiary".to_string(),
+                    ),
                     updated: None,
                 },
             })
@@ -880,7 +972,15 @@ mod tests {
 
     #[test]
     fn exact_ocr_confirms_with_evidence() {
-        let o = correlate_text(kb(), "You fished up a Suna fruit", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let o = correlate_text(
+            kb(),
+            "You fished up a Suna fruit",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         let m = o.entity.expect("Suna must confirm");
         assert_eq!(m.canonical_name, "Suna");
         assert!(m.confidence >= 0.80);
@@ -893,17 +993,39 @@ mod tests {
     fn ocr_error_fusion_confirms_kraken_example() {
         // "KRAK3N": cleaned (3→? no; KRAK3N vs kraken fuzzy) + knowledge +
         // context must confirm the real entity, never invent one.
-        let o = correlate_text(kb(), "KRAK3N", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
-        let m = o.entity.expect("kraken must confirm via fuzzy+knowledge+context");
+        let o = correlate_text(
+            kb(),
+            "KRAK3N",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
+        let m = o
+            .entity
+            .expect("kraken must confirm via fuzzy+knowledge+context");
         assert_eq!(m.canonical_name.to_ascii_lowercase(), "kraken");
         assert!(o.unknown_reason.is_none());
     }
 
     #[test]
     fn weak_evidence_yields_unknown_never_hallucination() {
-        let o = correlate_text(kb(), "xqz wobble fnord", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let o = correlate_text(
+            kb(),
+            "xqz wobble fnord",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         assert!(o.entity.is_none());
-        assert!(o.unknown_reason.as_deref().unwrap_or("").contains("No knowledge-base entity"));
+        assert!(o
+            .unknown_reason
+            .as_deref()
+            .unwrap_or("")
+            .contains("No knowledge-base entity"));
         assert!(o.confidence < 0.80);
     }
 
@@ -911,12 +1033,23 @@ mod tests {
     fn below_threshold_candidate_stays_unknown_with_reason() {
         // A short ambiguous fragment must not confirm even if fuzzy fire.
         let o = correlate_text(kb(), "sna", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
-        assert!(o.entity.is_none(), "3-letter fragment must not confirm Suna");
+        assert!(
+            o.entity.is_none(),
+            "3-letter fragment must not confirm Suna"
+        );
     }
 
     #[test]
     fn alias_resolves_with_alias_evidence() {
-        let o = correlate_text(kb(), "got Phoenix fruit", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let o = correlate_text(
+            kb(),
+            "got Phoenix fruit",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         let m = o.entity.expect("phoenix alias must confirm");
         assert_eq!(m.canonical_name, "Tori");
         assert!(m.evidence.iter().any(|e| e.kind == "alias"));
@@ -924,30 +1057,85 @@ mod tests {
 
     #[test]
     fn vision_agreement_raises_and_mismatch_lowers() {
-        let agree = VisionHint { label: "Suna".into(), confidence: 0.9 };
-        let o1 = correlate_text(kb(), "Suna fruit", "drop", ScreenKind::Fishing, 0.85, 0.80, Some(agree));
-        let disagree = VisionHint { label: "Boot".into(), confidence: 0.9 };
-        let o2 = correlate_text(kb(), "Suna fruit", "drop", ScreenKind::Fishing, 0.85, 0.80, Some(disagree));
+        let agree = VisionHint {
+            label: "Suna".into(),
+            confidence: 0.9,
+        };
+        let o1 = correlate_text(
+            kb(),
+            "Suna fruit",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            Some(agree),
+        );
+        let disagree = VisionHint {
+            label: "Boot".into(),
+            confidence: 0.9,
+        };
+        let o2 = correlate_text(
+            kb(),
+            "Suna fruit",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            Some(disagree),
+        );
         let c1 = o1.entity.map(|m| m.confidence).unwrap_or(0.0);
-        assert!(o1.candidates.iter().any(|c| c.evidence.iter().any(|e| e.kind == "visual_agreement")));
-        assert!(o2.candidates.iter().any(|c| c.evidence.iter().any(|e| e.kind == "visual_mismatch")));
+        assert!(o1
+            .candidates
+            .iter()
+            .any(|c| c.evidence.iter().any(|e| e.kind == "visual_agreement")));
+        assert!(o2
+            .candidates
+            .iter()
+            .any(|c| c.evidence.iter().any(|e| e.kind == "visual_mismatch")));
         assert!(c1 >= o2.confidence);
     }
 
     #[test]
     fn context_mismatch_penalizes_implausible_category() {
-        let bait = correlate_text(kb(), "Legendary Bait", "bait_menu", ScreenKind::BaitMenu, 0.85, 0.80, None);
+        let bait = correlate_text(
+            kb(),
+            "Legendary Bait",
+            "bait_menu",
+            ScreenKind::BaitMenu,
+            0.85,
+            0.80,
+            None,
+        );
         assert!(bait.entity.is_some());
-        let off = correlate_text(kb(), "Legendary Bait", "bait_menu", ScreenKind::SpawnBanner, 0.85, 0.80, None);
+        let off = correlate_text(
+            kb(),
+            "Legendary Bait",
+            "bait_menu",
+            ScreenKind::SpawnBanner,
+            0.85,
+            0.80,
+            None,
+        );
         // Same text, wrong screen: confidence must drop (may still confirm
         // on strong text evidence, but strictly lower).
         assert!(off.confidence <= bait.confidence);
-        assert!(off.candidates.iter().any(|c| c.evidence.iter().any(|e| e.kind == "context_mismatch")));
+        assert!(off
+            .candidates
+            .iter()
+            .any(|c| c.evidence.iter().any(|e| e.kind == "context_mismatch")));
     }
 
     #[test]
     fn confidence_has_no_fake_precision() {
-        let o = correlate_text(kb(), "Mera Mera fruit drop", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let o = correlate_text(
+            kb(),
+            "Mera Mera fruit drop",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         let c = o.confidence;
         assert_eq!(c, (c * 100.0).round() / 100.0);
         assert!(c <= 1.0);
@@ -960,13 +1148,18 @@ mod tests {
         let (t, v) = ocr_with_fallback(|_| Ok("Suna".to_string()), &frame).unwrap();
         assert_eq!((t.as_str(), v), ("Suna", "raw"));
         let (t2, v2) = ocr_with_fallback(
-            |f| Ok(if f.w > 100 { "Bari".to_string() } else { "   ".to_string() }),
+            |f| {
+                Ok(if f.w > 100 {
+                    "Bari".to_string()
+                } else {
+                    "   ".to_string()
+                })
+            },
             &frame,
         )
         .unwrap();
         assert_eq!((t2.as_str(), v2), ("Bari", "upscale2x"));
-        let (t3, v3) =
-            ocr_with_fallback(|_| Ok("   ".to_string()), &frame).unwrap();
+        let (t3, v3) = ocr_with_fallback(|_| Ok("   ".to_string()), &frame).unwrap();
         assert_eq!((t3.trim(), v3), ("", "raw"));
     }
 
@@ -987,13 +1180,25 @@ mod tests {
                 confidence: conf,
                 evidence: vec![],
             }),
-            unknown_reason: if name.is_none() { Some("ml unknown".into()) } else { None },
+            unknown_reason: if name.is_none() {
+                Some("ml unknown".into())
+            } else {
+                None
+            },
         }
     }
 
     #[test]
     fn fusion_agreement_confirms_with_boost() {
-        let ocr = correlate_text(kb(), "Suna fruit", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let ocr = correlate_text(
+            kb(),
+            "Suna fruit",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         // Cap: agreement boost never exceeds 1.0.
         let fused = fuse_observations(&ocr, Some(&ml_obs(Some("Suna"), 0.91)));
         let m = fused.entity.expect("agreement confirms");
@@ -1003,21 +1208,45 @@ mod tests {
 
     #[test]
     fn fusion_ml_abstain_keeps_ocr() {
-        let ocr = correlate_text(kb(), "Suna fruit", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let ocr = correlate_text(
+            kb(),
+            "Suna fruit",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         let fused = fuse_observations(&ocr, Some(&ml_obs(None, 0.0)));
         assert_eq!(fused.entity.unwrap().canonical_name, "Suna");
     }
 
     #[test]
     fn fusion_no_ml_degrades_to_ocr() {
-        let ocr = correlate_text(kb(), "Suna fruit", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let ocr = correlate_text(
+            kb(),
+            "Suna fruit",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         let fused = fuse_observations(&ocr, None);
         assert_eq!(fused.entity.unwrap().canonical_name, "Suna");
     }
 
     #[test]
     fn fusion_ocr_abstain_uses_ml() {
-        let ocr = correlate_text(kb(), "xqz wobble", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let ocr = correlate_text(
+            kb(),
+            "xqz wobble",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         assert!(ocr.entity.is_none());
         let fused = fuse_observations(&ocr, Some(&ml_obs(Some("Kraken"), 0.91)));
         assert_eq!(fused.entity.unwrap().canonical_name, "Kraken");
@@ -1025,15 +1254,35 @@ mod tests {
 
     #[test]
     fn fusion_disagreement_is_uncertain_never_coin_flip() {
-        let ocr = correlate_text(kb(), "Suna fruit", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let ocr = correlate_text(
+            kb(),
+            "Suna fruit",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         let fused = fuse_observations(&ocr, Some(&ml_obs(Some("Mera"), 0.91)));
         assert!(fused.entity.is_none(), "disagreement must not pick a side");
-        assert!(fused.unknown_reason.as_deref().unwrap_or("").contains("UNCERTAIN"));
+        assert!(fused
+            .unknown_reason
+            .as_deref()
+            .unwrap_or("")
+            .contains("UNCERTAIN"));
     }
 
     #[test]
     fn fusion_both_unknown_stays_unknown() {
-        let ocr = correlate_text(kb(), "xqz wobble", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let ocr = correlate_text(
+            kb(),
+            "xqz wobble",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         let fused = fuse_observations(&ocr, Some(&ml_obs(None, 0.0)));
         assert!(fused.entity.is_none());
     }
@@ -1080,30 +1329,58 @@ mod tests {
         assert_eq!(candidates[0].entity_id, "fish:crimsonsnapper");
         assert!(!candidates.iter().any(|c| c.entity_id == "fish:crimson"));
         assert!(!candidates.iter().any(|c| c.entity_id == "fish:snapper"));
-        assert!(candidates[0].evidence.iter().any(|e| e.kind == EVIDENCE_EXACT_PHRASE));
+        assert!(candidates[0]
+            .evidence
+            .iter()
+            .any(|e| e.kind == EVIDENCE_EXACT_PHRASE));
     }
 
     #[test]
     fn the_bundled_kb_fails_closed_on_a_compound_species_name() {
         // Without the species (the pre-patch KB), the honest answer is
         // AMBIGUOUS between the two stems, never a silent pick of either one.
-        let o = correlate_text(kb(), "Crimson Snapper", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let o = correlate_text(
+            kb(),
+            "Crimson Snapper",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         assert!(o.entity.is_none(), "must not collapse onto a stem");
         let reason = o.unknown_reason.unwrap_or_default();
-        assert!(reason.contains("fish:crimson") && reason.contains("fish:snapper"), "{reason}");
+        assert!(
+            reason.contains("fish:crimson") && reason.contains("fish:snapper"),
+            "{reason}"
+        );
     }
 
     #[test]
     fn genuine_ambiguity_is_unknown_naming_the_competitors() {
         let kb = kb_with_species();
-        let o = correlate_text(&kb, "Swordfish Suna", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let o = correlate_text(
+            &kb,
+            "Swordfish Suna",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         assert!(o.entity.is_none());
         let reason = o.unknown_reason.unwrap_or_default();
-        assert!(reason.contains("fish:swordfish") && reason.contains("fruit:suna"), "{reason}");
+        assert!(
+            reason.contains("fish:swordfish") && reason.contains("fruit:suna"),
+            "{reason}"
+        );
         // Both competitors are inspectable as candidates, none confirmed.
         assert!(o.candidates.iter().any(|c| c.entity_id == "fish:swordfish"));
         assert!(o.candidates.iter().any(|c| c.entity_id == "fruit:suna"));
-        assert!(o.candidates.iter().all(|c| c.evidence.iter().any(|e| e.kind == EVIDENCE_AMBIGUOUS_PHRASE)));
+        assert!(o.candidates.iter().all(|c| c
+            .evidence
+            .iter()
+            .any(|e| e.kind == EVIDENCE_AMBIGUOUS_PHRASE)));
     }
 
     #[test]
@@ -1120,29 +1397,66 @@ mod tests {
             description: None,
             ocr_aliases: vec!["Shared Trophy".to_string()],
             visual_refs: vec![],
-            provenance: EntityProvenance { source: "test".into(), url: None, updated: None },
+            provenance: EntityProvenance {
+                source: "test".into(),
+                url: None,
+                updated: None,
+            },
         };
-        kb.merge_import(&[tie("item:tie-a", "Tie A"), tie("item:tie-b", "Tie B")], false);
-        let o = correlate_text(&kb, "Shared Trophy", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        kb.merge_import(
+            &[tie("item:tie-a", "Tie A"), tie("item:tie-b", "Tie B")],
+            false,
+        );
+        let o = correlate_text(
+            &kb,
+            "Shared Trophy",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         assert!(o.entity.is_none());
         let reason = o.unknown_reason.unwrap_or_default();
-        assert!(reason.contains("item:tie-a") && reason.contains("item:tie-b"), "{reason}");
+        assert!(
+            reason.contains("item:tie-a") && reason.contains("item:tie-b"),
+            "{reason}"
+        );
     }
 
     #[test]
     fn ui_templates_are_stripped_before_lookup_and_recorded() {
         let kb = kb_with_species();
-        let o = correlate_text(&kb, "New Item <Shark>", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let o = correlate_text(
+            &kb,
+            "New Item <Shark>",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         let m = o.entity.expect("shark must resolve");
         assert_eq!(m.entity_id, "fish:shark");
         assert!(!o.candidates.iter().any(|c| c.entity_id == "ui:new-item"));
-        assert!(m.evidence.iter().any(|e| e.kind == EVIDENCE_UI_TEMPLATE && e.detail.contains("ui:new-item")));
+        assert!(m
+            .evidence
+            .iter()
+            .any(|e| e.kind == EVIDENCE_UI_TEMPLATE && e.detail.contains("ui:new-item")));
     }
 
     #[test]
     fn gibberish_with_a_banner_stays_unknown_with_a_reason() {
         let kb = kb_with_species();
-        let o = correlate_text(&kb, "New Item <zzq wobble>", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let o = correlate_text(
+            &kb,
+            "New Item <zzq wobble>",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         assert!(o.entity.is_none());
         assert!(o.unknown_reason.is_some());
     }
@@ -1151,8 +1465,14 @@ mod tests {
     fn every_returned_id_exists_in_the_kb() {
         let kb = kb_with_species();
         for text in [
-            "Crimson Snapper", "Swordfish Suna", "New Item <Shark>", "Mera Mera",
-            "Suna fruit", "got Phoenix fruit", "KRAK3N", "xqz wobble",
+            "Crimson Snapper",
+            "Swordfish Suna",
+            "New Item <Shark>",
+            "Mera Mera",
+            "Suna fruit",
+            "got Phoenix fruit",
+            "KRAK3N",
+            "xqz wobble",
         ] {
             for c in match_entities(&kb, text, ScreenKind::Fishing, 0.85) {
                 assert!(
@@ -1181,8 +1501,19 @@ mod tests {
     fn alias_linked_identities_are_not_phantom_ambiguity() {
         // The KB models Tori and Phoenix as two entities for one in-game
         // identity. That is a linked pair, never a competitor set.
-        let o = correlate_text(kb(), "Tori Phoenix", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
-        assert!(o.entity.is_some(), "linked identities must not be ambiguous");
+        let o = correlate_text(
+            kb(),
+            "Tori Phoenix",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
+        assert!(
+            o.entity.is_some(),
+            "linked identities must not be ambiguous"
+        );
     }
 
     #[test]
@@ -1190,7 +1521,15 @@ mod tests {
         // The phrase stage must not swallow single-word resolutions: Suna
         // still carries exact_ocr (not exact_phrase), so downstream evidence
         // reading is unchanged.
-        let o = correlate_text(kb(), "Suna fruit", "drop", ScreenKind::Fishing, 0.85, 0.80, None);
+        let o = correlate_text(
+            kb(),
+            "Suna fruit",
+            "drop",
+            ScreenKind::Fishing,
+            0.85,
+            0.80,
+            None,
+        );
         let m = o.entity.expect("Suna must confirm");
         assert!(m.evidence.iter().any(|e| e.kind == "exact_ocr"));
         assert!(!m.evidence.iter().any(|e| e.kind == EVIDENCE_EXACT_PHRASE));

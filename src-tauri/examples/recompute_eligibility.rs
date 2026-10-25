@@ -30,9 +30,7 @@
 //!   cargo run --example recompute_eligibility -- --apply  # write through the store
 
 use gpo_autofish_lib::config::Store as ConfigStore;
-use gpo_autofish_lib::core::review::{
-    recompute_row_eligibility, EligibilityInput, ReviewStore,
-};
+use gpo_autofish_lib::core::review::{recompute_row_eligibility, EligibilityInput, ReviewStore};
 use std::collections::HashSet;
 
 fn main() {

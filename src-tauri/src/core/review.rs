@@ -230,7 +230,6 @@ pub struct ReviewInput<'a> {
     pub eligibility: EligibilityInput,
 }
 
-
 /// Aggregate counts over a slice of review records.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoverageReport {
@@ -309,7 +308,9 @@ impl ReviewStore {
 
     /// Current record for `image_id`, if any.
     pub fn get(&self, image_id: &str) -> Option<ReviewRecord> {
-        self.read_state().into_iter().find(|r| r.image_id == image_id)
+        self.read_state()
+            .into_iter()
+            .find(|r| r.image_id == image_id)
     }
 
     /// All current records, sorted by `image_id` for determinism.
@@ -359,7 +360,13 @@ impl ReviewStore {
         event: &str,
         detail: Option<String>,
     ) -> Result<(), String> {
-        append_event(&self.audit_path(), &record.image_id, event, detail, Some(record))?;
+        append_event(
+            &self.audit_path(),
+            &record.image_id,
+            event,
+            detail,
+            Some(record),
+        )?;
         let mut rows = rows;
         match rows.iter_mut().find(|r| r.image_id == record.image_id) {
             Some(slot) => *slot = record.clone(),
@@ -384,7 +391,9 @@ impl ReviewStore {
         // process would collide, and the read-modify-write above is exactly the
         // pattern that turns a collision into a torn file).
         let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
-        let tmp = self.dir.join(format!("reviews.jsonl.{}.{seq}.tmp", std::process::id()));
+        let tmp = self
+            .dir
+            .join(format!("reviews.jsonl.{}.{seq}.tmp", std::process::id()));
         {
             use std::io::Write;
             let mut f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
@@ -397,7 +406,6 @@ impl ReviewStore {
         std::fs::rename(&tmp, self.reviews_path()).map_err(|e| e.to_string())?;
         Ok(())
     }
-
 
     /// All audit events in append order ("tail" of the log).
     pub fn audit(&self) -> Vec<AuditEvent> {
@@ -457,7 +465,9 @@ impl ReviewStore {
             out.push_str(&serde_json::to_string(r).map_err(|e| e.to_string())?);
             out.push('\n');
         }
-        let tmp = self.dir.join(format!("reviews.jsonl.{}.rebuild", std::process::id()));
+        let tmp = self
+            .dir
+            .join(format!("reviews.jsonl.{}.rebuild", std::process::id()));
         std::fs::write(&tmp, out.as_bytes()).map_err(|e| e.to_string())?;
         std::fs::rename(&tmp, self.reviews_path()).map_err(|e| e.to_string())?;
         Ok(rows.len())
@@ -597,14 +607,16 @@ fn status_for(human_entity_id: Option<&str>, model_prediction: Option<&str>) -> 
 ///
 /// Eligibility is NEVER computed here from placeholders: the caller supplies
 /// real measurements through [`ReviewInput::eligibility`].
-pub fn apply_human_review(store: &ReviewStore, input: ReviewInput<'_>) -> Result<ReviewRecord, String> {
+pub fn apply_human_review(
+    store: &ReviewStore,
+    input: ReviewInput<'_>,
+) -> Result<ReviewRecord, String> {
     let (eligible, excluded) = evaluate_input(&input.eligibility);
     let image_id = input.image_id;
     let rec = match store.get(image_id) {
         None => {
             let mut rec = blank_record(image_id, input.session_id, input.dataset_version);
-            rec.review_status =
-                status_for(input.human_entity_id, input.model_prediction);
+            rec.review_status = status_for(input.human_entity_id, input.model_prediction);
             rec.model_prediction = input.model_prediction.map(str::to_string);
             rec.model_confidence = input.model_confidence;
             rec.human_entity_id = input.human_entity_id.map(str::to_string);
@@ -897,9 +909,7 @@ pub fn evaluate_eligibility(
     if !is_png_decodable {
         return (false, Some("bad image".to_string()));
     }
-    let entity = human_entity_id
-        .map(str::trim)
-        .filter(|s| !s.is_empty());
+    let entity = human_entity_id.map(str::trim).filter(|s| !s.is_empty());
     if entity.is_none() {
         return (false, Some("unknown (no entity)".to_string()));
     }
@@ -1029,7 +1039,12 @@ mod tests {
         (ReviewStore::new(dir.clone()), dir)
     }
 
-    fn sample_record(image: &str, session: &str, status: ReviewStatus, eligible: bool) -> ReviewRecord {
+    fn sample_record(
+        image: &str,
+        session: &str,
+        status: ReviewStatus,
+        eligible: bool,
+    ) -> ReviewRecord {
         ReviewRecord {
             review_id: format!("rev-{image}"),
             image_id: image.to_string(),
@@ -1107,7 +1122,10 @@ mod tests {
         assert!(change.was_eligible && !change.now_eligible);
         let after = store.get("img1").unwrap();
         assert!(!after.training_eligible);
-        assert_eq!(after.excluded_reason.as_deref(), Some("invalid canonical mapping"));
+        assert_eq!(
+            after.excluded_reason.as_deref(),
+            Some("invalid canonical mapping")
+        );
     }
 
     #[test]
@@ -1150,7 +1168,6 @@ mod tests {
         let (store, _dir) = test_store("recompute-missing");
         assert!(recompute_row_eligibility(&store, "ghost", eligible_input(true)).is_err());
     }
-
 
     /// Test convenience wrapper: applies a review with the library-default
     /// eligibility (canonical validity inferred from the supplied name).
@@ -1199,7 +1216,16 @@ mod tests {
     #[test]
     fn create_get_roundtrip() {
         let (store, _dir) = test_store("roundtrip");
-        let rec = apply_test(&store, "img-001", "sess-a", Some("fruit:suna"), None, Some("Suna"), Some("fruit:suna"), Some(0.9));
+        let rec = apply_test(
+            &store,
+            "img-001",
+            "sess-a",
+            Some("fruit:suna"),
+            None,
+            Some("Suna"),
+            Some("fruit:suna"),
+            Some(0.9),
+        );
         assert_eq!(rec.review_status, ReviewStatus::ReviewedCorrect);
         assert!(rec.training_eligible);
         assert_eq!(rec.excluded_reason, None);
@@ -1213,15 +1239,42 @@ mod tests {
     fn corrected_preserves_prediction_and_conflicts_on_disagreement() {
         let (store, _dir) = test_store("conflict");
         // First review: human corrects model suna -> mera.
-        let first = apply_test(&store, "img-010", "sess-a", Some("fruit:mera"), Some("looks like mera"), Some("Mera"), Some("fruit:suna"), Some(0.4));
+        let first = apply_test(
+            &store,
+            "img-010",
+            "sess-a",
+            Some("fruit:mera"),
+            Some("looks like mera"),
+            Some("Mera"),
+            Some("fruit:suna"),
+            Some(0.4),
+        );
         assert_eq!(first.review_status, ReviewStatus::ReviewedCorrected);
         assert_eq!(first.model_prediction.as_deref(), Some("fruit:suna"));
         // Reaffirming the same entity is not a conflict.
-        let same = apply_test(&store, "img-010", "sess-a", Some("fruit:mera"), None, Some("Mera"), Some("fruit:suna"), Some(0.99));
+        let same = apply_test(
+            &store,
+            "img-010",
+            "sess-a",
+            Some("fruit:mera"),
+            None,
+            Some("Mera"),
+            Some("fruit:suna"),
+            Some(0.99),
+        );
         assert_eq!(same.review_status, ReviewStatus::ReviewedCorrected);
         assert_eq!(same.human_entity_id.as_deref(), Some("fruit:mera"));
         // A competing entity flips to Conflict and preserves the original.
-        let conflict = apply_test(&store, "img-010", "sess-a", Some("fruit:suna"), Some("second opinion"), Some("Suna"), None, None);
+        let conflict = apply_test(
+            &store,
+            "img-010",
+            "sess-a",
+            Some("fruit:suna"),
+            Some("second opinion"),
+            Some("Suna"),
+            None,
+            None,
+        );
         assert_eq!(conflict.review_status, ReviewStatus::Conflict);
         assert_eq!(conflict.human_entity_id.as_deref(), Some("fruit:mera"));
         assert_eq!(conflict.model_prediction.as_deref(), Some("fruit:suna"));
@@ -1234,7 +1287,16 @@ mod tests {
     #[test]
     fn unknown_and_skip_flows() {
         let (store, _dir) = test_store("unknownskip");
-        let unk = apply_test(&store, "img-020", "sess-a", None, None, None, Some("fruit:suna"), Some(0.2));
+        let unk = apply_test(
+            &store,
+            "img-020",
+            "sess-a",
+            None,
+            None,
+            None,
+            Some("fruit:suna"),
+            Some(0.2),
+        );
         assert_eq!(unk.review_status, ReviewStatus::ReviewedUnknown);
         assert!(!unk.training_eligible);
         assert_eq!(unk.excluded_reason.as_deref(), Some("unknown (no entity)"));
@@ -1256,14 +1318,48 @@ mod tests {
     #[test]
     fn resolve_conflict_sets_corrected_with_resolved_audit() {
         let (store, _dir) = test_store("resolve");
-        apply_test(&store, "img-030", "sess-a", Some("fruit:mera"), None, Some("Mera"), Some("fruit:suna"), Some(0.4));
-        let conflict = apply_test(&store, "img-030", "sess-a", Some("fruit:suna"), None, Some("Suna"), None, None);
+        apply_test(
+            &store,
+            "img-030",
+            "sess-a",
+            Some("fruit:mera"),
+            None,
+            Some("Mera"),
+            Some("fruit:suna"),
+            Some(0.4),
+        );
+        let conflict = apply_test(
+            &store,
+            "img-030",
+            "sess-a",
+            Some("fruit:suna"),
+            None,
+            Some("Suna"),
+            None,
+            None,
+        );
         assert_eq!(conflict.review_status, ReviewStatus::Conflict);
-        let resolved = resolve_conflict(&store, "img-030", "fruit:suna", Some("Suna"), "curator pick", &elig(true)).unwrap();
+        let resolved = resolve_conflict(
+            &store,
+            "img-030",
+            "fruit:suna",
+            Some("Suna"),
+            "curator pick",
+            &elig(true),
+        )
+        .unwrap();
         assert_eq!(resolved.review_status, ReviewStatus::ReviewedCorrected);
         assert_eq!(resolved.human_entity_id.as_deref(), Some("fruit:suna"));
         assert_eq!(resolved.correction_reason.as_deref(), Some("curator pick"));
-        assert!(resolve_conflict(&store, "img-999", "fruit:suna", Some("Suna"), "x", &elig(true)).is_err());
+        assert!(resolve_conflict(
+            &store,
+            "img-999",
+            "fruit:suna",
+            Some("Suna"),
+            "x",
+            &elig(true)
+        )
+        .is_err());
         let events: Vec<String> = store.audit().iter().map(|e| e.event.clone()).collect();
         assert_eq!(events, vec!["REVIEW_CREATED", "CONFLICT", "RESOLVED"]);
     }
@@ -1330,8 +1426,10 @@ mod tests {
 
     #[test]
     fn priority_orders_unknown_above_disagreement_above_ordinary() {
-        let (s_unknown, r_unknown) = priority_score(false, false, false, false, false, false, false);
-        let (s_disagree, r_disagree) = priority_score(true, true, false, false, false, false, false);
+        let (s_unknown, r_unknown) =
+            priority_score(false, false, false, false, false, false, false);
+        let (s_disagree, r_disagree) =
+            priority_score(true, true, false, false, false, false, false);
         let (s_ordinary, r_ordinary) =
             priority_score(true, false, false, false, false, false, false);
         assert!(s_unknown > s_disagree, "{s_unknown} > {s_disagree}");
@@ -1344,11 +1442,26 @@ mod tests {
         let (s_all_lower, _) = priority_score(true, true, true, true, true, true, true);
         assert!(s_unknown > s_all_lower);
         // Reason picks the highest-priority applicable flag.
-        assert_eq!(priority_score(true, false, true, false, false, false, false).1, "low model confidence");
-        assert_eq!(priority_score(true, false, false, true, false, false, false).1, "new class");
-        assert_eq!(priority_score(true, false, false, false, true, false, false).1, "underrepresented class");
-        assert_eq!(priority_score(true, false, false, false, false, true, false).1, "unseen session");
-        assert_eq!(priority_score(true, false, false, false, false, false, true).1, "hard example");
+        assert_eq!(
+            priority_score(true, false, true, false, false, false, false).1,
+            "low model confidence"
+        );
+        assert_eq!(
+            priority_score(true, false, false, true, false, false, false).1,
+            "new class"
+        );
+        assert_eq!(
+            priority_score(true, false, false, false, true, false, false).1,
+            "underrepresented class"
+        );
+        assert_eq!(
+            priority_score(true, false, false, false, false, true, false).1,
+            "unseen session"
+        );
+        assert_eq!(
+            priority_score(true, false, false, false, false, false, true).1,
+            "hard example"
+        );
         // Deterministic.
         assert_eq!(
             priority_score(true, true, false, true, false, false, true),
@@ -1360,8 +1473,26 @@ mod tests {
     fn audit_log_appends_events_in_order() {
         let (store, _dir) = test_store("audit");
         assert!(store.audit().is_empty());
-        apply_test(&store, "img-040", "sess-a", Some("fruit:suna"), None, Some("Suna"), Some("fruit:suna"), Some(0.9));
-        apply_test(&store, "img-041", "sess-a", Some("fruit:mera"), None, Some("Mera"), None, None);
+        apply_test(
+            &store,
+            "img-040",
+            "sess-a",
+            Some("fruit:suna"),
+            None,
+            Some("Suna"),
+            Some("fruit:suna"),
+            Some(0.9),
+        );
+        apply_test(
+            &store,
+            "img-041",
+            "sess-a",
+            Some("fruit:mera"),
+            None,
+            Some("Mera"),
+            None,
+            None,
+        );
         let events = store.audit();
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].event, "REVIEW_CREATED");
@@ -1370,7 +1501,11 @@ mod tests {
         assert!(events[0].at_ms > 0);
         // Reloading from disk preserves order.
         let reopened = ReviewStore::new(store.dir().to_path_buf());
-        let tail: Vec<String> = reopened.audit_tail(1).iter().map(|e| e.event.clone()).collect();
+        let tail: Vec<String> = reopened
+            .audit_tail(1)
+            .iter()
+            .map(|e| e.event.clone())
+            .collect();
         assert_eq!(tail, vec!["REVIEW_CREATED"]);
     }
 
@@ -1412,8 +1547,22 @@ mod tests {
         let (b, _d2) = test_store("fp-b");
         assert_eq!(a.fingerprint(), b.fingerprint(), "empty stores match");
         for store in [&a, &b] {
-            store.upsert(&sample_record("x", "s1", ReviewStatus::ReviewedCorrect, true)).unwrap();
-            store.upsert(&sample_record("y", "s1", ReviewStatus::ReviewedUnknown, false)).unwrap();
+            store
+                .upsert(&sample_record(
+                    "x",
+                    "s1",
+                    ReviewStatus::ReviewedCorrect,
+                    true,
+                ))
+                .unwrap();
+            store
+                .upsert(&sample_record(
+                    "y",
+                    "s1",
+                    ReviewStatus::ReviewedUnknown,
+                    false,
+                ))
+                .unwrap();
         }
         assert_eq!(a.fingerprint(), b.fingerprint());
         let mut changed = sample_record("y", "s1", ReviewStatus::ReviewedCorrected, true);
@@ -1482,7 +1631,11 @@ mod tests {
         assert!(!undone.training_eligible);
         // Exactly one appended event, and it is the RESTORED one.
         let after = store.audit();
-        assert_eq!(after.len(), before + 1, "undo must append exactly one event");
+        assert_eq!(
+            after.len(),
+            before + 1,
+            "undo must append exactly one event"
+        );
         assert_eq!(after.last().unwrap().event, AUDIT_RESTORED);
         // Session context survives so the row still maps to its dataset row.
         assert_eq!(undone.session_id, "sess-a");

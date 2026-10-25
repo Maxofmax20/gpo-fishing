@@ -140,7 +140,11 @@ impl MlCollector {
             session_images: Mutex::new(Vec::new()),
             last_write_ms: AtomicU64::new(0),
         });
-        let c = Arc::new(Self { dataset, sessions_dir, inner });
+        let c = Arc::new(Self {
+            dataset,
+            sessions_dir,
+            inner,
+        });
         // Crash recovery BEFORE any new session: quarantine leftovers.
         let recovered = c.recover_incomplete();
         if recovered > 0 {
@@ -226,7 +230,11 @@ impl MlCollector {
     }
 
     pub fn active_session_id(&self) -> Option<String> {
-        self.inner.session.lock().as_ref().map(|m| m.session_id.clone())
+        self.inner
+            .session
+            .lock()
+            .as_ref()
+            .map(|m| m.session_id.clone())
     }
 
     pub fn is_collecting(&self) -> bool {
@@ -308,7 +316,9 @@ impl MlCollector {
                 // Dedup may have folded this sample onto identical pixels
                 // from an earlier moment: carry over the reading (OCR text
                 // + entity) into empty fields rather than losing it.
-                let _ = self.dataset.fill_metadata(&image_id, &ocr, entity.as_deref());
+                let _ = self
+                    .dataset
+                    .fill_metadata(&image_id, &ocr, entity.as_deref());
                 // Machine-derived labels at capture time (game state from the
                 // state machine, ui_label from the bot, entity from OCR+KB).
                 // These are recorded with `annotator: "collector"` and are
@@ -407,7 +417,12 @@ impl MlCollector {
         let quality_ok = warnings.is_empty();
 
         // Dataset-wide pending count (cheap: manifest rows only).
-        let pending = self.dataset.annotations().iter().filter(|a| a.entity_id.is_none()).count() as u64;
+        let pending = self
+            .dataset
+            .annotations()
+            .iter()
+            .filter(|a| a.entity_id.is_none())
+            .count() as u64;
         let total = self.dataset.annotations().len() as u64;
 
         tracing::info!(
@@ -535,7 +550,10 @@ pub fn new_session_id() -> String {
     hsh ^= hsh >> 29;
     hsh = hsh.wrapping_mul(0xBF58476D1CE4E5B9);
     hsh ^= hsh >> 32;
-    format!("session_{y:04}-{mo:02}-{d:02}_{h:02}{mi:02}{s:02}_{:08x}", (hsh & 0xFFFF_FFFF) as u32)
+    format!(
+        "session_{y:04}-{mo:02}-{d:02}_{h:02}{mi:02}{s:02}_{:08x}",
+        (hsh & 0xFFFF_FFFF) as u32
+    )
 }
 
 fn civil_datetime(mut secs: u64) -> (u64, u64, u64, u64, u64, u64) {
@@ -556,7 +574,20 @@ fn civil_datetime(mut secs: u64) -> (u64, u64, u64, u64, u64, u64) {
         y += 1;
     }
     let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
-    let md = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let md = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut mo = 1u64;
     for m in md {
         if days < m {
@@ -591,7 +622,9 @@ mod tests {
             px[2] = ((i * 7) % 256) as u8;
             px[3] = 255;
         }
-        crate::core::types::Frame::new(16, 16, rgba).to_png_bytes().unwrap()
+        crate::core::types::Frame::new(16, 16, rgba)
+            .to_png_bytes()
+            .unwrap()
     }
 
     #[test]
@@ -612,14 +645,16 @@ mod tests {
         assert_eq!(a, b, "double start keeps the session");
         assert!(c.is_collecting());
         let meta_path = c.sessions_dir.join(format!("{a}.json"));
-        let raw: SessionMeta = serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
+        let raw: SessionMeta =
+            serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
         assert!(!raw.complete);
         let summary = c.end_session().expect("summary");
         assert_eq!(summary.session_id, a);
         assert!(!c.is_collecting());
         // Second stop: no active session → None (no fake summary).
         assert!(c.end_session().is_none());
-        let raw2: SessionMeta = serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
+        let raw2: SessionMeta =
+            serde_json::from_str(&std::fs::read_to_string(&meta_path).unwrap()).unwrap();
         assert!(raw2.complete);
     }
 
@@ -670,7 +705,8 @@ mod tests {
         assert!(c.is_collecting());
         assert_eq!(c.active_session_id().as_deref(), Some(live.as_str()));
         let back: SessionMeta =
-            serde_json::from_str(&std::fs::read_to_string(c.session_path(stale_id)).unwrap()).unwrap();
+            serde_json::from_str(&std::fs::read_to_string(c.session_path(stale_id)).unwrap())
+                .unwrap();
         assert!(back.recovered_incomplete);
         assert!(!back.complete);
         assert_eq!(back.samples, 7);
@@ -691,7 +727,10 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let c = MlCollector::new(dir.clone());
         // Sanity: collector root exists (constructor ran fully).
-        assert!(c.sessions_dir.exists(), "sessions dir must exist after new()");
+        assert!(
+            c.sessions_dir.exists(),
+            "sessions dir must exist after new()"
+        );
         let id = c.begin_session("9.9.9");
         for i in 0..3 {
             // Structurally distinct frames per sample (varying gradient +
@@ -717,7 +756,11 @@ mod tests {
                 ocr_text: format!("sample {i}"),
                 region: "drop".into(),
                 entity_id: None,
-                hard_reason: if i == 2 { Some("perception unknown".into()) } else { None },
+                hard_reason: if i == 2 {
+                    Some("perception unknown".into())
+                } else {
+                    None
+                },
                 source: "test".into(),
             }));
         }
@@ -726,7 +769,11 @@ mod tests {
         // and the summary reports it instead of hanging.
         let summary = c.end_session().expect("summary");
         assert_eq!(summary.session_id, id);
-        assert_eq!(summary.samples, 3, "all queued samples flushed, got {:?}", summary);
+        assert_eq!(
+            summary.samples, 3,
+            "all queued samples flushed, got {:?}",
+            summary
+        );
         assert_eq!(summary.hard_examples, 1);
         assert_eq!(summary.dropped, 0);
         assert!(summary.quality_ok);
@@ -762,7 +809,10 @@ mod tests {
         }));
         let summary = c.end_session().expect("summary");
         assert_eq!(summary.samples, 1);
-        assert!(c.last_write_ms() > 0, "first-frame health signal must be set");
+        assert!(
+            c.last_write_ms() > 0,
+            "first-frame health signal must be set"
+        );
         // Manifest complete on disk.
         let meta: SessionMeta = serde_json::from_str(
             &std::fs::read_to_string(c.session_path(&id)).expect("session file"),
@@ -774,9 +824,18 @@ mod tests {
         let ds = crate::core::ml_dataset::MlDatasetStore::new(dir.clone());
         let rows = ds.annotations();
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].session_id, id, "annotation must carry the run session id");
-        let p = ds.root().join("images").join(format!("{}.png", rows[0].image_id));
-        assert!(crate::core::ml_dataset::png_file_valid(&p), "sample PNG must decode");
+        assert_eq!(
+            rows[0].session_id, id,
+            "annotation must carry the run session id"
+        );
+        let p = ds
+            .root()
+            .join("images")
+            .join(format!("{}.png", rows[0].image_id));
+        assert!(
+            crate::core::ml_dataset::png_file_valid(&p),
+            "sample PNG must decode"
+        );
         let rep = ds.validate(crate::core::knowledge::KnowledgeBase::bundled());
         assert!(rep.ok, "single clean sample must validate: {rep:?}");
         let _ = std::fs::remove_dir_all(&dir);

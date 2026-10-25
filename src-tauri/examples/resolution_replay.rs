@@ -13,16 +13,32 @@ use gpo_autofish_lib::core::perception::{correlate_text, ScreenKind};
 use std::collections::{BTreeMap, HashSet};
 
 const V2: [&str; 15] = [
-    "fish:bluelipgrouper", "fish:candycornsquid", "fish:crimsonpolkapuffer",
-    "fish:crimsonsnapper", "fish:darkskeletalshark", "fish:exotictigerfin",
-    "fish:fangfish", "fish:goldenpolkapuffer", "fish:goldenribbonangelfish",
-    "fish:goldentigerfin", "fish:jackobite", "fish:skeletalshark",
-    "fish:swordfish", "fish:tigerfin", "fish:zebraribbonangelfish",
+    "fish:bluelipgrouper",
+    "fish:candycornsquid",
+    "fish:crimsonpolkapuffer",
+    "fish:crimsonsnapper",
+    "fish:darkskeletalshark",
+    "fish:exotictigerfin",
+    "fish:fangfish",
+    "fish:goldenpolkapuffer",
+    "fish:goldenribbonangelfish",
+    "fish:goldentigerfin",
+    "fish:jackobite",
+    "fish:skeletalshark",
+    "fish:swordfish",
+    "fish:tigerfin",
+    "fish:zebraribbonangelfish",
 ];
 
 fn main() {
     let dir = data_dir();
-    let labels_raw = std::fs::read_to_string(dir.join("datasets").join("gpo-vision").join("v1").join("labels.jsonl")).unwrap();
+    let labels_raw = std::fs::read_to_string(
+        dir.join("datasets")
+            .join("gpo-vision")
+            .join("v1")
+            .join("labels.jsonl"),
+    )
+    .unwrap();
     let reviews_raw = std::fs::read_to_string(dir.join("reviews.jsonl")).unwrap();
     let ocr: std::collections::HashMap<String, String> = labels_raw
         .lines()
@@ -57,13 +73,20 @@ fn main() {
     let mut ceiling_denom = 0usize;
 
     for line in reviews_raw.lines().filter(|l| !l.trim().is_empty()) {
-        let Ok(r) = serde_json::from_str::<serde_json::Value>(line) else { continue };
-        let Some(human) = r["human_entity_id"].as_str() else { continue };
+        let Ok(r) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        let Some(human) = r["human_entity_id"].as_str() else {
+            continue;
+        };
         if human.is_empty() {
             continue;
         }
         reviewed += 1;
-        let text = ocr.get(r["image_id"].as_str().unwrap_or("")).cloned().unwrap_or_default();
+        let text = ocr
+            .get(r["image_id"].as_str().unwrap_or(""))
+            .cloned()
+            .unwrap_or_default();
         let obs = correlate_text(&kb, &text, "drop", ScreenKind::Fishing, 0.85, 0.80, None);
         let runtime_id = obs.entity.as_ref().map(|m| m.entity_id.as_str());
         let ambiguous = obs
@@ -94,7 +117,10 @@ fn main() {
 
     println!("  reviewed rows: {reviewed}");
     for (k, v) in &buckets {
-        println!("    {k:<18} {v:>5}  {:5.1}%", *v as f64 / reviewed as f64 * 100.0);
+        println!(
+            "    {k:<18} {v:>5}  {:5.1}%",
+            *v as f64 / reviewed as f64 * 100.0
+        );
     }
     println!(
         "  ceiling: {ceiling_numer}/{ceiling_denom} = {:.1}% (floor 80%)",

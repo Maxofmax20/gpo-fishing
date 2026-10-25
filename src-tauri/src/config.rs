@@ -26,10 +26,30 @@ pub struct Regions {
 impl Default for Regions {
     fn default() -> Self {
         Self {
-            bar: RelRect { x: 0.546, y: 0.322, w: 0.121, h: 0.436 },
-            drop: RelRect { x: 0.369, y: 0.052, w: 0.259, h: 0.113 },
-            server_time: RelRect { x: 0.82, y: 0.90, w: 0.17, h: 0.08 },
-            bait_menu: RelRect { x: 0.64, y: 0.64, w: 0.26, h: 0.32 },
+            bar: RelRect {
+                x: 0.546,
+                y: 0.322,
+                w: 0.121,
+                h: 0.436,
+            },
+            drop: RelRect {
+                x: 0.369,
+                y: 0.052,
+                w: 0.259,
+                h: 0.113,
+            },
+            server_time: RelRect {
+                x: 0.82,
+                y: 0.90,
+                w: 0.17,
+                h: 0.08,
+            },
+            bait_menu: RelRect {
+                x: 0.64,
+                y: 0.64,
+                w: 0.26,
+                h: 0.32,
+            },
         }
     }
 }
@@ -227,7 +247,12 @@ pub struct Zoom {
 
 impl Default for Zoom {
     fn default() -> Self {
-        Self { out_steps: 10, in_steps: 8, step_delay_ms: 100, sequence_delay_ms: 500 }
+        Self {
+            out_steps: 10,
+            in_steps: 8,
+            step_delay_ms: 100,
+            sequence_delay_ms: 500,
+        }
     }
 }
 
@@ -392,7 +417,12 @@ pub struct Watchdog {
 
 impl Default for Watchdog {
     fn default() -> Self {
-        Self { enabled: true, heartbeat_timeout_s: 30.0, max_restarts: 5, restart_backoff_s: 2.0 }
+        Self {
+            enabled: true,
+            heartbeat_timeout_s: 30.0,
+            max_restarts: 5,
+            restart_backoff_s: 2.0,
+        }
     }
 }
 
@@ -496,8 +526,18 @@ pub struct GameConfig {
 impl Default for GameConfig {
     fn default() -> Self {
         Self {
-            spawn_banner: RelRect { x: 0.15, y: 0.02, w: 0.70, h: 0.16 },
-            disconnect_region: RelRect { x: 0.20, y: 0.20, w: 0.60, h: 0.60 },
+            spawn_banner: RelRect {
+                x: 0.15,
+                y: 0.02,
+                w: 0.70,
+                h: 0.16,
+            },
+            disconnect_region: RelRect {
+                x: 0.20,
+                y: 0.20,
+                w: 0.60,
+                h: 0.60,
+            },
             reconnect_point: RelPoint { x: 0.58, y: 0.59 },
             gpo_place_id: DEFAULT_GPO_PLACE_ID,
         }
@@ -697,7 +737,10 @@ pub struct Store {
 
 impl Store {
     pub fn new(dir: PathBuf) -> Self {
-        Self { dir, load_error: parking_lot::Mutex::new(None) }
+        Self {
+            dir,
+            load_error: parking_lot::Mutex::new(None),
+        }
     }
 
     /// Error recorded during the last `load()`, if the settings file was
@@ -720,13 +763,19 @@ impl Store {
 
     pub fn purge_trace_frames(&self) -> u64 {
         let traces = self.logs_dir().join("traces");
-        let Ok(entries) = fs::read_dir(&traces) else { return 0 };
+        let Ok(entries) = fs::read_dir(&traces) else {
+            return 0;
+        };
         let mut freed = 0u64;
         for e in entries.flatten() {
             let path = e.path();
             if path.is_dir() {
                 if let Ok(files) = fs::read_dir(&path) {
-                    freed += files.flatten().filter_map(|f| f.metadata().ok()).map(|m| m.len()).sum::<u64>();
+                    freed += files
+                        .flatten()
+                        .filter_map(|f| f.metadata().ok())
+                        .map(|m| m.len())
+                        .sum::<u64>();
                 }
                 let _ = fs::remove_dir_all(&path);
             }
@@ -780,7 +829,11 @@ impl Store {
         } else if let (Ok(old), Ok(cur)) = (fs::read(&legacy), fs::read(&canonical)) {
             // Fallback: append legacy rows (minus header) then archive legacy.
             use std::io::Write;
-            if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&canonical) {
+            if let Ok(mut f) = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&canonical)
+            {
                 let _ = cur;
                 let text = String::from_utf8_lossy(&old);
                 for (i, line) in text.lines().enumerate() {
@@ -804,7 +857,11 @@ impl Store {
         let _ = fs::create_dir_all(&self.dir);
         let csv_path = self.catches_path();
         let write_header = !csv_path.exists();
-        if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&csv_path) {
+        if let Ok(mut f) = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&csv_path)
+        {
             if write_header {
                 let _ = f.write_all(b"Timestamp,Type,Name,RawText\n");
             }
@@ -854,7 +911,8 @@ impl Store {
             // Recoverable backup BEFORE destructive mutation. If the backup
             // itself fails, refuse to delete: the recovery guarantee comes
             // first.
-            backup_file(&csv_path).ok_or_else(|| "Cannot clear journal: backup of catches.csv failed".to_string())?;
+            backup_file(&csv_path)
+                .ok_or_else(|| "Cannot clear journal: backup of catches.csv failed".to_string())?;
             fs::remove_file(&csv_path).map_err(|e| e.to_string())?;
         }
         // Also quarantine a stray legacy file instead of deleting it unseen.
@@ -878,7 +936,9 @@ impl Store {
         if !p.exists() {
             return Ok(None);
         }
-        backup_file(&p).map(Some).ok_or_else(|| "Cannot reset: backup of settings.json failed".to_string())
+        backup_file(&p)
+            .map(Some)
+            .ok_or_else(|| "Cannot reset: backup of settings.json failed".to_string())
     }
 
     pub fn resume_state_path(&self) -> PathBuf {
@@ -1028,55 +1088,66 @@ impl Store {
     }
 
     /// Clamp every safety-relevant setting into its valid range.
-///
-/// Called on load AND before every save. The dedicated training command
-/// validated these, but the generic settings path (presets, hand-edited
-/// settings.json, any future writer) did not - so a crafted preset could set a
-/// readiness bar to 0 and make the whole system report ready. Clamping at the
-/// persistence boundary means no caller can bypass it.
-pub fn clamp_safety_settings(s: &mut Settings) {
-    fn clamp_f32(v: f32, lo: f32, hi: f32, default: f32) -> f32 {
-        let out = if v.is_finite() && v >= lo && v <= hi { v } else { default };
-        if out != v {
-            tracing::warn!("safety threshold {v} out of range {lo}..={hi}; using {out}");
+    ///
+    /// Called on load AND before every save. The dedicated training command
+    /// validated these, but the generic settings path (presets, hand-edited
+    /// settings.json, any future writer) did not - so a crafted preset could set a
+    /// readiness bar to 0 and make the whole system report ready. Clamping at the
+    /// persistence boundary means no caller can bypass it.
+    pub fn clamp_safety_settings(s: &mut Settings) {
+        fn clamp_f32(v: f32, lo: f32, hi: f32, default: f32) -> f32 {
+            let out = if v.is_finite() && v >= lo && v <= hi {
+                v
+            } else {
+                default
+            };
+            if out != v {
+                tracing::warn!("safety threshold {v} out of range {lo}..={hi}; using {out}");
+            }
+            out
         }
-        out
-    }
-    s.fishing.scan_timeout_s = clamp_f32(s.fishing.scan_timeout_s, 1.0, 600.0, 15.0);
-    s.fishing.track_timeout_s = clamp_f32(s.fishing.track_timeout_s, 1.0, 600.0, 30.0);
-    s.fishing.min_track_s = clamp_f32(s.fishing.min_track_s, 0.0, 60.0, 0.8);
-    s.fishing.wait_after_catch_s = clamp_f32(s.fishing.wait_after_catch_s, 0.0, 60.0, 0.3);
-    s.fishing.scan_hz = s.fishing.scan_hz.clamp(1, 240);
-    s.fishing.track_hz = s.fishing.track_hz.clamp(1, 240);
-    s.fishing.cast_hold_ms = s.fishing.cast_hold_ms.clamp(1, 10_000);
-    s.watchdog.heartbeat_timeout_s = clamp_f32(s.watchdog.heartbeat_timeout_s, 1.0, 600.0, 30.0);
-    s.watchdog.restart_backoff_s = clamp_f32(s.watchdog.restart_backoff_s, 0.0, 300.0, 2.0);
-    s.ocr.spawn_check_interval_s = clamp_f32(s.ocr.spawn_check_interval_s, 0.1, 600.0, 4.0);
-    s.ocr.spawn_cooldown_s = clamp_f32(s.ocr.spawn_cooldown_s, 0.0, 86_400.0, 60.0);
-    let t = &mut s.training;
-    t.readiness_min_macro_f1 = clamp_f32(t.readiness_min_macro_f1, 0.30, 1.0, 0.70);
-    t.readiness_min_worst_f1 = clamp_f32(t.readiness_min_worst_f1, 0.10, 1.0, 0.50);
-    t.readiness_min_shadow_agreement = clamp_f32(t.readiness_min_shadow_agreement, 0.50, 1.0, 0.80);
-    t.readiness_min_review_coverage = clamp_f32(t.readiness_min_review_coverage, 0.10, 1.0, 0.50);
-    t.readiness_min_shadow_events = t.readiness_min_shadow_events.clamp(20, 1_000_000);
-    t.readiness_min_shadow_sessions = t.readiness_min_shadow_sessions.clamp(1, 50);
-    t.max_concurrent_jobs = t.max_concurrent_jobs.clamp(1, 2);
-    t.min_new_samples = t.min_new_samples.max(50);
-    t.trigger_cooldown_hours = t.trigger_cooldown_hours.clamp(1, 24 * 30);
-    // These become a subprocess argv[0] and its cwd. No shell is involved, so
-    // this is not injection - but the metacharacter rejection belonged on
-    // every write path, not only the dedicated training command.
-    for p in [&mut t.python_path, &mut t.trainer_dir] {
-        if p.chars().any(|c| matches!(c, ';' | '&' | '|' | '`' | '$' | '\n' | '\r')) {
-            p.clear();
+        s.fishing.scan_timeout_s = clamp_f32(s.fishing.scan_timeout_s, 1.0, 600.0, 15.0);
+        s.fishing.track_timeout_s = clamp_f32(s.fishing.track_timeout_s, 1.0, 600.0, 30.0);
+        s.fishing.min_track_s = clamp_f32(s.fishing.min_track_s, 0.0, 60.0, 0.8);
+        s.fishing.wait_after_catch_s = clamp_f32(s.fishing.wait_after_catch_s, 0.0, 60.0, 0.3);
+        s.fishing.scan_hz = s.fishing.scan_hz.clamp(1, 240);
+        s.fishing.track_hz = s.fishing.track_hz.clamp(1, 240);
+        s.fishing.cast_hold_ms = s.fishing.cast_hold_ms.clamp(1, 10_000);
+        s.watchdog.heartbeat_timeout_s =
+            clamp_f32(s.watchdog.heartbeat_timeout_s, 1.0, 600.0, 30.0);
+        s.watchdog.restart_backoff_s = clamp_f32(s.watchdog.restart_backoff_s, 0.0, 300.0, 2.0);
+        s.ocr.spawn_check_interval_s = clamp_f32(s.ocr.spawn_check_interval_s, 0.1, 600.0, 4.0);
+        s.ocr.spawn_cooldown_s = clamp_f32(s.ocr.spawn_cooldown_s, 0.0, 86_400.0, 60.0);
+        let t = &mut s.training;
+        t.readiness_min_macro_f1 = clamp_f32(t.readiness_min_macro_f1, 0.30, 1.0, 0.70);
+        t.readiness_min_worst_f1 = clamp_f32(t.readiness_min_worst_f1, 0.10, 1.0, 0.50);
+        t.readiness_min_shadow_agreement =
+            clamp_f32(t.readiness_min_shadow_agreement, 0.50, 1.0, 0.80);
+        t.readiness_min_review_coverage =
+            clamp_f32(t.readiness_min_review_coverage, 0.10, 1.0, 0.50);
+        t.readiness_min_shadow_events = t.readiness_min_shadow_events.clamp(20, 1_000_000);
+        t.readiness_min_shadow_sessions = t.readiness_min_shadow_sessions.clamp(1, 50);
+        t.max_concurrent_jobs = t.max_concurrent_jobs.clamp(1, 2);
+        t.min_new_samples = t.min_new_samples.max(50);
+        t.trigger_cooldown_hours = t.trigger_cooldown_hours.clamp(1, 24 * 30);
+        // These become a subprocess argv[0] and its cwd. No shell is involved, so
+        // this is not injection - but the metacharacter rejection belonged on
+        // every write path, not only the dedicated training command.
+        for p in [&mut t.python_path, &mut t.trainer_dir] {
+            if p.chars()
+                .any(|c| matches!(c, ';' | '&' | '|' | '`' | '$' | '\n' | '\r'))
+            {
+                p.clear();
+            }
+            let mut boundary = p.len().min(512);
+            while !p.is_char_boundary(boundary) {
+                boundary -= 1;
+            }
+            p.truncate(boundary);
         }
-        let mut boundary = p.len().min(512);
-        while !p.is_char_boundary(boundary) { boundary -= 1; }
-        p.truncate(boundary);
     }
-}
 
-pub fn save(&self, s: &Settings) -> Result<(), ConfigError> {
+    pub fn save(&self, s: &Settings) -> Result<(), ConfigError> {
         fs::create_dir_all(&self.dir)?;
         // Clamp here too, not only on load: a caller mutating in-memory
         // settings then saving must not be able to persist a 0.
@@ -1107,7 +1178,9 @@ pub fn save(&self, s: &Settings) -> Result<(), ConfigError> {
     fn preset_path(&self, name: &str) -> Result<PathBuf, ConfigError> {
         let ok = !name.is_empty()
             && name.len() <= 64
-            && name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ');
+            && name
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ');
         if !ok {
             return Err(ConfigError::BadName);
         }
@@ -1154,7 +1227,10 @@ pub fn save(&self, s: &Settings) -> Result<(), ConfigError> {
         // carry a zeroed readiness bar out of here.
         Self::clamp_safety_settings(&mut stored);
         stored.encrypt_secrets_for_storage();
-        write_atomic(&self.preset_path(name)?, &serde_json::to_vec_pretty(&stored)?)
+        write_atomic(
+            &self.preset_path(name)?,
+            &serde_json::to_vec_pretty(&stored)?,
+        )
     }
 
     pub fn load_preset(&self, name: &str) -> Result<Settings, ConfigError> {
@@ -1180,13 +1256,18 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
     let id = NEXT_TMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let tmp = path.with_extension(format!("tmp-{}-{id}", std::process::id()));
     let result = (|| -> Result<(), std::io::Error> {
-        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)?;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)?;
         file.write_all(bytes)?;
         file.sync_all()?;
         drop(file);
         fs::rename(&tmp, path)
     })();
-    if result.is_err() { let _ = fs::remove_file(&tmp); }
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
     result?;
     Ok(())
 }
@@ -1197,7 +1278,10 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), ConfigError> {
 /// corrupt configs so user data is never silently destroyed.
 pub fn backup_file(path: &Path) -> Option<PathBuf> {
     let stamp = current_time_str().replace([':', ' '], "-");
-    let backup = path.with_extension(format!("backup-{stamp}.{}", path.extension().and_then(|e| e.to_str()).unwrap_or("bak")));
+    let backup = path.with_extension(format!(
+        "backup-{stamp}.{}",
+        path.extension().and_then(|e| e.to_str()).unwrap_or("bak")
+    ));
     fs::copy(path, &backup).ok().map(|_| backup)
 }
 
@@ -1243,7 +1327,10 @@ pub fn current_date_id() -> String {
 
 fn current_time_str() -> String {
     let now = std::time::SystemTime::now();
-    let secs = now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
+    let secs = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
     let s = secs % 60;
     let m = (secs / 60) % 60;
     let h = (secs / 3600) % 24;
@@ -1259,7 +1346,20 @@ fn current_time_str() -> String {
         y += 1;
     }
     let leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
-    let month_days = [31, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let month_days = [
+        31,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut mon = 1;
     for &md in &month_days {
         if days < md {
@@ -1316,7 +1416,15 @@ pub fn import_legacy(json: &str, roblox: PxRect) -> Result<Settings, ConfigError
     let l: LegacySettings = serde_json::from_str(json)?;
     let mut s = Settings::default();
     let rel = |p: [i32; 2]| crate::core::types::PxPoint { x: p[0], y: p[1] }.to_rel(&roblox);
-    let rect = |a: &LegacyArea| PxRect { x: a.x, y: a.y, w: a.width, h: a.height }.to_rel(&roblox);
+    let rect = |a: &LegacyArea| {
+        PxRect {
+            x: a.x,
+            y: a.y,
+            w: a.width,
+            h: a.height,
+        }
+        .to_rel(&roblox)
+    };
 
     if let Some(a) = l.layout_settings.get("bar").and_then(|x| x.area.as_ref()) {
         s.regions.bar = rect(a);
@@ -1367,9 +1475,14 @@ pub fn import_legacy(json: &str, roblox: PxRect) -> Result<Settings, ConfigError
         s.webhook.progress_every_n = l.webhook_interval;
     }
     let zoom = &l.zoom_settings;
-    s.features.auto_zoom = zoom.get("auto_zoom_enabled").and_then(|v| v.as_bool()).unwrap_or(false);
-    s.features.auto_mouse_position =
-        zoom.get("auto_mouse_position_enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+    s.features.auto_zoom = zoom
+        .get("auto_zoom_enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    s.features.auto_mouse_position = zoom
+        .get("auto_mouse_position_enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     if let Some(n) = zoom.get("zoom_in_steps").and_then(|v| v.as_u64()) {
         s.zoom.in_steps = n as u32;
     }
@@ -1436,7 +1549,10 @@ mod tests {
         // Reload yields identical values (decrypt-on-load).
         let back = store.load();
         assert_eq!(back.webhook.url, "https://synthetic-webhook-url-12345678");
-        assert_eq!(back.webhook.telegram_bot_token, "synthetic-bot-token-abcdef123456");
+        assert_eq!(
+            back.webhook.telegram_bot_token,
+            "synthetic-bot-token-abcdef123456"
+        );
         assert_eq!(back.webhook.telegram_chat_id, "synthetic-chat-999999");
         assert_eq!(back.gemini.api_key, "synthetic-gemini-key-xyz987");
         assert!(!back.web.token.is_empty());
@@ -1454,7 +1570,11 @@ mod tests {
             "webhook": {"url": "https://legacy-plaintext-hook-12345678", "enabled": true},
             "web": {"allow_lan": false, "token": ""},
         });
-        std::fs::write(dir.join("settings.json"), serde_json::to_vec_pretty(&legacy).unwrap()).unwrap();
+        std::fs::write(
+            dir.join("settings.json"),
+            serde_json::to_vec_pretty(&legacy).unwrap(),
+        )
+        .unwrap();
         let store = Store::new(dir.clone());
         let back = store.load();
         assert_eq!(back.webhook.url, "https://legacy-plaintext-hook-12345678");
@@ -1508,7 +1628,16 @@ mod tests {
           "rod_key":"1","fruit_storage_key":"2","fruit_storage_key_2":"3",
           "kp":0.2,"kd":0.4,"webhook_url":"https://x","webhook_enabled":true
         }"#;
-        let s = import_legacy(legacy, PxRect { x: 0, y: 0, w: 1920, h: 1080 }).unwrap();
+        let s = import_legacy(
+            legacy,
+            PxRect {
+                x: 0,
+                y: 0,
+                w: 1920,
+                h: 1080,
+            },
+        )
+        .unwrap();
         assert!((s.points.fishing.x - 0.5).abs() < 0.001);
         assert!(s.points.purchase[0].is_some());
         assert!(s.points.purchase[1].is_some());
@@ -1534,7 +1663,11 @@ mod tests {
         s.training.readiness_min_shadow_events = 0;
         s.training.readiness_min_shadow_sessions = 0;
         s.training.python_path = "C:\\evil$(calc).exe".to_string();
-        std::fs::write(dir.join("settings.json"), serde_json::to_vec_pretty(&s).unwrap()).unwrap();
+        std::fs::write(
+            dir.join("settings.json"),
+            serde_json::to_vec_pretty(&s).unwrap(),
+        )
+        .unwrap();
 
         let loaded = Store::new(dir.clone()).load();
         assert!(
@@ -1571,7 +1704,10 @@ mod tests {
         s.training.readiness_min_shadow_events = 500;
         let before = s.training.readiness_min_macro_f1;
         super::Store::clamp_safety_settings(&mut s);
-        assert_eq!(s.training.readiness_min_macro_f1, before, "must not override a real choice");
+        assert_eq!(
+            s.training.readiness_min_macro_f1, before,
+            "must not override a real choice"
+        );
         assert_eq!(s.training.readiness_min_shadow_events, 500);
     }
 
@@ -1595,11 +1731,22 @@ mod tests {
         store.save_preset("evil", &evil).unwrap();
 
         // On the way OUT: the saved preset must already be clamped.
-        let on_disk: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(dir.join("presets").join("evil.json")).unwrap())
-                .unwrap();
-        assert!(on_disk["training"]["readiness_min_macro_f1"].as_f64().unwrap() >= 0.30);
-        assert!(on_disk["training"]["readiness_min_shadow_events"].as_u64().unwrap() >= 20);
+        let on_disk: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.join("presets").join("evil.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            on_disk["training"]["readiness_min_macro_f1"]
+                .as_f64()
+                .unwrap()
+                >= 0.30
+        );
+        assert!(
+            on_disk["training"]["readiness_min_shadow_events"]
+                .as_u64()
+                .unwrap()
+                >= 20
+        );
 
         // On the way IN: a hand-edited preset file must not reach memory.
         let p = dir.join("presets").join("handmade.json");

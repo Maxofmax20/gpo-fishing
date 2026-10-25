@@ -46,7 +46,11 @@ pub struct BaitStock {
 impl BaitStock {
     /// Select the best available tier based on user preference and remaining stock.
     /// If legendary_reserve > 0, Legendary bait will not be consumed if remaining stock <= legendary_reserve.
-    pub fn resolve_tier(self, preference: BaitTier, legendary_reserve: u32) -> (BaitTier, Option<u32>) {
+    pub fn resolve_tier(
+        self,
+        preference: BaitTier,
+        legendary_reserve: u32,
+    ) -> (BaitTier, Option<u32>) {
         match preference {
             BaitTier::Highest => {
                 if let Some(count) = self.legendary {
@@ -119,10 +123,10 @@ impl BaitStock {
             }
             BaitTier::Common => {
                 match (has_legendary, has_rare) {
-                    (true, true) => 2,      // Row 2 (bottom of 3: Legendary, Rare, Common)
-                    (true, false) => 1,     // Row 1 (Rare is out! Common moves to Rare's place!)
-                    (false, true) => 1,     // Row 1 (Legendary is out! Rare is at 0, Common is at 1!)
-                    (false, false) => 0,    // Row 0 (Both Legendary & Rare are out! Common is at the top!)
+                    (true, true) => 2,   // Row 2 (bottom of 3: Legendary, Rare, Common)
+                    (true, false) => 1,  // Row 1 (Rare is out! Common moves to Rare's place!)
+                    (false, true) => 1,  // Row 1 (Legendary is out! Rare is at 0, Common is at 1!)
+                    (false, false) => 0, // Row 0 (Both Legendary & Rare are out! Common is at the top!)
                 }
             }
         };
@@ -140,7 +144,6 @@ impl BaitStock {
 pub fn resolve_tier(stock: &BaitStock, preference: BaitTier, legendary_reserve: u32) -> BaitTier {
     stock.resolve_tier(preference, legendary_reserve).0
 }
-
 
 fn clean_ocr_digits(s: &str) -> String {
     s.chars()
@@ -164,7 +167,9 @@ fn extract_quantity(line: &str) -> Option<u32> {
             let after = &lower[idx + 1..];
             let raw_chunk: String = after
                 .chars()
-                .skip_while(|c| c.is_whitespace() || *c == ':' || *c == '.' || *c == '-' || *c == '\'')
+                .skip_while(|c| {
+                    c.is_whitespace() || *c == ':' || *c == '.' || *c == '-' || *c == '\''
+                })
                 .take_while(|c| c.is_alphanumeric())
                 .collect();
             let digits = clean_ocr_digits(&raw_chunk);
@@ -183,7 +188,8 @@ fn extract_quantity(line: &str) -> Option<u32> {
     // Never pass generic English words like "fish" or "bait" to clean_ocr_digits!
     for word in lower.split_whitespace().rev() {
         let has_real_digit = word.chars().any(|c| c.is_ascii_digit());
-        let starts_with_mult = word.starts_with('x') || word.starts_with('*') || word.starts_with(':');
+        let starts_with_mult =
+            word.starts_with('x') || word.starts_with('*') || word.starts_with(':');
 
         if has_real_digit || starts_with_mult {
             let digits = clean_ocr_digits(word);
@@ -211,7 +217,14 @@ fn normalize_bait_lines(text: &str) -> Vec<String> {
 
         let lower = trimmed.to_lowercase();
         // Keywords that begin a new row in GPO
-        let keywords = ["legendary", "lesendary", "legend", "rare", "common", "craft more"];
+        let keywords = [
+            "legendary",
+            "lesendary",
+            "legend",
+            "rare",
+            "common",
+            "craft more",
+        ];
         let mut split_positions = Vec::new();
 
         for kw in keywords {
@@ -284,7 +297,11 @@ pub fn parse_bait_stock(text: &str) -> BaitStock {
         }
         let lower = trimmed.to_lowercase();
         // Skip header lines or footer
-        if (lower.contains("fishing") || lower.contains("fishint")) && (lower.contains("bait") || lower.contains("gait")) && !lower.contains("x") && !lower.contains("*") {
+        if (lower.contains("fishing") || lower.contains("fishint"))
+            && (lower.contains("bait") || lower.contains("gait"))
+            && !lower.contains("x")
+            && !lower.contains("*")
+        {
             continue;
         }
         if lower.contains("craft") || lower.contains("blacksmith") {
@@ -299,19 +316,25 @@ pub fn parse_bait_stock(text: &str) -> BaitStock {
             || lower.contains("legend")
             || lower.contains("dary")
             || lower.contains("eserw")
-            || (lower.starts_with('l') && (lower.contains("sh") || lower.contains("bait") || lower.contains("gait") || lower.contains("fish")));
+            || (lower.starts_with('l')
+                && (lower.contains("sh")
+                    || lower.contains("bait")
+                    || lower.contains("gait")
+                    || lower.contains("fish")));
 
         let is_rare = lower.contains("rare")
             || lower.contains("rar")
             || lower.contains("r.are")
-            || (lower.starts_with('r') && (lower.contains("bait") || lower.contains("gait") || lower.contains("fish")));
+            || (lower.starts_with('r')
+                && (lower.contains("bait") || lower.contains("gait") || lower.contains("fish")));
 
         let is_common = lower.contains("common")
             || lower.contains("comon")
             || lower.contains("comm")
             || lower.contains("mmon")
             || lower.contains("ommon")
-            || (lower.starts_with('c') && (lower.contains("bait") || lower.contains("gait") || lower.contains("fish")));
+            || (lower.starts_with('c')
+                && (lower.contains("bait") || lower.contains("gait") || lower.contains("fish")));
 
         if is_legendary {
             if count.is_some() || stock.legendary.is_none() {
@@ -349,7 +372,11 @@ pub fn parse_bait_stock(text: &str) -> BaitStock {
 /// In GPO font, '4' has an enclosed/rounded top which generic Windows OCR often misrecognizes as '9'.
 /// In the digit '4', the lower-left quadrant is empty background, whereas in '9', the stroke
 /// curves down and through the center/bottom.
-pub fn disambiguate_four_vs_nine(count: u32, row_idx: usize, frame: &crate::core::types::Frame) -> u32 {
+pub fn disambiguate_four_vs_nine(
+    count: u32,
+    row_idx: usize,
+    frame: &crate::core::types::Frame,
+) -> u32 {
     if count % 10 != 9 {
         return count;
     }
@@ -729,10 +756,18 @@ fn parse_digits_from_tight_band(tight_band: &[bool], tw: usize, th: usize) -> Op
         for x in 0..raw_dw {
             if tight_band[y * tw + (d_start + x)] {
                 d_count += 1;
-                if x < min_dx { min_dx = x; }
-                if x > max_dx { max_dx = x; }
-                if y < min_dy { min_dy = y; }
-                if y > max_dy { max_dy = y; }
+                if x < min_dx {
+                    min_dx = x;
+                }
+                if x > max_dx {
+                    max_dx = x;
+                }
+                if y < min_dy {
+                    min_dy = y;
+                }
+                if y > max_dy {
+                    max_dy = y;
+                }
             }
         }
     }
@@ -825,7 +860,6 @@ fn parse_digits_from_tight_band(tight_band: &[bool], tw: usize, th: usize) -> Op
     }
     Some(val)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -922,14 +956,16 @@ mod tests {
     #[test]
     fn test_parse_bait_stock_user_image() {
         // Single line string as returned by Windows OCR
-        let single_line = "Fishing Baits Lesendary Fish Bait X136 Rare Fish Bait x130 Common Fish Bait x224";
+        let single_line =
+            "Fishing Baits Lesendary Fish Bait X136 Rare Fish Bait x130 Common Fish Bait x224";
         let s = parse_bait_stock(single_line);
         assert_eq!(s.legendary, Some(136));
         assert_eq!(s.rare, Some(130));
         assert_eq!(s.common, Some(224));
 
         // Multiline string
-        let multiline = "Fishing Baits\nLesendary Fish Bait X136\nRare Fish Bait x130\nCommon Fish Bait x224";
+        let multiline =
+            "Fishing Baits\nLesendary Fish Bait X136\nRare Fish Bait x130\nCommon Fish Bait x224";
         let s2 = parse_bait_stock(multiline);
         assert_eq!(s2.legendary, Some(136));
         assert_eq!(s2.rare, Some(130));
@@ -964,12 +1000,16 @@ mod tests {
         assert!(is_bait_menu_visible("Fishing Baits\nRare Fish Bait x130"));
         assert!(is_bait_menu_visible("Common Fish Bait x224"));
         assert!(is_bait_menu_visible("Lesendary Fish Bait X136"));
-        assert!(is_bait_menu_visible("Craft more bait types from Blacksmith Sen!"));
+        assert!(is_bait_menu_visible(
+            "Craft more bait types from Blacksmith Sen!"
+        ));
 
         // Background / water noise when menu is closed:
         assert!(!is_bait_menu_visible(""));
         assert!(!is_bait_menu_visible("P: 8250 MINS\n922,870\nMAX / MAX"));
-        assert!(!is_bait_menu_visible("[Godly Fisherman]\nMOHAMMEDSAMIR2005"));
+        assert!(!is_bait_menu_visible(
+            "[Godly Fisherman]\nMOHAMMEDSAMIR2005"
+        ));
         assert!(!is_bait_menu_visible("random water pixels 0 0 0"));
     }
 
@@ -1007,7 +1047,8 @@ mod tests {
         // 1. Fixture C (Latest user upload: media_1789597354352.png)
         // Legendary: 160, Rare: 57, Common: 183
         let bytes_c = include_bytes!("../../test_fixtures/img_c_160_57_183.png");
-        let dyn_img_c = image::load_from_memory_with_format(bytes_c, image::ImageFormat::Png).expect("Load img C");
+        let dyn_img_c = image::load_from_memory_with_format(bytes_c, image::ImageFormat::Png)
+            .expect("Load img C");
         let (w, h) = dyn_img_c.dimensions();
         let rgba_c = dyn_img_c.to_rgba8().into_raw();
         let frame_c = crate::core::types::Frame::new(w as usize, h as usize, rgba_c);
@@ -1019,7 +1060,8 @@ mod tests {
         // 2. Fixture A (media_1789576873126.png)
         // Legendary: 136, Rare: 130, Common: 224
         let bytes_a = include_bytes!("../../test_fixtures/img_a_136_130_224.png");
-        let dyn_img_a = image::load_from_memory_with_format(bytes_a, image::ImageFormat::Png).expect("Load img A");
+        let dyn_img_a = image::load_from_memory_with_format(bytes_a, image::ImageFormat::Png)
+            .expect("Load img A");
         let (w, h) = dyn_img_a.dimensions();
         let rgba_a = dyn_img_a.to_rgba8().into_raw();
         let frame_a = crate::core::types::Frame::new(w as usize, h as usize, rgba_a);
@@ -1031,7 +1073,8 @@ mod tests {
         // 3. Fixture B (menu_588.png)
         // Legendary: 146, Rare: 166, Common: 198
         let bytes_b = include_bytes!("../../test_fixtures/img_b_146_166_198.png");
-        let dyn_img_b = image::load_from_memory_with_format(bytes_b, image::ImageFormat::Png).expect("Load img B");
+        let dyn_img_b = image::load_from_memory_with_format(bytes_b, image::ImageFormat::Png)
+            .expect("Load img B");
         let (w, h) = dyn_img_b.dimensions();
         let rgba_b = dyn_img_b.to_rgba8().into_raw();
         let frame_b = crate::core::types::Frame::new(w as usize, h as usize, rgba_b);
@@ -1062,7 +1105,8 @@ mod tests {
         // 5. Fixture D (Latest user upload media_1789640629495.png)
         // Legendary: 185, Rare: 34, Common: 221
         let bytes_d = include_bytes!("../../test_fixtures/img_d_185_34_221.png");
-        let dyn_img_d = image::load_from_memory_with_format(bytes_d, image::ImageFormat::Png).expect("Load img D");
+        let dyn_img_d = image::load_from_memory_with_format(bytes_d, image::ImageFormat::Png)
+            .expect("Load img D");
         let (wd, hd) = dyn_img_d.dimensions();
         let rgba_d = dyn_img_d.to_rgba8().into_raw();
         let frame_d = crate::core::types::Frame::new(wd as usize, hd as usize, rgba_d);
@@ -1074,7 +1118,8 @@ mod tests {
         // 6. Fixture E (Rainbow animated text shift: media_1789640641026.png)
         // Legendary: 185, Rare: 34, Common: 221
         let bytes_e = include_bytes!("../../test_fixtures/img_e_185_34_221.png");
-        let dyn_img_e = image::load_from_memory_with_format(bytes_e, image::ImageFormat::Png).expect("Load img E");
+        let dyn_img_e = image::load_from_memory_with_format(bytes_e, image::ImageFormat::Png)
+            .expect("Load img E");
         let (we, he) = dyn_img_e.dimensions();
         let rgba_e = dyn_img_e.to_rgba8().into_raw();
         let frame_e = crate::core::types::Frame::new(we as usize, he as usize, rgba_e);
@@ -1116,8 +1161,14 @@ mod tests {
             rare: Some(0),
             common: Some(300),
         };
-        assert_eq!(stock_no_rare.click_relative_pos(BaitTier::Legendary), (0.50, 0.26));
-        assert_eq!(stock_no_rare.click_relative_pos(BaitTier::Common), (0.50, 0.52)); // Rare's place!
+        assert_eq!(
+            stock_no_rare.click_relative_pos(BaitTier::Legendary),
+            (0.50, 0.26)
+        );
+        assert_eq!(
+            stock_no_rare.click_relative_pos(BaitTier::Common),
+            (0.50, 0.52)
+        ); // Rare's place!
 
         // Case 3: Legendary is out (0 stock) -> Rare is Row 0, Common is Row 1 (Rare's place)!
         let stock_no_leg = BaitStock {
@@ -1125,8 +1176,14 @@ mod tests {
             rare: Some(50),
             common: Some(300),
         };
-        assert_eq!(stock_no_leg.click_relative_pos(BaitTier::Rare), (0.50, 0.26));
-        assert_eq!(stock_no_leg.click_relative_pos(BaitTier::Common), (0.50, 0.52)); // Rare's place!
+        assert_eq!(
+            stock_no_leg.click_relative_pos(BaitTier::Rare),
+            (0.50, 0.26)
+        );
+        assert_eq!(
+            stock_no_leg.click_relative_pos(BaitTier::Common),
+            (0.50, 0.52)
+        ); // Rare's place!
 
         // Case 4: Both Legendary and Rare are out -> Common moves to top (Row 0)!
         let stock_only_common = BaitStock {
@@ -1134,8 +1191,9 @@ mod tests {
             rare: Some(0),
             common: Some(300),
         };
-        assert_eq!(stock_only_common.click_relative_pos(BaitTier::Common), (0.50, 0.26));
+        assert_eq!(
+            stock_only_common.click_relative_pos(BaitTier::Common),
+            (0.50, 0.26)
+        );
     }
 }
-
-

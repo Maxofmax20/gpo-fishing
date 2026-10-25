@@ -93,7 +93,7 @@ export default function Panel() {
   const gated = ready && !roblox && !skipGate && !["settings", "journal", "training", "vpn", "multi", "macros"].includes(tab);
 
   return (
-    <div className="h-full w-full bg-bg-glass">
+    <div className="panel-shell h-full w-full bg-bg-glass">
       <div className="h-full w-full flex overflow-hidden">
         <nav aria-label="Main navigation" className="w-14 shrink-0 flex flex-col items-center py-3 overflow-y-auto border-r border-line bg-black/20">
           <img src={logo} alt="" draggable={false} className="w-9 h-9 rounded-xl mb-4 drag shadow-[0_2px_10px_rgba(0,0,0,0.4)]" />

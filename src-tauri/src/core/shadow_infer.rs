@@ -28,8 +28,10 @@ use tract_onnx::prelude::*;
 use super::ml_model::verify_weights;
 
 /// Files bundled with the app that may seed `%APPDATA%/models/`.
-pub const SHADOW_MODEL_FILES: &[(&str, &str)] =
-    &[("state_v1.onnx", "state_v1.json"), ("fish_v1.onnx", "fish_v1.json")];
+pub const SHADOW_MODEL_FILES: &[(&str, &str)] = &[
+    ("state_v1.onnx", "state_v1.json"),
+    ("fish_v1.onnx", "fish_v1.json"),
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreprocessSpec {
@@ -126,7 +128,10 @@ fn load_one(models_dir: &Path, onnx_name: &str, json_name: &str) -> Result<Shado
         &serde_json::from_str::<serde_json::Value>(&raw).unwrap_or(serde_json::Value::Null),
     );
     if m.base.runtime != "tract" {
-        return Err(format!("{}: runtime '{}' is not this tract build", json_name, m.base.runtime));
+        return Err(format!(
+            "{}: runtime '{}' is not this tract build",
+            json_name, m.base.runtime
+        ));
     }
     verify_weights(&m.base, &onnx_path.to_path_buf()).map_err(|e| e.to_string())?;
     // CLASS-MAP INTEGRITY. The weights checksum covers the `.onnx`; the index ->
@@ -146,7 +151,10 @@ fn load_one(models_dir: &Path, onnx_name: &str, json_name: &str) -> Result<Shado
         .model_for_path(&onnx_path)
         .map_err(|e| format!("{onnx_name} load: {e}"))?;
     typed
-        .set_input_fact(0, f32::fact([1, 3, m.preprocess.size, m.preprocess.size]).into())
+        .set_input_fact(
+            0,
+            f32::fact([1, 3, m.preprocess.size, m.preprocess.size]).into(),
+        )
         .map_err(|e| format!("{onnx_name} input fact: {e}"))?;
     // NOTE: no into_optimized(): the dynamo-exported graph contains a Conv
     // formulation whose optimizer analysis tract 0.22 rejects (ConvHir).
@@ -205,8 +213,15 @@ impl ShadowEngine {
         if models.is_empty() {
             return Err(format!("no shadow models in {}", models_dir.display()));
         }
-        tracing::info!("shadow inference: loaded {} model(s) ({} missing)", models.len(), missing);
-        Ok(Self { models_dir: models_dir.to_path_buf(), models })
+        tracing::info!(
+            "shadow inference: loaded {} model(s) ({} missing)",
+            models.len(),
+            missing
+        );
+        Ok(Self {
+            models_dir: models_dir.to_path_buf(),
+            models,
+        })
     }
 
     pub fn model_names(&self) -> Vec<String> {
@@ -264,24 +279,34 @@ pub fn preprocess_rgba(rgba: &[u8], w: usize, h: usize, spec: &PreprocessSpec) -
     }
     let scale = side as f64 / n as f64;
     let filter_scale = scale.max(1.0);
-    let weights: Vec<(usize, Vec<i64>)> = (0..n).map(|destination| {
-        let center = (destination as f64 + 0.5) * scale;
-        let first = ((center - filter_scale + 0.5) as isize).max(0) as usize;
-        let end = ((center + filter_scale + 0.5) as usize).min(side);
-        let raw: Vec<f64> = (first..end).map(|source| {
-            (1.0 - ((source as f64 - center + 0.5) / filter_scale).abs()).max(0.0)
-        }).collect();
-        let sum: f64 = raw.iter().sum();
-        let fixed = raw.iter().map(|weight| (weight / sum * (1u64 << 22) as f64 + 0.5) as i64).collect();
-        (first, fixed)
-    }).collect();
+    let weights: Vec<(usize, Vec<i64>)> = (0..n)
+        .map(|destination| {
+            let center = (destination as f64 + 0.5) * scale;
+            let first = ((center - filter_scale + 0.5) as isize).max(0) as usize;
+            let end = ((center + filter_scale + 0.5) as usize).min(side);
+            let raw: Vec<f64> = (first..end)
+                .map(|source| {
+                    (1.0 - ((source as f64 - center + 0.5) / filter_scale).abs()).max(0.0)
+                })
+                .collect();
+            let sum: f64 = raw.iter().sum();
+            let fixed = raw
+                .iter()
+                .map(|weight| (weight / sum * (1u64 << 22) as f64 + 0.5) as i64)
+                .collect();
+            (first, fixed)
+        })
+        .collect();
     let mut horizontal = vec![0u8; side * n * 3];
     for y in 0..side {
         for (x, (first, kernel)) in weights.iter().enumerate() {
             for c in 0..3 {
-                let sum = kernel.iter().enumerate().fold(1i64 << 21, |sum, (k, weight)| {
-                    sum + sq[(y * side + first + k) * 3 + c] as i64 * weight
-                });
+                let sum = kernel
+                    .iter()
+                    .enumerate()
+                    .fold(1i64 << 21, |sum, (k, weight)| {
+                        sum + sq[(y * side + first + k) * 3 + c] as i64 * weight
+                    });
                 horizontal[(y * n + x) * 3 + c] = (sum >> 22).clamp(0, 255) as u8;
             }
         }
@@ -290,9 +315,12 @@ pub fn preprocess_rgba(rgba: &[u8], w: usize, h: usize, spec: &PreprocessSpec) -
     for (y, (first, kernel)) in weights.iter().enumerate() {
         for x in 0..n {
             for c in 0..3 {
-                let sum = kernel.iter().enumerate().fold(1i64 << 21, |sum, (k, weight)| {
-                    sum + horizontal[((first + k) * n + x) * 3 + c] as i64 * weight
-                });
+                let sum = kernel
+                    .iter()
+                    .enumerate()
+                    .fold(1i64 << 21, |sum, (k, weight)| {
+                        sum + horizontal[((first + k) * n + x) * 3 + c] as i64 * weight
+                    });
                 let value = (sum >> 22).clamp(0, 255) as f32 / 255.0;
                 out[(c * n + y) * n + x] = (value - spec.mean[c]) / spec.std[c];
             }
@@ -314,7 +342,10 @@ static ENGINE: OnceLock<Mutex<ShadowEngine>> = OnceLock::new();
 /// Get-or-load the process-wide shadow engine. First call pays model load.
 pub fn engine(models_dir: &Path) -> Option<std::sync::MutexGuard<'static, ShadowEngine>> {
     let cell = ENGINE.get_or_init(|| {
-        Mutex::new(ShadowEngine { models_dir: models_dir.to_path_buf(), models: HashMap::new() })
+        Mutex::new(ShadowEngine {
+            models_dir: models_dir.to_path_buf(),
+            models: HashMap::new(),
+        })
     });
     let mut guard = cell.lock().ok()?;
     if guard.models.is_empty() {
@@ -359,11 +390,16 @@ pub fn invalidate_engine() {
 pub fn seed_shadow_models(candidates: &[PathBuf], models_dir: &Path) -> Vec<String> {
     let _ = std::fs::create_dir_all(models_dir);
     let mut seeded = Vec::new();
-    if let Err(e) = recover_model_pairs(models_dir) { tracing::warn!("model recovery failed: {e}"); return seeded; }
+    if let Err(e) = recover_model_pairs(models_dir) {
+        tracing::warn!("model recovery failed: {e}");
+        return seeded;
+    }
     for (onnx, json) in SHADOW_MODEL_FILES {
         let src_json = candidates.iter().map(|c| c.join(json)).find(|p| p.exists());
         let src_onnx = candidates.iter().map(|c| c.join(onnx)).find(|p| p.exists());
-        let (Some(sj), Some(so)) = (src_json, src_onnx) else { continue };
+        let (Some(sj), Some(so)) = (src_json, src_onnx) else {
+            continue;
+        };
         let want_json = std::fs::read(&sj).unwrap_or_default();
         let want_onnx = std::fs::read(&so).unwrap_or_default();
         if want_json.is_empty() || want_onnx.is_empty() {
@@ -381,9 +417,11 @@ pub fn seed_shadow_models(candidates: &[PathBuf], models_dir: &Path) -> Vec<Stri
         if !same {
             if let Some(existing) = manifest_version(&dj) {
                 let bundled = manifest_version(&sj).unwrap_or(0);
-                if existing > bundled || (existing == bundled
-                    && std::fs::read(&do_).is_ok_and(|bytes| bytes == want_onnx)
-                    && load_one(models_dir, onnx, json).is_ok()) {
+                if existing > bundled
+                    || (existing == bundled
+                        && std::fs::read(&do_).is_ok_and(|bytes| bytes == want_onnx)
+                        && load_one(models_dir, onnx, json).is_ok())
+                {
                     tracing::info!(
                         "shadow seed: keeping deployed {onnx} v{existing} (bundled is v{bundled})"
                     );
@@ -407,7 +445,13 @@ pub fn seed_shadow_models(candidates: &[PathBuf], models_dir: &Path) -> Vec<Stri
                 );
                 continue;
             }
-            if deploy_model_pair(models_dir, onnx.trim_end_matches(".onnx"), &want_onnx, &want_json).is_err()
+            if deploy_model_pair(
+                models_dir,
+                onnx.trim_end_matches(".onnx"),
+                &want_onnx,
+                &want_json,
+            )
+            .is_err()
             {
                 tracing::warn!("shadow seed: write failed for {onnx}");
                 continue;
@@ -425,13 +469,21 @@ pub fn seed_shadow_models(candidates: &[PathBuf], models_dir: &Path) -> Vec<Stri
     seeded
 }
 
-
 static PAIR_TRANSACTION: Mutex<()> = Mutex::new(());
 
 /// Stage and verify both files before making the transaction replayable.
-pub fn deploy_model_pair(models_dir: &Path, stem: &str, onnx: &[u8], json: &[u8]) -> Result<(), String> {
-    let _guard = PAIR_TRANSACTION.lock().map_err(|_| "model transaction lock poisoned")?;
-    if !["fish_v1", "state_v1"].contains(&stem) { return Err("unknown model slot".into()); }
+pub fn deploy_model_pair(
+    models_dir: &Path,
+    stem: &str,
+    onnx: &[u8],
+    json: &[u8],
+) -> Result<(), String> {
+    let _guard = PAIR_TRANSACTION
+        .lock()
+        .map_err(|_| "model transaction lock poisoned")?;
+    if !["fish_v1", "state_v1"].contains(&stem) {
+        return Err("unknown model slot".into());
+    }
     std::fs::create_dir_all(models_dir).map_err(|e| e.to_string())?;
     recover_model_pairs_locked(models_dir)?;
     let pending = models_dir.join(format!("{stem}.pending"));
@@ -439,20 +491,28 @@ pub fn deploy_model_pair(models_dir: &Path, stem: &str, onnx: &[u8], json: &[u8]
     crate::core::registry::write_atomic(&pending.join(format!("{stem}.onnx")), onnx)?;
     crate::core::registry::write_atomic(&pending.join(format!("{stem}.json")), json)?;
     let staged = load_one(&pending, &format!("{stem}.onnx"), &format!("{stem}.json"))?;
-    if staged.name != stem { return Err("staged model family does not match its slot".into()); }
+    if staged.name != stem {
+        return Err("staged model family does not match its slot".into());
+    }
     crate::core::registry::write_atomic(&pending.join("ready"), b"1")?;
     recover_model_pairs_locked(models_dir)
 }
 pub fn recover_model_pairs(models_dir: &Path) -> Result<(), String> {
-    let _guard = PAIR_TRANSACTION.lock().map_err(|_| "model transaction lock poisoned")?;
+    let _guard = PAIR_TRANSACTION
+        .lock()
+        .map_err(|_| "model transaction lock poisoned")?;
     recover_model_pairs_locked(models_dir)
 }
 fn recover_model_pairs_locked(models_dir: &Path) -> Result<(), String> {
     for stem in ["fish_v1", "state_v1"] {
         let pending = models_dir.join(format!("{stem}.pending"));
-        if !pending.join("ready").is_file() { continue; }
+        if !pending.join("ready").is_file() {
+            continue;
+        }
         let staged = load_one(&pending, &format!("{stem}.onnx"), &format!("{stem}.json"))?;
-    if staged.name != stem { return Err("staged model family does not match its slot".into()); }
+        if staged.name != stem {
+            return Err("staged model family does not match its slot".into());
+        }
         for extension in ["onnx", "json"] {
             let name = format!("{stem}.{extension}");
             let bytes = std::fs::read(pending.join(&name)).map_err(|e| e.to_string())?;
@@ -462,7 +522,6 @@ fn recover_model_pairs_locked(models_dir: &Path) -> Result<(), String> {
     }
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -475,7 +534,10 @@ mod tests {
     fn read_f32(name: &str) -> Vec<f32> {
         let bytes = std::fs::read(fixture_dir().join(name)).unwrap();
         assert_eq!(bytes.len() % 4, 0);
-        bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect()
+        bytes
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect()
     }
 
     fn spec_for(model: &str) -> PreprocessSpec {
@@ -487,7 +549,11 @@ mod tests {
         let p = &v["preprocess"];
         let arr = |k: &str| -> [f32; 3] {
             let a = p[k].as_array().unwrap();
-            [a[0].as_f64().unwrap() as f32, a[1].as_f64().unwrap() as f32, a[2].as_f64().unwrap() as f32]
+            [
+                a[0].as_f64().unwrap() as f32,
+                a[1].as_f64().unwrap() as f32,
+                a[2].as_f64().unwrap() as f32,
+            ]
         };
         PreprocessSpec {
             pad: p["pad"].as_str().unwrap().into(),
@@ -500,11 +566,16 @@ mod tests {
 
     #[test]
     fn reevaluated_metadata_survives_seeding_at_the_same_version() {
-        let dir = std::env::temp_dir().join(format!("gpo-seed-metrics-{}-{}", std::process::id(), crate::events::now_ms()));
+        let dir = std::env::temp_dir().join(format!(
+            "gpo-seed-metrics-{}-{}",
+            std::process::id(),
+            crate::events::now_ms()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
         std::fs::copy(bundled.join("state_v1.onnx"), dir.join("state_v1.onnx")).unwrap();
-        let mut manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(bundled.join("state_v1.json")).unwrap()).unwrap();
+        let mut manifest: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(bundled.join("state_v1.json")).unwrap()).unwrap();
         manifest["holdout_fingerprint"] = serde_json::json!("a".repeat(64));
         let bytes = serde_json::to_vec(&manifest).unwrap();
         std::fs::write(dir.join("state_v1.json"), &bytes).unwrap();
@@ -515,7 +586,11 @@ mod tests {
 
     #[test]
     fn interrupted_pair_commit_recovers_both_verified_files() {
-        let dir = std::env::temp_dir().join(format!("gpo-pair-{}-{}", std::process::id(), crate::events::now_ms()));
+        let dir = std::env::temp_dir().join(format!(
+            "gpo-pair-{}-{}",
+            std::process::id(),
+            crate::events::now_ms()
+        ));
         let pending = dir.join("state_v1.pending");
         std::fs::create_dir_all(&pending).unwrap();
         let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
@@ -526,7 +601,10 @@ mod tests {
         std::fs::write(dir.join("state_v1.onnx"), b"interrupted live file").unwrap();
         recover_model_pairs(&dir).unwrap();
         for name in ["state_v1.onnx", "state_v1.json"] {
-            assert_eq!(std::fs::read(dir.join(name)).unwrap(), std::fs::read(bundled.join(name)).unwrap());
+            assert_eq!(
+                std::fs::read(dir.join(name)).unwrap(),
+                std::fs::read(bundled.join(name)).unwrap()
+            );
         }
         assert!(!pending.join("ready").exists());
         std::fs::remove_dir_all(dir).unwrap();
@@ -550,21 +628,43 @@ mod tests {
             let got = preprocess_rgba(img.as_raw(), w, h, &spec).unwrap();
             let want = read_f32(&format!("{model}.f32"));
             assert_eq!(got.len(), want.len());
-            let worst = got.iter().zip(want.iter()).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
+            let worst = got
+                .iter()
+                .zip(want.iter())
+                .map(|(a, b)| (a - b).abs())
+                .fold(0f32, f32::max);
             let tol = meta["tolerance_max_abs_diff"].as_f64().unwrap() as f32;
-            assert!(worst < tol, "{model} preprocess drift: worst {worst} >= tol {tol}");
+            assert!(
+                worst < tol,
+                "{model} preprocess drift: worst {worst} >= tol {tol}"
+            );
         }
     }
 
     #[test]
     fn downsampled_result_text_matches_pillow() {
-        let img = image::open(fixture_dir().join("downsample.png")).unwrap().to_rgba8();
+        let img = image::open(fixture_dir().join("downsample.png"))
+            .unwrap()
+            .to_rgba8();
         for model in ["state_v1", "fish_v1"] {
-            let got = preprocess_rgba(img.as_raw(), img.width() as usize, img.height() as usize, &spec_for(model)).unwrap();
+            let got = preprocess_rgba(
+                img.as_raw(),
+                img.width() as usize,
+                img.height() as usize,
+                &spec_for(model),
+            )
+            .unwrap();
             let want = read_f32(&format!("downsample_{model}.f32"));
-            let worst = got.iter().zip(&want).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
+            let worst = got
+                .iter()
+                .zip(&want)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0f32, f32::max);
             assert_eq!(got.len(), want.len());
-            assert!(worst < 1e-5, "{model} downsampling differs from training: {worst}");
+            assert!(
+                worst < 1e-5,
+                "{model} downsampling differs from training: {worst}"
+            );
         }
     }
 
@@ -586,11 +686,16 @@ mod tests {
             let spec = spec_for(model);
             let chw = preprocess_rgba(img.as_raw(), w, h, &spec).unwrap();
             let probs = engine.infer_probs(model, &chw).expect("infer must succeed");
-            let (best, _) =
-                probs.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).unwrap();
+            let (best, _) = probs
+                .iter()
+                .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+                .unwrap();
             let want_idx = meta["argmax"][model].as_u64().unwrap() as usize;
             let want_class = &engine.models[model].classes[want_idx];
-            assert_eq!(best, want_class, "{model} argmax diverged from torch (preprocess or runtime drift)");
+            assert_eq!(
+                best, want_class,
+                "{model} argmax diverged from torch (preprocess or runtime drift)"
+            );
         }
     }
 
@@ -609,7 +714,10 @@ mod tests {
             Err(e) => e,
         };
         // Contract: corrupt files are hard errors (checksum), never silent.
-        assert!(err.contains("checksum mismatch"), "corrupt weights must refuse: {err}");
+        assert!(
+            err.contains("checksum mismatch"),
+            "corrupt weights must refuse: {err}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -619,7 +727,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let repo_models = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("models");
         let seeded = seed_shadow_models(&[repo_models], &dir.join("models"));
-        assert_eq!(seeded.len(), 2, "both bundled models must seed, got {seeded:?}");
+        assert_eq!(
+            seeded.len(),
+            2,
+            "both bundled models must seed, got {seeded:?}"
+        );
         // Seeded copies load and stay byte-identical (no silent rewrite).
         let engine = match ShadowEngine::load(&dir.join("models")) {
             Ok(e) => e,
@@ -651,12 +763,30 @@ mod tests {
         // Strings pass through; numbers are stringified; absent/empty falls
         // back to "0" so a pre-revision manifest still has a defined identity
         // (and cannot collide with a numbered revision).
-        assert_eq!(revision_from_manifest(&serde_json::json!({"version": "2"})), "2");
-        assert_eq!(revision_from_manifest(&serde_json::json!({"version": " 7 "})), "7");
-        assert_eq!(revision_from_manifest(&serde_json::json!({"version": 12})), "12");
-        assert_eq!(revision_from_manifest(&serde_json::json!({"version": ""})), "0");
-        assert_eq!(revision_from_manifest(&serde_json::json!({"version": null})), "0");
-        assert_eq!(revision_from_manifest(&serde_json::json!({"name": "fish_v1"})), "0");
+        assert_eq!(
+            revision_from_manifest(&serde_json::json!({"version": "2"})),
+            "2"
+        );
+        assert_eq!(
+            revision_from_manifest(&serde_json::json!({"version": " 7 "})),
+            "7"
+        );
+        assert_eq!(
+            revision_from_manifest(&serde_json::json!({"version": 12})),
+            "12"
+        );
+        assert_eq!(
+            revision_from_manifest(&serde_json::json!({"version": ""})),
+            "0"
+        );
+        assert_eq!(
+            revision_from_manifest(&serde_json::json!({"version": null})),
+            "0"
+        );
+        assert_eq!(
+            revision_from_manifest(&serde_json::json!({"name": "fish_v1"})),
+            "0"
+        );
         assert_eq!(revision_from_manifest(&serde_json::Value::Null), "0");
     }
 
@@ -678,7 +808,11 @@ mod tests {
                 &std::fs::read_to_string(models_dir.join(format!("{model}.json"))).unwrap(),
             )
             .unwrap();
-            assert_eq!(m.revision, revision_from_manifest(&raw), "{model} revision drift");
+            assert_eq!(
+                m.revision,
+                revision_from_manifest(&raw),
+                "{model} revision drift"
+            );
         }
         // A promotion rewrites the manifest with a bumped `version` and the
         // SAME stem: the identity must change even though the slot does not.
@@ -784,7 +918,10 @@ mod tests {
         let _ = seed_shadow_models(&candidates, &dir);
 
         let after = std::fs::read_to_string(dir.join("fish_v1.json")).unwrap();
-        assert_eq!(before, after, "a promoted model must survive an app restart");
+        assert_eq!(
+            before, after,
+            "a promoted model must survive an app restart"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -1,1441 +1,180 @@
-use std::sync::Arc;
-use std::time::Duration;
+//! Rebuilt owner-only bot commands. Notifications have their own queue/client.
+use crate::{
+    bot::Bot,
+    config::Settings,
+    webhook::{post_telegram, post_telegram_with_button},
+};
 use parking_lot::RwLock;
-use serde_json::Value;
+use serde_json::{json, Value};
+use std::{sync::Arc, time::Duration};
 
-use crate::bot::Bot;
-use crate::config::Settings;
-use crate::webhook::{post_telegram, post_telegram_photo};
-
-pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
-    std::thread::Builder::new()
-        .name("telegram-remote".into())
-        .spawn(move || run_poller(bot, settings))
-        .expect("spawn telegram remote poller");
-}
-
-fn run_poller(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
-    let mut offset: i64 = 0;
-    let client = match reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(25))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!("Failed to create telegram http client: {e}");
-            return;
-        }
+pub fn dashboard_authed_url(base: &str, token: &str) -> String {
+    let Ok(mut url) = reqwest::Url::parse(base) else {
+        return base.into();
     };
-
-    let mut registered_token = String::new();
-    let mut last_auto_scan = std::time::Instant::now();
-    let mut boss_tracker = crate::core::boss_tracker::BossTracker::new();
-
-    // Initialize boss tracker offsets from settings
-    {
-        let s = settings.read();
-        if let Some(ts) = s.boss_tracker.hawkeye_offset {
-            boss_tracker.set_offset(crate::core::boss_tracker::BossId::HawkEye, ts);
-        }
-        if let Some(ts) = s.boss_tracker.roger_offset {
-            boss_tracker.set_offset(crate::core::boss_tracker::BossId::Roger, ts);
-        }
-        if let Some(ts) = s.boss_tracker.soulking_offset {
-            boss_tracker.set_offset(crate::core::boss_tracker::BossId::SoulKing, ts);
-        }
-        if let Some(ts) = s.boss_tracker.radiant_admiral_offset {
-            boss_tracker.set_offset(crate::core::boss_tracker::BossId::RadiantAdmiral, ts);
-        }
-        if let Some(ts) = s.boss_tracker.merchant_offset {
-            boss_tracker.set_offset(crate::core::boss_tracker::BossId::TravellingMerchant, ts);
-        }
+    if !token.trim().is_empty() {
+        url.query_pairs_mut().append_pair("token", token);
     }
-
-    loop {
-        let (token, expected_chat, remote_enabled) = {
-            let s = settings.read();
-            (
-                s.webhook.telegram_bot_token.trim().to_string(),
-                s.webhook.telegram_chat_id.trim().to_string(),
-                s.features.telegram_remote,
-            )
+    url.to_string()
+}
+fn call(
+    client: &reqwest::blocking::Client,
+    token: &str,
+    method: &str,
+    body: Value,
+) -> Result<Value, String> {
+    let response = client
+        .post(format!(
+            "https://api.telegram.org/bot{}/{method}",
+            token.trim()
+        ))
+        .json(&body)
+        .send()
+        .map_err(|_| "Telegram connection failed")?;
+    let status = response.status();
+    let value = response
+        .json::<Value>()
+        .map_err(|_| "Telegram returned invalid data")?;
+    if !status.is_success() || value["ok"].as_bool() != Some(true) {
+        return Err(format!(
+            "Telegram request rejected (HTTP {})",
+            status.as_u16()
+        ));
+    }
+    Ok(value["result"].clone())
+}
+pub fn spawn(bot: Arc<Bot>, settings: Arc<RwLock<Settings>>) {
+    std::thread::spawn(move || {
+        let Ok(client) = reqwest::blocking::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(25))
+            .build()
+        else {
+            return;
         };
-
-        if !remote_enabled || token.is_empty() || expected_chat.is_empty() {
-            std::thread::sleep(Duration::from_secs(4));
-            continue;
-        }
-
-        if registered_token != token {
-            register_bot_commands(&client, &token);
-            registered_token = token.clone();
-        }
-
-        // Boss Tracker Tick: Runs 24/7 in background even when fishing is stopped
-        let (boss_enabled, notify_5m, notify_spawn) = {
-            let s = settings.read();
-            (
-                s.boss_tracker.enabled,
-                s.boss_tracker.notify_5m,
-                s.boss_tracker.notify_spawn,
-            )
-        };
-
-        if boss_enabled {
-            let now = crate::core::boss_tracker::now_sec();
-            let alerts = boss_tracker.tick(now, notify_5m, notify_spawn);
-            for alert in alerts {
-                let boss_specific_enabled = {
-                    let s = settings.read();
-                    s.boss_tracker.is_boss_enabled(alert.boss)
-                };
-                if !boss_specific_enabled {
-                    continue;
-                }
-
-                let alert_text = match alert.alert_type {
-                    crate::core::boss_tracker::AlertType::Warning5m => {
-                        format!(
-                            "⏰ {} <b>{}</b> will spawn in <b>5 minutes</b>!\n📍 Location: <b>{}</b>\nℹ️ {}",
-                            alert.boss.emoji(),
-                            alert.boss.name(),
-                            alert.boss.location(),
-                            alert.boss.despawn_info(),
-                        )
-                    }
-                    crate::core::boss_tracker::AlertType::Spawned => {
-                        format!(
-                            "🚨 {} <b>{}</b> has <b>SPAWNED</b>!\n📍 Location: <b>{}</b>\nℹ️ {}",
-                            alert.boss.emoji(),
-                            alert.boss.name(),
-                            alert.boss.location(),
-                            alert.boss.despawn_info(),
-                        )
-                    }
-                };
-                let _ = post_telegram(&token, &expected_chat, &alert_text);
-            }
-
-            // Periodic auto-sync of Travelling Merchant via in-game Server Age OCR (every 5 minutes)
-            if last_auto_scan.elapsed() >= Duration::from_secs(300) {
-                last_auto_scan = std::time::Instant::now();
-                let ctx = bot.ctx();
-                if let Ok((uptime_sec, time_str, rem, is_spawned)) = crate::bot::actions::scan_server_age(&ctx) {
-                    let target_offset = if is_spawned {
-                        now + rem + 1800
-                    } else {
-                        now + rem
-                    };
-                    boss_tracker.set_offset(crate::core::boss_tracker::BossId::TravellingMerchant, target_offset);
-                    let mut s = settings.write();
-                    s.boss_tracker.merchant_offset = Some(target_offset);
-                    let _ = bot.ctx().store.save(&s);
-                    tracing::info!("Auto-synced Travelling Merchant from in-game Server Age: {time_str} (uptime: {uptime_sec}s)");
-                }
-            }
-        }
-
-        let url = format!(
-            "https://api.telegram.org/bot{token}/getUpdates?offset={offset}&timeout=15&limit=10"
-        );
-
-        let resp = match client.get(&url).send() {
-            Ok(r) => r,
-            Err(_) => {
-                std::thread::sleep(Duration::from_secs(3));
-                continue;
-            }
-        };
-
-        let json: Value = match resp.json() {
-            Ok(v) => v,
-            Err(_) => {
+        let mut previous = String::new();
+        let mut offset = 0i64;
+        let mut owner = None;
+        let mut failures = 0u32;
+        loop {
+            let s = settings.read().clone();
+            let token = s.webhook.telegram_bot_token.trim();
+            let configured = s.webhook.telegram_chat_id.trim();
+            if token.is_empty() || configured.is_empty() {
                 std::thread::sleep(Duration::from_secs(2));
                 continue;
             }
-        };
-
-        if let Some(results) = json.get("result").and_then(|r| r.as_array()) {
-            for update in results {
-                if let Some(up_id) = update.get("update_id").and_then(|id| id.as_i64()) {
-                    offset = up_id + 1;
-                }
-
-                // Check for inline keyboard button clicks (callback queries)
-                if let Some(cb) = update.get("callback_query") {
-                    let cb_id = cb.get("id").and_then(|i| i.as_str()).unwrap_or("");
-                    let data = cb.get("data").and_then(|d| d.as_str()).unwrap_or("").trim();
-                    let chat_id = cb
-                        .get("message")
-                        .and_then(|m| m.get("chat"))
-                        .and_then(|c| c.get("id"))
-                        .map(|id| id.to_string())
-                        .unwrap_or_default();
-                    let chat_id_clean = chat_id.trim_matches('"').to_string();
-                    if chat_id_clean == expected_chat || expected_chat.is_empty() {
-                        handle_command(&bot, &settings, &mut boss_tracker, &token, &chat_id_clean, data);
-                        let ack_url = format!("https://api.telegram.org/bot{token}/answerCallbackQuery");
-                        let _ = client.post(&ack_url).json(&serde_json::json!({
-                            "callback_query_id": cb_id,
-                            "text": format!("Action executed: {data}")
-                        })).send();
-                    }
-                    continue;
-                }
-
-                let Some(msg) = update.get("message") else {
-                    continue;
-                };
-
-                let chat_id = msg
-                    .get("chat")
-                    .and_then(|c| c.get("id"))
-                    .map(|id| id.to_string())
-                    .unwrap_or_default();
-
-                // Security check: only accept messages from configured chat
-                let chat_id_clean = chat_id.trim_matches('"').to_string();
-                if chat_id_clean != expected_chat && !expected_chat.is_empty() {
-                    tracing::warn!("Telegram remote: ignored message from unauthorized chat {chat_id_clean}");
-                    continue;
-                }
-
-                let text = msg
-                    .get("text")
-                    .and_then(|t| t.as_str())
-                    .unwrap_or_default()
-                    .trim();
-
-                handle_command(&bot, &settings, &mut boss_tracker, &token, &chat_id_clean, text);
+            let identity = format!("{token}:{configured}");
+            if identity != previous {
+                previous = identity;
+                offset = 0;
+                owner = configured.parse::<i64>().ok().or_else(|| {
+                    call(&client, token, "getChat", json!({"chat_id":configured}))
+                        .ok()
+                        .and_then(|r| r["id"].as_i64())
+                });
+                let _ = call(
+                    &client,
+                    token,
+                    "setMyCommands",
+                    json!({"commands":[
+                        {"command":"status","description":"Fishing and recorder status"},
+                        {"command":"fish","description":"Start fishing"},
+                        {"command":"pause","description":"Pause fishing"},
+                        {"command":"stop","description":"Stop fishing and playback"},
+                        {"command":"jump","description":"Jump in Roblox"},
+                        {"command":"web","description":"Open the private remote"},
+                        {"command":"record","description":"Record PC game inputs"},
+                        {"command":"save","description":"Save the active recording"}
+                    ]}),
+                );
             }
-        }
-
-        std::thread::sleep(Duration::from_millis(500));
-    }
-}
-
-fn handle_command(
-    bot: &Arc<Bot>,
-    settings: &Arc<RwLock<Settings>>,
-    boss_tracker: &mut crate::core::boss_tracker::BossTracker,
-    token: &str,
-    chat_id: &str,
-    text: &str,
-) {
-    let lower = text.to_lowercase();
-    let cmd = lower.split_whitespace().next().unwrap_or("");
-    let cmd_clean = cmd.split('@').next().unwrap_or(""); // Handle e.g. /status@bot_name
-
-    match cmd_clean {
-        "/status" | "/stats" | "status" => {
-            let state = bot.state();
-            let paused = bot.is_paused();
-            let stats = bot.ctx().session.lock().stats();
-            let runtime_s = stats.runtime_s;
-            let h = runtime_s / 3600;
-            let m = (runtime_s % 3600) / 60;
-            let s = runtime_s % 60;
-            let state_str = if paused {
-                "⏸️ Paused"
-            } else {
-                match state {
-                    crate::events::BotState::Stopped => "⏹️ Stopped",
-                    crate::events::BotState::WaitingForRoblox => "⏳ Waiting for Roblox",
-                    crate::events::BotState::Tracking => "🎣 Tracking Bar",
-                    crate::events::BotState::WaitingForBite => "🐟 Waiting for Bite",
-                    crate::events::BotState::Casting => "🎯 Casting",
-                    crate::events::BotState::Purchasing => "🛒 Purchasing Bait",
-                    crate::events::BotState::StoringFruit => "🍇 Storing Fruit",
-                    crate::events::BotState::Recovering => "🔄 Recovering",
-                    _ => "🟢 Running",
+            let updates = match call(
+                &client,
+                token,
+                "getUpdates",
+                json!({"offset":offset,"timeout":20,"allowed_updates":["message","callback_query"]}),
+            ) {
+                Ok(Value::Array(updates)) => {
+                    failures = 0;
+                    updates
+                }
+                _ => {
+                    failures = failures.saturating_add(1);
+                    std::thread::sleep(Duration::from_secs((1u64 << failures.min(4)).min(16)));
+                    continue;
                 }
             };
-
-            let last_fruit_str = stats.last_fruit.as_deref().unwrap_or("None yet");
-            let last_spawn_str = stats.last_spawn.as_deref().unwrap_or("None yet");
-
-            let caption = format!(
-                "🤖 <b>GPO Autofish Status</b>\n\n\
-                 • <b>State</b>: {state_str}\n\
-                 • <b>Runtime</b>: {h:02}:{m:02}:{s:02}\n\
-                 • <b>Fish Caught</b>: {} ({:.0}% success)\n\
-                 • <b>Devil Fruits</b>: {}\n\
-                 • <b>Fruit Pity</b>: ⚡ {} fish\n\
-                 • <b>Legendary Pity</b>: 🌟 {} fish\n\
-                 • <b>Bait Purchased</b>: {}\n\
-                 • <b>Last Fruit</b>: {last_fruit_str}\n\
-                 • <b>Last Spawn</b>: {last_spawn_str}",
-                stats.fish,
-                stats.success_rate * 100.0,
-                stats.fruits,
-                stats.pity_fruit,
-                stats.pity_legendary,
-                stats.bait_purchased,
-            );
-
-            // Capture screenshot of Roblox window
-            let screenshot = bot
-                .ctx()
-                .roblox_rect()
-                .and_then(|r| bot.ctx().platform.capture.grab(r).ok())
-                .map(|f| f.downscale(1280))
-                .and_then(|f| f.to_png_bytes().ok());
-
-            if let Some(bytes) = screenshot {
-                let _ = post_telegram_photo(token, chat_id, &bytes, &caption);
-            } else {
-                let _ = post_telegram(token, chat_id, &caption);
-            }
-        }
-        "/screenshot" | "screenshot" => {
-            let screenshot = bot
-                .ctx()
-                .roblox_rect()
-                .and_then(|r| bot.ctx().platform.capture.grab(r).ok())
-                .map(|f| f.downscale(1280))
-                .and_then(|f| f.to_png_bytes().ok());
-
-            if let Some(bytes) = screenshot {
-                let _ = post_telegram_photo(token, chat_id, &bytes, "📸 <b>Current Roblox Screen</b>");
-            } else {
-                let _ = post_telegram(
-                    token,
-                    chat_id,
-                    "⚠️ <b>Roblox window not detected or capture failed.</b>",
-                );
-            }
-        }
-        "/pity" | "pity" => {
-            let s = settings.read();
-            let is_ase = s.fruit_storage.all_seeing_eye;
-            let cap = if is_ase { 40 } else { s.fruit_storage.pity_cap.max(1) };
-            let stats = bot.ctx().session.lock().stats();
-            let text = format!(
-                "⚡ <b>GPO Pity Status</b>\n\n\
-                 • <b>Fruit Pity</b>: <b>{}</b> fish (since last fruit)\n\
-                 • <b>Legendary Pity</b>: <b>{}/{}</b> ({})\n\
-                 • <b>Fruits Caught</b>: <b>{}</b>\n\
-                 • <b>Total Fish</b>: <b>{}</b>\n\
-                 • <b>Last Fruit</b>: {}",
-                stats.pity_fruit,
-                stats.pity_legendary,
-                cap,
-                if is_ase { "All-Seeing Eye: 40 Cap" } else { "Standard: 100 Cap" },
-                stats.fruits,
-                stats.fish,
-                stats.last_fruit.as_deref().unwrap_or("None yet")
-            );
-            let _ = post_telegram(token, chat_id, &text);
-        }
-        "/recast" | "recast" => {
-            bot.recast();
-            let _ = post_telegram(token, chat_id, "🔄 <b>Rod recast triggered remotely!</b>");
-        }
-        "/t" | "t" => {
-            bot.ctx().ensure_roblox_focus();
-            std::thread::sleep(Duration::from_millis(50));
-            bot.ctx().platform.input.key(crate::core::types::Key::Char('t'), true);
-            std::thread::sleep(Duration::from_millis(70));
-            bot.ctx().platform.input.key(crate::core::types::Key::Char('t'), false);
-            let _ = post_telegram(token, chat_id, "💬 <b>Pressed key [T] in game!</b>");
-        }
-        cmd if cmd.starts_with("/key") || cmd.starts_with("key") => {
-            let ch_opt = cmd.split_whitespace().nth(1).and_then(|s| s.chars().next());
-            if let Some(ch) = ch_opt {
-                bot.ctx().ensure_roblox_focus();
-                std::thread::sleep(Duration::from_millis(50));
-                bot.ctx().platform.input.key(crate::core::types::Key::Char(ch), true);
-                std::thread::sleep(Duration::from_millis(70));
-                bot.ctx().platform.input.key(crate::core::types::Key::Char(ch), false);
-                let _ = post_telegram(token, chat_id, &format!("⌨️ <b>Pressed key [{}] in game!</b>", telegram_escape(&ch.to_string())));
-            } else {
-                let _ = post_telegram(token, chat_id, "ℹ️ <b>Usage:</b> <code>/key &lt;letter&gt;</code> (e.g. <code>/key t</code>)");
-            }
-        }
-        "/update" | "update" => {
-            let _ = post_telegram(token, chat_id, "🔍 <b>Checking for GPO Autofish updates...</b>");
-            let cur_ver = env!("CARGO_PKG_VERSION");
-            match check_and_apply_update(Some(bot), Some(token), Some(chat_id), cur_ver) {
-                Ok(msg) => {
-                    let _ = post_telegram(token, chat_id, &msg);
+            for update in updates {
+                if let Some(id) = update["update_id"].as_i64() {
+                    offset = offset.max(id.saturating_add(1));
                 }
-                Err(e) => {
-                    let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Update check failed:</b> {e}"));
+                let callback = update.get("callback_query");
+                let message = callback
+                    .and_then(|q| q.get("message"))
+                    .or_else(|| update.get("message"));
+                let Some(message) = message else {
+                    continue;
+                };
+                if message["chat"]["id"].as_i64() != owner {
+                    continue;
                 }
-            }
-        }
-        "/stop" | "/pause" | "stop" | "pause" => {
-            if bot.is_running() {
-                bot.pause();
-                let _ = post_telegram(
-                    token,
-                    chat_id,
-                    "🛑 <b>GPO Autofish has been paused remotely.</b>\nSend /start to resume.",
-                );
-            } else {
-                let _ = post_telegram(
-                    token,
-                    chat_id,
-                    "ℹ️ <b>Macro is not currently running.</b>\nSend /start to start it.",
-                );
-            }
-        }
-        "/start" | "/resume" | "start" | "resume" => {
-            bot.start();
-            let _ = post_telegram(
-                token,
-                chat_id,
-                "▶️ <b>GPO Autofish started remotely!</b>\nSend /status to check live progress.",
-            );
-        }
-        "/buybait" | "/buy" | "buybait" | "buy" => {
-            let _ = post_telegram(token, chat_id, "🛒 <b>Triggering merchant bait purchase...</b>");
-            if crate::bot::actions::purchase(&bot.ctx()) {
-                let _ = post_telegram(token, chat_id, "✅ <b>Bait purchased successfully!</b> Resuming fishing.");
-            } else {
-                let _ = post_telegram(
-                    token,
-                    chat_id,
-                    "⚠️ <b>Bait purchase failed.</b> Make sure Auto Purchase is enabled and merchant points are set in Setup.",
-                );
-            }
-        }
-        cmd if cmd.starts_with("/setbuy") || cmd.starts_with("setbuy") => {
-            let parts: Vec<&str> = text.split_whitespace().collect();
-            if let Some(num_str) = parts.get(1) {
-                if let Ok(n) = num_str.parse::<u32>() {
-                    if (1..=5000).contains(&n) {
-                        {
-                            let mut s = settings.write();
-                            s.purchase.every_n_catches = n;
-                            let _ = bot.ctx().store.save(&s);
-                        }
-                        let _ = post_telegram(
+                let text = callback
+                    .and_then(|q| q["data"].as_str())
+                    .or_else(|| message["text"].as_str())
+                    .unwrap_or("");
+                let mut parts = text.splitn(2, ' ');
+                let command = parts.next().unwrap_or("").split('@').next().unwrap_or("");
+                let argument = parts.next().unwrap_or("").trim();
+                let result = (|| -> Result<String, String> {
+                    match command{
+                        "/start"=>Ok("GPO Remote is connected. Use /status, /fish, /pause, /stop, /jump or /web.".into()),
+                        "/status"=>Ok(format!("Fishing: {:?}\nRecorder: {}",bot.state(),super::recorder::get_status().message)),
+                        "/fish"=>{bot.start_checked()?;Ok("Fishing start requested.".into())},
+                        "/pause"=>{bot.pause();super::recorder::stop_playback();Ok("Paused.".into())},
+                        "/stop"=>{bot.stop();super::recorder::stop_playback();Ok("Stopped; held inputs released.".into())},
+                        "/jump"=>{let control=super::control::service()?;control.focus()?;control.tap("space")?;Ok("Jump input sent.".into())},
+                        "/record"=>{if bot.is_running(){return Err("Pause fishing before recording.".into());}super::recorder::start_recording(super::recorder::RecordMode::PcWindow)?;Ok("Recording game inputs. Use /save when finished.".into())},
+                        "/save"=>{let saved=super::recorder::stop_recording(argument,&bot.ctx().store)?;Ok(format!("Saved recording: {}",saved.name))},
+                        "/play"=>{super::recorder::play_macro(bot.ctx().clone(),bot.ctx().store.clone(),argument,false,Some(1.0),Some(1))?;Ok("Playback requested.".into())},
+                        "/web"=>{
+                            let ip=super::web_server::get_local_ip().unwrap_or_else(||"127.0.0.1".into());
+                            let url=dashboard_authed_url(&format!("http://{ip}:3888"),&s.web.token);
+                            post_telegram_with_button(token,configured,"Open your authenticated GPO Remote.","Open remote",&url)?;
+                            Ok(String::new())
+                        },
+                        "/update"=>Ok("Use Settings → Check for updates in the app. Only the signed in-app updater installs releases.".into()),
+                        _=>Ok("Unknown command. Use /status, /fish, /pause, /stop, /jump or /web.".into()),
+                    }
+                })();
+                if let Some(query) = callback {
+                    if let Some(id) = query["id"].as_str() {
+                        let _ = call(
+                            &client,
                             token,
-                            chat_id,
-                            &format!("⚙️ <b>Bait Purchase Interval updated!</b>\nMacro will now buy bait every <b>{n}</b> fish."),
+                            "answerCallbackQuery",
+                            json!({"callback_query_id":id}),
                         );
-                    } else {
-                        let _ = post_telegram(token, chat_id, "⚠️ Number must be between 1 and 5000. Usage: <code>/setbuy 50</code>");
                     }
-                } else {
-                    let _ = post_telegram(token, chat_id, "⚠️ Invalid number. Usage: <code>/setbuy 50</code>");
                 }
-            } else {
-                let current = settings.read().purchase.every_n_catches;
-                let _ = post_telegram(token, chat_id, &format!("ℹ️ Current bait purchase interval: every <b>{current}</b> fish.\nTo change it, send e.g.: <code>/setbuy 50</code>"));
-            }
-        }
-        cmd if cmd.starts_with("/setprogress") || cmd.starts_with("setprogress") => {
-            let parts: Vec<&str> = text.split_whitespace().collect();
-            if let Some(num_str) = parts.get(1) {
-                if let Ok(n) = num_str.parse::<u32>() {
-                    if (1..=5000).contains(&n) {
-                        {
-                            let mut s = settings.write();
-                            s.webhook.progress_every_n = n;
-                            let _ = bot.ctx().store.save(&s);
-                        }
-                        let _ = post_telegram(
-                            token,
-                            chat_id,
-                            &format!("📱 <b>Telegram Progress Interval updated!</b>\nBot will now send updates every <b>{n}</b> fish."),
-                        );
-                    } else {
-                        let _ = post_telegram(token, chat_id, "⚠️ Number must be between 1 and 5000. Usage: <code>/setprogress 100</code>");
-                    }
-                } else {
-                    let _ = post_telegram(token, chat_id, "⚠️ Invalid number. Usage: <code>/setprogress 100</code>");
-                }
-            } else {
-                let current = settings.read().webhook.progress_every_n;
-                let _ = post_telegram(token, chat_id, &format!("ℹ️ Current progress update interval: every <b>{current}</b> fish.\nTo change it, send e.g.: <code>/setprogress 100</code>"));
-            }
-        }
-        "/bosses" | "/timers" | "/boss" | "bosses" | "timers" | "boss" => {
-            let now = crate::core::boss_tracker::now_sec();
-            let msg = {
-                let s = settings.read();
-                boss_tracker.format_status_message(now, |b| s.boss_tracker.is_boss_enabled(b))
-            };
-            let _ = post_telegram(token, chat_id, &msg);
-        }
-        cmd if cmd.starts_with("/volume") || cmd.starts_with("volume") || cmd.starts_with("/sound") || cmd.starts_with("sound") => {
-            let parts: Vec<&str> = text.split_whitespace().collect();
-            if let Some(arg) = parts.get(1) {
-                let arg_low = arg.to_lowercase();
-                if arg_low == "max" || arg_low == "100" {
-                    match crate::core::audio::set_volume(1.0) {
-                        Ok(_) => {
-                            let _ = post_telegram(token, chat_id, "🔊 <b>Windows Volume set to MAX (100%)</b>");
-                        }
-                        Err(e) => {
-                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set volume: {e}"));
-                        }
-                    }
-                } else if arg_low == "0" || arg_low == "zero" || arg_low == "min" || arg_low == "mute" {
-                    match crate::core::audio::set_volume(0.0) {
-                        Ok(_) => {
-                            let _ = post_telegram(token, chat_id, "🔇 <b>Windows Volume set to ZERO (0% - Muted)</b>");
-                        }
-                        Err(e) => {
-                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set volume: {e}"));
-                        }
-                    }
-                } else if let Ok(val) = arg_low.trim_end_matches('%').parse::<f32>() {
-                    let clamped = val.clamp(0.0, 100.0);
-                    let scalar = clamped / 100.0;
-                    match crate::core::audio::set_volume(scalar) {
-                        Ok(new_vol) => {
-                            let pct = (new_vol * 100.0).round() as u32;
-                            let emoji = if pct == 0 { "🔇" } else if pct < 50 { "🔉" } else { "🔊" };
-                            let _ = post_telegram(token, chat_id, &format!("{emoji} <b>Windows Volume set to {pct}%</b>"));
-                        }
-                        Err(e) => {
-                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set volume: {e}"));
-                        }
-                    }
-                } else {
-                    let _ = post_telegram(token, chat_id, "⚠️ Invalid volume value. Usage: <code>/volume 0-100</code>, <code>/volume max</code>, or <code>/volume zero</code>");
-                }
-            } else {
-                let vol_res = crate::core::audio::get_volume();
-                let mute_res = crate::core::audio::is_muted();
-                match (vol_res, mute_res) {
-                    (Ok(vol), Ok(muted)) => {
-                        let pct = (vol * 100.0).round() as u32;
-                        let status_str = if muted || pct == 0 { "🔇 Muted" } else { "🔊 Unmuted" };
-                        let _ = post_telegram(token, chat_id, &format!("🔊 <b>Windows Master Audio:</b>\n\n• Current Volume: <b>{pct}%</b>\n• State: {status_str}\n\n<i>To change volume, send:</i>\n<code>/volume 100</code> (max)\n<code>/volume 0</code> (zero/mute)\n<code>/volume 50</code> (50%)"));
-                    }
-                    _ => {
-                        let _ = post_telegram(token, chat_id, "⚠️ Could not retrieve audio device status.");
-                    }
+                let reply =
+                    result.unwrap_or_else(|error| format!("Could not complete request: {error}"));
+                if !reply.is_empty() {
+                    let _ = post_telegram(token, configured, &reply);
                 }
             }
         }
-        "/unmute" | "unmute" => {
-            match crate::core::audio::set_mute(false) {
-                Ok(_) => {
-                    let vol = crate::core::audio::get_volume().unwrap_or(0.5);
-                    if vol <= 0.01 {
-                        let _ = crate::core::audio::set_volume(0.5);
-                    }
-                    let current = (crate::core::audio::get_volume().unwrap_or(0.5) * 100.0).round() as u32;
-                    let _ = post_telegram(token, chat_id, &format!("🔊 <b>Windows Audio UNMUTED!</b> (Volume: <b>{current}%</b>)"));
-                }
-                Err(e) => {
-                    let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to unmute audio: {e}"));
-                }
-            }
-        }
-        cmd if cmd.starts_with("/toggle") || cmd.starts_with("toggle") || cmd.starts_with("/mute") || cmd.starts_with("mute") => {
-            let parts: Vec<&str> = text.split_whitespace().collect();
-            if let Some(target) = parts.get(1) {
-                let target_low = target.to_lowercase();
-                if target_low == "sound" || target_low == "audio" || target_low == "pc" || target_low == "windows" {
-                    let _ = crate::core::audio::set_mute(true);
-                    let _ = post_telegram(token, chat_id, "🔇 <b>Windows Audio MUTED!</b>\nSend <code>/unmute</code> or <code>/volume max</code> to restore.");
-                    return;
-                }
-                let reply = {
-                    let mut s = settings.write();
-                    let res = if target_low.contains("hawk") || target_low.contains("mihawk") {
-                        s.boss_tracker.notify_hawkeye = !s.boss_tracker.notify_hawkeye;
-                        let state = if s.boss_tracker.notify_hawkeye { "ENABLED 🔔" } else { "MUTED 🔕" };
-                        format!("🦅 <b>Hawk Eye (Mihawk) alerts:</b> {state}")
-                    } else if target_low.contains("roger") {
-                        s.boss_tracker.notify_roger = !s.boss_tracker.notify_roger;
-                        let state = if s.boss_tracker.notify_roger { "ENABLED 🔔" } else { "MUTED 🔕" };
-                        format!("👑 <b>Roger alerts:</b> {state}")
-                    } else if target_low.contains("soul") || target_low.contains("brook") {
-                        s.boss_tracker.notify_soulking = !s.boss_tracker.notify_soulking;
-                        let state = if s.boss_tracker.notify_soulking { "ENABLED 🔔" } else { "MUTED 🔕" };
-                        format!("🎺 <b>Soul King (Brook) alerts:</b> {state}")
-                    } else if target_low.contains("radiant") || target_low.contains("admiral") || target_low.contains("kizaru") {
-                        s.boss_tracker.notify_radiant_admiral = !s.boss_tracker.notify_radiant_admiral;
-                        let state = if s.boss_tracker.notify_radiant_admiral { "ENABLED 🔔" } else { "MUTED 🔕" };
-                        format!("⚡ <b>Radiant Admiral (Kizaru) alerts:</b> {state}")
-                    } else if target_low.contains("merchant") || target_low.contains("trader") {
-                        s.boss_tracker.notify_merchant = !s.boss_tracker.notify_merchant;
-                        let state = if s.boss_tracker.notify_merchant { "ENABLED 🔔" } else { "MUTED 🔕" };
-                        format!("🛒 <b>Travelling Merchant alerts:</b> {state}")
-                    } else if target_low.contains("fruit") || target_low.contains("spawn") || target_low.contains("ase") {
-                        s.webhook.spawn = !s.webhook.spawn;
-                        let state = if s.webhook.spawn { "ENABLED 🔔 (Active on Roblox)" } else { "STOPPED / MUTED 🔕" };
-                        format!("🍇 <b>Devil Fruit & ASE Spawn Alerts:</b> {state}")
-                    } else if target_low == "all" {
-                        let any_on = s.boss_tracker.notify_hawkeye || s.boss_tracker.notify_roger || s.boss_tracker.notify_soulking || s.boss_tracker.notify_radiant_admiral || s.boss_tracker.notify_merchant;
-                        let new_state = !any_on;
-                        s.boss_tracker.notify_hawkeye = new_state;
-                        s.boss_tracker.notify_roger = new_state;
-                        s.boss_tracker.notify_soulking = new_state;
-                        s.boss_tracker.notify_radiant_admiral = new_state;
-                        s.boss_tracker.notify_merchant = new_state;
-                        let text_state = if new_state { "ALL ENABLED 🔔" } else { "ALL MUTED 🔕" };
-                        format!("🔔 <b>Boss Alerts:</b> {text_state}")
-                    } else {
-                        format!("⚠️ Unknown boss <b>{}</b>.\nValid options: <code>hawkeye</code>, <code>roger</code>, <code>soulking</code>, <code>kizaru</code>, <code>merchant</code>, <code>all</code>, <code>sound</code>", telegram_escape(target))
-                    };
-                    let _ = bot.ctx().store.save(&s);
-                    res
-                };
-                let _ = post_telegram(token, chat_id, &reply);
-            } else if cmd_clean == "/mute" || cmd_clean == "mute" {
-                let _ = crate::core::audio::set_mute(true);
-                let _ = post_telegram(token, chat_id, "🔇 <b>Windows Audio MUTED!</b>\nSend <code>/unmute</code> or <code>/volume max</code> to restore.");
-            } else {
-                let s = settings.read();
-                let fmt_badge = |en: bool| if en { "ON 🔔" } else { "OFF 🔕" };
-                let msg = format!(
-                    "⚙️ <b>Boss Alert Notification Settings:</b>\n\n\
-                    🦅 Hawk Eye (Mihawk): <b>{}</b>\n\
-                    👑 Roger: <b>{}</b>\n\
-                    🎺 Soul King (Brook): <b>{}</b>\n\
-                    ⚡ Radiant Admiral (Kizaru): <b>{}</b>\n\
-                    🛒 Travelling Merchant: <b>{}</b>\n\n\
-                    <i>To toggle any alert on/off, send e.g.:</i>\n\
-                    <code>/toggle roger</code>\n\
-                    <code>/toggle hawkeye</code>\n\
-                    <code>/toggle brook</code>\n\
-                    <code>/toggle kizaru</code>\n\
-                    <code>/toggle merchant</code>\n\
-                    <code>/toggle all</code>",
-                    fmt_badge(s.boss_tracker.notify_hawkeye),
-                    fmt_badge(s.boss_tracker.notify_roger),
-                    fmt_badge(s.boss_tracker.notify_soulking),
-                    fmt_badge(s.boss_tracker.notify_radiant_admiral),
-                    fmt_badge(s.boss_tracker.notify_merchant),
-                );
-                let _ = post_telegram(token, chat_id, &msg);
-            }
-        }
-        cmd if cmd.starts_with("/sync") || cmd.starts_with("sync") || text.to_lowercase().contains("live spawn times") || text.to_lowercase().contains("event bosses") => {
-            let now = crate::core::boss_tracker::now_sec();
-            let text_low = text.to_lowercase();
-            if text_low.contains("read") || text_low.contains("screen") || text_low.contains("ocr") {
-                let ctx = bot.ctx();
-                match crate::bot::actions::scan_server_age(&ctx) {
-                    Ok((uptime_sec, time_str, rem, is_spawned)) => {
-                        let target_offset = if is_spawned {
-                            now + rem + 1800
-                        } else {
-                            now + rem
-                        };
-                        boss_tracker.set_offset(crate::core::boss_tracker::BossId::TravellingMerchant, target_offset);
-                        {
-                            let mut s = settings.write();
-                            s.boss_tracker.merchant_offset = Some(target_offset);
-                            let _ = bot.ctx().store.save(&s);
-                        }
-                        let status_str = if is_spawned {
-                            format!("🛒 <b>Travelling Merchant is SPAWNED RIGHT NOW!</b>\n⏳ Despawns in: <b>{}</b>", crate::core::boss_tracker::format_duration(rem))
-                        } else {
-                            format!("🛒 <b>Travelling Merchant synced!</b>\n⏳ Next spawn in: <b>{}</b>", crate::core::boss_tracker::format_duration(rem))
-                        };
-                        let reply = format!(
-                            "📷 <b>Auto-Read Server Age from Screen:</b>\n\n\
-                             • Detected In-Game Timer: <code>{time_str}</code> (uptime: {uptime_sec}s)\n\
-                             • {status_str}\n\n\
-                             <i>Travelling Merchant countdown is now synchronized!</i>"
-                        );
-                        let _ = post_telegram(token, chat_id, &reply);
-                    }
-                    Err(e) => {
-                        let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Screen Scan Failed:</b> {e}\n\nMake sure Roblox is running on your screen!"));
-                    }
-                }
-            } else {
-                match boss_tracker.parse_sync_text(text, now) {
-                    Ok(reply) => {
-                        {
-                            let mut s = settings.write();
-                            s.boss_tracker.hawkeye_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::HawkEye).copied();
-                            s.boss_tracker.roger_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::Roger).copied();
-                            s.boss_tracker.soulking_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::SoulKing).copied();
-                            s.boss_tracker.radiant_admiral_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::RadiantAdmiral).copied();
-                            s.boss_tracker.merchant_offset = boss_tracker.offsets.get(&crate::core::boss_tracker::BossId::TravellingMerchant).copied();
-                            let _ = bot.ctx().store.save(&s);
-                        }
-                        let _ = post_telegram(token, chat_id, &reply);
-                    }
-                    Err(err_msg) => {
-                        let _ = post_telegram(token, chat_id, &err_msg);
-                    }
-                }
-            }
-        }
-        cmd if cmd.starts_with("/brightness") || cmd.starts_with("brightness") || cmd.starts_with("/light") || cmd.starts_with("light") => {
-            let parts: Vec<&str> = text.split_whitespace().collect();
-            if let Some(arg) = parts.get(1) {
-                let arg_low = arg.to_lowercase();
-                if arg_low == "max" || arg_low == "100" {
-                    match crate::core::brightness::set_brightness(100) {
-                        Ok(_) => {
-                            let _ = post_telegram(token, chat_id, "💡 <b>Screen brightness set to MAX (100%)</b>");
-                        }
-                        Err(e) => {
-                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set brightness: {e}"));
-                        }
-                    }
-                } else if arg_low == "0" || arg_low == "zero" || arg_low == "min" {
-                    match crate::core::brightness::set_brightness(0) {
-                        Ok(_) => {
-                            let _ = post_telegram(token, chat_id, "💡 <b>Screen brightness set to MIN (0%)</b>");
-                        }
-                        Err(e) => {
-                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set brightness: {e}"));
-                        }
-                    }
-                } else if let Ok(val) = arg_low.trim_end_matches('%').parse::<u32>() {
-                    let clamped = val.clamp(0, 100);
-                    match crate::core::brightness::set_brightness(clamped) {
-                        Ok(new_b) => {
-                            let emoji = if new_b < 30 { "🌑" } else if new_b < 70 { "🌓" } else { "🌕" };
-                            let _ = post_telegram(token, chat_id, &format!("{emoji} <b>Screen brightness set to {new_b}%</b>"));
-                        }
-                        Err(e) => {
-                            let _ = post_telegram(token, chat_id, &format!("⚠️ Failed to set brightness: {e}"));
-                        }
-                    }
-                } else {
-                    let _ = post_telegram(token, chat_id, "⚠️ Invalid brightness value. Usage: <code>/brightness 0-100</code>, <code>/brightness max</code>, or <code>/brightness min</code>");
-                }
-            } else {
-                let b = crate::core::brightness::get_brightness().unwrap_or(80);
-                let _ = post_telegram(token, chat_id, &format!("💡 <b>Screen Brightness:</b>\n\n• Current Level: <b>{b}%</b>\n\n<i>To change brightness, send:</i>\n<code>/brightness 100</code> (max)\n<code>/brightness 30</code>\n<code>/brightness min</code>"));
-            }
-        }
-        cmd if cmd.starts_with("/craft") || cmd.starts_with("craft") => {
-            let parts: Vec<&str> = text.split_whitespace().collect();
-            let sub = parts.get(1).map(|s| s.to_lowercase()).unwrap_or_else(|| "status".into());
-
-            if sub == "stop" || sub == "cancel" {
-                crate::bot::crafting::stop_auto_craft();
-                let _ = post_telegram(token, chat_id, "🛑 <b>Auto-craft stopped.</b>");
-            } else if sub == "rare" {
-                let ctx_clone = bot.ctx().clone();
-                match crate::bot::crafting::start_auto_craft(ctx_clone, crate::bot::crafting::CraftTier::Rare) {
-                    Ok(_) => {
-                        let _ = post_telegram(token, chat_id, "🔨 <b>Started Auto-Craft for Rare Fish Bait!</b>\nMake sure you are standing at Blacksmith Sen.");
-                    }
-                    Err(e) => {
-                        let _ = post_telegram(token, chat_id, &format!("⚠️ {e}"));
-                    }
-                }
-            } else if sub == "legendary" || sub == "leg" {
-                let ctx_clone = bot.ctx().clone();
-                match crate::bot::crafting::start_auto_craft(ctx_clone, crate::bot::crafting::CraftTier::Legendary) {
-                    Ok(_) => {
-                        let _ = post_telegram(token, chat_id, "🔨 <b>Started Auto-Craft for Legendary Fish Bait!</b>\nMake sure you are standing at Blacksmith Sen.");
-                    }
-                    Err(e) => {
-                        let _ = post_telegram(token, chat_id, &format!("⚠️ {e}"));
-                    }
-                }
-            } else if sub == "all" {
-                let ctx_clone = bot.ctx().clone();
-                match crate::bot::crafting::start_auto_craft(ctx_clone, crate::bot::crafting::CraftTier::All) {
-                    Ok(_) => {
-                        let _ = post_telegram(token, chat_id, "🔨 <b>Started Auto-Craft for ALL Baits (Legendary & Rare)!</b>\nMake sure you are standing at Blacksmith Sen.");
-                    }
-                    Err(e) => {
-                        let _ = post_telegram(token, chat_id, &format!("⚠️ {e}"));
-                    }
-                }
-            } else {
-                let st = crate::bot::crafting::get_craft_status();
-                let run_status = if st.is_crafting {
-                    format!("🟢 <b>Running</b> ({})\nBatches crafted: {}\nStatus: {}", st.tier, st.crafted_count, st.message)
-                } else {
-                    format!("⏹️ <b>Idle</b>\nLast status: {}", if st.message.is_empty() { "Ready" } else { &st.message })
-                };
-                let _ = post_telegram(
-                    token,
-                    chat_id,
-                    &format!(
-                        "🔨 <b>Auto-Craft Bait Status</b>\n\n\
-                         {run_status}\n\n\
-                         <b>Commands:</b>\n\
-                         • <code>/craft rare</code> - Craft Rare Fish Bait\n\
-                         • <code>/craft legendary</code> - Craft Legendary Fish Bait\n\
-                         • <code>/craft all</code> - Craft Legendary then Rare Bait\n\
-                         • <code>/craft stop</code> - Stop Auto-Craft"
-                    ),
-                );
-            }
-        }
-        "/web" | "/dashboard" | "web" | "dashboard" => {
-            let local_ip = crate::bot::web_server::get_local_ip().unwrap_or_else(|| "127.0.0.1".into());
-            // The dashboard token is required for every API call AND the
-            // stream <img> (query param). Without it the link opens to an
-            // "Unauthorized" page — so the button carries the token. This
-            // chat is the owner's authorized chat; never forward this link.
-            let dash_token = settings.read().web.token.clone();
-            let lan_url = dashboard_authed_url(&format!("http://{local_ip}:3888"), &dash_token);
-            let local_url = dashboard_authed_url("http://localhost:3888", &dash_token);
-            let reply = format!(
-                "🌐 <b>GPO Cyberdeck Webapp</b>\n\n\
-                 • <b>Local PC</b>: <code>{local_url}</code>\n\
-                 • <b>Mobile (Same Wi-Fi)</b>: <code>{lan_url}</code>\n\n\
-                 Remote • Stats • Studio • Craft • System tabs with live Roblox screen, touch controls, macro studio and thermal hub.\n\n\
-                 <i>🔑 This link carries your dashboard token — do not share it.</i>"
-            );
-            let _ = crate::webhook::post_telegram_with_button(
-                token,
-                chat_id,
-                &reply,
-                "🌐 Open Webapp",
-                &lan_url,
-            );
-        }
-        cmd if cmd.starts_with("/macro") || cmd.starts_with("macro") => {
-            let parts: Vec<&str> = text.split_whitespace().collect();
-            let sub = parts.get(1).map(|s| s.to_lowercase()).unwrap_or_else(|| "status".into());
-
-            if sub == "stop" || sub == "cancel" {
-                crate::bot::recorder::stop_playback();
-                crate::bot::recorder::cancel_recording();
-                let _ = post_telegram(token, chat_id, "🛑 <b>Macro playback & recording stopped.</b>");
-            } else if sub == "list" {
-                let list = crate::bot::recorder::load_macros(&bot.ctx().store);
-                if list.is_empty() {
-                    let _ = post_telegram(
-                        token,
-                        chat_id,
-                        "📼 <b>No custom macros recorded yet.</b>\n\nTo record one, open <code>/web</code> and tap <b>Record Via Screen</b>, or send <code>/macro record start</code>.",
-                    );
-                } else {
-                    let mut lines = Vec::new();
-                    for (i, m) in list.iter().enumerate() {
-                        lines.push(format!("{}. 📋 <b>{}</b> ({} steps)", i + 1, m.name, m.steps.len()));
-                    }
-                    let reply = format!(
-                        "📼 <b>Saved Custom Macros ({} total):</b>\n\n\
-                         {}\n\n\
-                         <i>To play, send:</i>\n\
-                         • <code>/macro play &lt;name&gt;</code>\n\
-                         • <code>/macro loop &lt;name&gt;</code>\n\
-                         • <code>/macro delete &lt;name&gt;</code>",
-                        list.len(),
-                        lines.join("\n")
-                    );
-                    let _ = post_telegram(token, chat_id, &reply);
-                }
-            } else if sub == "play" || sub == "run" {
-                let target_name = parts[2..].join(" ");
-                if target_name.trim().is_empty() {
-                    let _ = post_telegram(token, chat_id, "⚠️ <b>Usage:</b> <code>/macro play &lt;name&gt;</code> (e.g. <code>/macro play Craft Rare</code>)");
-                } else {
-                    match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), &target_name, false, None, None) {
-                        Ok(_) => {
-                            let _ = post_telegram(token, chat_id, &format!("▶️ <b>Started playing macro:</b> <code>{}</code> (1 cycle)", telegram_escape(&target_name)));
-                        }
-                        Err(e) => {
-                            let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Playback failed:</b> {e}"));
-                        }
-                    }
-                }
-            } else if sub == "loop" {
-                let target_name = parts[2..].join(" ");
-                if target_name.trim().is_empty() {
-                    let _ = post_telegram(token, chat_id, "⚠️ <b>Usage:</b> <code>/macro loop &lt;name&gt;</code> (e.g. <code>/macro loop Craft Rare</code>)");
-                } else {
-                    match crate::bot::recorder::play_macro(bot.ctx().clone(), bot.ctx().store.clone(), &target_name, true, None, None) {
-                        Ok(_) => {
-                            let _ = post_telegram(token, chat_id, &format!("🔁 <b>Started LOOP playback for macro:</b> <code>{}</code>\nSend <code>/macro stop</code> to halt.", telegram_escape(&target_name)));
-                        }
-                        Err(e) => {
-                            let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Playback failed:</b> {e}"));
-                        }
-                    }
-                }
-            } else if sub == "record" {
-                let action = parts.get(2).map(|s| s.to_lowercase()).unwrap_or_else(|| "status".into());
-                if action == "start" {
-                    match crate::bot::recorder::start_recording(crate::bot::recorder::RecordMode::WebScreen) {
-                        Ok(_) => {
-                            let _ = post_telegram(
-                                token,
-                                chat_id,
-                                "⏺️ <b>Macro Step Recording Started!</b>\n\nOpen the Web Dashboard (<code>/web</code>) and tap the live game screen and buttons in order.\nWhen finished, send: <code>/macro record stop &lt;name&gt;</code>",
-                            );
-                        }
-                        Err(e) => {
-                            let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Cannot start recording:</b> {e}"));
-                        }
-                    }
-                } else if action == "stop" {
-                    let custom_name = parts[3..].join(" ");
-                    match crate::bot::recorder::stop_recording(&custom_name, &bot.ctx().store) {
-                        Ok(m) => {
-                            let _ = post_telegram(
-                                token,
-                                chat_id,
-                                &format!("✅ <b>Macro '{}' saved successfully!</b>\nCaptured <b>{}</b> steps.\nSend <code>/macro play {}</code> or <code>/macro loop {}</code> to run it anytime.", m.name, m.steps.len(), m.name, m.name)
-                            );
-                        }
-                        Err(e) => {
-                            let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Save failed:</b> {e}"));
-                        }
-                    }
-                } else if action == "cancel" {
-                    crate::bot::recorder::cancel_recording();
-                    let _ = post_telegram(token, chat_id, "❌ <b>Macro recording discarded.</b>");
-                } else {
-                    let _ = post_telegram(token, chat_id, "ℹ️ <b>Record usage:</b>\n• <code>/macro record start</code>\n• <code>/macro record stop &lt;name&gt;</code>\n• <code>/macro record cancel</code>");
-                }
-            } else if sub == "delete" || sub == "del" {
-                let target_name = parts[2..].join(" ");
-                if target_name.trim().is_empty() {
-                    let _ = post_telegram(token, chat_id, "⚠️ <b>Usage:</b> <code>/macro delete &lt;name&gt;</code>");
-                } else {
-                    match crate::bot::recorder::delete_macro(&bot.ctx().store, &target_name) {
-                        Ok(_) => {
-                            let _ = post_telegram(token, chat_id, &format!("🗑️ <b>Deleted macro:</b> <code>{}</code>", telegram_escape(&target_name)));
-                        }
-                        Err(e) => {
-                            let _ = post_telegram(token, chat_id, &format!("⚠️ <b>Delete failed:</b> {e}"));
-                        }
-                    }
-                }
-            } else {
-                let st = crate::bot::recorder::get_status();
-                let list = crate::bot::recorder::load_macros(&bot.ctx().store);
-                let cur_state = if st.is_recording {
-                    format!("⏺️ <b>RECORDING</b> ({} steps captured)", st.recorded_steps_count)
-                } else if st.is_playing {
-                    let loop_txt = if st.is_looping { format!("(Loop #{})", st.current_loop) } else { "(Single cycle)".into() };
-                    format!("▶️ <b>PLAYING:</b> {} {}", telegram_escape(st.playing_macro_name.as_deref().unwrap_or("Custom")), loop_txt)
-                } else {
-                    "⏹️ <b>IDLE</b>".to_string()
-                };
-
-                let reply = format!(
-                    "📼 <b>Step Recorder &amp; Custom Macro Player</b>\n\n\
-                     • <b>Status:</b> {cur_state}\n\
-                     • <b>Saved Macros:</b> {} macros\n\n\
-                     <b>Commands:</b>\n\
-                     • <code>/macro list</code> - List all saved macros\n\
-                     • <code>/macro play &lt;name&gt;</code> - Play macro once\n\
-                     • <code>/macro loop &lt;name&gt;</code> - Loop macro continuously\n\
-                     • <code>/macro stop</code> - Stop running playback\n\
-                     • <code>/macro record start</code> - Start recording steps\n\
-                     • <code>/macro record stop &lt;name&gt;</code> - Save recorded macro\n\
-                     • <code>/macro delete &lt;name&gt;</code> - Delete macro",
-                    list.len()
-                );
-                let _ = post_telegram(token, chat_id, &reply);
-            }
-        }
-        "/help" | "help" => {
-            let help_text = "🎮 <b>GPO Autofish Remote Controls</b>\n\n\
-                👑 /bosses - Live Boss & Merchant countdowns\n\
-                🔨 /craft &lt;rare|legendary|all|stop&gt; - Auto craft fish bait at Blacksmith Sen\n\
-                📼 /macro &lt;list|play|loop|stop|record&gt; - Custom Step Recorder & Macro Playback\n\
-                🔔 /toggle &lt;boss|spawn&gt; - Mute/unmute alerts (e.g. /toggle roger, /toggle spawn)\n\
-                🔄 /sync - Calibrate timers (/sync read, /sync server, or paste Discord)\n\
-                🌐 /web - Open live Web Dashboard (Mobile & PC)\n\
-                🔊 /volume &lt;0-100|max|zero&gt; - Set sound volume (/volume 0..100)\n\
-                💡 /brightness &lt;0-100|max|min&gt; - Set screen brightness\n\
-                🔇 /mute / /unmute - Mute or unmute Windows PC audio\n\
-                📊 /status - View live stats & screenshot\n\
-                📸 /screenshot - Instant Roblox screenshot on demand\n\
-                ⚡ /pity - Quick Devil Fruit pity counter\n\
-                🔄 /recast - Reset rod & recast immediately\n\
-                💬 /t - Press key [T] in game (or /key &lt;letter&gt;)\n\
-                🛒 /buybait - Force merchant bait purchase now\n\
-                ⚙️ /setbuy &lt;N&gt; - Set catches between bait buys (e.g. /setbuy 50)\n\
-                📱 /setprogress &lt;N&gt; - Set catches between progress pings (e.g. /setprogress 100)\n\
-                ▶️ /start - Start or resume macro\n\
-                🛑 /stop - Pause macro\n\
-                🚀 /update - Check & apply new app update\n\
-                ❓ /help - Show this commands list\n\n\
-                <i>💡 Tip: Tap the <b>[/] Menu</b> button next to the input box for one-tap commands! You can also talk to the bot naturally.</i>";
-            let _ = post_telegram(token, chat_id, help_text);
-        }
-        _ => {
-            handle_smart_command(bot, settings, boss_tracker, token, chat_id, text);
-        }
-    }
-}
-
-fn handle_smart_command(
-    bot: &Arc<Bot>,
-    settings: &Arc<RwLock<Settings>>,
-    boss_tracker: &mut crate::core::boss_tracker::BossTracker,
-    token: &str,
-    chat_id: &str,
-    text: &str,
-) {
-    let lower = text.to_lowercase();
-    let words: Vec<&str> = lower.split_whitespace().collect();
-
-    // 1. Brightness / Light intent
-    if lower.contains("brightness") || lower.contains("screen light") || lower.contains("light level") || lower.contains("dim screen") || (lower.contains("light") && (lower.contains("screen") || lower.contains("monitor") || lower.contains("display") || words.iter().any(|w| w.parse::<u32>().is_ok()))) {
-        if lower.contains("max") || lower.contains("100") {
-            let _ = crate::core::brightness::set_brightness(100);
-            let _ = post_telegram(token, chat_id, "💡 <b>Screen brightness set to MAX (100%)</b>");
-            return;
-        } else if lower.contains("min") || lower.contains("zero") || words.contains(&"0") {
-            let _ = crate::core::brightness::set_brightness(0);
-            let _ = post_telegram(token, chat_id, "💡 <b>Screen brightness set to MIN (0%)</b>");
-            return;
-        } else if let Some(num) = extract_number(&lower) {
-            let clamped = num.clamp(0, 100);
-            let _ = crate::core::brightness::set_brightness(clamped);
-            let emoji = if clamped < 30 { "🌑" } else if clamped < 70 { "🌓" } else { "🌕" };
-            let _ = post_telegram(token, chat_id, &format!("{emoji} <b>Screen brightness set to {clamped}%</b>"));
-            return;
-        } else {
-            let b = crate::core::brightness::get_brightness().unwrap_or(80);
-            let _ = post_telegram(token, chat_id, &format!("💡 <b>Current Screen Brightness:</b> <b>{b}%</b>\n\n<i>To change:</i> <code>brightness 50</code>, <code>brightness max</code>, <code>dim screen</code>"));
-            return;
-        }
-    }
-
-    // 2. Volume / Sound intent
-    if lower.contains("volume") || lower.contains("sound") || lower.contains("audio") || lower.contains("mute") || lower.contains("unmute") || lower.contains("louder") || lower.contains("quieter") {
-        if lower.contains("unmute") {
-            let _ = crate::core::audio::set_mute(false);
-            let vol = (crate::core::audio::get_volume().unwrap_or(0.5) * 100.0).round() as u32;
-            let _ = post_telegram(token, chat_id, &format!("🔊 <b>Windows Audio UNMUTED!</b> (Volume: <b>{vol}%</b>)"));
-            return;
-        } else if lower.contains("mute") || lower.contains("zero") || words.contains(&"0") {
-            let _ = crate::core::audio::set_mute(true);
-            let _ = post_telegram(token, chat_id, "🔇 <b>Windows Audio MUTED!</b>\nSend <code>unmute</code> or <code>volume max</code> to restore.");
-            return;
-        } else if lower.contains("max") || lower.contains("100") {
-            let _ = crate::core::audio::set_volume(1.0);
-            let _ = post_telegram(token, chat_id, "🔊 <b>Windows Volume set to MAX (100%)</b>");
-            return;
-        } else if let Some(num) = extract_number(&lower) {
-            let clamped = num.clamp(0, 100);
-            let _ = crate::core::audio::set_volume(clamped as f32 / 100.0);
-            let emoji = if clamped == 0 { "🔇" } else if clamped < 50 { "🔉" } else { "🔊" };
-            let _ = post_telegram(token, chat_id, &format!("{emoji} <b>Windows Volume set to {clamped}%</b>"));
-            return;
-        } else {
-            let vol = (crate::core::audio::get_volume().unwrap_or(0.5) * 100.0).round() as u32;
-            let muted = crate::core::audio::is_muted().unwrap_or(false);
-            let state_str = if muted || vol == 0 { "🔇 Muted" } else { "🔊 Unmuted" };
-            let _ = post_telegram(token, chat_id, &format!("🔊 <b>Windows Master Audio:</b> <b>{vol}%</b> ({state_str})\n\n<i>To change:</i> <code>volume 60</code>, <code>volume max</code>, <code>mute</code>"));
-            return;
-        }
-    }
-
-    // 3. Screenshot intent
-    if lower.contains("screenshot") || lower.contains("photo") || lower.contains("pic") || lower.contains("picture") || lower.contains("screen") || lower.contains("show me") || lower.contains("view game") {
-        handle_command(bot, settings, boss_tracker, token, chat_id, "/screenshot");
-        return;
-    }
-
-    // 4. Status / Progress intent
-    if lower.contains("status") || lower.contains("how many fish") || lower.contains("progress") || lower.contains("stats") || lower.contains("how is it going") || lower.contains("what is happening") || lower.contains("runtime") {
-        handle_command(bot, settings, boss_tracker, token, chat_id, "/status");
-        return;
-    }
-
-    // 5. Pity intent
-    if lower.contains("pity") {
-        handle_command(bot, settings, boss_tracker, token, chat_id, "/pity");
-        return;
-    }
-
-    // 6. Bosses / Timers intent
-    if lower.contains("boss") || lower.contains("timer") || lower.contains("roger") || lower.contains("mihawk") || lower.contains("kizaru") || lower.contains("merchant") || lower.contains("brook") || lower.contains("when does") {
-        handle_command(bot, settings, boss_tracker, token, chat_id, "/bosses");
-        return;
-    }
-
-    // 7. Recast intent
-    if lower.contains("recast") || lower.contains("cast again") || lower.contains("reset rod") || lower.contains("throw rod") {
-        handle_command(bot, settings, boss_tracker, token, chat_id, "/recast");
-        return;
-    }
-
-    // 8. Start / Resume intent
-    if lower.contains("start") || lower.contains("resume") || lower.contains("continue") || lower.contains("unpause") {
-        handle_command(bot, settings, boss_tracker, token, chat_id, "/start");
-        return;
-    }
-
-    // 9. Pause / Stop intent
-    if lower.contains("pause") || lower.contains("stop") || lower.contains("halt") || lower.contains("hold on") {
-        handle_command(bot, settings, boss_tracker, token, chat_id, "/stop");
-        return;
-    }
-
-    // 10. Buy bait intent
-    if lower.contains("buy bait") || lower.contains("purchase bait") || lower.contains("get bait") || lower.contains("buy some bait") {
-        handle_command(bot, settings, boss_tracker, token, chat_id, "/buybait");
-        return;
-    }
-
-    // 11. Web App / Dashboard intent
-    if lower.contains("web") || lower.contains("dashboard") || lower.contains("panel") || lower.contains("site") || lower.contains("link") {
-        handle_command(bot, settings, boss_tracker, token, chat_id, "/web");
-        return;
-    }
-
-    // 12. Help intent
-    if lower.contains("help") || lower.contains("commands") || lower.contains("what can you do") {
-        handle_command(bot, settings, boss_tracker, token, chat_id, "/help");
-        return;
-    }
-
-    // 13. Conversational Gemini AI fallback (if enabled)
-    let (gemini_enabled, api_key, model) = {
-        let s = settings.read();
-        (s.gemini.enabled && !s.gemini.api_key.trim().is_empty(), s.gemini.api_key.clone(), s.gemini.model.clone())
-    };
-
-    if gemini_enabled {
-        let stats = bot.ctx().session.lock().stats();
-        let vol = (crate::core::audio::get_volume().unwrap_or(0.5) * 100.0).round() as u32;
-        let brightness = crate::core::brightness::get_brightness().unwrap_or(80);
-        let state = if bot.is_paused() { "Paused" } else if bot.is_running() { "Fishing" } else { "Stopped" };
-        let context_summary = format!(
-            "Macro State: {state}, Runtime: {}s, Fish Caught: {}, Fruits: {}, Fruit Pity: {}, Legendary Pity: {}/100, Master Volume: {}%, Screen Brightness: {}%",
-            stats.runtime_s, stats.fish, stats.fruits, stats.pity_fruit, stats.pity_legendary, vol, brightness
-        );
-
-        if let Ok(res) = crate::core::gemini::interpret_smart_bot_command(text, &context_summary, &api_key, &model) {
-            if let Some(ref act) = res.action {
-                match act.as_str() {
-                    "start" => bot.start(),
-                    "pause" => bot.pause(),
-                    "recast" => bot.recast(),
-                    "buy_bait" => { let _ = crate::bot::actions::purchase(&bot.ctx()); }
-                    "set_volume" => {
-                        if let Some(v) = res.param {
-                            let _ = crate::core::audio::set_volume(v.clamp(0, 100) as f32 / 100.0);
-                        }
-                    }
-                    "set_brightness" => {
-                        if let Some(b) = res.param {
-                            let _ = crate::core::brightness::set_brightness(b.clamp(0, 100));
-                        }
-                    }
-                    "screenshot" => {
-                        handle_command(bot, settings, boss_tracker, token, chat_id, "/screenshot");
-                        return;
-                    }
-                    "status" => {
-                        handle_command(bot, settings, boss_tracker, token, chat_id, "/status");
-                        return;
-                    }
-                    "pity" => {
-                        handle_command(bot, settings, boss_tracker, token, chat_id, "/pity");
-                        return;
-                    }
-                    "bosses" => {
-                        handle_command(bot, settings, boss_tracker, token, chat_id, "/bosses");
-                        return;
-                    }
-                    "web" => {
-                        handle_command(bot, settings, boss_tracker, token, chat_id, "/web");
-                        return;
-                    }
-                    _ => {}
-                }
-            }
-            let _ = post_telegram(token, chat_id, &res.reply);
-            return;
-        }
-    }
-
-    // Final friendly fallback
-    let _ = post_telegram(
-        token,
-        chat_id,
-        "🤖 <b>I didn't quite catch that.</b>\n\n\
-         <i>Try commands like:</i>\n\
-         • <code>status</code> or <code>how many fish</code>\n\
-         • <code>screenshot</code> or <code>show screen</code>\n\
-         • <code>volume 50</code> or <code>mute</code>\n\
-         • <code>brightness 70</code> or <code>dim screen</code>\n\
-         • <code>bosses</code> or <code>when roger</code>\n\
-         • <code>web</code> (open live web dashboard)\n\
-         • <code>help</code> (show all commands)",
-    );
-}
-
-fn extract_number(text: &str) -> Option<u32> {
-    for token in text.split_whitespace() {
-        let clean: String = token.chars().filter(|c| c.is_ascii_digit()).collect();
-        if let Ok(n) = clean.parse::<u32>() {
-            return Some(n);
-        }
-    }
-    None
-}
-
-fn register_bot_commands(client: &reqwest::blocking::Client, token: &str) {
-    let url = format!("https://api.telegram.org/bot{token}/setMyCommands");
-    let payload = serde_json::json!({
-        "commands": [
-            { "command": "bosses", "description": "👑 Live Boss & Merchant timers" },
-            { "command": "toggle", "description": "🔔 Mute/unmute specific boss alerts" },
-            { "command": "sync", "description": "🔄 Calibrate boss timers (/sync)" },
-            { "command": "web", "description": "🌐 Open live Web Dashboard (Mobile & PC)" },
-            { "command": "macro", "description": "📼 Custom Step Recorder & Playback" },
-            { "command": "volume", "description": "🔊 Set sound volume (/volume 0..100, max, zero)" },
-            { "command": "brightness", "description": "💡 Set screen brightness (/brightness 0..100, min, max)" },
-            { "command": "status", "description": "📊 Live stats & Roblox screenshot" },
-            { "command": "screenshot", "description": "📸 Instant Roblox screen capture" },
-            { "command": "pity", "description": "⚡ Devil fruit pity status" },
-            { "command": "recast", "description": "🔄 Reset rod & recast immediately" },
-            { "command": "t", "description": "💬 Press key [T] in game" },
-            { "command": "buybait", "description": "🛒 Buy bait at merchant right now" },
-            { "command": "setbuy", "description": "⚙️ Set catches between bait buys (/setbuy N)" },
-            { "command": "setprogress", "description": "📱 Set catches between progress pings (/setprogress N)" },
-            { "command": "start", "description": "▶️ Start or resume fishing macro" },
-            { "command": "stop", "description": "🛑 Pause fishing macro" },
-            { "command": "update", "description": "🚀 Check and apply latest app update" },
-            { "command": "help", "description": "❓ Show all commands and controls" }
-        ]
     });
-    if let Err(e) = client.post(&url).json(&payload).send() {
-        tracing::warn!("Failed to register Telegram bot commands: {e}");
-    } else {
-        tracing::info!("Telegram bot commands menu registered successfully");
-    }
 }
-
-/// Semver-ish comparison: returns `Some(true)` when `remote` is NEWER than
-/// `current`.
-///
-/// v5.6.x used string inequality (`remote_ver == cur_ver`), so ANY difference
-/// triggered an install - including a silent DOWNGRADE or a jump to a
-/// prerelease. This refuses both.
-fn is_newer_version(remote: &str, current: &str) -> Option<bool> {
-    fn parse(s: &str) -> Option<(u64, u64, u64, bool)> {
-        let s = s.trim().trim_start_matches('v');
-        let core = s.split(['-', '+']).next()?;
-        let mut parts = core.split('.');
-        let num = |it: &mut std::str::Split<'_, char>| -> Option<u64> {
-            match it.next() {
-                Some(t) => t.parse::<u64>().ok(),
-                None => None,
-            }
-        };
-        let major = num(&mut parts)?;
-        let minor = num(&mut parts)?;
-        let patch = match parts.next() {
-            Some(t) => t.parse::<u64>().ok()?,
-            None => 0,
-        };
-        // A prerelease is older than its own release, and never something to
-        // auto-install from a "latest" channel.
-        let pre = s.contains('-');
-        Some((major, minor, patch, pre))
-    }
-    let r = parse(remote)?;
-    let c = parse(current)?;
-    if r.3 && !c.3 {
-        return Some(false);
-    }
-    Some(r > c)
-}
-
-/// Validate a release download URL.
-///
-/// The manifest is remote input. Only the exact GitHub release-assets origin is
-/// accepted, and HTTPS only, so a compromised or MITM'd `latest.json` cannot
-/// redirect the installer download (or make it plain HTTP).
-fn validated_download_url(url: &str) -> Result<&str, Box<dyn std::error::Error + Send + Sync>> {
-    const RELEASE_HOST: &str = "https://github.com/";
-    const ASSET_HOST: &str = "https://objects.githubusercontent.com/";
-    if !(url.starts_with(RELEASE_HOST) || url.starts_with(ASSET_HOST)) {
-        return Err(format!("refusing download from untrusted host: {url}").into());
-    }
-    Ok(url)
-}
-
-/// Reject a version string that is not a plain dotted number.
-///
-/// The value is interpolated into both a filename and a PowerShell command
-/// string; anything with quotes, separators or `..` in it is an injection or a
-/// path-traversal vector.
-fn safe_version_token(v: &str) -> Result<&str, Box<dyn std::error::Error + Send + Sync>> {
-    if v.is_empty() || v.len() > 32 || !v.bytes().all(|b| b.is_ascii_digit() || b == b'.') {
-        return Err(format!("refusing malformed version string: {v:?}").into());
-    }
-    if v.contains("..") || v.starts_with('.') || v.ends_with('.') {
-        return Err(format!("refusing malformed version string: {v:?}").into());
-    }
-    Ok(v)
-}
-
-/// Escape text for Telegram's `parse_mode=HTML` message bodies.
-fn telegram_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
-}
-
-/// Telegram/web `/update`: download and install a published release.
-///
-/// SECURITY (v5.7.0). This path is SEPARATE from the signed Tauri updater and
-/// previously had NO integrity check at all: the URL came verbatim from remote
-/// JSON with no host allowlist, the HTTP status was never inspected, the bytes
-/// were never verified, and the result was executed. The pinned minisign key
-/// protecting the desktop updater was bypassed entirely, which turns a
-/// hijacked release asset into remote code execution.
-///
-/// v5.7.0 therefore REFUSES to install from here and directs the user to the
-/// signed in-app updater. The download-and-execute path is not reintroduced.
 pub fn check_and_apply_update(
-    bot: Option<&Arc<Bot>>,
+    _bot: Option<&Arc<Bot>>,
     token: Option<&str>,
-    chat_id: Option<&str>,
-    cur_ver: &str,
+    chat: Option<&str>,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()?;
-    let url = "https://github.com/Maxofmax20/gpo-fishing/releases/latest/download/latest.json";
-    let resp: Value = client
-        .get(url)
-        .header("User-Agent", "gpo-autofish")
-        .send()?
-        .json()?;
-
-    let remote_ver = resp
-        .get("version")
-        .and_then(|v| v.as_str())
-        .ok_or("Invalid latest.json manifest")?
-        .trim_start_matches('v');
-    safe_version_token(remote_ver)?;
-
-    match is_newer_version(remote_ver, cur_ver) {
-        Some(false) => {
-            return Ok(format!(
-                "\u{2705} You're on the latest version (v{}).",
-                telegram_escape(cur_ver)
-            ))
-        }
-        Some(true) => {}
-        None => {
-            return Err(format!(
-                "cannot compare versions (remote {remote_ver:?}, current {cur_ver:?})"
-            )
-            .into())
-        }
+    let message =
+        "Use Settings → Check for updates. Installation verifies the existing updater signature.";
+    if let (Some(token), Some(chat)) = (token, chat) {
+        post_telegram(token, chat, message)?;
     }
-
-    if let Some(raw) = resp
-        .get("platforms")
-        .and_then(|p| p.get("windows-x86_64"))
-        .and_then(|w| w.get("url"))
-        .and_then(|u| u.as_str())
-    {
-        validated_download_url(raw)?;
-    }
-
-    let notes = resp
-        .get("notes")
-        .and_then(|n| n.as_str())
-        .unwrap_or("");
-    let msg = format!(
-        "\u{1F449} <b>Version v{} is available</b> (you have v{})\n\n{}\n\nFor security this build will NOT download and run an installer from chat. Use the in-app updater (Settings \u{2192} Check for updates), which verifies the release signature before installing.",
-        telegram_escape(remote_ver),
-        telegram_escape(cur_ver),
-        telegram_escape(notes),
-    );
-    if let (Some(tok), Some(cid)) = (token, chat_id) {
-        let _ = post_telegram(tok, cid, &msg);
-    }
-
-    // Persist "was running" so the signed in-app update can resume cleanly.
-    if let Some(b) = bot {
-        if b.is_running() {
-            let _ = b.ctx().store.save_resume_state(true);
-        }
-    }
-    Ok(msg)
-}
-
-/// Dashboard URL with the per-install token attached, so the Telegram
-/// webapp button opens the authenticated app instead of an
-/// "Unauthorized" page. Empty token → plain base URL (never emits `?token=`).
-pub fn dashboard_authed_url(base: &str, token: &str) -> String {
-    if token.trim().is_empty() {
-        base.to_string()
-    } else {
-        format!("{base}?token={token}")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn webapp_link_carries_token() {
-        assert_eq!(
-            dashboard_authed_url("http://192.168.1.3:3888", "tok123"),
-            "http://192.168.1.3:3888?token=tok123"
-        );
-    }
-
-    #[test]
-    fn webapp_link_without_token_has_no_query() {
-        assert_eq!(
-            dashboard_authed_url("http://localhost:3888", ""),
-            "http://localhost:3888"
-        );
-        assert_eq!(
-            dashboard_authed_url("http://localhost:3888", "   "),
-            "http://localhost:3888"
-        );
-    }
-
-    #[test]
-    fn updater_never_installs_a_downgrade() {
-        // v5.6.x compared with `!=`, so an OLDER release triggered an install.
-        assert_eq!(is_newer_version("5.6.1", "5.6.1"), Some(false));
-        assert_eq!(is_newer_version("5.6.0", "5.6.1"), Some(false), "downgrade must be refused");
-        assert_eq!(is_newer_version("5.5.9", "5.7.0"), Some(false));
-        assert_eq!(is_newer_version("5.7.0", "5.6.1"), Some(true));
-        assert_eq!(is_newer_version("v5.7.0", "5.6.1"), Some(true));
-        // Numeric, not lexical: 5.10 > 5.9 (string compare gets this wrong).
-        assert_eq!(is_newer_version("5.10.0", "5.9.0"), Some(true));
-        assert_eq!(is_newer_version("5.9.0", "5.10.0"), Some(false));
-        // A prerelease is never an auto-install from the "latest" channel.
-        assert_eq!(is_newer_version("5.7.0-beta.1", "5.6.1"), Some(false));
-        assert_eq!(is_newer_version("garbage", "5.6.1"), None);
-    }
-
-    #[test]
-    fn updater_rejects_untrusted_download_hosts() {
-        assert!(validated_download_url("https://github.com/o/r/releases/download/v1/x.exe").is_ok());
-        assert!(validated_download_url("https://objects.githubusercontent.com/x").is_ok());
-        // The whole point of the fix: these must never be followed.
-        assert!(validated_download_url("http://github.com/o/r/x.exe").is_err(), "plain HTTP");
-        assert!(validated_download_url("https://evil.example.com/x.exe").is_err());
-        assert!(validated_download_url("https://github.com.evil.example/x.exe").is_err());
-        assert!(validated_download_url("file:///C:/Windows/System32/cmd.exe").is_err());
-        assert!(validated_download_url("https://raw.githubusercontent.com/x").is_err());
-    }
-
-    #[test]
-    fn version_token_blocks_injection_and_traversal() {
-        assert!(safe_version_token("5.7.0").is_ok());
-        // PowerShell string break-out (the value used to reach a `-Command`).
-        assert!(safe_version_token("5.7.0'; calc; '").is_err());
-        assert!(safe_version_token("5.7.0`whoami`").is_err());
-        assert!(safe_version_token("5.7.0\"; Start-Process evil").is_err());
-        assert!(safe_version_token("5.7.0$(id)").is_err());
-        // Path traversal (the value used to build a temp filename).
-        assert!(safe_version_token("../../evil").is_err());
-        assert!(safe_version_token(r"..\..\evil").is_err());
-        assert!(safe_version_token("5..0").is_err());
-        assert!(safe_version_token("").is_err());
-        assert!(safe_version_token(&"9".repeat(64)).is_err());
-    }
-
-    #[test]
-    fn telegram_html_is_escaped() {
-        // Release notes are remote text rendered with parse_mode=HTML.
-        assert_eq!(telegram_escape("<b>x</b> & y"), "&lt;b&gt;x&lt;/b&gt; &amp; y");
-    }
+    Ok(message.into())
 }

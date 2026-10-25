@@ -71,10 +71,17 @@ static STARTED: AtomicBool = AtomicBool::new(false);
 /// where the binary sits next to the bundle), then by walking up from the current
 /// directory (the development layout).
 static BUNDLED_FRONTEND: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-pub fn set_bundled_frontend(path: PathBuf) { let _ = BUNDLED_FRONTEND.set(path); }
+pub fn set_bundled_frontend(path: PathBuf) {
+    let _ = BUNDLED_FRONTEND.set(path);
+}
 
 static DIST_DIR: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
-    if let Some(path) = BUNDLED_FRONTEND.get().filter(|p| p.join("index.html").is_file()) { return Some(path.clone()); }
+    if let Some(path) = BUNDLED_FRONTEND
+        .get()
+        .filter(|p| p.join("index.html").is_file())
+    {
+        return Some(path.clone());
+    }
     let mut roots: Vec<PathBuf> = Vec::new();
     if let Ok(exe) = std::env::current_exe() {
         let mut p = exe.as_path().parent();
@@ -150,19 +157,29 @@ pub fn spawn() {
 /// Accept an already-bound loopback listener (also isolates HTTP contract tests).
 pub fn spawn_listener(listener: TcpListener) -> std::io::Result<()> {
     if !listener.local_addr()?.ip().is_loopback() {
-        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "review listener must use loopback"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "review listener must use loopback",
+        ));
     }
-    std::thread::Builder::new().name("ontology-review-web".into()).spawn(move || {
-        let (tx, rx) = crossbeam_channel::bounded::<TcpStream>(16);
-        for _ in 0..4 {
-            let rx = rx.clone();
-            std::thread::spawn(move || { for stream in rx { let _ = handle(stream); } });
-        }
-        for result in listener.incoming() {
-            let Ok(stream) = result else { break };
-            let _ = tx.try_send(stream);
-        }
-    }).map(|_| ())
+    std::thread::Builder::new()
+        .name("ontology-review-web".into())
+        .spawn(move || {
+            let (tx, rx) = crossbeam_channel::bounded::<TcpStream>(16);
+            for _ in 0..4 {
+                let rx = rx.clone();
+                std::thread::spawn(move || {
+                    for stream in rx {
+                        let _ = handle(stream);
+                    }
+                });
+            }
+            for result in listener.incoming() {
+                let Ok(stream) = result else { break };
+                let _ = tx.try_send(stream);
+            }
+        })
+        .map(|_| ())
 }
 
 /// The review workstation's address, for the desktop UI to display.
@@ -264,10 +281,25 @@ fn read_request(stream: &mut TcpStream) -> Option<Request> {
         stream.read_exact(&mut raw).ok()?;
         body = String::from_utf8_lossy(&raw).to_string();
     }
-    Some(Request { method, path, query, body, host, origin, content_type, csrf })
+    Some(Request {
+        method,
+        path,
+        query,
+        body,
+        host,
+        origin,
+        content_type,
+        csrf,
+    })
 }
 
-fn respond(stream: &mut TcpStream, status: &str, content_type: &str, bytes: &[u8], extra: &[(&str, &str)]) {
+fn respond(
+    stream: &mut TcpStream,
+    status: &str,
+    content_type: &str,
+    bytes: &[u8],
+    extra: &[(&str, &str)],
+) {
     let mut head = format!(
         "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\n\
          X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n\
@@ -302,7 +334,11 @@ fn not_found(stream: &mut TcpStream) {
 }
 
 fn bad_request(stream: &mut TcpStream, msg: &str) {
-    json(stream, "400 Bad Request", &serde_json::json!({ "ok": false, "error": msg }));
+    json(
+        stream,
+        "400 Bad Request",
+        &serde_json::json!({ "ok": false, "error": msg }),
+    );
 }
 
 // ===========================================================================
@@ -314,7 +350,13 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
     stream.set_write_timeout(Some(std::time::Duration::from_secs(5)))?;
     let Some(req) = read_request(&mut stream) else {
         // An unparseable or oversized request gets a bare 400 and no further work.
-        respond(&mut stream, "400 Bad Request", "text/plain; charset=utf-8", b"bad request", &[]);
+        respond(
+            &mut stream,
+            "400 Bad Request",
+            "text/plain; charset=utf-8",
+            b"bad request",
+            &[],
+        );
         return Ok(());
     };
 
@@ -322,15 +364,32 @@ fn handle(mut stream: TcpStream) -> std::io::Result<()> {
     let local_host = format!("{BIND_ADDR}:{port}");
     let localhost = format!("localhost:{port}");
     let valid_host = req.host == local_host || req.host == localhost;
-    let valid_origin = req.origin.as_deref().map_or(true, |o| o == format!("http://{local_host}") || o == format!("http://{localhost}"));
-    if !valid_host || !valid_origin || (req.method == "POST" &&
-        (!req.content_type.split(';').next().is_some_and(|t| t.trim().eq_ignore_ascii_case("application/json")) ||
-         !crate::core::secrets::tokens_equal(&req.csrf, &CSRF))) {
-        json(&mut stream, "403 Forbidden", &serde_json::json!({"error": "Local host, same origin, JSON and CSRF token required"}));
+    let valid_origin = req.origin.as_deref().map_or(true, |o| {
+        o == format!("http://{local_host}") || o == format!("http://{localhost}")
+    });
+    if !valid_host
+        || !valid_origin
+        || (req.method == "POST"
+            && (!req
+                .content_type
+                .split(';')
+                .next()
+                .is_some_and(|t| t.trim().eq_ignore_ascii_case("application/json"))
+                || !crate::core::secrets::tokens_equal(&req.csrf, &CSRF)))
+    {
+        json(
+            &mut stream,
+            "403 Forbidden",
+            &serde_json::json!({"error": "Local host, same origin, JSON and CSRF token required"}),
+        );
         return Ok(());
     }
     if req.method == "GET" && req.path == "/api/csrf" {
-        json(&mut stream, "200 OK", &serde_json::json!({"token": CSRF.as_str()}));
+        json(
+            &mut stream,
+            "200 OK",
+            &serde_json::json!({"token": CSRF.as_str()}),
+        );
         return Ok(());
     }
 
@@ -365,9 +424,13 @@ fn route_labels(stream: &mut TcpStream, req: &Request, rest: &str) -> std::io::R
             let id = url_decode(&p["batch/".len()..]);
             match lr::batch_rows(&id) {
                 Some(v) => json(stream, "200 OK", &v),
-                None => json(stream, "404 Not Found", &serde_json::json!({
-                    "ok": false, "error": format!("unknown batch {id:?}")
-                })),
+                None => json(
+                    stream,
+                    "404 Not Found",
+                    &serde_json::json!({
+                        "ok": false, "error": format!("unknown batch {id:?}")
+                    }),
+                ),
             }
         }
         (true, _, p) if p.starts_with("thumb/") => {
@@ -380,9 +443,13 @@ fn route_labels(stream: &mut TcpStream, req: &Request, rest: &str) -> std::io::R
                     &bytes,
                     &[("Cache-Control", "private, max-age=86400")],
                 ),
-                None => json(stream, "404 Not Found", &serde_json::json!({
-                    "ok": false, "error": "not a label-review image"
-                })),
+                None => json(
+                    stream,
+                    "404 Not Found",
+                    &serde_json::json!({
+                        "ok": false, "error": "not a label-review image"
+                    }),
+                ),
             }
         }
         (_, true, "confirm") => {
@@ -397,7 +464,11 @@ fn route_labels(stream: &mut TcpStream, req: &Request, rest: &str) -> std::io::R
             // real store rather than a browser-only file.
             let data_dir = crate::app::data_dir();
             let r = lr::confirm_batch(input, &data_dir);
-            json(stream, "200 OK", &serde_json::to_value(r).unwrap_or_default())
+            json(
+                stream,
+                "200 OK",
+                &serde_json::to_value(r).unwrap_or_default(),
+            )
         }
         (true, _, "confirm") => bad_request(stream, "use POST"),
         (_, _, _) => not_found(stream),
@@ -411,44 +482,64 @@ fn route_api(stream: &mut TcpStream, req: &Request, rest: &str) -> std::io::Resu
     let post = req.method == "POST";
 
     match (get, post, rest) {
-        (true, _, "status") => json(stream, "200 OK", &serde_json::to_value(core::ontology_review_status()).unwrap_or_default()),
+        (true, _, "status") => json(
+            stream,
+            "200 OK",
+            &serde_json::to_value(core::ontology_review_status()).unwrap_or_default(),
+        ),
         (true, _, "progress") => json(stream, "200 OK", &progress_payload()),
         (true, _, "structural") => match core::ontology_review_structural() {
             Some(v) => json(stream, "200 OK", &v),
-            None => json(stream, "503 Service Unavailable", &serde_json::json!({
-                "ok": false,
-                "error": "ontology index not built - run: python -m ml.gpo_ontology_review build"
-            })),
+            None => json(
+                stream,
+                "503 Service Unavailable",
+                &serde_json::json!({
+                    "ok": false,
+                    "error": "ontology index not built - run: python -m ml.gpo_ontology_review build"
+                }),
+            ),
         },
         // The compact per-concept list. The full index minus its evidence images,
         // so a client can build the queue without pulling 190 KB.
         (true, _, "concepts") => json(stream, "200 OK", &concept_summaries()),
         (true, _, "kb/search") => {
             let q = query_param(&req.query, "q").unwrap_or_default();
-            let limit = query_param(&req.query, "limit")
-                .and_then(|v| v.parse::<usize>().ok());
+            let limit = query_param(&req.query, "limit").and_then(|v| v.parse::<usize>().ok());
             json(
                 stream,
                 "200 OK",
-                &serde_json::to_value(core::ontology_review_kb_search(q, limit)).unwrap_or_default(),
+                &serde_json::to_value(core::ontology_review_kb_search(q, limit))
+                    .unwrap_or_default(),
             );
         }
         (true, _, p) if p.starts_with("concepts/") => {
             let id = url_decode(&p["concepts/".len()..]);
             match core::ontology_review_concept(id.clone()) {
                 Some(v) => json(stream, "200 OK", &v),
-                None => json(stream, "404 Not Found", &serde_json::json!({
-                    "ok": false, "error": format!("unknown concept {id:?}")
-                })),
+                None => json(
+                    stream,
+                    "404 Not Found",
+                    &serde_json::json!({
+                        "ok": false, "error": format!("unknown concept {id:?}")
+                    }),
+                ),
             }
         }
         (true, _, p) if p.starts_with("families/") => {
             let id = url_decode(&p["families/".len()..]);
             match core::ontology_review_family(id.clone()) {
-                Some(v) => json(stream, "200 OK", &serde_json::to_value(v).unwrap_or_default()),
-                None => json(stream, "404 Not Found", &serde_json::json!({
-                    "ok": false, "error": format!("unknown family {id:?}")
-                })),
+                Some(v) => json(
+                    stream,
+                    "200 OK",
+                    &serde_json::to_value(v).unwrap_or_default(),
+                ),
+                None => json(
+                    stream,
+                    "404 Not Found",
+                    &serde_json::json!({
+                        "ok": false, "error": format!("unknown family {id:?}")
+                    }),
+                ),
             }
         }
         // Images. `.../images/<id>` is the generated thumbnail; `.../full` is the
@@ -476,10 +567,14 @@ fn route_api(stream: &mut TcpStream, req: &Request, rest: &str) -> std::io::Resu
                     // the browser may cache it for the whole review session.
                     &[("Cache-Control", "private, max-age=86400")],
                 ),
-                None => json(stream, "404 Not Found", &serde_json::json!({
-                    "ok": false,
-                    "error": "not an ontology evidence image"
-                })),
+                None => json(
+                    stream,
+                    "404 Not Found",
+                    &serde_json::json!({
+                        "ok": false,
+                        "error": "not an ontology evidence image"
+                    }),
+                ),
             }
         }
         (_, true, "decision") => {
@@ -491,21 +586,35 @@ fn route_api(stream: &mut TcpStream, req: &Request, rest: &str) -> std::io::Resu
                 }
             };
             match core::record_human_decision(input, "web-ui") {
-                Ok(r) => json(stream, "200 OK", &serde_json::to_value(r).unwrap_or_default()),
-                Err(e) => json(stream, "400 Bad Request", &serde_json::json!({
-                    "ok": false, "error": e.error
-                })),
+                Ok(r) => json(
+                    stream,
+                    "200 OK",
+                    &serde_json::to_value(r).unwrap_or_default(),
+                ),
+                Err(e) => json(
+                    stream,
+                    "400 Bad Request",
+                    &serde_json::json!({
+                        "ok": false, "error": e.error
+                    }),
+                ),
             }
         }
         // The ONLY outbound-network action in the review path, and the only POST that
         // is not a human decision. It refreshes a reference snapshot; it cannot change
         // a decision, and it cannot reach the bot, the model, or production data.
-        (_, true, "wiki/refresh") => {
-            match crate::ontology_web_refresh::refresh_wiki_reference() {
-                r if r.ok => json(stream, "200 OK", &serde_json::to_value(r).unwrap_or_default()),
-                r => json(stream, "502 Bad Gateway", &serde_json::to_value(r).unwrap_or_default()),
-            }
-        }
+        (_, true, "wiki/refresh") => match crate::ontology_web_refresh::refresh_wiki_reference() {
+            r if r.ok => json(
+                stream,
+                "200 OK",
+                &serde_json::to_value(r).unwrap_or_default(),
+            ),
+            r => json(
+                stream,
+                "502 Bad Gateway",
+                &serde_json::to_value(r).unwrap_or_default(),
+            ),
+        },
         (_, true, "undo") => {
             let body: serde_json::Value = match serde_json::from_str(&req.body) {
                 Ok(v) => v,
@@ -519,10 +628,18 @@ fn route_api(stream: &mut TcpStream, req: &Request, rest: &str) -> std::io::Resu
                 return Ok(());
             };
             match core::undo_human_decision(id, "web-ui") {
-                Ok(st) => json(stream, "200 OK", &serde_json::to_value(st).unwrap_or_default()),
-                Err(e) => json(stream, "400 Bad Request", &serde_json::json!({
-                    "ok": false, "error": e.error
-                })),
+                Ok(st) => json(
+                    stream,
+                    "200 OK",
+                    &serde_json::to_value(st).unwrap_or_default(),
+                ),
+                Err(e) => json(
+                    stream,
+                    "400 Bad Request",
+                    &serde_json::json!({
+                        "ok": false, "error": e.error
+                    }),
+                ),
             }
         }
         // A GET on a write endpoint, or a POST on a read endpoint: refuse rather
@@ -792,7 +909,10 @@ mod tests {
 
     #[test]
     fn url_decode_handles_the_shapes_a_browser_actually_sends() {
-        assert_eq!(url_decode("concept%3Aexotic-tigerfin"), "concept:exotic-tigerfin");
+        assert_eq!(
+            url_decode("concept%3Aexotic-tigerfin"),
+            "concept:exotic-tigerfin"
+        );
         assert_eq!(url_decode("golden%20tigerfin"), "golden tigerfin");
         assert_eq!(url_decode("a+b"), "a b");
         assert_eq!(url_decode("plain"), "plain");
@@ -816,8 +936,14 @@ mod tests {
 
     #[test]
     fn query_param_finds_the_right_pair() {
-        assert_eq!(query_param("q=shark&limit=40", "q").as_deref(), Some("shark"));
-        assert_eq!(query_param("q=shark&limit=40", "limit").as_deref(), Some("40"));
+        assert_eq!(
+            query_param("q=shark&limit=40", "q").as_deref(),
+            Some("shark")
+        );
+        assert_eq!(
+            query_param("q=shark&limit=40", "limit").as_deref(),
+            Some("40")
+        );
         assert_eq!(query_param("a=1&b=2", "q"), None);
         // A key appearing twice: first wins, deterministically.
         assert_eq!(query_param("q=one&q=two", "q").as_deref(), Some("one"));
@@ -915,7 +1041,10 @@ mod tests {
             "decision",
             "undo",
         ] {
-            assert!(src.contains(route), "the documented route {route} is missing");
+            assert!(
+                src.contains(route),
+                "the documented route {route} is missing"
+            );
         }
         // No generic dispatch endpoint: no way to name a function to call. Scanned
         // against code only, since these literals live in this very assertion.

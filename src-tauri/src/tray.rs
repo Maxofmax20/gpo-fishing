@@ -13,7 +13,16 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let panel = MenuItem::with_id(app, "panel", "Open / hide panel", true, None::<&str>)?;
     let hud = MenuItem::with_id(app, "hud", "Show / hide HUD", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&toggle, &panel, &hud, &PredefinedMenuItem::separator(app)?, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &toggle,
+            &panel,
+            &hud,
+            &PredefinedMenuItem::separator(app)?,
+            &quit,
+        ],
+    )?;
 
     TrayIconBuilder::with_id(TRAY_ID)
         .icon(app.default_window_icon().cloned().expect("tray icon"))
@@ -41,7 +50,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
             }
         })
         .on_tray_icon_event(|tray, ev| {
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = ev {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = ev
+            {
                 windows::show_panel(tray.app_handle());
             }
         })
@@ -50,7 +64,9 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 }
 
 pub fn update(app: &AppHandle, state: BotState) {
-    let Some(tray) = app.tray_by_id(TRAY_ID) else { return };
+    let Some(tray) = app.tray_by_id(TRAY_ID) else {
+        return;
+    };
     let label = match state {
         BotState::Stopped => "Idle",
         BotState::Paused => "Paused",

@@ -1,9 +1,9 @@
+use parking_lot::RwLock;
+use serde_json::json;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use parking_lot::RwLock;
-use serde_json::json;
 
 use crate::bot::Bot;
 use crate::config::Settings;
@@ -165,7 +165,11 @@ fn connect_discord_pipe() -> Option<File> {
     None
 }
 
-fn send_packet(pipe: &mut File, opcode: u32, payload: &serde_json::Value) -> Result<(), std::io::Error> {
+fn send_packet(
+    pipe: &mut File,
+    opcode: u32,
+    payload: &serde_json::Value,
+) -> Result<(), std::io::Error> {
     let json_bytes = payload.to_string().into_bytes();
     let len = json_bytes.len() as u32;
 

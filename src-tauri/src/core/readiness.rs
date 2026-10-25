@@ -210,7 +210,11 @@ struct Ctx {
 
 impl Ctx {
     fn new() -> Self {
-        Self { checks: Vec::new(), blockers: Vec::new(), next_actions: Vec::new() }
+        Self {
+            checks: Vec::new(),
+            blockers: Vec::new(),
+            next_actions: Vec::new(),
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -277,7 +281,10 @@ pub fn assess_family(
         data.detail.clone(),
         format!("{}/{} qualified", data.qualified, data.required),
         format!("{}/{}", data.required, data.required),
-        format!("{} class(es) short", data.required.saturating_sub(data.qualified)),
+        format!(
+            "{} class(es) short",
+            data.required.saturating_sub(data.qualified)
+        ),
         data.next_action.clone(),
         false,
     );
@@ -285,10 +292,16 @@ pub fn assess_family(
         "test_coverage",
         ReadinessStage::Data,
         data.test_covered >= data.test_required,
-        format!("held-out TEST coverage {}/{}", data.test_covered, data.test_required),
+        format!(
+            "held-out TEST coverage {}/{}",
+            data.test_covered, data.test_required
+        ),
         format!("{}/{}", data.test_covered, data.test_required),
         format!("{}/{}", data.test_required, data.test_required),
-        format!("{} class(es) without TEST coverage", data.test_required.saturating_sub(data.test_covered)),
+        format!(
+            "{} class(es) without TEST coverage",
+            data.test_required.saturating_sub(data.test_covered)
+        ),
         "Add TEST-split sessions for the uncovered classes (see Dataset > split view).".to_string(),
         false,
     );
@@ -300,14 +313,21 @@ pub fn assess_family(
             format!("{entity} appears in {have} session(s)"),
             format!("{have} sessions"),
             format!("{want} sessions"),
-            format!("{} session(s) short for {entity}", want.saturating_sub(have)),
+            format!(
+                "{} session(s) short for {entity}",
+                want.saturating_sub(have)
+            ),
             format!("Fish/catch {entity} in {want} independent play sessions."),
             false,
         );
     }
 
     // ---------- STAGE: REVIEW ----------
-    let coverage = if scoped_total > 0 { reviewed_scoped as f32 / scoped_total as f32 } else { 0.0 };
+    let coverage = if scoped_total > 0 {
+        reviewed_scoped as f32 / scoped_total as f32
+    } else {
+        0.0
+    };
     let required_rows = (scoped_total as f32 * thresholds.min_review_coverage).ceil() as usize;
     c.add(
         "human_review",
@@ -319,21 +339,32 @@ pub fn assess_family(
             thresholds.min_review_coverage * 100.0
         ),
         format!("{reviewed_scoped}/{scoped_total} rows"),
-        format!("{required_rows} rows ({:.0}%)", thresholds.min_review_coverage * 100.0),
-        format!("{} row(s) short", required_rows.saturating_sub(reviewed_scoped)),
+        format!(
+            "{required_rows} rows ({:.0}%)",
+            thresholds.min_review_coverage * 100.0
+        ),
+        format!(
+            "{} row(s) short",
+            required_rows.saturating_sub(reviewed_scoped)
+        ),
         "Open Training > Review and clear the priority queue for this family.".to_string(),
         false,
     );
 
     // ---------- STAGE: EVALUATE ----------
-    let evaluated: Vec<&CandidateRecord> =
-        records.iter().filter(|r| r.model_family == family).collect();
+    let evaluated: Vec<&CandidateRecord> = records
+        .iter()
+        .filter(|r| r.model_family == family)
+        .collect();
     let latest_eval = evaluated
         .iter()
         .filter(|r| {
             matches!(
                 r.status,
-                Lifecycle::Evaluated | Lifecycle::Shadow | Lifecycle::ShadowValidated | Lifecycle::Accepted
+                Lifecycle::Evaluated
+                    | Lifecycle::Shadow
+                    | Lifecycle::ShadowValidated
+                    | Lifecycle::Accepted
             )
         })
         .max_by_key(|r| r.model_version);
@@ -342,12 +373,25 @@ pub fn assess_family(
         ReadinessStage::Evaluate,
         latest_eval.is_some(),
         latest_eval
-            .map(|r| format!("{} macro-F1 {:.3} on {} test sessions", r.candidate_id, r.metrics.macro_f1, r.metrics.test_sessions))
+            .map(|r| {
+                format!(
+                    "{} macro-F1 {:.3} on {} test sessions",
+                    r.candidate_id, r.metrics.macro_f1, r.metrics.test_sessions
+                )
+            })
             .unwrap_or_else(|| "no evaluated candidate in registry".to_string()),
-        latest_eval.map(|r| format!("macro-F1 {:.3}", r.metrics.macro_f1)).unwrap_or_else(|| "none".to_string()),
+        latest_eval
+            .map(|r| format!("macro-F1 {:.3}", r.metrics.macro_f1))
+            .unwrap_or_else(|| "none".to_string()),
         "1 evaluated candidate".to_string(),
-        latest_eval.map(|_| "none".to_string()).unwrap_or_else(|| "no candidate".to_string()),
-        if latest_eval.is_some() { String::new() } else { "Start a training job once the data and review stages pass.".to_string() },
+        latest_eval
+            .map(|_| "none".to_string())
+            .unwrap_or_else(|| "no candidate".to_string()),
+        if latest_eval.is_some() {
+            String::new()
+        } else {
+            "Start a training job once the data and review stages pass.".to_string()
+        },
         false,
     );
 
@@ -362,11 +406,22 @@ pub fn assess_family(
             "macro_f1",
             ReadinessStage::Evaluate,
             macro_ok,
-            format!("macro-F1 {:.3} (need >= {:.2})", r.metrics.macro_f1, thresholds.min_macro_f1),
+            format!(
+                "macro-F1 {:.3} (need >= {:.2})",
+                r.metrics.macro_f1, thresholds.min_macro_f1
+            ),
             format!("{:.3}", r.metrics.macro_f1),
             format!(">= {:.2}", thresholds.min_macro_f1),
-            format!("{:.3} below floor", (thresholds.min_macro_f1 - r.metrics.macro_f1).max(0.0)),
-            if macro_ok { String::new() } else { "Collect more qualified classes / review more samples for this family and retrain.".to_string() },
+            format!(
+                "{:.3} below floor",
+                (thresholds.min_macro_f1 - r.metrics.macro_f1).max(0.0)
+            ),
+            if macro_ok {
+                String::new()
+            } else {
+                "Collect more qualified classes / review more samples for this family and retrain."
+                    .to_string()
+            },
             false,
         );
         // Name the offending class - a bare number is not actionable.
@@ -379,10 +434,15 @@ pub fn assess_family(
             Some((cls, score)) => {
                 let ok = *score >= thresholds.min_worst_class_f1;
                 quality_ok = macro_ok && ok;
-                worst_detail =
-                    format!("worst class {cls} F1 {:.3} (need >= {:.2})", score, thresholds.min_worst_class_f1);
+                worst_detail = format!(
+                    "worst class {cls} F1 {:.3} (need >= {:.2})",
+                    score, thresholds.min_worst_class_f1
+                );
                 worst_actual = format!("{cls} = {:.3}", score);
-                worst_diff = format!("{:.3} below floor", (thresholds.min_worst_class_f1 - *score).max(0.0));
+                worst_diff = format!(
+                    "{:.3} below floor",
+                    (thresholds.min_worst_class_f1 - *score).max(0.0)
+                );
                 c.add(
                     "worst_class_f1",
                     ReadinessStage::Evaluate,
@@ -442,11 +502,23 @@ pub fn assess_family(
         "shadow_deployed",
         ReadinessStage::Shadow,
         deployed.is_some(),
-        deployed.map(|v| format!("shadow running revision v{v}")).unwrap_or_else(|| "nothing deployed to shadow".to_string()),
-        deployed.map(|v| format!("v{v}")).unwrap_or_else(|| "none".to_string()),
+        deployed
+            .map(|v| format!("shadow running revision v{v}"))
+            .unwrap_or_else(|| "nothing deployed to shadow".to_string()),
+        deployed
+            .map(|v| format!("v{v}"))
+            .unwrap_or_else(|| "none".to_string()),
         "1 deployed revision".to_string(),
-        if deployed.is_some() { "none".to_string() } else { "1 missing".to_string() },
-        if deployed.is_some() { String::new() } else { "Promote a passing candidate to shadow (Training > Candidates).".to_string() },
+        if deployed.is_some() {
+            "none".to_string()
+        } else {
+            "1 missing".to_string()
+        },
+        if deployed.is_some() {
+            String::new()
+        } else {
+            "Promote a passing candidate to shadow (Training > Candidates).".to_string()
+        },
         false,
     );
 
@@ -465,19 +537,26 @@ pub fn assess_family(
         "shadow_soak_events",
         ReadinessStage::Shadow,
         soak_events_ok,
-        soak.map(|s| format!(
+        soak.map(|s| {
+            format!(
             "{} scored soak event(s) of {} observed ({} had no OCR+KB baseline to compare against)",
             s.agree + s.disagree,
             s.events,
             s.no_ocr_baseline
-        ))
+        )
+        })
         .unwrap_or_else(|| "no shadow telemetry yet".to_string()),
-        soak.map(|s| format!("{} scored", s.agree + s.disagree)).unwrap_or_else(|| "0".to_string()),
+        soak.map(|s| format!("{} scored", s.agree + s.disagree))
+            .unwrap_or_else(|| "0".to_string()),
         format!(">= {} scored events", thresholds.min_shadow_events),
-        soak.map(|s| format!(
-            "{} short",
-            thresholds.min_shadow_events.saturating_sub(s.agree + s.disagree)
-        ))
+        soak.map(|s| {
+            format!(
+                "{} short",
+                thresholds
+                    .min_shadow_events
+                    .saturating_sub(s.agree + s.disagree)
+            )
+        })
         .unwrap_or_else(|| format!("{} short", thresholds.min_shadow_events)),
         "Play with shadow observation enabled. Events only count once OCR+KB produced an \
          independent baseline to agree or disagree with; unscored events are not evidence."
@@ -485,23 +564,41 @@ pub fn assess_family(
         false,
     );
     let agree = soak.and_then(|s| s.agreement_rate);
-    let agree_ok = agree.map(|a| a >= thresholds.min_shadow_agreement).unwrap_or(false);
+    let agree_ok = agree
+        .map(|a| a >= thresholds.min_shadow_agreement)
+        .unwrap_or(false);
     c.add(
         "shadow_soak_agreement",
         ReadinessStage::Shadow,
         agree_ok,
         match agree {
-            Some(a) => format!("OCR/vision agreement {:.0}% (need >= {:.0}%) over {} scored events", a * 100.0, thresholds.min_shadow_agreement * 100.0, soak.map(|s| s.agree + s.disagree).unwrap_or(0)),
-            None => "no scored shadow events (no independent OCR baseline to compare against)".to_string(),
+            Some(a) => format!(
+                "OCR/vision agreement {:.0}% (need >= {:.0}%) over {} scored events",
+                a * 100.0,
+                thresholds.min_shadow_agreement * 100.0,
+                soak.map(|s| s.agree + s.disagree).unwrap_or(0)
+            ),
+            None => "no scored shadow events (no independent OCR baseline to compare against)"
+                .to_string(),
         },
-        agree.map(|a| format!("{:.0}%", a * 100.0)).unwrap_or_else(|| "unmeasured".to_string()),
+        agree
+            .map(|a| format!("{:.0}%", a * 100.0))
+            .unwrap_or_else(|| "unmeasured".to_string()),
         format!(">= {:.0}%", thresholds.min_shadow_agreement * 100.0),
         match agree {
-            Some(a) if a < thresholds.min_shadow_agreement => format!("{:.0}pp below floor", (thresholds.min_shadow_agreement - a) * 100.0),
+            Some(a) if a < thresholds.min_shadow_agreement => format!(
+                "{:.0}pp below floor",
+                (thresholds.min_shadow_agreement - a) * 100.0
+            ),
             Some(_) => "none".to_string(),
             None => "unmeasured".to_string(),
         },
-        if agree_ok { String::new() } else { "Investigate disagreements; a model that disagrees with OCR+KB is not ready to use.".to_string() },
+        if agree_ok {
+            String::new()
+        } else {
+            "Investigate disagreements; a model that disagrees with OCR+KB is not ready to use."
+                .to_string()
+        },
         false,
     );
     let sessions = soak.map(|s| s.sessions).unwrap_or(0);
@@ -510,10 +607,16 @@ pub fn assess_family(
         "shadow_soak_sessions",
         ReadinessStage::Shadow,
         sess_ok,
-        format!("soak spans {sessions} session(s), {} distinct label(s)", soak.map(|s| s.distinct_entities).unwrap_or(0)),
+        format!(
+            "soak spans {sessions} session(s), {} distinct label(s)",
+            soak.map(|s| s.distinct_entities).unwrap_or(0)
+        ),
         format!("{sessions} sessions"),
         format!(">= {} sessions", thresholds.min_shadow_sessions),
-        format!("{} session(s) short", thresholds.min_shadow_sessions.saturating_sub(sessions)),
+        format!(
+            "{} session(s) short",
+            thresholds.min_shadow_sessions.saturating_sub(sessions)
+        ),
         "Soak across multiple independent play sessions.".to_string(),
         false,
     );
@@ -555,7 +658,11 @@ pub fn assess_family(
             _ => "none".to_string(),
         },
         "metrics and soak describe the same revision".to_string(),
-        if same_revision { "none".to_string() } else { "1 mismatch".to_string() },
+        if same_revision {
+            "none".to_string()
+        } else {
+            "1 mismatch".to_string()
+        },
         if same_revision {
             String::new()
         } else {
@@ -582,7 +689,10 @@ pub fn assess_family(
     // A real job exists for this family and produced a usable snapshot.
     // The snapshot is the human-review boundary, so this check reports the
     // frozen row counts as evidence rather than a second opinion on them.
-    let job = jobs.iter().filter(|j| j.model_family == family).max_by_key(|j| j.created_at);
+    let job = jobs
+        .iter()
+        .filter(|j| j.model_family == family)
+        .max_by_key(|j| j.created_at);
     let job_passed = job.is_some_and(|j| j.status == JobStatus::Passed);
     c.add(
         "training_job",
@@ -590,25 +700,46 @@ pub fn assess_family(
         job_passed,
         job.map(|j| format!("{} ({})", j.status.as_str(), j.progress.stage))
             .unwrap_or_else(|| "no training job has ever run for this family".to_string()),
-        job.map(|j| format!("{} rows / {} sessions frozen", j.frozen_rows, j.frozen_sessions))
-            .unwrap_or_else(|| "none".to_string()),
+        job.map(|j| {
+            format!(
+                "{} rows / {} sessions frozen",
+                j.frozen_rows, j.frozen_sessions
+            )
+        })
+        .unwrap_or_else(|| "none".to_string()),
         "1 job that produced an evaluation".to_string(),
-        job.map(|j| if job_passed { "none".to_string() } else { format!("last job {}", j.status.as_str()) })
-            .unwrap_or_else(|| "no job".to_string()),
-        if job_passed { String::new() } else { "Start a training job from Training > Jobs once DATA and REVIEW pass.".to_string() },
+        job.map(|j| {
+            if job_passed {
+                "none".to_string()
+            } else {
+                format!("last job {}", j.status.as_str())
+            }
+        })
+        .unwrap_or_else(|| "no job".to_string()),
+        if job_passed {
+            String::new()
+        } else {
+            "Start a training job from Training > Jobs once DATA and REVIEW pass.".to_string()
+        },
         false,
     );
 
-    let data_ok = c.named("qualified_classes").map(|x| x.passed).unwrap_or(false);
+    let data_ok = c
+        .named("qualified_classes")
+        .map(|x| x.passed)
+        .unwrap_or(false);
     let test_ok = c.named("test_coverage").map(|x| x.passed).unwrap_or(false);
     let sess_ok_short = data.sessions_short.is_none();
     let review_ok = c.named("human_review").map(|x| x.passed).unwrap_or(false);
-    let review_eval_ok = c.named("candidate_evaluated").map(|x| x.passed).unwrap_or(false);
+    let review_eval_ok = c
+        .named("candidate_evaluated")
+        .map(|x| x.passed)
+        .unwrap_or(false);
 
     // Ordered exactly like the lifecycle: the FIRST unmet stage is the status.
-// A later stage is never reported while an earlier one is red - otherwise a
-// failed training job could still surface as SHADOW_READY from an older
-// registry entry, which is precisely the "readiness lies" failure mode.
+    // A later stage is never reported while an earlier one is red - otherwise a
+    // failed training job could still surface as SHADOW_READY from an older
+    // registry entry, which is precisely the "readiness lies" failure mode.
     let train_ok = c.named("training_job").map(|x| x.passed).unwrap_or(false);
     let status = match phase {
         JobPhase::Training => ReadinessStatus::Training,
@@ -814,7 +945,18 @@ mod tests {
         s: Option<&SoakStats>,
         phase: JobPhase,
     ) -> ModelReadiness {
-        assess_family("fish", d, 80, 100, recs, deployed, s, phase, &passed_jobs(), &ReadinessThresholds::default())
+        assess_family(
+            "fish",
+            d,
+            80,
+            100,
+            recs,
+            deployed,
+            s,
+            phase,
+            &passed_jobs(),
+            &ReadinessThresholds::default(),
+        )
     }
 
     #[test]
@@ -830,7 +972,11 @@ mod tests {
         let r = assess(&data(8, 10), &[], None, None, JobPhase::Idle);
         assert_eq!(r.status, ReadinessStatus::NotEnoughClasses);
         // Difference must be explicit, not just a boolean.
-        let chk = r.checks.iter().find(|c| c.name == "qualified_classes").unwrap();
+        let chk = r
+            .checks
+            .iter()
+            .find(|c| c.name == "qualified_classes")
+            .unwrap();
         assert_eq!(chk.actual, "8/10 qualified");
         assert_eq!(chk.difference, "2 class(es) short");
         assert!(!chk.next_action.is_empty());
@@ -842,7 +988,11 @@ mod tests {
         d.sessions_short = Some(("fish:a".into(), 1, 3));
         let r = assess(&d, &[], None, None, JobPhase::Idle);
         assert_eq!(r.status, ReadinessStatus::NotEnoughSessions);
-        let chk = r.checks.iter().find(|c| c.name == "session_diversity").unwrap();
+        let chk = r
+            .checks
+            .iter()
+            .find(|c| c.name == "session_diversity")
+            .unwrap();
         assert_eq!(chk.difference, "2 session(s) short for fish:a");
     }
 
@@ -889,13 +1039,24 @@ mod tests {
             &passed_jobs(),
             &ReadinessThresholds::default(),
         );
-        assert_eq!(r.status, ReadinessStatus::DataReady, "the floor is inclusive");
+        assert_eq!(
+            r.status,
+            ReadinessStatus::DataReady,
+            "the floor is inclusive"
+        );
     }
 
     #[test]
     fn full_data_and_review_is_data_ready_not_training_ready() {
         let r = assess_family(
-            "fish", &full_data(), 80, 100, &[], None, None, JobPhase::Idle,
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &[],
+            None,
+            None,
+            JobPhase::Idle,
             &passed_jobs(),
             &ReadinessThresholds::default(),
         );
@@ -931,8 +1092,16 @@ mod tests {
     fn worst_class_blocker_names_the_offending_class() {
         let recs = vec![rec("fish", 2, 0.80, 0.40)];
         let r = assess(&full_data(), &recs, None, None, JobPhase::Idle);
-        let chk = r.checks.iter().find(|c| c.name == "worst_class_f1").unwrap();
-        assert!(chk.actual.contains("fish:worst"), "must name the class: {}", chk.actual);
+        let chk = r
+            .checks
+            .iter()
+            .find(|c| c.name == "worst_class_f1")
+            .unwrap();
+        assert!(
+            chk.actual.contains("fish:worst"),
+            "must name the class: {}",
+            chk.actual
+        );
         assert_eq!(chk.difference, "0.100 below floor");
         assert!(chk.next_action.contains("fish:worst"));
     }
@@ -943,10 +1112,24 @@ mod tests {
         // 300 events, but all from one session at 10% agreement.
         let s = soak(300, 1, 0.10);
         let r = assess(&full_data(), &recs, Some(2), Some(&s), JobPhase::Idle);
-        assert_eq!(r.status, ReadinessStatus::CandidateReady, "volume must not be enough");
-        assert!(r.blockers.iter().any(|b| b.contains("shadow_soak_agreement")));
-        assert!(r.blockers.iter().any(|b| b.contains("shadow_soak_sessions")));
-        let chk = r.checks.iter().find(|c| c.name == "shadow_soak_agreement").unwrap();
+        assert_eq!(
+            r.status,
+            ReadinessStatus::CandidateReady,
+            "volume must not be enough"
+        );
+        assert!(r
+            .blockers
+            .iter()
+            .any(|b| b.contains("shadow_soak_agreement")));
+        assert!(r
+            .blockers
+            .iter()
+            .any(|b| b.contains("shadow_soak_sessions")));
+        let chk = r
+            .checks
+            .iter()
+            .find(|c| c.name == "shadow_soak_agreement")
+            .unwrap();
         assert_eq!(chk.difference, "70pp below floor");
     }
 
@@ -957,9 +1140,16 @@ mod tests {
         let r = assess(&full_data(), &recs, Some(2), Some(&s), JobPhase::Idle);
         assert_eq!(r.status, ReadinessStatus::ShadowReady);
         // Production is structural: shown, but never an actionable blocker.
-        let prod = r.checks.iter().find(|c| c.name == "production_authorized").unwrap();
+        let prod = r
+            .checks
+            .iter()
+            .find(|c| c.name == "production_authorized")
+            .unwrap();
         assert!(prod.structural);
-        assert!(!r.blockers.iter().any(|b| b.contains("production_authorized")));
+        assert!(!r
+            .blockers
+            .iter()
+            .any(|b| b.contains("production_authorized")));
     }
 
     #[test]
@@ -969,7 +1159,11 @@ mod tests {
         s.agreement_rate = None;
         let r = assess(&full_data(), &recs, Some(2), Some(&s), JobPhase::Idle);
         assert_eq!(r.status, ReadinessStatus::CandidateReady);
-        let chk = r.checks.iter().find(|c| c.name == "shadow_soak_agreement").unwrap();
+        let chk = r
+            .checks
+            .iter()
+            .find(|c| c.name == "shadow_soak_agreement")
+            .unwrap();
         assert!(!chk.passed);
         assert_eq!(chk.difference, "unmeasured");
     }
@@ -1072,7 +1266,13 @@ mod tests {
         // the newest training job failed. Status must drop back, not claim
         // SHADOW_READY from the previous model.
         let recs = vec![rec("fish", 2, 0.80, 0.65)];
-        let good = assess(&full_data(), &recs, Some(2), Some(&soak(150, 4, 0.92)), JobPhase::Idle);
+        let good = assess(
+            &full_data(),
+            &recs,
+            Some(2),
+            Some(&soak(150, 4, 0.92)),
+            JobPhase::Idle,
+        );
         assert_eq!(good.status, ReadinessStatus::ShadowReady);
 
         let failed_job = assess_family(
@@ -1092,22 +1292,37 @@ mod tests {
             ReadinessStatus::ShadowReady,
             "a failed latest job must cap the status"
         );
-        assert!(failed_job.blockers.iter().any(|b| b.contains("training_job")));
+        assert!(failed_job
+            .blockers
+            .iter()
+            .any(|b| b.contains("training_job")));
     }
 
     #[test]
     fn next_actions_are_deduplicated() {
         let recs = vec![rec("fish", 2, 0.40, 0.30)];
-        let r = assess(&full_data(), &recs, Some(2), Some(&soak(10, 1, 0.5)), JobPhase::Idle);
+        let r = assess(
+            &full_data(),
+            &recs,
+            Some(2),
+            Some(&soak(10, 1, 0.5)),
+            JobPhase::Idle,
+        );
         let mut sorted = r.next_actions.clone();
         sorted.sort();
         sorted.dedup();
         let mut emitted = r.next_actions.clone();
         emitted.sort();
         assert_eq!(emitted, sorted, "next_actions must contain no duplicates");
-        assert!(r.next_actions.len() >= 3, "several distinct blockers need distinct steps");
+        assert!(
+            r.next_actions.len() >= 3,
+            "several distinct blockers need distinct steps"
+        );
         // Structural checks never appear as actions.
-        assert!(!r.next_actions.iter().any(|a| a.contains("production-authorization")));
+        assert!(!r
+            .next_actions
+            .iter()
+            .any(|a| a.contains("production-authorization")));
     }
 
     #[test]
@@ -1167,17 +1382,38 @@ mod tests {
             min_review_coverage: 0.0,
         };
         let r = assess_family(
-            "fish", &full_data(), 80, 100, &recs, Some(2), Some(&s2), JobPhase::Idle,
-            &passed_jobs(), &zero,
+            "fish",
+            &full_data(),
+            80,
+            100,
+            &recs,
+            Some(2),
+            Some(&s2),
+            JobPhase::Idle,
+            &passed_jobs(),
+            &zero,
         );
-        let chk = r.checks.iter().find(|c| c.name == "shadow_soak_agreement").unwrap();
-        assert!(!chk.passed, "unmeasured agreement must not pass a zero threshold");
+        let chk = r
+            .checks
+            .iter()
+            .find(|c| c.name == "shadow_soak_agreement")
+            .unwrap();
+        assert!(
+            !chk.passed,
+            "unmeasured agreement must not pass a zero threshold"
+        );
     }
 
     #[test]
     fn every_stage_reports_real_numbers_whatever_the_threshold() {
         let recs = vec![rec("fish", 2, 0.41, 0.19)];
-        let r = assess(&full_data(), &recs, Some(2), Some(&soak(7, 1, 0.1)), JobPhase::Idle);
+        let r = assess(
+            &full_data(),
+            &recs,
+            Some(2),
+            Some(&soak(7, 1, 0.1)),
+            JobPhase::Idle,
+        );
         for name in [
             "macro_f1",
             "worst_class_f1",
@@ -1187,7 +1423,10 @@ mod tests {
             "human_review",
         ] {
             let c = r.checks.iter().find(|c| c.name == name).unwrap();
-            assert!(!c.actual.is_empty() && c.actual != "none", "{name} must report a real value");
+            assert!(
+                !c.actual.is_empty() && c.actual != "none",
+                "{name} must report a real value"
+            );
             assert!(!c.required.is_empty(), "{name} must state its requirement");
         }
     }
@@ -1220,7 +1459,11 @@ mod tests {
             "v5's metrics plus v4's soak is not evidence for v5"
         );
         assert_eq!(r.status, ReadinessStatus::CandidateReady);
-        let chk = r.checks.iter().find(|c| c.name == "shadow_evidence_revision").unwrap();
+        let chk = r
+            .checks
+            .iter()
+            .find(|c| c.name == "shadow_evidence_revision")
+            .unwrap();
         assert!(!chk.passed);
         assert!(
             chk.detail.contains("v5") && chk.detail.contains("v4"),
@@ -1228,7 +1471,10 @@ mod tests {
             chk.detail
         );
         assert!(chk.next_action.contains("Promote"), "{}", chk.next_action);
-        assert!(r.blockers.iter().any(|b| b.contains("shadow_evidence_revision")));
+        assert!(r
+            .blockers
+            .iter()
+            .any(|b| b.contains("shadow_evidence_revision")));
     }
 
     #[test]
@@ -1249,9 +1495,16 @@ mod tests {
             &ReadinessThresholds::default(),
         );
         assert_eq!(r.status, ReadinessStatus::ShadowReady);
-        let chk = r.checks.iter().find(|c| c.name == "shadow_evidence_revision").unwrap();
+        let chk = r
+            .checks
+            .iter()
+            .find(|c| c.name == "shadow_evidence_revision")
+            .unwrap();
         assert!(chk.passed, "{}", chk.detail);
-        assert!(!r.blockers.iter().any(|b| b.contains("shadow_evidence_revision")));
+        assert!(!r
+            .blockers
+            .iter()
+            .any(|b| b.contains("shadow_evidence_revision")));
     }
 
     #[test]
@@ -1272,7 +1525,11 @@ mod tests {
             &passed_jobs(),
             &ReadinessThresholds::default(),
         );
-        let chk = r.checks.iter().find(|c| c.name == "shadow_evidence_revision").unwrap();
+        let chk = r
+            .checks
+            .iter()
+            .find(|c| c.name == "shadow_evidence_revision")
+            .unwrap();
         assert!(!chk.passed);
         assert!(chk.detail.contains("not deployed"), "{}", chk.detail);
     }
@@ -1300,8 +1557,15 @@ mod tests {
             &passed_jobs(),
             &ReadinessThresholds::default(),
         );
-        let vol = r.checks.iter().find(|c| c.name == "shadow_soak_events").unwrap();
-        assert!(!vol.passed, "1 scored event must not satisfy a 100-event floor");
+        let vol = r
+            .checks
+            .iter()
+            .find(|c| c.name == "shadow_soak_events")
+            .unwrap();
+        assert!(
+            !vol.passed,
+            "1 scored event must not satisfy a 100-event floor"
+        );
         assert!(vol.actual.contains("1 scored"), "{}", vol.actual);
         assert!(
             vol.detail.contains("99 had no OCR+KB baseline"),

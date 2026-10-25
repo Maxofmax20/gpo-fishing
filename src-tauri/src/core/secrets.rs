@@ -89,7 +89,10 @@ pub fn maybe_unprotect(s: &str) -> String {
         match unprotect(s) {
             Ok(v) => v,
             Err(e) => {
-                tracing::warn!("secret decrypt failed ({}); preserving ciphertext", redact_token(&e));
+                tracing::warn!(
+                    "secret decrypt failed ({}); preserving ciphertext",
+                    redact_token(&e)
+                );
                 s.to_string()
             }
         }
@@ -158,7 +161,9 @@ fn mask_query_param(s: &str, param: &str) -> String {
             out.push_str(param);
             out.push_str("***");
             i += param.len();
-            while i < s.len() && !matches!(s.as_bytes()[i], b'&' | b' ' | b'"' | b'\'' | b'\r' | b'\n') {
+            while i < s.len()
+                && !matches!(s.as_bytes()[i], b'&' | b' ' | b'"' | b'\'' | b'\r' | b'\n')
+            {
                 // Values are tokens/keys (ASCII); advance by char for safety.
                 let ch = s[i..].chars().next().unwrap_or('\u{FFFD}');
                 i += ch.len_utf8();
@@ -180,7 +185,10 @@ fn mask_bearer(s: &str) -> String {
             out.push_str("Bearer ***");
             i += 7;
             while i < s.len()
-                && !matches!(s.as_bytes()[i], b' ' | b'"' | b'\'' | b'\r' | b'\n' | b',' | b';')
+                && !matches!(
+                    s.as_bytes()[i],
+                    b' ' | b'"' | b'\'' | b'\r' | b'\n' | b',' | b';'
+                )
             {
                 let ch = s[i..].chars().next().unwrap_or('\u{FFFD}');
                 i += ch.len_utf8();
@@ -254,11 +262,17 @@ mod win32 {
 
 #[cfg(windows)]
 fn dpapi_roundtrip(protect: bool, input: &[u8]) -> Result<Vec<u8>, String> {
-    use win32::*;
     use std::ptr::null;
+    use win32::*;
 
-    let in_blob = DataBlob { cb_data: input.len() as u32, pb_data: input.as_ptr() as *mut u8 };
-    let mut out_blob = DataBlob { cb_data: 0, pb_data: null::<u8>() as *mut u8 };
+    let in_blob = DataBlob {
+        cb_data: input.len() as u32,
+        pb_data: input.as_ptr() as *mut u8,
+    };
+    let mut out_blob = DataBlob {
+        cb_data: 0,
+        pb_data: null::<u8>() as *mut u8,
+    };
     // SAFETY: in_blob borrows `input` which outlives the call; out_blob is
     // allocated by DPAPI with LocalAlloc and freed below. User scope is
     // selected by passing no LOCAL_MACHINE flag, so only this Windows user
@@ -295,7 +309,8 @@ fn dpapi_roundtrip(protect: bool, input: &[u8]) -> Result<Vec<u8>, String> {
     }
     // SAFETY: DPAPI guarantees `cb_data` readable bytes at `pb_data`.
     let bytes = unsafe {
-        std::slice::from_raw_parts(out_blob.pb_data as *const u8, out_blob.cb_data as usize).to_vec()
+        std::slice::from_raw_parts(out_blob.pb_data as *const u8, out_blob.cb_data as usize)
+            .to_vec()
     };
     // SAFETY: DPAPI blobs are freed with LocalFree.
     unsafe {
@@ -442,7 +457,10 @@ mod tests {
     #[test]
     fn windows_emits_real_dpapi_prefix() {
         let enc = protect("synthetic-value-123").unwrap();
-        assert!(enc.starts_with(ENC_PREFIX), "Windows must emit ENC1 (real DPAPI), got {enc}");
+        assert!(
+            enc.starts_with(ENC_PREFIX),
+            "Windows must emit ENC1 (real DPAPI), got {enc}"
+        );
     }
 
     #[test]
